@@ -1344,7 +1344,7 @@ func (e *EmuState) directZoneReadBody(zone int) []byte {
 // and the device keeps its own.
 func (e *EmuState) zoneReadHead(zone int, cachedSchedC []byte) []TLV {
 	schedC, known := e.schedC[zone]
-	head := zoneWriteHead(zoneWrite{home: e.zoneHome(zone), programOff: e.schedOff[zone], schedC: schedC, kind: e.zoneKind(zone)})
+	head := zoneWriteHead(zoneWrite{home: e.home, programOff: e.schedOff[zone], schedC: schedC, kind: e.zoneKind(zone)})
 	switch {
 	case !e.homeSet:
 		return withoutTag(withoutTag(withoutTag(head, "6160"), "61e0"), "6200")
@@ -3745,9 +3745,8 @@ func (e *EmuState) deviceID(wire []byte, ns *NodeState) (int, bool) {
 
 // SetHomeState records the state of the whole home and the setpoint the weekly
 // program holds in each zone. Every z/s write the emulator builds after it
-// carries that pair: 6160 and 61e0, plus 6200 in the home state. The hot-water
-// zone always takes the home state (zoneHome). The daemon owns the values and
-// replaces the map as a whole.
+// carries that pair: 6160 and 61e0, plus 6200 in the home state. The daemon
+// owns the values and replaces the map as a whole.
 func (e *EmuState) SetHomeState(home bool, schedC map[int]float64) {
 	e.home, e.homeSet = home, true
 	e.schedC = make(map[int]float64, len(schedC))
@@ -3800,14 +3799,6 @@ func (e *EmuState) ConfirmedOpenWindow(target string) (open, confirmed bool) {
 // HomeState reports the state the emulator stamps on its z/s writes.
 func (e *EmuState) HomeState() bool { return e.home }
 
-// zoneHome reports whether the z/s blocks of zone carry the home head. The
-// hot-water zone ignores away: on the program, 6160=2 with 61e0=0 makes the
-// thermostat's zone_state_timer_cb publish DHW off at 30 C, and no target path
-// reads 6160, so the home head keeps hot water on.
-func (e *EmuState) zoneHome(zone int) bool {
-	return e.home || e.zoneKind(zone) == dhwZoneKind
-}
-
 // ZoneSchedC returns the scheduled setpoint (6200) the zone cache holds: the
 // value of the last write or member report z/s?lid=N that carried it. The valve
 // reports the 6200 of the last home-state write it took.
@@ -3825,7 +3816,7 @@ func (e *EmuState) ZoneSchedC(zone int) (float64, bool) {
 // program for falls back to the last value the node was given, then to what the
 // caller records for it.
 func (e *EmuState) homeBlock(zone int, wire []byte, fallback float64) (bool, float64) {
-	if !e.zoneHome(zone) {
+	if !e.home {
 		return false, 0
 	}
 	if c, ok := e.schedC[zone]; ok {
@@ -3840,7 +3831,7 @@ func (e *EmuState) homeBlock(zone int, wire []byte, fallback float64) (bool, flo
 // knowsSchedC reports whether a write to zone on node wire can restate its
 // 6200 without a fallback: away the write carries none.
 func (e *EmuState) knowsSchedC(zone int, wire []byte) bool {
-	if !e.zoneHome(zone) {
+	if !e.home {
 		return true
 	}
 	if _, ok := e.schedC[zone]; ok {

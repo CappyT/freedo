@@ -21,6 +21,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -2113,13 +2114,17 @@ func (d *daemon) applyHomeState(e *tado.EmuState) []int {
 }
 
 // tickHomeState re-evaluates the weekly programs and pushes the new 6200 and
-// 61e0 to the members of every zone whose program moved to another block. The
-// hot-water zone ignores away, so it takes its block changes away too. An
+// 61e0 to the members of every zone whose program moved to another block. Away,
+// the hot-water zone takes no block change: an away write carries neither tag,
+// and the return home rewrites every zone with the block then in force. An
 // early start due now goes out as a block change of its own, and the heat-up
 // learner then sees the targets this tick settled on.
 func (d *daemon) tickHomeState(e *tado.EmuState) {
 	d.planEarlyStarts(e)
 	zones := d.applyHomeState(e)
+	if d.away {
+		zones = slices.DeleteFunc(zones, d.isHotWaterZone)
+	}
 	if len(zones) > 0 {
 		d.rewriteZones(e, zones, d.requestQueuedDispatch)
 	}

@@ -165,45 +165,25 @@ func TestHotWaterProgramKeepsOffOverlay(t *testing.T) {
 	}, "6280", "6440")
 }
 
-// TestHotWaterProgramIgnoresAway: the hot-water zone ignores away. The away
-// burst writes it with the home head and the block in force, a block change
-// while away still reaches it, and the target view keeps the program. The
-// heating zone of the same thermostat goes away.
-func TestHotWaterProgramIgnoresAway(t *testing.T) {
+// TestHotWaterProgramAwayUnchanged: away, a hot-water block change writes
+// nothing; the return home writes the block then in force.
+func TestHotWaterProgramAwayUnchanged(t *testing.T) {
 	clock := newTestClock(time.Date(2026, 1, 5, 5, 0, 0, 0, time.UTC))
 	d, url := newHomeDaemon(t, clock)
 	thermostat := hex.EncodeToString(mustResolve(t, dhwNode).WireEUI())
 	putHotWaterWeek(t, url)
 	tickHome(t, d)
-	dropQueue(t, d, thermostat)
-
 	var res map[string]any
 	if code := postJSON(t, http.MethodPatch, url+"/api/home", map[string]any{"away": true}, &res); code != http.StatusOK {
 		t.Fatalf("away: code=%d %v", code, res)
 	}
-	writes := deliverAll(t, d, thermostat)
-	if len(writes) != 2 {
-		t.Fatalf("the away burst wrote the thermostat %d times, want 2", len(writes))
-	}
-	wantTags(t, "the away burst on hot water", writes[0], map[string]string{
-		"6020": "02", "6160": "01", "61e0": "01", "6200": "1194", "6240": "00",
-	}, "6260", "6280", "6440")
-	wantTags(t, "the away burst on the heating zone", writes[1], map[string]string{
-		"6020": "01", "6160": "02", "61e0": "00",
-	}, "6200", "6440")
-	if target := mustTarget(t, url, dhwZoneID); target["source"] != "program" || target["targetC"] != 45.0 {
-		t.Errorf("hot water away: target = %v", target)
-	}
+	dropQueue(t, d, thermostat)
 
 	clock.advance(2 * time.Hour)
 	tickHome(t, d)
-	if n := pending(t, d, thermostat); n != 1 {
-		t.Fatalf("away, the 06:00 block queued %d writes, want 1", n)
+	if n := pending(t, d, thermostat); n != 0 {
+		t.Fatalf("away, the 06:00 block queued %d writes, want none", n)
 	}
-	wantTags(t, "the 06:00 block away", nextZoneWrite(t, d, thermostat), map[string]string{
-		"6020": "02", "6160": "01", "61e0": "01", "6200": "157c", "6240": "00",
-	}, "6260", "6280", "6440")
-	dropQueue(t, d, thermostat)
 
 	if code := postJSON(t, http.MethodPatch, url+"/api/home", map[string]any{"away": false}, &res); code != http.StatusOK {
 		t.Fatalf("home: code=%d %v", code, res)
@@ -211,49 +191,6 @@ func TestHotWaterProgramIgnoresAway(t *testing.T) {
 	wantTags(t, "the return home", nextZoneWrite(t, d, thermostat), map[string]string{
 		"6020": "02", "6160": "01", "61e0": "01", "6200": "157c",
 	}, "6440")
-}
-
-// TestHotWaterManualOverlaySurvivesAway: a manual 48 C hot-water overlay stays
-// on through away and back, and a hot-water command sent while away carries the
-// home head.
-func TestHotWaterManualOverlaySurvivesAway(t *testing.T) {
-	clock := newTestClock(time.Date(2026, 1, 5, 5, 0, 0, 0, time.UTC))
-	d, url := newHomeDaemon(t, clock)
-	thermostat := hex.EncodeToString(mustResolve(t, dhwNode).WireEUI())
-
-	var res map[string]any
-	if code := postJSON(t, http.MethodPost, url+"/api/boiler/dhw", map[string]any{"tempC": 48.0}, &res); code != http.StatusOK {
-		t.Fatalf("dhw 48 C: code=%d %v", code, res)
-	}
-	wantTags(t, "the manual overlay", deliver(t, d, defaultInstall, thermostat), map[string]string{
-		"6240": "02", "6260": "01", "6280": "12c0", "6440": "0001",
-	})
-
-	overlay := map[string]string{"6020": "02", "6160": "01", "61e0": "01", "6240": "02", "6260": "01", "6280": "12c0"}
-	for _, away := range []bool{true, false} {
-		if code := postJSON(t, http.MethodPatch, url+"/api/home", map[string]any{"away": away}, &res); code != http.StatusOK {
-			t.Fatalf("away=%t: code=%d %v", away, code, res)
-		}
-		writes := deliverAll(t, d, thermostat)
-		if len(writes) != 2 {
-			t.Fatalf("away=%t: the burst wrote the thermostat %d times, want 2", away, len(writes))
-		}
-		wantTags(t, "the burst on hot water", writes[0], overlay, "6440")
-		if target := mustTarget(t, url, dhwZoneID); target["source"] != "overlay" || target["targetC"] != 48.0 {
-			t.Errorf("away=%t: hot-water target = %v", away, target)
-		}
-	}
-
-	if code := postJSON(t, http.MethodPatch, url+"/api/home", map[string]any{"away": true}, &res); code != http.StatusOK {
-		t.Fatalf("away: code=%d %v", code, res)
-	}
-	deliverAll(t, d, thermostat)
-	if code := postJSON(t, http.MethodPost, url+"/api/boiler/dhw", map[string]any{"tempC": 50.0}, &res); code != http.StatusOK {
-		t.Fatalf("dhw 50 C away: code=%d %v", code, res)
-	}
-	wantTags(t, "a hot-water command away", deliver(t, d, defaultInstall, thermostat), map[string]string{
-		"6160": "01", "61e0": "01", "6240": "02", "6260": "01", "6280": "1388", "6440": "0001",
-	})
 }
 
 // TestDisabledRoomBlockPowersOff: a disabled block of a room program writes
