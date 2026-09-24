@@ -163,3 +163,25 @@ func TestRewriteBehindReturnFromOffReachesZone(t *testing.T) {
 	wantTags(t, "the away rewrite", deliverAck(t, d, in, writer), map[string]string{"6160": "02", "61e0": "00", "6240": "00"},
 		"6260", "6280", "6440")
 }
+
+// TestSetpointBehindReturnStartsOverlay: a setpoint queued behind a return to
+// schedule reaches a valve that runs no overlay any more, so it marks the start
+// of one with 6440. Both writes then mark an event, and the newer one replaces
+// the return in the queue.
+func TestSetpointBehindReturnStartsOverlay(t *testing.T) {
+	in := windowInstall(t, nil)
+	d, url := newWindowDaemon(t, in, newTestClock(windowStart), nil)
+	writer := wireOf(t, in, camera)
+	seedBlock(t, d, in, camera, 10, cameraBlock(2460)...)
+	if _, code := postZone(t, url, 10, "auto", map[string]any{}); code != http.StatusOK {
+		t.Fatalf("auto: code=%d", code)
+	}
+	if _, code := postZone(t, url, 10, "setpoint", map[string]any{"setpointC": 22}); code != http.StatusOK {
+		t.Fatalf("setpoint: code=%d", code)
+	}
+	var last map[string]string
+	for pending(t, d, writer) > 0 {
+		last = deliverAck(t, d, in, writer)
+	}
+	wantTags(t, "the setpoint", last, map[string]string{"6240": "02", "6280": "0898", "6440": "0001"})
+}

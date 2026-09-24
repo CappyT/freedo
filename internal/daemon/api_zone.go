@@ -214,7 +214,7 @@ func (d *daemon) roomOverlay(e *tado.EmuState, z *tado.Zone, dev *tado.Device, o
 	}
 	return tado.SetpointParams{
 		ID: z.Number, Sched: sched, Overlay: overlay, Duration: duration,
-		RunningOverlay: runningOverlay(e, dev.Short()),
+		RunningOverlay: runningOverlay(e, dev.Short(), z.Number),
 	}
 }
 

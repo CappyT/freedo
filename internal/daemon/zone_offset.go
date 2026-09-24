@@ -107,9 +107,14 @@ func (d *daemon) restateShiftedZones(e *tado.EmuState, before, after *tado.Insta
 // restateZone rewrites zone on target after its correction moved by delta. A
 // running setpoint overlay keeps its target on the corrected scale and its
 // deadline, so its wire setpoint moves by -delta. Any other block is a plain
-// rewrite, which carries the new 6200.
+// rewrite, which carries the new 6200. The block is the one a write still
+// queued to target sets, else the one the zone holds: a restate of the held
+// overlay would replace a queued return to schedule and keep the overlay on.
 func (d *daemon) restateZone(e *tado.EmuState, inst *tado.Install, zone int, target string, delta float64) error {
-	block, known := e.ZoneBlock(zone)
+	block, known := e.PendingZoneBlock(target, zone)
+	if !known {
+		block, known = e.ZoneBlock(zone)
+	}
 	timer, timed := e.ZoneOverlayTimer(zone)
 	remaining := timer.ExpiresAt.Sub(d.retryNow())
 	if !known || block.Overlay == overlayAutoMode || block.SetpointC == nil ||

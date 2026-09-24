@@ -37,6 +37,55 @@ func (e *EmuState) ZoneBlock(zone int) (ZoneBlock, bool) {
 	return out, known
 }
 
+// PendingZoneBlock returns the block the newest write queued to target sets
+// on zone, which target has not taken yet, and false when none waits. A
+// daemon write that restates the zone restates this block, not ZoneBlock.
+func (e *EmuState) PendingZoneBlock(target string, zone int) (ZoneBlock, bool) {
+	wire, _, err := e.resolve(target)
+	if err != nil {
+		return ZoneBlock{}, false
+	}
+	q := e.queue[hexEUI(wire)]
+	for i := len(q) - 1; i >= 0; i-- {
+		if d := q[i].dhw; d != nil && d.zone == zone {
+			out := ZoneBlock{Overlay: d.overlay}
+			if d.overlay != overlayAuto {
+				on := d.enabled != 0
+				out.Enabled = &on
+			}
+			if len(d.setpoint) == 2 {
+				c := float64(be(d.setpoint)) / 100
+				out.SetpointC = &c
+			}
+			return out, true
+		}
+		b := q[i].heating
+		if b == nil || b.zone != zone || b.windowOnly {
+			continue
+		}
+		out := ZoneBlock{OpenWindow: b.window() != 0}
+		if b.body == nil {
+			on, c := true, float64(be(b.setpoint))/100
+			out.Overlay, out.Enabled, out.SetpointC = b.overlay, &on, &c
+			return out, true
+		}
+		for _, tlv := range parseTLVList(b.body) {
+			switch {
+			case tlv.Tag == "6240" && len(tlv.Val) == 1:
+				out.Overlay = tlv.Val[0]
+			case tlv.Tag == "6260" && len(tlv.Val) == 1:
+				on := tlv.Val[0] == 0x01
+				out.Enabled = &on
+			case tlv.Tag == "6280" && len(tlv.Val) == 2:
+				c := float64(be(tlv.Val)) / 100
+				out.SetpointC = &c
+			}
+		}
+		return out, true
+	}
+	return ZoneBlock{}, false
+}
+
 // OverlayTimer is the coordinator-side deadline of the overlay a zone runs.
 type OverlayTimer struct {
 	Target    string // wire EUI hex of the node the timer restores
@@ -77,5 +126,5 @@ func (e *EmuState) restoredTimer(t DesiredBoostTimer) boostTimer {
 		block.SetpointC != nil && *block.SetpointC == BoostTemperatureC {
 		out.boost = true
 	}
-	return out
+	return e.stampTimer(out)
 }

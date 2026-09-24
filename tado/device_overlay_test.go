@@ -2,6 +2,7 @@ package tado
 
 import (
 	"encoding/hex"
+	"io"
 	"strings"
 	"testing"
 )
@@ -91,5 +92,59 @@ func TestOverlayEndCheck(t *testing.T) {
 		if (tc.want == "") != (got == "") || !strings.Contains(got, tc.want) {
 			t.Errorf("%+v: Check() = %q, want %q", tc.end, got, tc.want)
 		}
+	}
+}
+
+// queuedTags returns the TLVs of each write queued to key, keyed by tag.
+func queuedTags(t *testing.T, e *EmuState, key string) []map[string]string {
+	t.Helper()
+	var out []map[string]string
+	for _, d := range e.queue[key] {
+		m, err := parseCoAPCore(d.coap)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tags := map[string]string{}
+		for _, tlv := range parseTLVList(m.Payload) {
+			tags[tlv.Tag] = hex.EncodeToString(tlv.Val)
+		}
+		out = append(out, tags)
+	}
+	return out
+}
+
+// TestDeviceOverlayRestatesQueuedZoneWrites: the wheel of one member sets an
+// overlay while the zone writer still holds a rewrite of the older block. That
+// rewrite would undo the overlay, so it gives way to a rewrite of the overlay.
+// The write queued ahead with 6440 marks an event and stays.
+func TestDeviceOverlayRestatesQueuedZoneWrites(t *testing.T) {
+	in := fixtureInstall(t)
+	e := NewEmu(in.EmuConfig(), NewUnhandledLogger(io.Discard))
+	e.SetHomeState(true, map[int]float64{5: 20})
+	if err := e.EnqueueSetpoint(cucinaBEUIHex, SetpointParams{ID: 5, Setpoint: 21, Overlay: 2}); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.EnqueueZoneRewrite(cucinaBEUIHex, 5); err != nil {
+		t.Fatal(err)
+	}
+	e.OnFrame(synthDeviceUplink(t, in, mustHex(cucinaAEUIHex), CoAPReq{
+		Type: "CON", Code: "0.03", MID: 0x7501, Token: []byte{0x22},
+		Path: homePath(in, "z", "5", "overlay"), Options: []CoAPOption{optOctets},
+		Payload: encodeTLVs([]TLV{
+			{Tag: "6280", Val: []byte{0x08, 0x98}}, {Tag: "6240", Val: []byte{0x02}}, {Tag: "6260", Val: []byte{0x01}},
+		}),
+	}))
+	got := queuedTags(t, e, cucinaBEUIHex)
+	if len(got) != 2 {
+		t.Fatalf("writer queue = %v, want the 6440 setpoint and one rewrite", got)
+	}
+	if got[0]["6440"] != "0001" || got[0]["6280"] != "0834" {
+		t.Errorf("first write = %v, want the 21 C setpoint with 6440", got[0])
+	}
+	if w := got[1]; w["6240"] != "02" || w["6260"] != "01" || w["6280"] != "0898" || w["6200"] != "07d0" || w["6440"] != "" {
+		t.Errorf("rewrite = %v, want the 22 C overlay, 6200 07d0 and no 6440", w)
+	}
+	if q := e.queue[cucinaAEUIHex]; len(q) != 0 {
+		t.Errorf("the wheel member got %d writes, want none", len(q))
 	}
 }

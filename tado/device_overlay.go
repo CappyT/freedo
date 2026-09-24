@@ -91,9 +91,40 @@ func (e *EmuState) takeDeviceOverlay(zone int, dev []byte, body []byte) {
 	if len(updates) > 0 {
 		key := zoneKey(zone, "z/s")
 		e.storeZoneState(zone, "z/s", encodeTLVs(mergeConfigTLVs(parseTLVList(e.zoneState[key]), updates)))
+		e.restateDeviceOverlay(zone)
 	}
 	delete(e.zoneWrites, zone)
 	e.overlayReports = append(e.overlayReports, OverlayReport{Zone: zone, Device: hexEUI(dev)})
+}
+
+// restateDeviceOverlay rebuilds the zone writes queued before a device overlay
+// on a heating zone: each one restates the block the zone held before, so it
+// would undo the overlay on delivery. A write on the air stays, and so does
+// one that marks an event (6440 or a zone configuration tag). Each node that
+// lost a write takes one rewrite of the overlay, with the head and the 62e0 of
+// now.
+func (e *EmuState) restateDeviceOverlay(zone int) {
+	if e.zoneKind(zone) == dhwZoneKind {
+		return
+	}
+	for _, key := range slices.Sorted(maps.Keys(e.queue)) {
+		q := e.queue[key]
+		kept := make([]*queuedDownlink, 0, len(q))
+		for _, d := range q {
+			if d.zoneBlock && d.zone == zone && !d.inFlight && len(zoneWriteEvents(d.coap)) == 0 {
+				e.recordDownlinkOutcome(key, d, "superseded", "device-overlay")
+				continue
+			}
+			kept = append(kept, d)
+		}
+		if len(kept) == len(q) {
+			continue
+		}
+		e.queue[key] = kept
+		if err := e.enqueueZoneRewrite(key, zone, true); err != nil {
+			e.log.Log("Data", "self", key, rsnBuildFail+" device overlay rewrite "+err.Error(), "")
+		}
+	}
 }
 
 // TakeOverlayReports returns the device overlay reports received since the

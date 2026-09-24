@@ -11,8 +11,9 @@ import (
 var answerCtr uint32 = 1 << 20
 
 // answerQueued puts the head of dev's queue on the air and answers it from dev
-// with code, under the MID and token of that attempt.
-func answerQueued(t *testing.T, e *EmuState, dev []byte, code string) {
+// with code, under the MID and token of that attempt. It returns what the
+// emulator sends back.
+func answerQueued(t *testing.T, e *EmuState, dev []byte, code string) []Action {
 	t.Helper()
 	key := hexEUI(dev)
 	if _, ok, err := e.NextQueuedDownlink(key); err != nil || !ok {
@@ -28,7 +29,7 @@ func answerQueued(t *testing.T, e *EmuState, dev []byte, code string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e.OnFrame(f.Bytes())
+	return e.OnFrame(f.Bytes())
 }
 
 // headRequest returns the CoAP request the head of dev's queue carries.
@@ -382,7 +383,7 @@ func TestConfigWritesCoalesce(t *testing.T) {
 // retry of a write goes out under a new MID and token. The old ones no longer
 // close it; the new ones do.
 func TestServerErrorRetryMintsNewIDs(t *testing.T) {
-	e, _ := fixtureEmu(t)
+	e, now := clockedFixtureEmu(t)
 	camera := mustHex(cameraEUIHex)
 	if err := e.EnqueueSetpoint(cameraEUIHex, SetpointParams{ID: 10, Setpoint: 21, Sched: 20, Overlay: 2}); err != nil {
 		t.Fatal(err)
@@ -392,6 +393,7 @@ func TestServerErrorRetryMintsNewIDs(t *testing.T) {
 	if n := e.Pending(cameraEUIHex); n != 1 {
 		t.Fatalf("5.03 left %d writes queued, want the write for a retry", n)
 	}
+	*now = now.Add(serverErrorRetryBackoff)
 	second := headRequest(t, e, camera)
 	if second.MID == first.MID || bytes.Equal(second.Token, first.Token) {
 		t.Fatalf("retry MID/token = %04x/%x, want new ones after %04x/%x", second.MID, second.Token, first.MID, first.Token)
@@ -409,5 +411,71 @@ func TestServerErrorRetryMintsNewIDs(t *testing.T) {
 	answerQueued(t, e, camera, "2.04")
 	if n := e.Pending(cameraEUIHex); n != 0 {
 		t.Fatalf("2.04 under the new MID left %d queued", n)
+	}
+}
+
+// clockedFixtureEmu is fixtureEmu on a clock the test moves.
+func clockedFixtureEmu(t *testing.T) (*EmuState, *time.Time) {
+	t.Helper()
+	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
+	cfg := fixtureInstall(t).EmuConfig()
+	cfg.Now = func() time.Time { return now }
+	return NewEmu(cfg, NewUnhandledLogger(io.Discard)), &now
+}
+
+// TestServerErrorWaitsForTheRetry: a 5.xx answer costs its own attempt only.
+// The retry does not go out in the rendezvous that carried the answer, where
+// the busy device would answer 5.xx again, but after the backoff.
+func TestServerErrorWaitsForTheRetry(t *testing.T) {
+	e, now := clockedFixtureEmu(t)
+	camera := mustHex(cameraEUIHex)
+	if err := e.EnqueueSetpoint(cameraEUIHex, SetpointParams{ID: 10, Setpoint: 21, Sched: 20, Overlay: 2}); err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range answerQueued(t, e, camera, "5.03") {
+		if a.QueueAttempt {
+			t.Errorf("the 5.03 answer sent %q in the same rendezvous", a.Reason)
+		}
+	}
+	if q := e.Queue(cameraEUIHex); len(q) != 1 || q[0].Tries != 1 {
+		t.Fatalf("queue after 5.03 = %+v, want the write after one try", q)
+	}
+	if _, ok, _ := e.NextQueuedDownlink(cameraEUIHex); ok {
+		t.Fatal("the retry went out before the backoff")
+	}
+	*now = now.Add(serverErrorRetryBackoff)
+	if _, ok, _ := e.NextQueuedDownlink(cameraEUIHex); !ok {
+		t.Fatal("no retry after the backoff")
+	}
+	if q := e.Queue(cameraEUIHex); len(q) != 1 || q[0].Tries != 2 {
+		t.Errorf("queue after the retry = %+v, want the second try", q)
+	}
+}
+
+// TestConfigWriteReportsCoalescedWrite: a d/config write that replaces one
+// queued ahead of it is still a new write, for the operator's clear of 02b3
+// and for a reload.
+func TestConfigWriteReportsCoalescedWrite(t *testing.T) {
+	e, _ := fixtureEmu(t)
+	flipped := !e.inst.Options.OfflineScheduleEnabled()
+	if err := e.EnqueueConfig(cameraEUIHex, 10, ConfigWrite{OfflineScheduleEnabled: &flipped}); err != nil {
+		t.Fatal(err)
+	}
+	written, err := e.ClearOfflineSchedule(cameraEUIHex, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := e.Pending(cameraEUIHex); !written || n != 1 {
+		t.Errorf("clear behind a queued write: written=%t with %d queued, want true and the one coalesced write", written, n)
+	}
+
+	orientation := uint8(1)
+	if err := e.EnqueueConfig(cameraEUIHex, 10, ConfigWrite{Orientation: &orientation}); err != nil {
+		t.Fatal(err)
+	}
+	e.node(mustHex(cameraEUIHex)).LastID = 10
+	e.inst.HomeID++
+	if written := e.refreshConfigDocuments(); !written[cameraEUIHex] {
+		t.Errorf("reload behind a queued write: written=%v, want %s", written, cameraEUIHex)
 	}
 }

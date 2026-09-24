@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"freedo/tado"
 )
@@ -226,5 +227,60 @@ func TestSetpointShiftScale(t *testing.T) {
 	views := correctedZoneViews(in, []tado.ZoneView{{Number: 3, TempC: 22}, {Number: 5, TempC: 22}})
 	if views[0].TempC != 21.3 || views[1].TempC != 22 {
 		t.Errorf("zone views = %+v, want 21.3 on zone 3 and 22 on zone 5", views)
+	}
+}
+
+// TestRestateKeepsQueuedReturn: the correction of a zone moves while its
+// return to schedule still waits in the queue. The restate restates that
+// return, not the overlay the valve still runs, whether the return is the
+// expiry of the timer (no 6440) or a cancel (6440). The deadline ends with the
+// delivered return.
+func TestRestateKeepsQueuedReturn(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		queue func(t *testing.T, d *daemon, url string, clock *testClock)
+	}{
+		{"expiry", func(t *testing.T, d *daemon, _ string, clock *testClock) {
+			clock.advance(15 * time.Minute)
+			expireOverlays(t, d)
+		}},
+		{"cancel", func(t *testing.T, _ *daemon, url string, _ *testClock) {
+			if _, code := postZone(t, url, 3, "auto", map[string]any{}); code != http.StatusOK {
+				t.Fatalf("auto: code=%d", code)
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			in := windowInstall(t, nil)
+			clock := newTestClock(windowStart)
+			d, url := newWindowDaemon(t, in, clock, nil)
+			valve := wireOf(t, in, "VA1000000002")
+			seedBlock(t, d, in, "VA1000000002", 3)
+			if _, code := postZone(t, url, 3, "setpoint", map[string]any{
+				"setpointC": 22, "mode": "timer", "durationSec": 900,
+			}); code != http.StatusOK {
+				t.Fatalf("timer: code=%d", code)
+			}
+			deliverAck(t, d, in, valve)
+			tc.queue(t, d, url, clock)
+			if _, err := d.do(func(e *tado.EmuState) (any, error) { return nil, d.restateZone(e, in, 3, valve, 0.5) }); err != nil {
+				t.Fatal(err)
+			}
+			var last map[string]string
+			for pending(t, d, valve) > 0 {
+				last = deliverAck(t, d, in, valve)
+			}
+			wantTags(t, "the last write", last, map[string]string{"6240": "00"}, "6260", "6280")
+			v, err := d.do(func(e *tado.EmuState) (any, error) {
+				_, timed := e.ZoneOverlayTimer(3)
+				return timed, nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if v.(bool) {
+				t.Error("the delivered return left the deadline")
+			}
+		})
 	}
 }

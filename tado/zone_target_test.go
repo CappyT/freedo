@@ -3,8 +3,10 @@ package tado
 import (
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"reflect"
 	"sort"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -112,18 +114,19 @@ func TestRestoredTimers(t *testing.T) {
 	}
 }
 
-// takeRestores drains the queue of wire and returns "kind query" per write.
+// takeRestores delivers the queue of wire, each write answered 2.04, and
+// returns "kind query" per write.
 func takeRestores(t *testing.T, e *EmuState, wire string) []string {
 	t.Helper()
 	var out []string
-	for _, d := range e.queue[wire] {
-		msg, err := ParseCoAP(WrapAppPayload(d.coap, 1, nil)[8:])
+	for len(e.queue[wire]) > 0 {
+		msg, err := ParseCoAP(WrapAppPayload(e.queue[wire][0].coap, 1, nil)[8:])
 		if err != nil {
 			t.Fatal(err)
 		}
-		out = append(out, d.kind+" "+msg.Query)
+		out = append(out, e.queue[wire][0].kind+" "+msg.Query)
+		answerQueued(t, e, mustHex(wire), "2.04")
 	}
-	delete(e.queue, wire)
 	return out
 }
 
@@ -295,4 +298,177 @@ func roundTripState(t *testing.T, state DesiredState) DesiredState {
 		t.Fatal(err)
 	}
 	return out
+}
+
+// TestDroppedReturnKeepsTimer: the return to schedule an expiry queues ends
+// the deadline only when the node takes it. A tick finds the return queued and
+// adds none. A return the retry limit or a 4.xx drops leaves the overlay on
+// the node and its deadline due, so the next tick queues the return again.
+func TestDroppedReturnKeepsTimer(t *testing.T) {
+	const ru = "05a2cafa07c51b00"
+	for _, tc := range []struct {
+		name, target string
+		zone         int
+		start        func(e *EmuState) error
+		drop         func(e *EmuState)
+	}{
+		{"room boost, retry limit", cameraEUIHex, 10,
+			func(e *EmuState) error { return e.EnqueueBoost(cameraEUIHex, 10, true) },
+			func(e *EmuState) {
+				for range maxDownlinkTries + 1 {
+					e.NextQueuedDownlink(cameraEUIHex)
+				}
+			}},
+		{"hot water, 4.04", ru, 0,
+			func(e *EmuState) error { return e.EnqueueDHWOverlay(ru, 0, 50, true, BoostDuration) },
+			func(e *EmuState) { answerQueued(t, e, mustHex(ru), "4.04") }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e, now := clockedFixtureEmu(t)
+			if err := tc.start(e); err != nil {
+				t.Fatal(err)
+			}
+			answerQueued(t, e, mustHex(tc.target), "2.04")
+			*now = now.Add(BoostDuration)
+			for tick := range 2 {
+				if _, err := e.ExpireBoosts(*now); err != nil {
+					t.Fatal(err)
+				}
+				if n := e.Pending(tc.target); n != 1 {
+					t.Fatalf("tick %d: %d writes queued, want the one return", tick, n)
+				}
+			}
+			if _, ok := e.ZoneOverlayTimer(tc.zone); !ok || len(e.ExportDesiredState().Boost) != 1 {
+				t.Fatal("the queued return dropped the deadline and its stored form")
+			}
+			tc.drop(e)
+			if n := e.Pending(tc.target); n != 0 {
+				t.Fatalf("%d writes queued after the drop, want none", n)
+			}
+			if _, ok := e.ZoneOverlayTimer(tc.zone); !ok || len(e.ExportDesiredState().Boost) != 1 {
+				t.Fatal("the dropped return dropped the deadline and its stored form")
+			}
+			if due, err := e.ExpireBoosts(*now); err != nil || len(due) != 1 || e.Pending(tc.target) != 1 {
+				t.Fatalf("tick after the drop: due=%v err=%v pending=%d, want the return again", due, err, e.Pending(tc.target))
+			}
+			answerQueued(t, e, mustHex(tc.target), "2.04")
+			if timer, ok := e.ZoneOverlayTimer(tc.zone); ok || len(e.ExportDesiredState().Boost) != 0 {
+				t.Errorf("delivered return left the deadline %+v", timer)
+			}
+			if !e.TakeDeliveredChanged() {
+				t.Error("the ended deadline is not marked for the owner to persist")
+			}
+			if due, _ := e.ExpireBoosts(now.Add(time.Hour)); len(due) != 0 {
+				t.Errorf("tick after the delivered return queued %v", due)
+			}
+		})
+	}
+}
+
+// TestModeEndsTimer: a mode write carries no duration, so the overlay it sets
+// has no deadline. The deadline of the overlay it replaces ends when the node
+// takes it, and a manual mode then never expires.
+func TestModeEndsTimer(t *testing.T) {
+	e, now := clockedFixtureEmu(t)
+	camera := mustHex(cameraEUIHex)
+	e.SetHomeState(true, map[int]float64{10: 20})
+	if err := e.EnqueueSetpoint(cameraEUIHex, SetpointParams{ID: 10, Setpoint: 22, Overlay: 3, Duration: time.Hour}); err != nil {
+		t.Fatal(err)
+	}
+	answerQueued(t, e, camera, "2.04")
+	if err := e.EnqueueMode(cameraEUIHex, 10, 2); err != nil {
+		t.Fatal(err)
+	}
+	answerQueued(t, e, camera, "2.04")
+	if timer, ok := e.ZoneOverlayTimer(10); ok {
+		t.Errorf("manual mode left the deadline %+v", timer)
+	}
+	*now = now.Add(2 * time.Hour)
+	if due, err := e.ExpireBoosts(*now); err != nil || len(due) != 0 {
+		t.Errorf("manual mode expired: due=%v err=%v", due, err)
+	}
+}
+
+// TestSetInstallDropsTimersOfRemovedZone: a zone the reload removes loses its
+// overlay deadline with the rest of its state.
+func TestSetInstallDropsTimersOfRemovedZone(t *testing.T) {
+	e, _ := clockedFixtureEmu(t)
+	if err := e.EnqueueBoost(cameraEUIHex, 10, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := e.SetInstall(variantInstall(t, [2]string{zone10, ""})); err != nil {
+		t.Fatalf("SetInstall: %v", err)
+	}
+	if timer, ok := e.ZoneOverlayTimer(10); ok {
+		t.Errorf("zone 10 kept its deadline %+v", timer)
+	}
+}
+
+// TestZoneWritesKeepOpenWindow: on a zone the window engine does not drive, a
+// write keeps the 62e0 the zone holds: the one of a write queued ahead, an
+// open-window write included, else the node's. A driven zone takes the value
+// of the engine.
+func TestZoneWritesKeepOpenWindow(t *testing.T) {
+	e, _ := clockedFixtureEmu(t)
+	camera := mustHex(cameraEUIHex)
+	e.SetHomeState(true, map[int]float64{10: 20})
+	e.cacheTLVs(e.node(camera), []TLV{
+		{Tag: "6280", Val: []byte{0x08, 0x34}}, {Tag: "6240", Val: []byte{0x00}}, {Tag: "62e0", Val: []byte{0x00}},
+	}, "", ClassData, "camera", "bridge", "")
+	if err := e.EnqueueOpenWindow(cameraEUIHex, 10, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.EnqueueZoneRewrite(cameraEUIHex, 10); err != nil {
+		t.Fatal(err)
+	}
+	if got := queuedTags(t, e, cameraEUIHex); len(got) != 2 || got[1]["62e0"] != "01" {
+		t.Fatalf("rewrite behind the open window = %v, want 62e0 01", got)
+	}
+	answerQueued(t, e, camera, "2.04")
+	answerQueued(t, e, camera, "2.04")
+
+	if err := e.EnqueueSetpoint(cameraEUIHex, SetpointParams{ID: 10, Setpoint: 22, Overlay: 2}); err != nil {
+		t.Fatal(err)
+	}
+	if got := queuedTags(t, e, cameraEUIHex); len(got) != 1 || got[0]["62e0"] != "01" {
+		t.Fatalf("setpoint on the open zone = %v, want 62e0 01", got)
+	}
+
+	e.SetOpenWindows(map[int]bool{10: false})
+	if err := e.EnqueueZoneRewrite(cameraEUIHex, 10); err != nil {
+		t.Fatal(err)
+	}
+	if got := queuedTags(t, e, cameraEUIHex); len(got) != 2 || got[1]["62e0"] != "00" {
+		t.Errorf("rewrite on a zone the engine closes = %v, want 62e0 00 behind the setpoint", got)
+	}
+}
+
+// TestThermostatBlockKeepsItsZone: the node cache holds one heating block, and
+// the wall thermostat sits in the hot-water zone and in a room. A rewrite of
+// the room does not restate the block the thermostat reported for the other
+// zone. No capture holds a z/s?lid=0 report: the frame is synthetic.
+func TestThermostatBlockKeepsItsZone(t *testing.T) {
+	const ru = "05a2cafa07c51b00"
+	in := fixtureInstall(t)
+	e := NewEmu(in.EmuConfig(), NewUnhandledLogger(io.Discard))
+	e.SetHomeState(true, map[int]float64{0: 55, 1: 20})
+	for i, report := range []struct {
+		zone int
+		tlvs []TLV
+	}{
+		{1, []TLV{{Tag: "6280", Val: []byte{0x08, 0x98}}, {Tag: "6240", Val: []byte{0x02}}, {Tag: "6260", Val: []byte{0x01}}, {Tag: "62e0", Val: []byte{0x00}}}},
+		{0, []TLV{{Tag: "6280", Val: []byte{0x13, 0x88}}, {Tag: "6240", Val: []byte{0x00}}, {Tag: "6260", Val: []byte{0x01}}, {Tag: "62e0", Val: []byte{0x00}}}},
+	} {
+		e.OnFrame(synthZoneUplink(t, in, mustHex(ru), CoAPReq{
+			Type: "CON", Code: "0.03", MID: 0x7601 + uint16(i), Token: []byte{0x23},
+			Path: []string{"z", "s"}, Query: []string{"lid=" + strconv.Itoa(report.zone)}, Payload: encodeTLVs(report.tlvs),
+		}))
+	}
+	delete(e.queue, ru)
+	if err := e.EnqueueZoneRewrite(ru, 1); err != nil {
+		t.Fatal(err)
+	}
+	if got := queuedTags(t, e, ru); len(got) != 1 || got[0]["6240"] != "02" || got[0]["6280"] != "0898" {
+		t.Errorf("room rewrite = %v, want the 22 C overlay of zone 1", got)
+	}
 }

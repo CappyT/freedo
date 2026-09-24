@@ -198,6 +198,11 @@ func (e *EmuState) rebuildZones(oldZones, newZones map[int]map[string]bool) {
 }
 
 func (e *EmuState) dropZoneState(zone int) {
+	for key, timer := range e.boostTimers {
+		if timer.id == zone {
+			delete(e.boostTimers, key)
+		}
+	}
 	delete(e.zoneRep, zone)
 	delete(e.zoneFallback, zone)
 	prefix := strconv.Itoa(zone) + "|"
@@ -339,11 +344,11 @@ func (e *EmuState) refreshConfigDocuments() map[string]bool {
 			continue
 		}
 		if id, ok := e.deviceID(wire, e.nodes[key]); ok && !e.refusesConfigWrite(wire) {
-			queued := len(e.queue[key])
-			if err := e.EnqueueConfig(key, id, w); err != nil {
+			queued, err := e.enqueueConfig(key, id, w)
+			if err != nil {
 				e.log.Log("Config", dev.Ref(), "", rsnBuildFail+" d/config "+err.Error(), "")
 			}
-			written[key] = len(e.queue[key]) > queued
+			written[key] = queued
 			continue
 		}
 		// No logical id yet, or a device that refuses the write: keep the served

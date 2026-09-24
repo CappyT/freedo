@@ -607,6 +607,10 @@ func TestBoostTimerQueuesCapturedRestore(t *testing.T) {
 	if err := e.EnqueueBoost("camera", 10, true); err != nil {
 		t.Fatal(err)
 	}
+	if due, err := e.ExpireBoosts(now.Add(BoostDuration)); err != nil || len(due) != 0 {
+		t.Fatalf("expiry while the boost waits in the queue: due=%v err=%v", due, err)
+	}
+	answerQueued(t, e, mustHex(cameraEUIHex), "2.04")
 	if due, err := e.ExpireBoosts(now.Add(BoostDuration - time.Second)); err != nil || len(due) != 0 {
 		t.Fatalf("early expiry due=%v err=%v", due, err)
 	}
@@ -619,10 +623,10 @@ func TestBoostTimerQueuesCapturedRestore(t *testing.T) {
 		t.Fatal(err)
 	}
 	queue := e.queue[hexEUI(wire)]
-	if len(queue) != 2 || queue[1].kind != "boost" {
-		t.Fatalf("queue=%+v, want start and restore", queue)
+	if len(queue) != 1 || queue[0].kind != "boost" {
+		t.Fatalf("queue=%+v, want the restore", queue)
 	}
-	msg, err := ParseCoAP(WrapAppPayload(queue[1].coap, 1, nil)[8:])
+	msg, err := ParseCoAP(WrapAppPayload(queue[0].coap, 1, nil)[8:])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -632,8 +636,12 @@ func TestBoostTimerQueuesCapturedRestore(t *testing.T) {
 	if msg.Path != "z/s" || msg.Query != "id=10" || hex.EncodeToString(msg.Payload) != want {
 		t.Fatalf("restore=%s %s payload=%x, want %s", msg.Code, msg.URI(), msg.Payload, want)
 	}
+	if len(e.ExportDesiredState().Boost) != 1 {
+		t.Fatal("the queued restore dropped the stored timer before the valve took it")
+	}
+	answerQueued(t, e, wire, "2.04")
 	if len(e.ExportDesiredState().Boost) != 0 {
-		t.Fatal("expired timer remained persistent")
+		t.Fatal("expired timer remained persistent after the restore")
 	}
 }
 

@@ -174,6 +174,9 @@ type NodeState struct {
 
 	raw      map[string][]byte // tag hex -> latest raw TLV value
 	fallback *fallbackState    // 0182, nil until the device reports it
+	// blockZone is the zone of the last heating block raw took, when known.
+	blockZone    int
+	blockZoneSet bool
 	// unsupported holds, per boiler bus resource, the tags its last 0481
 	// lists. faultCodes holds the 0460 codes of the last hvac/codes report.
 	unsupported map[string][]string
@@ -191,8 +194,10 @@ type SetpointParams struct {
 	// Sched is the caller's scheduled setpoint. The emulator does not use it:
 	// the 6200 of the write, and the one its delivery records, come from
 	// homeBlock.
-	Sched      float64
-	Overlay    byte // 0 auto, 2 manual, 3 until_next
+	Sched   float64
+	Overlay byte // 0 auto, 2 manual, 3 until_next
+	// OpenWindow 1 opens the window (62e0) of a zone the daemon does not
+	// drive. 0 keeps the 62e0 the zone holds: see zoneOpenWindow.
 	OpenWindow byte
 	// RunningOverlay marks a write that updates an overlay the zone already
 	// runs, so the block carries no 6440.
@@ -356,6 +361,11 @@ type queuedDownlink struct {
 	mark      uint64 // zone block writes only: its place in the order they were queued
 	dbg2      []TLV  // d/dbg2/tlvs records, patched into the served d/config on delivery
 	childLock *bool  // the d/lock state the write sets, recorded on delivery
+	// endsTimer and endsTimerGen name the overlay deadline the write ends when
+	// the node takes it. A write the node never takes leaves the overlay, and
+	// its deadline, running.
+	endsTimer    string
+	endsTimerGen uint64
 }
 
 type activeGet struct {
@@ -391,6 +401,7 @@ type boostTimer struct {
 	expiresAt time.Time
 	dhw       bool // the restore is the hot-water block, 6020=2
 	boost     bool // the overlay is the boost, not a timed setpoint
+	gen       uint64
 }
 
 type dhwBlock struct {
@@ -462,6 +473,13 @@ type zoneProxyWait struct {
 // by our cached answer than by silence.
 const defaultZoneProxyTimeout = 10 * time.Second
 const activeGetRetryBackoff = 30 * time.Second
+
+// serverErrorRetryBackoff holds a write a device answered 5.xx for the CoAP
+// ACK_TIMEOUT (RFC 7252, 4.8), or longer when a hold already runs. An explicit
+// dispatch replaces it with the retry deadline of the daemon; the piggyback
+// path waits for the next uplink after it.
+const serverErrorRetryBackoff = 2 * time.Second
+
 const BoostDuration = 30 * time.Minute
 
 // EmuState is the bridge emulator.
@@ -553,6 +571,7 @@ type EmuState struct {
 	utcOffset   *int
 	utcPushedAt time.Time
 	boostTimers map[string]boostTimer
+	timerGen    uint64 // stamps each armed timer, so a write ends only the one it saw
 	// fwLock holds the devices a firmware upload owns, fwReply the terminal
 	// answer of each device's last d/fw exchange, and fwPut and fwGet the last
 	// fw/state each device PUT on its own or answered to our GET. fwSeq orders
@@ -1733,6 +1752,11 @@ func (e *EmuState) cacheBody(ns *NodeState, srcEUI []byte, m *CoAPMessage, fallb
 		tlvs := parseTLVList(m.Payload)
 		e.cacheTLVs(ns, tlvs, m.URI(), class, srcLbl, dstLbl, hexFrame)
 		e.observeModuleID(srcEUI, m, tlvs)
+		if zone, ok := zoneQuery(m.Query); ok && normalizeResource(m.Path) == "z/s" {
+			ns.noteBlockZone(zone, tlvs)
+		} else if zone, ok := zoneResourcePath(m.Path, e.inst, "overlay"); ok {
+			ns.noteBlockZone(zone, tlvs)
+		}
 		return
 	}
 	body, done, err := e.block2.Add(block2Key(srcEUI, m), num, more, szx, m.Payload)
@@ -2086,7 +2110,8 @@ func (e *EmuState) trimZoneHops(key string, q []*queuedDownlink) []*queuedDownli
 // restates the whole block, so a device that is off the air needs the newest
 // state only, as the route of a zone hop does. A write on the air stays, and so
 // does one carrying a 6440 or a zone configuration tag the newer write lacks:
-// those mark an event, not a state.
+// those mark an event, not a state. The newer write ends the deadline a
+// replaced one would have ended: a rewrite restates the block queued ahead.
 func (e *EmuState) supersedeZoneWrites(wire []byte, zone int) {
 	key := hexEUI(wire)
 	q := e.queue[key]
@@ -2098,6 +2123,9 @@ func (e *EmuState) supersedeZoneWrites(wire []byte, zone int) {
 	kept := make([]*queuedDownlink, 0, len(q))
 	for _, d := range q[:len(q)-1] {
 		if d.zoneBlock && d.zone == zone && !d.inFlight && zoneWriteEvents(d.coap).subsetOf(events) {
+			if newest.endsTimer == "" {
+				newest.endsTimer, newest.endsTimerGen = d.endsTimer, d.endsTimerGen
+			}
 			e.recordDownlinkOutcome(key, d, "superseded", "newer-zone-write")
 			continue
 		}
@@ -2630,9 +2658,9 @@ func (e *EmuState) EnqueueSetpoint(target string, sp SetpointParams) error {
 		return err
 	}
 	home, schedC, known := e.homeBlock(sp.ID)
-	openWindow := sp.OpenWindow
-	if open, ok := e.windowOpen[sp.ID]; ok {
-		openWindow = boolByte(open)
+	openWindow := e.zoneOpenWindow(sp.ID, wire)
+	if _, driven := e.windowOpen[sp.ID]; !driven && sp.OpenWindow != 0 {
+		openWindow = 1
 	}
 	c := SetpointCoAP{
 		ID:         sp.ID,
@@ -2685,22 +2713,61 @@ func overlayTimerNode(key string) string {
 	return eui
 }
 
-// armOverlayTimer starts, replaces or clears the coordinator-side deadline of
-// the overlay zone id runs on target. A zero duration clears it, which is what
-// a return to schedule does.
+// armOverlayTimer starts or replaces the coordinator-side deadline of the
+// overlay zone id runs on target. A zero duration ends the deadline when the
+// node takes the write just queued, as a return to schedule does: until then
+// the node still runs the overlay, and a write the retry limit or a 4.xx drops
+// leaves the deadline due, so the next tick queues the return again.
 func (e *EmuState) armOverlayTimer(wire []byte, id int, d time.Duration, dhw, boost bool) {
 	key := overlayTimerKey(hexEUI(wire), id)
 	if d <= 0 {
-		delete(e.boostTimers, key)
+		timer, ok := e.boostTimers[key]
+		q := e.queue[hexEUI(wire)]
+		if ok && len(q) > 0 {
+			q[len(q)-1].endsTimer, q[len(q)-1].endsTimerGen = key, timer.gen
+		}
 		return
 	}
-	e.boostTimers[key] = boostTimer{id: id, expiresAt: e.cfg.Now().UTC().Add(d), dhw: dhw, boost: boost}
+	e.boostTimers[key] = e.stampTimer(boostTimer{id: id, expiresAt: e.cfg.Now().UTC().Add(d), dhw: dhw, boost: boost})
+}
+
+func (e *EmuState) stampTimer(t boostTimer) boostTimer {
+	e.timerGen++
+	t.gen = e.timerGen
+	return t
+}
+
+// endDeliveredTimer drops the deadline the delivered write d ends, unless a
+// newer write armed another one since.
+func (e *EmuState) endDeliveredTimer(d *queuedDownlink) {
+	if timer, ok := e.boostTimers[d.endsTimer]; ok && d.endsTimer != "" && timer.gen == d.endsTimerGen {
+		delete(e.boostTimers, d.endsTimer)
+		e.deliveredChanged = true
+	}
+}
+
+// zoneWriteQueued reports whether a write that sets the block of zone waits
+// in the queue of wire.
+func (e *EmuState) zoneWriteQueued(wire string, zone int) bool {
+	for _, d := range e.queue[wire] {
+		if d.heating != nil && d.heating.zone == zone || d.dhw != nil && d.dhw.zone == zone {
+			return true
+		}
+	}
+	return false
 }
 
 // EnqueueZoneRewrite queues the per-zone write of a home or away switch, or of
 // a schedule block change: the zone keeps the overlay and the setpoint it
 // already holds, so the block carries no 6440.
 func (e *EmuState) EnqueueZoneRewrite(target string, id int) error {
+	return e.enqueueZoneRewrite(target, id, false)
+}
+
+// enqueueZoneRewrite is EnqueueZoneRewrite. fromZone restates the overlay of
+// the zone cache in place of the node's block and of the writes queued ahead:
+// a device overlay set it after both.
+func (e *EmuState) enqueueZoneRewrite(target string, id int, fromZone bool) error {
 	wire, _, err := e.resolve(target)
 	if err != nil {
 		return err
@@ -2719,9 +2786,14 @@ func (e *EmuState) EnqueueZoneRewrite(target string, id int) error {
 		dhw = e.lastDHWBlock(wire, id)
 		pkt, err = buildDHWRewrite(c, dhw)
 	} else {
-		if pending := e.pendingHeating(wire, id); pending != nil {
+		overlay, setpoint, off, cached := e.cachedZoneOverlay(id)
+		switch pending := e.pendingHeating(wire, id); {
+		case fromZone && cached:
+			c.Overlay, c.Setpoint, c.Off = overlay, setpoint, off
+		case pending != nil:
 			restatePending(&c, pending)
 		}
+		c.OpenWindow = e.zoneOpenWindow(id, wire)
 		if body, err = setpointBody(c); err == nil {
 			pkt, err = BuildSetpointCoAP(c)
 		}
@@ -2740,7 +2812,7 @@ func (e *EmuState) EnqueueZoneRewrite(target string, id int) error {
 	switch {
 	case hotWater:
 		q[len(q)-1].dhw = dhw
-	case e.hasLastSetpointBlock(wire):
+	case e.hasLastSetpointBlock(wire, id):
 		q[len(q)-1].heating = setpointHeatingBlock(c)
 	}
 	q[len(q)-1].requireCoAP = true
@@ -2916,7 +2988,7 @@ func (e *EmuState) EnqueueDHWSchedule(target string, id int) error {
 	q[len(q)-1].responseToken = append([]byte(nil), token...)
 	q[len(q)-1].responseCode = "2.04"
 	e.supersedeZoneWrites(wire, id)
-	delete(e.boostTimers, overlayTimerKey(hexEUI(wire), id))
+	e.armOverlayTimer(wire, id, 0, true, false)
 	return nil
 }
 
@@ -3032,6 +3104,7 @@ func (e *EmuState) noteDelivered(key string, d *queuedDownlink) {
 		k := overlayTimerKey(key, d.zone)
 		e.zoneDelivered[k] = max(e.zoneDelivered[k], d.mark)
 	}
+	e.endDeliveredTimer(d)
 	if d.childLock != nil {
 		e.childLock[key] = *d.childLock
 		e.deliveredChanged = true
@@ -3089,10 +3162,17 @@ func (e *EmuState) enqueueBoostBlock(target string, id int, on, newOverlay bool,
 }
 
 // zoneOpenWindow is the 62e0 a write to zone on node wire carries: the one the
-// daemon drives, else the one the node last held.
+// daemon drives, else the one of the newest write queued ahead, an open-window
+// write included, else the one the node last held.
 func (e *EmuState) zoneOpenWindow(zone int, wire []byte) byte {
 	if open, ok := e.windowOpen[zone]; ok {
 		return boolByte(open)
+	}
+	q := e.queue[hexEUI(wire)]
+	for i := len(q) - 1; i >= 0; i-- {
+		if b := q[i].heating; b != nil && b.zone == zone {
+			return b.window()
+		}
 	}
 	if ns, ok := e.nodes[hexEUI(wire)]; ok && ns.LastOpenWindow {
 		return 1
@@ -3100,15 +3180,29 @@ func (e *EmuState) zoneOpenWindow(zone int, wire []byte) byte {
 	return 0
 }
 
+// window is the 62e0 the block sets.
+func (b *heatingBlock) window() byte {
+	if b.body == nil {
+		return b.openWindow
+	}
+	for _, tlv := range parseTLVList(b.body) {
+		if tlv.Tag == "62e0" && len(tlv.Val) == 1 {
+			return tlv.Val[0]
+		}
+	}
+	return 0
+}
+
 // ExpireBoosts queues the return to schedule for every elapsed coordinator
 // timer: the boost restore and the deadline of any other overlay take the same
 // path. The captured room expiry carries no 6440, unlike the return to schedule
-// a user asks for. Each expiry ends the overlay of its own zone. It returns
-// the targets whose queue changed.
+// a user asks for. Each expiry ends the overlay of its own zone. The timer
+// stays until the node takes the return, and a zone with a write still queued
+// gets no second one. It returns the targets whose queue changed.
 func (e *EmuState) ExpireBoosts(now time.Time) ([]string, error) {
 	due := make([]string, 0)
 	for key, timer := range e.boostTimers {
-		if !now.Before(timer.expiresAt) {
+		if !now.Before(timer.expiresAt) && !e.zoneWriteQueued(overlayTimerNode(key), timer.id) {
 			due = append(due, key)
 		}
 	}
@@ -3229,7 +3323,7 @@ func (e *EmuState) EnqueueMode(target string, id int, overlay byte) error {
 	if err != nil {
 		return err
 	}
-	if !e.hasLastSetpointBlock(wire) {
+	if !e.hasLastSetpointBlock(wire, id) {
 		return ErrHeatingBlockUnavailable
 	}
 	if e.hasPendingHeatingBlock(wire) {
@@ -3242,8 +3336,6 @@ func (e *EmuState) EnqueueMode(target string, id int, overlay byte) error {
 	c := e.lastSetpointBlock(wire, id, mid, token)
 	c.Overlay = overlay
 	if overlay == overlayAuto {
-		// The return to schedule ends the overlay, so its deadline goes with it.
-		delete(e.boostTimers, overlayTimerKey(hexEUI(wire), id))
 		c.Off = false
 	}
 	pkt, err := BuildSetpointCoAP(c)
@@ -3259,6 +3351,9 @@ func (e *EmuState) EnqueueMode(target string, id int, overlay byte) error {
 	q[len(q)-1].responseToken = append([]byte(nil), token...)
 	q[len(q)-1].responseCode = "2.04"
 	e.supersedeZoneWrites(wire, id)
+	// A mode carries no duration: the zone leaves the overlay the deadline
+	// belongs to, whether it returns to schedule or keeps a manual overlay.
+	e.armOverlayTimer(wire, id, 0, false, false)
 	return nil
 }
 
@@ -3280,7 +3375,7 @@ func (e *EmuState) EnqueueOpenWindow(target string, id int, open bool) error {
 	if err != nil {
 		return err
 	}
-	cached := e.hasLastSetpointBlock(wire)
+	cached := e.hasLastSetpointBlock(wire, id)
 	if _, _, known := e.homeBlock(id); !cached && !known {
 		return ErrHeatingBlockUnavailable
 	}
@@ -3817,15 +3912,23 @@ func initialNodeTable(in *Install, dev *Device) []NodeTableRec {
 //
 // The id names the write in the log and in the queue: the path carries no query.
 func (e *EmuState) EnqueueConfig(target string, id int, w ConfigWrite) error {
+	_, err := e.enqueueConfig(target, id, w)
+	return err
+}
+
+// enqueueConfig is EnqueueConfig and reports whether it queued a write. The
+// length of the queue does not tell: the write replaces the d/config writes
+// queued ahead of it (coalesceConfigWrites).
+func (e *EmuState) enqueueConfig(target string, id int, w ConfigWrite) (bool, error) {
 	wire, _, err := e.resolve(target)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if e.refusesConfigWrite(wire) {
-		return errors.New("tado: the wall thermostat refuses every d/config write with 5.01")
+		return false, errors.New("tado: the wall thermostat refuses every d/config write with 5.01")
 	}
 	if w.InterfaceModuleID != nil && *w.InterfaceModuleID != valveInterfaceModule {
-		return errors.New("tado: only a valve accepts a d/config write, and its interface module id is 112")
+		return false, errors.New("tado: only a valve accepts a d/config write, and its interface module id is 112")
 	}
 	fields := len(w.TLVs())
 	key := hexEUI(wire)
@@ -3833,28 +3936,28 @@ func (e *EmuState) EnqueueConfig(target string, id int, w ConfigWrite) error {
 	base := e.configBase(key)
 	tlvs, snap, err := e.mergeDeviceConfigOn(base, key, w)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if !w.Resend && bytes.Equal(base.body, snap.body) && bytes.Equal(base.etag, snap.etag) {
 		if explicit != nil {
 			e.offlineSched[key] = *explicit
 		}
-		return nil
+		return false, nil
 	}
 	mid, token, err := downlinkIDs()
 	if err != nil {
-		return err
+		return false, err
 	}
 	pkt, err := BuildConfigWriteCoAP(tlvs, mid, token, e.selfEUI, wire)
 	if err != nil {
-		return err
+		return false, err
 	}
 	desc := fmt.Sprintf("config write id=%d (%d fields)", id, fields)
 	if fields == 0 && w.Resend {
 		desc = fmt.Sprintf("config write id=%d (unchanged document)", id)
 	}
 	if err := e.enqueue(target, "config", desc, pkt, e.key, mid); err != nil {
-		return err
+		return false, err
 	}
 	q := e.queue[key]
 	q[len(q)-1].requireCoAP = true
@@ -3874,7 +3977,7 @@ func (e *EmuState) EnqueueConfig(target string, id int, w ConfigWrite) error {
 		// correct back to the one in force.
 		e.utcSettled[hexEUI(wire)] = *e.utcOffset
 	}
-	return nil
+	return true, nil
 }
 
 // coalesceConfigWrites drops the d/config writes queued to key ahead of the
@@ -3917,15 +4020,14 @@ func (e *EmuState) ClearOfflineSchedule(target string, id int) (bool, error) {
 	}
 	w := ConfigWrite{OfflineScheduleEnabled: e.offlineSchedule(key, nil)}
 	if !e.refusesConfigWrite(wire) {
-		queued := len(e.queue[key])
-		err := e.EnqueueConfig(key, id, w)
+		queued, err := e.enqueueConfig(key, id, w)
 		// EnqueueConfig records an explicit value as the device's own.
 		delete(e.offlineSched, key)
 		if err != nil {
 			e.offlineSched[key] = previous
 			return false, err
 		}
-		return len(e.queue[key]) > queued, nil
+		return queued, nil
 	}
 	_, snap, err := e.mergeDeviceConfig(key, w)
 	if err != nil {
@@ -4065,7 +4167,7 @@ func (e *EmuState) lastSetpointBlock(wire []byte, id int, mid uint16, token []by
 	c := SetpointCoAP{ID: id, ProgramOff: e.schedOff[id], NewOverlay: true, MID: mid, Token: token, SrcEUI: e.selfEUI, DstEUI: wire}
 	open, driven := e.windowOpen[id]
 	c.OpenWindow = boolByte(open)
-	if ns, ok := e.nodes[hexEUI(wire)]; ok {
+	if ns, ok := e.nodes[hexEUI(wire)]; ok && ns.holdsZone(id) {
 		c.Setpoint, c.Overlay = ns.LastSetpointC, ns.LastOverlay
 		if !driven && ns.LastOpenWindow {
 			c.OpenWindow = 1
@@ -4076,7 +4178,7 @@ func (e *EmuState) lastSetpointBlock(wire []byte, id int, mid uint16, token []by
 	c.NoSchedC = !known
 	overlay, setpoint, off, ok := e.cachedZoneOverlay(id)
 	switch {
-	case !e.hasLastSetpointBlock(wire):
+	case !e.hasLastSetpointBlock(wire, id):
 		if ok {
 			c.Overlay, c.Setpoint, c.Off = overlay, setpoint, off
 		}
@@ -4120,12 +4222,32 @@ func (e *EmuState) cachedZoneOverlay(zone int) (overlay byte, setpoint float64, 
 	return mode[0], float64(be(sp)) / 100, false, true
 }
 
-// hasLastSetpointBlock reports whether the node holds the block
+// hasLastSetpointBlock reports whether the node holds the block of zone
 // lastSetpointBlock restates. The node's 6200 is not part of it: that block
 // takes 6200 from homeBlock, and a write that leaves 6200 out records none.
-func (e *EmuState) hasLastSetpointBlock(wire []byte) bool {
+func (e *EmuState) hasLastSetpointBlock(wire []byte, zone int) bool {
 	ns, ok := e.nodes[hexEUI(wire)]
-	return ok && len(ns.raw["6280"]) == 2 && len(ns.raw["6240"]) == 1 && len(ns.raw["62e0"]) == 1
+	return ok && ns.holdsZone(zone) && len(ns.raw["6280"]) == 2 && len(ns.raw["6240"]) == 1 && len(ns.raw["62e0"]) == 1
+}
+
+// holdsZone reports whether the heating block of the node cache can belong to
+// zone. The cache keeps one block per node, so on the wall thermostat, which
+// sits in two zones, it holds the zone that reported or took it last. Every
+// capture shows the thermostat report its room zone alone (z/s?lid=1, never
+// lid=0), so this guard changes nothing on the captured traffic.
+func (ns *NodeState) holdsZone(zone int) bool {
+	return !ns.blockZoneSet || ns.blockZone == zone
+}
+
+// noteBlockZone records the zone of a heating block that reached the node
+// cache.
+func (ns *NodeState) noteBlockZone(zone int, tlvs []TLV) {
+	for _, tlv := range tlvs {
+		if slices.Contains(zoneHeatingTags, tlv.Tag) || tlv.Tag == "62e0" {
+			ns.blockZone, ns.blockZoneSet = zone, true
+			return
+		}
+	}
 }
 
 func (e *EmuState) hasPendingHeatingBlock(wire []byte) bool {
@@ -4142,6 +4264,7 @@ func (e *EmuState) promoteHeatingBlock(wire []byte, block *heatingBlock) {
 		return
 	}
 	ns := e.node(wire)
+	ns.blockZone, ns.blockZoneSet = block.zone, true
 	if block.windowOnly {
 		ns.raw["62e0"] = []byte{block.openWindow}
 		ns.refreshLastKnown()
@@ -4616,6 +4739,12 @@ func (e *EmuState) confirmByMID(srcEUI []byte, m *CoAPMessage) {
 			case strings.HasPrefix(m.Code, "5."):
 				if err := e.remintDownlink(d, srcEUI); err != nil {
 					e.log.Log("Data", "self", e.name(srcEUI), rsnBuildFail+" "+err.Error(), "")
+				}
+				// A busy device answers a resend in the same rendezvous 5.xx
+				// again, so the retry waits: each attempt costs one of the
+				// maxDownlinkTries.
+				if at := e.cfg.Now().Add(serverErrorRetryBackoff); d.retryAt.Before(at) {
+					d.retryAt = at
 				}
 			}
 			return

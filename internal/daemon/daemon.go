@@ -2263,9 +2263,13 @@ func (d *daemon) nextZoneBlock(e *tado.EmuState, inst *tado.Install, zone int, n
 	return nextScheduleChange(programs, now, d.programClock(inst))
 }
 
-// runningOverlay reports whether the node already runs an overlay. A write that
-// keeps one running updates it, so it carries no 6440.
-func runningOverlay(e *tado.EmuState, short string) bool {
+// runningOverlay reports whether the node runs an overlay on zone when a new
+// write reaches it: the one a write queued ahead sets, else the one it took
+// last. A write that keeps one running updates it, so it carries no 6440.
+func runningOverlay(e *tado.EmuState, short string, zone int) bool {
+	if block, ok := e.PendingZoneBlock(short, zone); ok {
+		return block.Overlay != overlayAutoMode
+	}
 	for _, n := range e.Nodes() {
 		if n.Short == short {
 			return n.LastOverlay != 0
@@ -2686,7 +2690,7 @@ func (d *daemon) postSetpoint(w http.ResponseWriter, r *http.Request) {
 				sp.Duration = next.Sub(now)
 			}
 		}
-		sp.RunningOverlay = overlay != overlayAutoMode && runningOverlay(e, n.Short())
+		sp.RunningOverlay = overlay != overlayAutoMode && runningOverlay(e, n.Short(), id)
 		if err := e.EnqueueSetpoint(target, sp); err != nil {
 			return nil, err
 		}
