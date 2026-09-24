@@ -1,0 +1,24 @@
+footprint,rotation,dx,dy,lcsc,evidence
+C_0402_1005Metric,0,0,0,C1525 C52923 C1548 C1550 C1546 C1552 C1565 C1547,EasyEDA C0402: pads on the X axis within 0.06 mm at 0 deg. Not polarized.
+C_0603_1608Metric,0,0,0,C43253 C1631 C57112 C21122 C19666 C1647 C19702 C14663 C59461 C15849,EasyEDA C0603: pads on the X axis within 0.08 mm at 0 deg. Not polarized.
+C_0805_2012Metric,0,0,0,C15850 C45783,EasyEDA C0805: pads on the X axis within 0.05 mm at 0 deg. Not polarized.
+C_1808_4520Metric,0,0,0,C81332,EasyEDA C1808: pads on the X axis within 0.02 mm at 0 deg. Not polarized.
+R_0402_1005Metric,0,0,0,C25796 C17168,EasyEDA R0402: pads on the X axis within 0.08 mm at 0 deg. Not polarized.
+R_0603_1608Metric,0,0,0,C4275 C21189 C23185 C23255 C22859 C22865 C22935 C25804 C21190 C23140 C23345 C23193 C23186,EasyEDA R0603: pads on the X axis within 0.07 mm at 0 deg. Not polarized.
+L_0402_1005Metric,0,0,0,C76889 C86128 C91622,EasyEDA L0402 and IND-SMD_L1.0-W0.5-2: pads on the X axis within 0.07 mm at 0 deg. Not polarized.
+L_0603_1608Metric,0,0,0,C14709,EasyEDA L0603: pads on the X axis within 0.09 mm at 0 deg. Not polarized.
+F0805,0,0,0,C976303,EasyEDA F0805: same land at 0 deg. Not polarized.
+LED_0603_1608Metric,0,0,0,C2286,EasyEDA LED-SMD_L1.6-W0.8-R-RD: pad 2 = K at x -0.75 and pad 1 = A at x +0.75. KiCad pad 1 = K at x -0.79. Cathode on -X in both. The JLC pin-1 dot marks the anode.
+CP_Elec_6.3x7.7,0,0,0,C72477,EasyEDA CAP-SMD_BD6.3-L6.6-W6.6-FD: pad 1 = + (silk + and chamfer) at x -2.67. KiCad pad 1 = + at x -2.70.
+SMA_L4.3-W2.6-LS5.2-RD,0,0,0,C8678 C123816,EasyEDA SMA_L4.3-W2.6-LS5.2-RD: pad 1 = K at x -2.2 (symbol pin 1 K or C). KiCad pad 1 = K at x -2.2.
+SOD-123FL_L2.7-W1.8-LS3.8-RD,0,0,0,C19077497,EasyEDA SOD-123FL_L2.7-W1.8-LS3.8-RD: pad 1 = K at x -1.63. KiCad pad 1 = K at x -1.63.
+MBS_L4.7-W3.8-P2.40-LS7.0-TL,0,0,0,C2488,EasyEDA MBS_L4.7-W3.8-P2.40-LS7.0-TL: 4 of 4 pads identical at 0 deg. Pad 1 = + and 2 = - in both.
+SOT-23-6_L2.9-W1.6-P0.95-LS2.8-BL,0,0,0,C2687116,EasyEDA SOT-23-6_L2.9-W1.6-P0.95-LS2.8-BL: 6 of 6 pads identical at 0 deg. Pin 1 bottom-left.
+SOT-223-4_L6.5-W3.5-P2.30-LS7.0-BR,0,0,0,C435835,EasyEDA SOT-223-4_L6.5-W3.5-P2.30-LS7.0-BR: 4 of 4 pads within 0.01 mm at 0 deg. Pins 1-3 on +X and the tab on -X.
+CRYSTAL-SMD_4P-L3.2-W2.5-BL,0,0,0,C9006 C15192,EasyEDA CRYSTAL-SMD_4P-L3.2-W2.5-BL: 4 of 4 pads identical at 0 deg. Pins 1/3 = crystal and 2/4 = GND.
+QFN-20-1EP_4x4mm_P0.5mm_EP2.4x2.4mm_TI_RGP0020H,0,0,0,C29953,EasyEDA QFN-20_L4.0-W4.0-P0.5-TL-EP: 21 of 21 numbered pads within 0.15 mm at 0 deg. Pin 1 top-left in both.
+LQFP-48_L7.0-W7.0-P0.50-LS9.0-BL,0,0,0,C32843,EasyEDA LQFP-48_L7.0-W7.0-P0.50-LS9.0-BL: 48 of 48 pads identical at 0 deg. Pin 1 bottom-left.
+CND-tek_B1608S_SMD-16_P1.27mm,0,0,0,C507596,EasyEDA SMD-16_L12.7-W7.0-P1.27-LS9.5-BL: 16 of 16 pads within 0.2 mm at 0 deg (land differs). Pins 1-8 on the bottom row in both.
+HRO_TYPE-C-31-M-12,0,0,0,C165948,EasyEDA USB-C_SMD-TYPE-C-31-M-12_1: 16 contact pads and 4 shell legs match at 0 deg (A1B12 style names). Origins 0.06 mm apart.
+SW_XKB_TS-1187A,0,0,0,C318884,EasyEDA SW-SMD_4P-L5.1-W5.1-P3.70-LS6.5-TL_H1.5: pads at x +-3.0 and y +-1.85 with A-B on -Y. KiCad pad 1 (A+B) at y -1.875. Not polarized.
+ESP32-S3-MINI-1,0,0,2.55,C2913206,EasyEDA BULETM-SMD_ESP32-S3-MINI-1-N8: 60 of 60 numbered pads within 0.03 mm at 0 deg. Its origin is the pad centre at KiCad local (0; 2.55): the KiCad origin is the module body centre.
