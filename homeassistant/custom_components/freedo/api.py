@@ -97,6 +97,9 @@ class FreedoClient:
     async def home(self) -> dict[str, Any]:
         return await self._request("GET", "/api/home")
 
+    async def install_zones(self) -> dict[str, Any]:
+        return await self._request("GET", "/api/install/zones")
+
     # --- writes ---
 
     async def set_away(self, away: bool) -> dict[str, Any]:

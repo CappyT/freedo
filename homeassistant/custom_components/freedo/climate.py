@@ -8,6 +8,7 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant.components.climate import (
+    ATTR_HVAC_MODE,
     PRESET_BOOST,
     PRESET_NONE,
     ClimateEntity,
@@ -177,12 +178,25 @@ class FreedoZoneClimate(FreedoEntity, ClimateEntity):
             "members": list(zone.members) if zone else [],
         }
 
+    def _valid_target(self, temp: float) -> float:
+        """The daemon answers 400 to a setpoint outside min_temp..max_temp on
+        the corrected scale, where a reported target can exceed max_temp."""
+        return round(min(max(temp, self.min_temp), self.max_temp), 2)
+
     async def async_set_temperature(self, **kwargs: Any) -> None:
         zone = self._zone
-        temp = kwargs.get(ATTR_TEMPERATURE)
-        if zone is None or temp is None:
+        if zone is None:
             return
-        temp = round(float(temp), 1)
+        hvac_mode = kwargs.get(ATTR_HVAC_MODE)
+        temp = kwargs.get(ATTR_TEMPERATURE)
+        # On auto the program sets the target and off has none: the mode wins
+        # and the temperature is not applied.
+        if hvac_mode in (HVACMode.AUTO, HVACMode.OFF):
+            await self.async_set_hvac_mode(hvac_mode)
+            return
+        if temp is None:
+            return
+        temp = self._valid_target(round(float(temp), 1))
         await call_api(self.coordinator.client.zone_setpoint(zone.number, temp))
         deadline = time.monotonic() + PENDING_SEC
         self._pending_target = (temp, deadline)
@@ -197,24 +211,33 @@ class FreedoZoneClimate(FreedoEntity, ClimateEntity):
         client = self.coordinator.client
         if hvac_mode == HVACMode.AUTO:
             await call_api(client.zone_auto(zone.number))
+            self._pending_target = None
         elif hvac_mode == HVACMode.OFF:
             await call_api(client.zone_off(zone.number))
+            self._pending_target = None
         else:
             temp = self.target_temperature or zone_program_temperature(
                 self.coordinator.data, zone
             )
             if temp is None:
                 raise HomeAssistantError("Set a target temperature first")
-            await call_api(client.zone_setpoint(zone.number, temp))
+            await call_api(client.zone_setpoint(zone.number, self._valid_target(temp)))
         self._pending_mode = (hvac_mode, time.monotonic() + PENDING_SEC)
         self.async_write_ha_state()
         await self.coordinator.async_request_refresh()
+
+    async def async_turn_on(self) -> None:
+        """Return the zone to its program."""
+        await self.async_set_hvac_mode(HVACMode.AUTO)
 
     async def async_boost(self, on: bool = True) -> None:
         zone = self._zone
         if zone is None:
             return
         await call_api(self.coordinator.client.zone_boost(zone.number, on))
+        self._pending_target = None
+        self._pending_mode = None
+        self.async_write_ha_state()
         await self.coordinator.async_request_refresh()
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:

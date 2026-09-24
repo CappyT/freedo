@@ -37,6 +37,11 @@ class Zone:
     members: tuple[str, ...]
     measuring: str | None = None
     reporter: str | None = None
+    # GET /api/install/zones setpoint_offset_c: the correction of a zone in
+    # offset mode setpoint. The daemon reports the zone temperature and target
+    # on the corrected scale, corrected = wire + shift_c, and GET /api/nodes on
+    # the wire scale.
+    shift_c: float = 0.0
 
 
 @dataclass
@@ -79,9 +84,15 @@ def parse(
     nodes: Iterable[Mapping[str, Any]],
     boiler: Mapping[str, Any],
     home: Mapping[str, Any],
+    install: Mapping[str, Any] | None = None,
 ) -> FreedoData:
-    """Build the model from the five read endpoints."""
+    """Build the model from the read endpoints. install is the body of
+    GET /api/install/zones."""
     data = FreedoData(boiler=dict(boiler or {}), away=bool((home or {}).get("away")))
+    shifts = {
+        int(z["number"]): float(z.get("setpoint_offset_c") or 0)
+        for z in (install or {}).get("zones") or []
+    }
     for z in zones.get("declared") or []:
         number = int(z["number"])
         data.zones[number] = Zone(
@@ -91,6 +102,7 @@ def parse(
             members=tuple(z.get("members") or ()),
             measuring=z.get("measuringDevice"),
             reporter=z.get("reporter"),
+            shift_c=shifts.get(number, 0.0),
         )
         if isinstance(z.get("window"), Mapping):
             data.windows[number] = dict(z["window"])
@@ -122,13 +134,28 @@ def _zone_nodes(data: FreedoData, zone: Zone) -> list[dict[str, Any]]:
     return [data.nodes[s] for s in order if _seen(data.nodes.get(s))]
 
 
+def _node_temperature(node: Mapping[str, Any]) -> float | None:
+    """Tag 012d of a device on the wire scale. GET /api/nodes TempC is 0 until
+    the device sends 012d; Telemetry holds temp_C from the first one."""
+    if "temp_C" not in (node.get("Telemetry") or {}):
+        return None
+    return float(node["TempC"])
+
+
 def zone_current_temperature(data: FreedoData, zone: Zone) -> float | None:
-    """Tag 4060 of the zone report, else the first heard zone device."""
+    """Tag 4060 of the zone report, else the first zone device with a 012d,
+    both on the corrected scale."""
     report = data.demand.get(zone.number)
     if report and report.get("UpdatedUnix"):
-        return float(report["TempC"])
+        temp = float(report["TempC"])
+        # A 40a0 or 4160 alone also sets UpdatedUnix, and TempC then reads
+        # 0 + shift: the demand view has no field that says 4060 is missing.
+        if round(temp - zone.shift_c, 2) != 0:
+            return temp
     for node in _zone_nodes(data, zone):
-        return float(node["TempC"])
+        temp = _node_temperature(node)
+        if temp is not None:
+            return round(temp + zone.shift_c, 2)
     return None
 
 

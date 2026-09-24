@@ -17,6 +17,17 @@ from .model import Zone, node_display
 _MODELS = {"valve": "Smart Radiator Thermostat", "thermostat": "Wired Smart Thermostat"}
 
 
+def hub_device_info(entry_id: str) -> DeviceInfo:
+    """The hub device. async_setup_entry registers it before the platforms,
+    so the zone and node devices can name it as their via device."""
+    return DeviceInfo(
+        identifiers={(DOMAIN, entry_id)},
+        name="freedo",
+        manufacturer="freedo",
+        model="Local coordinator",
+    )
+
+
 class FreedoEntity(CoordinatorEntity[FreedoCoordinator]):
     _attr_has_entity_name = True
 
@@ -25,16 +36,11 @@ class FreedoEntity(CoordinatorEntity[FreedoCoordinator]):
         self._attr_unique_id = f"{coordinator.config_entry.entry_id}_{key}"
 
     @property
-    def _hub_id(self) -> tuple[str, str]:
-        return (DOMAIN, self.coordinator.config_entry.entry_id)
+    def _hub_device_id(self) -> str:
+        return self.coordinator.config_entry.runtime_data.hub_device_id
 
     def hub_device(self) -> DeviceInfo:
-        return DeviceInfo(
-            identifiers={self._hub_id},
-            name="freedo",
-            manufacturer="freedo",
-            model="Local coordinator",
-        )
+        return hub_device_info(self.coordinator.config_entry.entry_id)
 
     def zone_device(self, zone: Zone) -> DeviceInfo:
         return DeviceInfo(
@@ -42,7 +48,7 @@ class FreedoEntity(CoordinatorEntity[FreedoCoordinator]):
             name=zone.name,
             manufacturer="tado",
             model=f"{zone.kind} zone",
-            via_device=self._hub_id,
+            via_device_id=self._hub_device_id,
         )
 
     def node_device(self, short: str) -> DeviceInfo:
@@ -54,7 +60,7 @@ class FreedoEntity(CoordinatorEntity[FreedoCoordinator]):
             manufacturer="tado",
             model=_MODELS.get(dev.get("kind", ""), dev.get("kind") or None),
             serial_number=dev.get("device"),
-            via_device=self._hub_id,
+            via_device_id=self._hub_device_id,
         )
 
 

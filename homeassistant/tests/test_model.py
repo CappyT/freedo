@@ -38,7 +38,7 @@ ZONES = {
     "zones": {"1": ["aaaa", "bbbb"]},
     "declared": [
         {"number": 1, "name": "Living", "kind": "heating", "members": ["aaaa", "bbbb"],
-         "measuringDevice": "bbbb", "writer": "aaaa",
+         "circuit": 1, "reporter": "aaaa", "measuringDevice": "bbbb", "writer": "aaaa",
          "window": {"open": True, "source": "external", "since": "2026-01-01T00:00:00Z",
                     "deadline": "2026-01-01T02:00:00Z", "undelivered": []},
          "target": {"targetC": 25.0, "source": "boost", "programC": 20.0, "programOff": False,
@@ -69,20 +69,49 @@ ZONES = {
 NODES = [
     {"Short": "aaaa", "TempC": 20.9, "SetpointC": 21, "Mode": "manual",
      "HumidityPct": 0, "BatteryMV": 2100, "BatteryPct": 20, "LastSeenUnix": 1700000000,
+     "Telemetry": {"temp_C": "20.90C"},
      "Display": {"orientation": "vertical", "notification": False}},
     {"Short": "bbbb", "TempC": 20.7, "SetpointC": 0, "Mode": "",
-     "HumidityPct": 48.5, "BatteryMV": 2900, "BatteryPct": 90, "LastSeenUnix": 1700000000},
+     "HumidityPct": 48.5, "BatteryMV": 2900, "BatteryPct": 90, "LastSeenUnix": 1700000000,
+     "Telemetry": {"temp_C": "20.70C", "humidity_pct": "48.50%"}},
     {"Short": "dddd", "TempC": 18.2, "SetpointC": 17, "Mode": "auto",
-     "HumidityPct": 0, "BatteryMV": 0, "BatteryPct": 0, "LastSeenUnix": 1700000000},
-    {"Short": "eeee", "TempC": 0, "SetpointC": 0, "Mode": "", "LastSeenUnix": 0},
+     "HumidityPct": 0, "BatteryMV": 0, "BatteryPct": 0, "LastSeenUnix": 1700000000,
+     "Telemetry": {"temp_C": "18.20C"}},
+    {"Short": "eeee", "TempC": 0, "SetpointC": 0, "Mode": "", "LastSeenUnix": 0,
+     "Telemetry": {}},
 ]
 BOILER = {"Present": True, "FlowC": 45.0, "DHWC": 48.0,
           "flowLimit": {"outdoor": None, "circuits": [], "defaultC": 48}}
 HOME = {"away": True, "scheduled": {"1": 20}}
+# GET /api/install/zones: zone 1 corrects its temperature by +0.5 C (mode setpoint).
+INSTALL_ZONES = {
+    "rev": 7,
+    "zones": [
+        {"number": 1, "name": "Living", "kind": "heating", "members": ["VA0000000001"],
+         "circuit": 1, "reporter": "VA0000000001", "measuring_device": None,
+         "offset_mode": "setpoint", "setpoint_offset_c": 0.5},
+        {"number": 2, "name": "Bedroom", "kind": "heating", "members": ["VA0000000002"],
+         "circuit": 1, "reporter": None, "measuring_device": None,
+         "offset_mode": "config", "setpoint_offset_c": None},
+        {"number": 9, "name": "Hot water", "kind": "hotwater", "members": ["RU0000000001"],
+         "circuit": None, "reporter": None, "measuring_device": None,
+         "offset_mode": None, "setpoint_offset_c": None},
+    ],
+}
 
 
 def data():
     return parse(HEALTH, ZONES, NODES, BOILER, HOME)
+
+
+def _zones_with(number, **fields):
+    """ZONES with the demand entry of one zone replaced by fields."""
+    zones = dict(ZONES)
+    zones["demand"] = [dict(v) for v in ZONES["demand"]]
+    for view in zones["demand"]:
+        if view["Number"] == number:
+            view.update(fields)
+    return zones
 
 
 def test_parse():
@@ -120,6 +149,56 @@ def test_zone_values():
     assert zone_program_temperature(d, bedroom) == 17.0
     assert zone_demand_pct(d, living) == 40
     assert zone_demand_pct(d, bedroom) is None
+
+
+def test_zone_reporter_order():
+    # No measuring device: the demand reporter comes before the other members.
+    zones = {"declared": [{"number": 1, "name": "Living", "kind": "heating",
+                           "members": ["aaaa", "bbbb"], "reporter": "bbbb",
+                           "writer": "aaaa"}]}
+    d = parse({}, zones, NODES, {}, {})
+    assert d.zones[1].reporter == "bbbb"
+    assert zone_current_temperature(d, d.zones[1]) == 20.7
+
+
+def test_zone_temperature_waits_for_4060():
+    # A 40a0 or 4160 without 4060 sets UpdatedUnix and leaves TempC at 0.
+    zones = _zones_with(1, TempC=0, UpdatedUnix=1700000000)
+    d = parse(HEALTH, zones, NODES, BOILER, HOME)
+    assert zone_current_temperature(d, d.zones[1]) == 20.7
+    # On the corrected scale the daemon adds the shift to the missing 0.
+    zones = _zones_with(1, TempC=0.5, UpdatedUnix=1700000000)
+    d = parse(HEALTH, zones, NODES, BOILER, HOME, INSTALL_ZONES)
+    assert zone_current_temperature(d, d.zones[1]) == 21.2
+    # A reported 4060 comes corrected from the daemon.
+    zones = _zones_with(1, TempC=21.0, UpdatedUnix=1700000000)
+    d = parse(HEALTH, zones, NODES, BOILER, HOME, INSTALL_ZONES)
+    assert zone_current_temperature(d, d.zones[1]) == 21.0
+
+
+def test_member_temperature_corrected_scale():
+    zones = _zones_with(1, TempC=0.5, UpdatedUnix=0)
+    d = parse(HEALTH, zones, NODES, BOILER, HOME, INSTALL_ZONES)
+    assert d.zones[1].shift_c == 0.5
+    assert d.zones[2].shift_c == 0.0
+    # bbbb reports 20.7 on the wire scale.
+    assert zone_current_temperature(d, d.zones[1]) == 21.2
+    assert zone_current_temperature(d, d.zones[2]) == 18.2
+
+
+def test_member_without_012d():
+    # dddd is heard but never sent 012d: its TempC 0 is no reading.
+    nodes = [dict(n) for n in NODES]
+    nodes[2]["TempC"] = 0
+    nodes[2]["Telemetry"] = {"battery_mV": "3000"}
+    d = parse(HEALTH, ZONES, nodes, BOILER, HOME)
+    assert zone_current_temperature(d, d.zones[2]) is None
+    # Zone 1: the measuring device has no reading, the reporter has one.
+    nodes[1]["TempC"] = 0
+    nodes[1]["Telemetry"] = None
+    zones = _zones_with(1, TempC=0, UpdatedUnix=0)
+    d = parse(HEALTH, zones, nodes, BOILER, HOME)
+    assert zone_current_temperature(d, d.zones[1]) == 20.9
 
 
 def test_zone_never_heard():

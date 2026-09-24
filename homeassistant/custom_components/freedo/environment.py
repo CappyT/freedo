@@ -5,13 +5,14 @@
   memory only and drops a curve back to its default after outdoor_max_age_sec,
   so the periodic push also covers a daemon restart.
 - The window sensors of a zone go to POST /api/zones/{n}/window on each
-  change of the zone state.
+  change of the zone state, one push per zone at a time.
 
 Unavailable or unknown states are never pushed.
 """
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 import logging
 
@@ -75,23 +76,27 @@ def async_setup_environment(
 
     if zones:
         last: dict[int, bool] = {}
+        # One push per zone at a time. A push reads the sensor states once it
+        # holds the lock, so a later change never lands before an earlier one.
+        locks = {zone: asyncio.Lock() for zone in zones}
 
         async def push_window(zone: int, force: bool = False) -> None:
-            states = []
-            for entity_id in zones[zone]:
-                state = hass.states.get(entity_id)
-                states.append(state.state if state else None)
-            payload = window_payload(states)
-            if payload is None:
-                return
-            if not force and last.get(zone) == payload["open"]:
-                return
-            try:
-                await client.push_window(zone, payload["open"])
-            except FreedoError as err:
-                _LOGGER.warning("Window push for zone %s failed: %s", zone, err)
-                return
-            last[zone] = payload["open"]
+            async with locks[zone]:
+                states = []
+                for entity_id in zones[zone]:
+                    state = hass.states.get(entity_id)
+                    states.append(state.state if state else None)
+                payload = window_payload(states)
+                if payload is None:
+                    return
+                if not force and last.get(zone) == payload["open"]:
+                    return
+                try:
+                    await client.push_window(zone, payload["open"])
+                except FreedoError as err:
+                    _LOGGER.warning("Window push for zone %s failed: %s", zone, err)
+                    return
+                last[zone] = payload["open"]
 
         entity_zone = {e: z for z, entities in zones.items() for e in entities}
 
