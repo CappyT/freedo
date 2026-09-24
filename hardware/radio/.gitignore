@@ -5,3 +5,4 @@ fp-info-cache
 .konnect/
 # Third-party 3D models, 6.6 MB: regenerate with easyeda2kicad from the LCSC numbers in README.md
 lib/3dmodels/
+out/

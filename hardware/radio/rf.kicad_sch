@@ -1,0 +1,8067 @@
+(kicad_sch
+	(version 20250610)
+	(generator "konnect")
+	(generator_version "10.0")
+	(uuid "83461661-b2fb-4259-b936-f60e19cb2314")
+	(paper "A3")
+	(title_block
+		(title "freedo radio rev A: RF, CC1101 868 MHz")
+		(date "2026-09-24")
+		(rev "A")
+		(comment 1 "TI CC1101EM 868/915 MHz rev 3.0.0 topology (SWRR045), spec README 5.1")
+	)
+	(lib_symbols
+		(symbol "freedo-radio:L"
+			(pin_numbers
+				(hide yes)
+			)
+			(pin_names
+				(offset 1.016)
+				(hide yes)
+			)
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(in_pos_files yes)
+			(duplicate_pin_numbers_are_jumpers no)
+			(property "Reference" "L"
+				(at -1.27 0 90)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Value" "L"
+				(at 1.905 0 90)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Datasheet" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Description" "Inductor"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_keywords" "inductor choke coil reactor magnetic"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_fp_filters" "Choke_* *Coil* Inductor_* L_*"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "MPN" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "LCSC" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(symbol "L_0_1"
+				(arc
+					(start 0 2.54)
+					(mid 0.6323 1.905)
+					(end 0 1.27)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(arc
+					(start 0 1.27)
+					(mid 0.6323 0.635)
+					(end 0 0)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(arc
+					(start 0 0)
+					(mid 0.6323 -0.635)
+					(end 0 -1.27)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(arc
+					(start 0 -1.27)
+					(mid 0.6323 -1.905)
+					(end 0 -2.54)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+			)
+			(symbol "L_1_1"
+				(pin passive line
+					(at 0 3.81 270)
+					(length 1.27)
+					(name "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at 0 -3.81 90)
+					(length 1.27)
+					(name "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
+		(symbol "freedo-radio:X322526MMB4SI"
+			(pin_names
+				(offset 1.016)
+				(hide yes)
+			)
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(in_pos_files yes)
+			(duplicate_pin_numbers_are_jumpers no)
+			(property "Reference" "Y"
+				(at 3.175 5.08 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(justify left)
+				)
+			)
+			(property "Value" "X322526MMB4SI"
+				(at 3.175 3.175 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(justify left)
+				)
+			)
+			(property "Footprint" "freedo-radio:CRYSTAL-SMD_4P-L3.2-W2.5-BL"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Datasheet" "https://www.lcsc.com/datasheet/lcsc_datasheet_2403291504_YXC-Crystal-Oscillators-X322526MMB4SI_C15192.pdf"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Description" "YXC YSX321SL crystal 26 MHz, CL 10 pF, SMD3225-4P. Pins 1/3 = crystal, pins 2/4 = GND (case)."
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property private "KLC_S3.3" "The rectangle is not a symbol body but a graphical element"
+				(at 0 -12.7 0)
+				(show_name yes)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property private "KLC_S4.1" "Some pins are on 50mil grid to make the symbol small"
+				(at 0 -15.24 0)
+				(show_name yes)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_keywords" "quartz ceramic resonator oscillator"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "MPN" "X322526MMB4SI"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "LCSC" "C15192"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(symbol "X322526MMB4SI_0_1"
+				(polyline
+					(pts
+						(xy -2.54 2.286)
+						(xy -2.54 3.556)
+						(xy 2.54 3.556)
+						(xy 2.54 2.286)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy -2.54 0)
+						(xy -2.032 0)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy -2.54 -2.286)
+						(xy -2.54 -3.556)
+						(xy 2.54 -3.556)
+						(xy 2.54 -2.286)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy -2.032 -1.27)
+						(xy -2.032 1.27)
+					)
+					(stroke
+						(width 0.508)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(rectangle
+					(start -1.143 2.54)
+					(end 1.143 -2.54)
+					(stroke
+						(width 0.3048)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 0 -3.81)
+						(xy 0 -3.556)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 2.032 0)
+						(xy 2.54 0)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 2.032 -1.27)
+						(xy 2.032 1.27)
+					)
+					(stroke
+						(width 0.508)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+			)
+			(symbol "X322526MMB4SI_1_1"
+				(pin passive line
+					(at -3.81 0 0)
+					(length 1.27)
+					(name "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at 0 -5.08 90)
+					(length 1.27)
+					(name "G"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at 3.81 0 180)
+					(length 1.27)
+					(name "3"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "3"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at 0 -5.08 90)
+					(length 1.27)
+					(hide yes)
+					(name "G"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "4"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
+		(symbol "freedo-radio:C"
+			(pin_numbers
+				(hide yes)
+			)
+			(pin_names
+				(offset 0.254)
+			)
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(in_pos_files yes)
+			(duplicate_pin_numbers_are_jumpers no)
+			(property "Reference" "C"
+				(at 0.635 2.54 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(justify left)
+				)
+			)
+			(property "Value" "C"
+				(at 0.635 -2.54 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(justify left)
+				)
+			)
+			(property "Footprint" ""
+				(at 0.9652 -3.81 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Datasheet" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Description" "Unpolarized capacitor"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_keywords" "cap capacitor"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_fp_filters" "C_*"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "MPN" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "LCSC" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(symbol "C_0_1"
+				(polyline
+					(pts
+						(xy -2.032 0.762)
+						(xy 2.032 0.762)
+					)
+					(stroke
+						(width 0.508)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy -2.032 -0.762)
+						(xy 2.032 -0.762)
+					)
+					(stroke
+						(width 0.508)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+			)
+			(symbol "C_1_1"
+				(pin passive line
+					(at 0 3.81 270)
+					(length 2.794)
+					(name ""
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at 0 -3.81 90)
+					(length 2.794)
+					(name ""
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
+		(symbol "freedo-radio:FerriteBead_Small"
+			(pin_numbers
+				(hide yes)
+			)
+			(pin_names
+				(offset 0)
+			)
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(in_pos_files yes)
+			(duplicate_pin_numbers_are_jumpers no)
+			(property "Reference" "FB"
+				(at 1.905 1.27 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(justify left)
+				)
+			)
+			(property "Value" "FerriteBead_Small"
+				(at 1.905 -1.27 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(justify left)
+				)
+			)
+			(property "Footprint" ""
+				(at -1.778 0 90)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Datasheet" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Description" "Ferrite bead, small symbol"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_keywords" "L ferrite bead inductor filter"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_fp_filters" "Inductor_* L_* *Ferrite*"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "MPN" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "LCSC" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(symbol "FerriteBead_Small_0_1"
+				(polyline
+					(pts
+						(xy -1.8288 0.2794)
+						(xy -1.1176 1.4986)
+						(xy 1.8288 -0.2032)
+						(xy 1.1176 -1.4224)
+						(xy -1.8288 0.2794)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 0 0.889)
+						(xy 0 1.2954)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 0 -1.27)
+						(xy 0 -0.7874)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+			)
+			(symbol "FerriteBead_Small_1_1"
+				(pin passive line
+					(at 0 2.54 270)
+					(length 1.27)
+					(name ""
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at 0 -2.54 90)
+					(length 1.27)
+					(name ""
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
+		(symbol
+		  "freedo-radio:CC1101RGPR"
+		  (pin_names
+		    (offset 1.016)
+		  )
+		  (exclude_from_sim no)
+		  (in_bom yes)
+		  (on_board yes)
+		  (in_pos_files yes)
+		  (duplicate_pin_numbers_are_jumpers no)
+		  (property "Reference" "U"
+		    (at 0 15.2400 0)
+		    (show_name no)
+		    (do_not_autoplace no)
+		    (effects
+		      (font
+		        (size 1.27 1.27)
+		      )
+		    )
+		  )
+		  (property "Value" "CC1101RGPR"
+		    (at 0 -15.2400 0)
+		    (show_name no)
+		    (do_not_autoplace no)
+		    (effects
+		      (font
+		        (size 1.27 1.27)
+		      )
+		    )
+		  )
+		  (property "Footprint" "freedo-radio:QFN-20-1EP_4x4mm_P0.5mm_EP2.4x2.4mm_TI_RGP0020H"
+		    (at 0 0 0)
+		    (show_name no)
+		    (do_not_autoplace no)
+		    (hide yes)
+		    (effects
+		      (font
+		        (size 1.27 1.27)
+		      )
+		    )
+		  )
+		  (property "Datasheet" "https://www.ti.com/lit/ds/symlink/cc1101.pdf"
+		    (at 0 0 0)
+		    (show_name no)
+		    (do_not_autoplace no)
+		    (hide yes)
+		    (effects
+		      (font
+		        (size 1.27 1.27)
+		      )
+		    )
+		  )
+		  (property "Description" "TI CC1101 sub-1 GHz transceiver, QFN-20 4x4 (RGP). Pin 21 = exposed die pad, solder to GND."
+		    (at 0 0 0)
+		    (show_name no)
+		    (do_not_autoplace no)
+		    (hide yes)
+		    (effects
+		      (font
+		        (size 1.27 1.27)
+		      )
+		    )
+		  )
+		  (property "MPN" "CC1101RGPR"
+		    (at 0 0 0)
+		    (show_name no)
+		    (do_not_autoplace no)
+		    (hide yes)
+		    (effects
+		      (font
+		        (size 1.27 1.27)
+		      )
+		    )
+		  )
+		  (property "LCSC" "C29953"
+		    (at 0 0 0)
+		    (show_name no)
+		    (do_not_autoplace no)
+		    (hide yes)
+		    (effects
+		      (font
+		        (size 1.27 1.27)
+		      )
+		    )
+		  )
+		  (symbol "CC1101RGPR_0_1"
+		    (rectangle
+		      (start -15.2400 -12.7000)
+		      (end 15.2400 12.7000)
+		      (stroke
+		        (width 0.254)
+		        (type default)
+		      )
+		      (fill
+		        (type background)
+		      )
+		    )
+		    (pin input line
+		      (at -16.51 7.62 0)
+		      (length 1.27)
+		      (name "SCLK"
+		        (effects
+		          (font
+		            (size 1.27 1.27)
+		          )
+		        )
+		      )
+		      (number "1"
+		        (effects
+		          (font
+		            (size 1.27 1.27)
+		          )
+		        )
+		      )
+		    )
+		    (pin input line
+		      (at -16.51 5.08 0)
+		      (length 1.27)
+		      (name "SI"
+		        (effects
+		          (font
+		            (size 1.27 1.27)
+		          )
+		        )
+		      )
+		      (number "20"
+		        (effects
+		          (font
+		            (size 1.27 1.27)
+		          )
+		        )
+		      )
+		    )
+		    (pin tri_state line
+		      (at -16.51 2.54 0)
+		      (length 1.27)
+		      (name "SO/GDO1"
+		        (effects
+		          (font
+		            (size 1.27 1.27)
+		          )
+		        )
+		      )
+		      (number "2"
+		        (effects
+		          (font
+		            (size 1.27 1.27)
+		          )
+		        )
+		      )
+		    )
+		    (pin input line
+		      (at -16.51 0 0)
+		      (length 1.27)
+		      (name "CSn"
+		        (effects
+		          (font
+		            (size 1.27 1.27)
+		          )
+		        )
+		      )
+		      (number "7"
+		        (effects
+		          (font
+		            (size 1.27 1.27)
+		          )
+		        )
+		      )
+		    )
+		    (pin bidirectional line
+		      (at -16.51 -2.54 0)
+		      (length 1.27)
+		      (name "GDO0/ATEST"
+		        (effects
+		          (font
+		            (size 1.27 1.27)
+		          )
+		        )
+		      )
+		      (number "6"
+		        (effects
+		          (font
+		            (size 1.27 1.27)
+		          )
+		        )
+		      )
+		    )
+		    (pin output line
+		      (at -16.51 -5.08 0)
+		      (length 1.27)
+		      (name "GDO2"
+		        (effects
+		          (font
+		            (size 1.27 1.27)
+		          )
+		        )
+		      )
+		      (number "3"
+		        (effects
+		          (font
+		            (size 1.27 1.27)
+		          )
+		        )
+		      )
+		    )
+		    (pin passive line
+		      (at 16.51 7.62 180)
+		      (length 1.27)
+		      (name "RF_P"
+		        (effects
+		          (font
+		            (size 1.27 1.27)
+		          )
+		        )
+		      )
+		      (number "12"
+		        (effects
+		          (font
+		            (size 1.27 1.27)
+		          )
+		        )
+		      )
+		    )
+		    (pin passive line
+		      (at 16.51 5.08 180)
+		      (length 1.27)
+		      (name "RF_N"
+		        (effects
+		          (font
+		            (size 1.27 1.27)
+		          )
+		        )
+		      )
+		      (number "13"
+		        (effects
+		          (font
+		            (size 1.27 1.27)
+		          )
+		        )
+		      )
+		    )
+		    (pin passive line
+		      (at 16.51 0 180)
+		      (length 1.27)
+		      (name "XOSC_Q1"
+		        (effects
+		          (font
+		            (size 1.27 1.27)
+		          )
+		        )
+		      )
+		      (number "8"
+		        (effects
+		          (font
+		            (size 1.27 1.27)
+		          )
+		        )
+		      )
+		    )
+		    (pin passive line
+		      (at 16.51 -2.54 180)
+		      (length 1.27)
+		      (name "XOSC_Q2"
+		        (effects
+		          (font
+		            (size 1.27 1.27)
+		          )
+		        )
+		      )
+		      (number "10"
+		        (effects
+		          (font
+		            (size 1.27 1.27)
+		          )
+		        )
+		      )
+		    )
+		    (pin passive line
+		      (at 16.51 -5.08 180)
+		      (length 1.27)
+		      (name "RBIAS"
+		        (effects
+		          (font
+		            (size 1.27 1.27)
+		          )
+		        )
+		      )
+		      (number "17"
+		        (effects
+		          (font
+		            (size 1.27 1.27)
+		          )
+		        )
+		      )
+		    )
+		    (pin power_out line
+		      (at 16.51 -7.62 180)
+		      (length 1.27)
+		      (name "DCOUPL"
+		        (effects
+		          (font
+		            (size 1.27 1.27)
+		          )
+		        )
+		      )
+		      (number "5"
+		        (effects
+		          (font
+		            (size 1.27 1.27)
+		          )
+		        )
+		      )
+		    )
+		    (pin power_in line
+		      (at -7.62 15.24 270)
+		      (length 2.54)
+		      (name "DVDD"
+		        (effects
+		          (font
+		            (size 1.27 1.27)
+		          )
+		        )
+		      )
+		      (number "4"
+		        (effects
+		          (font
+		            (size 1.27 1.27)
+		          )
+		        )
+		      )
+		    )
+		    (pin power_in line
+		      (at -5.08 15.24 270)
+		      (length 2.54)
+		      (name "AVDD"
+		        (effects
+		          (font
+		            (size 1.27 1.27)
+		          )
+		        )
+		      )
+		      (number "9"
+		        (effects
+		          (font
+		            (size 1.27 1.27)
+		          )
+		        )
+		      )
+		    )
+		    (pin power_in line
+		      (at -2.54 15.24 270)
+		      (length 2.54)
+		      (name "AVDD"
+		        (effects
+		          (font
+		            (size 1.27 1.27)
+		          )
+		        )
+		      )
+		      (number "11"
+		        (effects
+		          (font
+		            (size 1.27 1.27)
+		          )
+		        )
+		      )
+		    )
+		    (pin power_in line
+		      (at 0 15.24 270)
+		      (length 2.54)
+		      (name "AVDD"
+		        (effects
+		          (font
+		            (size 1.27 1.27)
+		          )
+		        )
+		      )
+		      (number "14"
+		        (effects
+		          (font
+		            (size 1.27 1.27)
+		          )
+		        )
+		      )
+		    )
+		    (pin power_in line
+		      (at 2.54 15.24 270)
+		      (length 2.54)
+		      (name "AVDD"
+		        (effects
+		          (font
+		            (size 1.27 1.27)
+		          )
+		        )
+		      )
+		      (number "15"
+		        (effects
+		          (font
+		            (size 1.27 1.27)
+		          )
+		        )
+		      )
+		    )
+		    (pin power_in line
+		      (at 5.08 15.24 270)
+		      (length 2.54)
+		      (name "DGUARD"
+		        (effects
+		          (font
+		            (size 1.27 1.27)
+		          )
+		        )
+		      )
+		      (number "18"
+		        (effects
+		          (font
+		            (size 1.27 1.27)
+		          )
+		        )
+		      )
+		    )
+		    (pin power_in line
+		      (at -2.54 -15.24 90)
+		      (length 2.54)
+		      (name "GND"
+		        (effects
+		          (font
+		            (size 1.27 1.27)
+		          )
+		        )
+		      )
+		      (number "16"
+		        (effects
+		          (font
+		            (size 1.27 1.27)
+		          )
+		        )
+		      )
+		    )
+		    (pin power_in line
+		      (at 0 -15.24 90)
+		      (length 2.54)
+		      (name "GND"
+		        (effects
+		          (font
+		            (size 1.27 1.27)
+		          )
+		        )
+		      )
+		      (number "19"
+		        (effects
+		          (font
+		            (size 1.27 1.27)
+		          )
+		        )
+		      )
+		    )
+		    (pin power_in line
+		      (at 2.54 -15.24 90)
+		      (length 2.54)
+		      (name "GND_EP"
+		        (effects
+		          (font
+		            (size 1.27 1.27)
+		          )
+		        )
+		      )
+		      (number "21"
+		        (effects
+		          (font
+		            (size 1.27 1.27)
+		          )
+		        )
+		      )
+		    )
+		  )
+		  (embedded_fonts no)
+		)
+		(symbol "freedo-radio:TestPoint"
+			(pin_numbers
+				(hide yes)
+			)
+			(pin_names
+				(offset 0.762)
+				(hide yes)
+			)
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(in_pos_files yes)
+			(duplicate_pin_numbers_are_jumpers no)
+			(property "Reference" "TP"
+				(at 0 6.858 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Value" "TestPoint"
+				(at 0 5.08 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" ""
+				(at 5.08 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Datasheet" ""
+				(at 5.08 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Description" "test point"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_keywords" "test point tp"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_fp_filters" "Pin* Test*"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(symbol "TestPoint_0_1"
+				(circle
+					(center 0 3.302)
+					(radius 0.762)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+			)
+			(symbol "TestPoint_1_1"
+				(pin passive line
+					(at 0 0 90)
+					(length 2.54)
+					(name "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
+		(symbol "freedo-radio:R"
+			(pin_numbers
+				(hide yes)
+			)
+			(pin_names
+				(offset 0)
+			)
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(in_pos_files yes)
+			(duplicate_pin_numbers_are_jumpers no)
+			(property "Reference" "R"
+				(at 2.032 0 90)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Value" "R"
+				(at 0 0 90)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" ""
+				(at -1.778 0 90)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Datasheet" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Description" "Resistor"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_keywords" "R res resistor"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_fp_filters" "R_*"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "MPN" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "LCSC" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(symbol "R_0_1"
+				(rectangle
+					(start -1.016 -2.54)
+					(end 1.016 2.54)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+			)
+			(symbol "R_1_1"
+				(pin passive line
+					(at 0 3.81 270)
+					(length 1.27)
+					(name ""
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at 0 -3.81 90)
+					(length 1.27)
+					(name ""
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
+		(symbol "freedo-radio:SMA-KE-347-H13.5-1.6"
+			(pin_names
+				(offset 1.016)
+				(hide yes)
+			)
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(in_pos_files yes)
+			(duplicate_pin_numbers_are_jumpers no)
+			(property "Reference" "J"
+				(at 0.254 3.048 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Value" "SMA-KE-347-H13.5-1.6"
+				(at 2.921 0 90)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" "freedo-radio:SMA_XUNPU_SMA-KE-347-H13.5-1.6_EdgeMount"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Datasheet" "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/2304281213_XUNPU-SMA-KE-347-H13-5-1-6_C5723200.pdf"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Description" "XUNPU SMA jack, edge mount, 1.6 mm board, 50 ohm. Pin 1 = center, pin 2 = ground (4 pads, top and bottom)."
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_keywords" "BNC SMA SMB SMC LEMO coaxial connector CINCH RCA MCX MMCX U.FL UMRF"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "MPN" "SMA-KE-347-H13.5-1.6"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "LCSC" "C5723200"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(symbol "SMA-KE-347-H13.5-1.6_0_1"
+				(polyline
+					(pts
+						(xy -2.54 0)
+						(xy -0.508 0)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(arc
+					(start 1.778 0)
+					(mid 0.222 -1.8079)
+					(end -1.778 -0.508)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(arc
+					(start -1.778 0.508)
+					(mid 0.2221 1.8084)
+					(end 1.778 0)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(circle
+					(center 0 0)
+					(radius 0.508)
+					(stroke
+						(width 0.2032)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 0 -2.54)
+						(xy 0 -1.778)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+			)
+			(symbol "SMA-KE-347-H13.5-1.6_1_1"
+				(pin passive line
+					(at -5.08 0 0)
+					(length 2.54)
+					(name "In"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at 0 -5.08 90)
+					(length 2.54)
+					(name "Ext"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
+		(symbol "freedo-radio:GND"
+			(power global)
+			(pin_numbers
+				(hide yes)
+			)
+			(pin_names
+				(offset 0)
+				(hide yes)
+			)
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(in_pos_files yes)
+			(duplicate_pin_numbers_are_jumpers no)
+			(property "Reference" "#PWR"
+				(at 0 -6.35 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Value" "GND"
+				(at 0 -3.81 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Datasheet" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_keywords" "global power"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(symbol "GND_0_1"
+				(polyline
+					(pts
+						(xy 0 0)
+						(xy 0 -1.27)
+						(xy 1.27 -1.27)
+						(xy 0 -2.54)
+						(xy -1.27 -1.27)
+						(xy 0 -1.27)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+			)
+			(symbol "GND_1_1"
+				(pin power_in line
+					(at 0 0 270)
+					(length 0)
+					(name ""
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
+		(symbol "freedo-radio:+3V3"
+			(power global)
+			(pin_numbers
+				(hide yes)
+			)
+			(pin_names
+				(offset 0)
+				(hide yes)
+			)
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(in_pos_files yes)
+			(duplicate_pin_numbers_are_jumpers no)
+			(property "Reference" "#PWR"
+				(at 0 -3.81 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Value" "+3V3"
+				(at 0 3.556 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Datasheet" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Description" "Power symbol creates a global label with name \"+3V3\""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_keywords" "global power"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(symbol "+3V3_0_1"
+				(polyline
+					(pts
+						(xy -0.762 1.27)
+						(xy 0 2.54)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 0 2.54)
+						(xy 0.762 1.27)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 0 0)
+						(xy 0 2.54)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+			)
+			(symbol "+3V3_1_1"
+				(pin power_in line
+					(at 0 0 90)
+					(length 0)
+					(name ""
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
+		(symbol "freedo-radio:PWR_FLAG"
+			(power global)
+			(pin_numbers
+				(hide yes)
+			)
+			(pin_names
+				(offset 0)
+				(hide yes)
+			)
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(in_pos_files yes)
+			(duplicate_pin_numbers_are_jumpers no)
+			(property "Reference" "#FLG"
+				(at 0 1.905 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Value" "PWR_FLAG"
+				(at 0 3.81 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Datasheet" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Description" "Special symbol for telling ERC where power comes from"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_keywords" "flag power"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(symbol "PWR_FLAG_0_0"
+				(pin power_out line
+					(at 0 0 90)
+					(length 0)
+					(name ""
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(symbol "PWR_FLAG_0_1"
+				(polyline
+					(pts
+						(xy 0 0)
+						(xy 0 1.27)
+						(xy -1.016 1.905)
+						(xy 0 2.54)
+						(xy 1.016 1.905)
+						(xy 0 1.27)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
+	)
+	(junction
+		(at 106.68 104.14)
+		(diameter 0)
+		(uuid "d9a3ed1b-8304-4dcd-b992-5ce885cac28c")
+	)
+	(junction
+		(at 121.92 104.14)
+		(diameter 0)
+		(uuid "e1dd79d0-b5d3-4333-85f0-4d20ea1f1cfd")
+	)
+	(junction
+		(at 137.16 104.14)
+		(diameter 0)
+		(uuid "339018c3-8498-4c40-bf34-34abc1b3ba6a")
+	)
+	(junction
+		(at 167.64 104.14)
+		(diameter 0)
+		(uuid "0673edb1-2a6f-45b5-8053-4d4b3068cc9b")
+	)
+	(junction
+		(at 182.88 104.14)
+		(diameter 0)
+		(uuid "8b966270-742a-4458-b5fd-7b16434a8d01")
+	)
+	(junction
+		(at 198.12 104.14)
+		(diameter 0)
+		(uuid "806035cb-df36-4582-af96-e0d4df76281b")
+	)
+	(junction
+		(at 106.68 99.06)
+		(diameter 0)
+		(uuid "1182063c-7f01-459d-9718-34599b8b6081")
+	)
+	(junction
+		(at 121.92 99.06)
+		(diameter 0)
+		(uuid "16e38074-5af4-4d4e-83f2-e4c9d78c0e68")
+	)
+	(junction
+		(at 137.16 99.06)
+		(diameter 0)
+		(uuid "0ad13978-0b53-4811-84c0-de47819397f5")
+	)
+	(junction
+		(at 167.64 99.06)
+		(diameter 0)
+		(uuid "bf71ae93-c6f0-4a88-9ff0-6017bfe53942")
+	)
+	(junction
+		(at 182.88 99.06)
+		(diameter 0)
+		(uuid "b270b7fc-63c1-4cdf-aae5-fb8127e11c49")
+	)
+	(junction
+		(at 93.98 99.06)
+		(diameter 0)
+		(uuid "6b21bc56-3302-46f9-ba63-8faaf5d7cbd4")
+	)
+	(junction
+		(at 99.06 99.06)
+		(diameter 0)
+		(uuid "826788d0-e8bf-4b72-9199-c26764378dd8")
+	)
+	(junction
+		(at 88.9 137.16)
+		(diameter 0)
+		(uuid "54fa7c09-28b9-4450-a348-621bc6cc451a")
+	)
+	(junction
+		(at 88.9 152.4)
+		(diameter 0)
+		(uuid "c8346568-0f54-40e2-8031-64216bacbdeb")
+	)
+	(junction
+		(at 88.9 162.56)
+		(diameter 0)
+		(uuid "7b809ecf-faac-42fd-9439-20715b8eb8a6")
+	)
+	(junction
+		(at 88.9 177.8)
+		(diameter 0)
+		(uuid "7967401b-2ea3-4dc0-a16f-ad54e667c820")
+	)
+	(junction
+		(at 99.06 177.8)
+		(diameter 0)
+		(uuid "4c6cd1af-f0a1-4723-bbcc-4c83a9e75855")
+	)
+	(junction
+		(at 88.9 187.96)
+		(diameter 0)
+		(uuid "ff4b157d-135d-487a-8483-8f07beb55db1")
+	)
+	(junction
+		(at 88.9 198.12)
+		(diameter 0)
+		(uuid "0b927a7a-684b-467f-8b75-4de4c11230ef")
+	)
+	(junction
+		(at 152.4 162.56)
+		(diameter 0)
+		(uuid "05a6c632-c339-497a-a7c2-2f9512fe992a")
+	)
+	(junction
+		(at 199.39 165.1)
+		(diameter 0)
+		(uuid "77b75379-97b6-4eb4-afeb-6e7b71120470")
+	)
+	(junction
+		(at 219.71 165.1)
+		(diameter 0)
+		(uuid "f2c26e00-c138-43c8-90f4-979077c22f7a")
+	)
+	(junction
+		(at 254 137.16)
+		(diameter 0)
+		(uuid "fd8f4182-5cd8-46c1-858d-a191dd297a2e")
+	)
+	(junction
+		(at 254 162.56)
+		(diameter 0)
+		(uuid "8dbe4801-ef76-414f-99b0-b5db706608ae")
+	)
+	(junction
+		(at 266.7 137.16)
+		(diameter 0)
+		(uuid "1c512dea-4141-4439-b775-4a1b9d7af351")
+	)
+	(junction
+		(at 260.35 162.56)
+		(diameter 0)
+		(uuid "1afcb694-4508-42a8-abe7-d2268cda0b2f")
+	)
+	(junction
+		(at 287.02 137.16)
+		(diameter 0)
+		(uuid "678fcb25-0197-4ec4-aec5-9bdf6727b56d")
+	)
+	(junction
+		(at 304.8 137.16)
+		(diameter 0)
+		(uuid "f5bdc9d5-60ef-471e-a2b6-f5a0d0b3202c")
+	)
+	(junction
+		(at 322.58 137.16)
+		(diameter 0)
+		(uuid "4c302644-3d56-4005-908a-33f484203e02")
+	)
+	(junction
+		(at 344.17 137.16)
+		(diameter 0)
+		(uuid "53b34253-94d6-4ee7-8bde-36a725e5c16d")
+	)
+	(junction
+		(at 349.25 137.16)
+		(diameter 0)
+		(uuid "c4c2b7b2-4f9c-4a13-b3d6-d11d39141773")
+	)
+	(junction
+		(at 368.3 137.16)
+		(diameter 0)
+		(uuid "7fd3f5e2-3cc8-4228-afa0-3adddc353ead")
+	)
+	(wire
+		(pts
+			(xy 144.78 129.54)
+			(xy 144.78 124.46)
+		)
+		(uuid "e8be7a4e-d692-456d-aa22-164e86236302")
+	)
+	(wire
+		(pts
+			(xy 144.78 124.46)
+			(xy 106.68 124.46)
+		)
+		(uuid "86cd5ac1-9af5-44d8-a548-70555678fab1")
+	)
+	(wire
+		(pts
+			(xy 106.68 124.46)
+			(xy 106.68 104.14)
+		)
+		(uuid "18307b1e-34f2-4038-97df-ebe7ebe2856c")
+	)
+	(wire
+		(pts
+			(xy 106.68 104.14)
+			(xy 106.68 99.06)
+		)
+		(uuid "3fb9e8c7-dd72-4706-82a8-cc8fbd6f7ebd")
+	)
+	(wire
+		(pts
+			(xy 106.68 104.14)
+			(xy 111.76 104.14)
+		)
+		(uuid "fe663ad5-d6f1-471b-b4d3-9a9e7f0f04b2")
+	)
+	(wire
+		(pts
+			(xy 147.32 129.54)
+			(xy 147.32 121.92)
+		)
+		(uuid "11747639-4534-49a5-b1d2-e51b3ba974a7")
+	)
+	(wire
+		(pts
+			(xy 147.32 121.92)
+			(xy 121.92 121.92)
+		)
+		(uuid "4735f073-ebb8-45c9-a48f-1ee3e76e2333")
+	)
+	(wire
+		(pts
+			(xy 121.92 121.92)
+			(xy 121.92 104.14)
+		)
+		(uuid "9671b8b5-87d3-468b-a05c-7a1b6e686b64")
+	)
+	(wire
+		(pts
+			(xy 121.92 104.14)
+			(xy 121.92 99.06)
+		)
+		(uuid "a60fbea0-3b02-4f4c-ace0-58331abded5c")
+	)
+	(wire
+		(pts
+			(xy 121.92 104.14)
+			(xy 127 104.14)
+		)
+		(uuid "684ca17b-1136-4bcb-bedc-ab1ddd1c0fac")
+	)
+	(wire
+		(pts
+			(xy 149.86 129.54)
+			(xy 149.86 119.38)
+		)
+		(uuid "55240c55-843f-41f2-9044-53677c5f7e37")
+	)
+	(wire
+		(pts
+			(xy 149.86 119.38)
+			(xy 137.16 119.38)
+		)
+		(uuid "6f6d940e-0910-4d98-aebc-76411401a53d")
+	)
+	(wire
+		(pts
+			(xy 137.16 119.38)
+			(xy 137.16 104.14)
+		)
+		(uuid "9015f41a-a2f7-4566-90ee-19bda87677df")
+	)
+	(wire
+		(pts
+			(xy 137.16 104.14)
+			(xy 137.16 99.06)
+		)
+		(uuid "add320a7-a711-4dc5-a1d7-d2d252e774f7")
+	)
+	(wire
+		(pts
+			(xy 137.16 104.14)
+			(xy 142.24 104.14)
+		)
+		(uuid "0a6989dc-145d-4f3d-97e5-5763277541ee")
+	)
+	(wire
+		(pts
+			(xy 152.4 129.54)
+			(xy 152.4 119.38)
+		)
+		(uuid "abc0041e-8709-4634-927a-9a00b838a471")
+	)
+	(wire
+		(pts
+			(xy 152.4 119.38)
+			(xy 167.64 119.38)
+		)
+		(uuid "86f154ea-969d-4584-afcd-00212962ce20")
+	)
+	(wire
+		(pts
+			(xy 167.64 119.38)
+			(xy 167.64 104.14)
+		)
+		(uuid "a56691d6-086d-456b-b777-d284764b491c")
+	)
+	(wire
+		(pts
+			(xy 167.64 104.14)
+			(xy 167.64 99.06)
+		)
+		(uuid "bef300b4-757a-4154-95dd-f5cd534bf444")
+	)
+	(wire
+		(pts
+			(xy 167.64 104.14)
+			(xy 172.72 104.14)
+		)
+		(uuid "01b67646-66ae-4839-92b4-499e4e1f3e1d")
+	)
+	(wire
+		(pts
+			(xy 154.94 129.54)
+			(xy 154.94 121.92)
+		)
+		(uuid "a261c775-6688-4a93-99dc-93d2412706c4")
+	)
+	(wire
+		(pts
+			(xy 154.94 121.92)
+			(xy 182.88 121.92)
+		)
+		(uuid "3b2d92d6-3363-43ad-923c-eeb5617fa2b2")
+	)
+	(wire
+		(pts
+			(xy 182.88 121.92)
+			(xy 182.88 104.14)
+		)
+		(uuid "2c387c13-abda-47cd-8354-b83106f0b6d5")
+	)
+	(wire
+		(pts
+			(xy 182.88 104.14)
+			(xy 182.88 99.06)
+		)
+		(uuid "43092940-502b-44ff-9411-a11cd0ce290f")
+	)
+	(wire
+		(pts
+			(xy 182.88 104.14)
+			(xy 187.96 104.14)
+		)
+		(uuid "7c9ad5a7-159c-478b-ac88-8b3b981acd16")
+	)
+	(wire
+		(pts
+			(xy 157.48 129.54)
+			(xy 157.48 124.46)
+		)
+		(uuid "493b9013-6135-43cc-9bbd-53e2aa1e403a")
+	)
+	(wire
+		(pts
+			(xy 157.48 124.46)
+			(xy 198.12 124.46)
+		)
+		(uuid "72d6c0ca-8ffe-4bef-bda9-facd28b40e42")
+	)
+	(wire
+		(pts
+			(xy 198.12 124.46)
+			(xy 198.12 104.14)
+		)
+		(uuid "8a7e5dac-8f38-4004-acab-34727a469eae")
+	)
+	(wire
+		(pts
+			(xy 198.12 104.14)
+			(xy 198.12 99.06)
+		)
+		(uuid "11fce4b5-3b2c-4a36-90f9-f9925fc02506")
+	)
+	(wire
+		(pts
+			(xy 198.12 104.14)
+			(xy 203.2 104.14)
+		)
+		(uuid "2a375a27-3caf-4fb8-af2a-9ae3ac26d02f")
+	)
+	(wire
+		(pts
+			(xy 106.68 99.06)
+			(xy 121.92 99.06)
+		)
+		(uuid "006c76fc-ba96-47fd-95a3-8b55dda2d0de")
+	)
+	(wire
+		(pts
+			(xy 121.92 99.06)
+			(xy 137.16 99.06)
+		)
+		(uuid "7317a9c7-8457-4428-9956-8d4502f89f85")
+	)
+	(wire
+		(pts
+			(xy 137.16 99.06)
+			(xy 167.64 99.06)
+		)
+		(uuid "ad02dad6-fec0-4ebc-b8b5-0e09dac7144d")
+	)
+	(wire
+		(pts
+			(xy 167.64 99.06)
+			(xy 182.88 99.06)
+		)
+		(uuid "623e5c33-8c81-428b-80ea-092e3c38921a")
+	)
+	(wire
+		(pts
+			(xy 182.88 99.06)
+			(xy 198.12 99.06)
+		)
+		(uuid "b098e805-a1e7-4a64-a4fb-6c70a9abb090")
+	)
+	(wire
+		(pts
+			(xy 76.2 99.06)
+			(xy 81.28 99.06)
+		)
+		(uuid "6eb2fecf-10dd-40ad-b46b-efc1d2f59d7a")
+	)
+	(wire
+		(pts
+			(xy 86.36 99.06)
+			(xy 93.98 99.06)
+		)
+		(uuid "a9b2faa8-b36e-4539-8ac6-f0abe1a7ccf7")
+	)
+	(wire
+		(pts
+			(xy 93.98 99.06)
+			(xy 99.06 99.06)
+		)
+		(uuid "b4ca99bf-e825-4a58-a7f7-6416135ee73c")
+	)
+	(wire
+		(pts
+			(xy 99.06 99.06)
+			(xy 106.68 99.06)
+		)
+		(uuid "a1bd6897-0d08-4ac2-adef-9a1f78b0819a")
+	)
+	(wire
+		(pts
+			(xy 73.66 137.16)
+			(xy 88.9 137.16)
+		)
+		(uuid "2f5c4440-26ec-47d1-949d-7b5c3629f6eb")
+	)
+	(wire
+		(pts
+			(xy 88.9 137.16)
+			(xy 135.89 137.16)
+		)
+		(uuid "7265ae31-b9d2-49f0-aa80-d95faa03ed92")
+	)
+	(wire
+		(pts
+			(xy 73.66 152.4)
+			(xy 88.9 152.4)
+		)
+		(uuid "9788bdd0-5eb7-4405-a553-3320dcdf5d97")
+	)
+	(wire
+		(pts
+			(xy 88.9 152.4)
+			(xy 110.49 152.4)
+		)
+		(uuid "7fe2d22d-c395-42f4-a921-9179cb11813a")
+	)
+	(wire
+		(pts
+			(xy 110.49 152.4)
+			(xy 110.49 139.7)
+		)
+		(uuid "05bb2aed-6ff3-4572-828d-65a1a7aefb3b")
+	)
+	(wire
+		(pts
+			(xy 110.49 139.7)
+			(xy 135.89 139.7)
+		)
+		(uuid "c182f488-1fb6-4d89-8b3b-24c781771f50")
+	)
+	(wire
+		(pts
+			(xy 73.66 162.56)
+			(xy 88.9 162.56)
+		)
+		(uuid "e282d1a3-24eb-4d90-97f4-6a583a44b51e")
+	)
+	(wire
+		(pts
+			(xy 88.9 162.56)
+			(xy 115.57 162.56)
+		)
+		(uuid "df679244-fbc9-4fc6-a11c-0f28f5c0c3fe")
+	)
+	(wire
+		(pts
+			(xy 115.57 162.56)
+			(xy 115.57 142.24)
+		)
+		(uuid "19c56f8c-f1b9-4211-8838-4629d724bb8b")
+	)
+	(wire
+		(pts
+			(xy 115.57 142.24)
+			(xy 135.89 142.24)
+		)
+		(uuid "fb486343-0fc5-4dfa-a4aa-bd2668253c62")
+	)
+	(wire
+		(pts
+			(xy 73.66 177.8)
+			(xy 88.9 177.8)
+		)
+		(uuid "e09e67bc-26b1-42e9-9695-158edb432e6b")
+	)
+	(wire
+		(pts
+			(xy 88.9 177.8)
+			(xy 99.06 177.8)
+		)
+		(uuid "af38097b-b7a1-4cda-abb6-a6a49257242f")
+	)
+	(wire
+		(pts
+			(xy 99.06 170.18)
+			(xy 99.06 167.64)
+		)
+		(uuid "dd5d78a3-8bdb-4118-8bba-b153128e9830")
+	)
+	(wire
+		(pts
+			(xy 99.06 177.8)
+			(xy 120.65 177.8)
+		)
+		(uuid "fd2b2310-73e6-42a0-937c-6b76b879b16c")
+	)
+	(wire
+		(pts
+			(xy 120.65 177.8)
+			(xy 120.65 144.78)
+		)
+		(uuid "bad5b766-8a37-422e-b3b2-6472418dd0ce")
+	)
+	(wire
+		(pts
+			(xy 120.65 144.78)
+			(xy 135.89 144.78)
+		)
+		(uuid "5b84df58-872d-41c9-9df4-353072c7be7d")
+	)
+	(wire
+		(pts
+			(xy 73.66 187.96)
+			(xy 88.9 187.96)
+		)
+		(uuid "ba04a8e0-4a27-4f5f-999e-5834eb6e6104")
+	)
+	(wire
+		(pts
+			(xy 88.9 187.96)
+			(xy 125.73 187.96)
+		)
+		(uuid "c4de9ddd-5c02-422d-bd3a-b828d384b1d7")
+	)
+	(wire
+		(pts
+			(xy 125.73 187.96)
+			(xy 125.73 147.32)
+		)
+		(uuid "c0ee1643-ae89-47b2-8b5a-9b04ff794ce6")
+	)
+	(wire
+		(pts
+			(xy 125.73 147.32)
+			(xy 135.89 147.32)
+		)
+		(uuid "c004ba76-a5dc-4129-8718-01025f906e7d")
+	)
+	(wire
+		(pts
+			(xy 73.66 198.12)
+			(xy 88.9 198.12)
+		)
+		(uuid "6e119754-bc18-4e30-a500-b0cfc10d09f1")
+	)
+	(wire
+		(pts
+			(xy 88.9 198.12)
+			(xy 130.81 198.12)
+		)
+		(uuid "a7fa69f1-001f-4e8e-9563-e58def771103")
+	)
+	(wire
+		(pts
+			(xy 130.81 198.12)
+			(xy 130.81 149.86)
+		)
+		(uuid "06a38306-7820-4a26-98a1-560d0ae051a1")
+	)
+	(wire
+		(pts
+			(xy 130.81 149.86)
+			(xy 135.89 149.86)
+		)
+		(uuid "06e311ce-09e6-47ef-a520-0eded7bc3450")
+	)
+	(wire
+		(pts
+			(xy 88.9 210.82)
+			(xy 88.9 213.36)
+		)
+		(uuid "c677109b-cd7a-4177-bef7-245bf854cbc2")
+	)
+	(wire
+		(pts
+			(xy 149.86 160.02)
+			(xy 149.86 162.56)
+		)
+		(uuid "abd74bce-bd8c-4373-bf40-6e00fef1c5cb")
+	)
+	(wire
+		(pts
+			(xy 149.86 162.56)
+			(xy 152.4 162.56)
+		)
+		(uuid "487972bb-a892-409e-a46c-0b7a530731a5")
+	)
+	(wire
+		(pts
+			(xy 154.94 160.02)
+			(xy 154.94 162.56)
+		)
+		(uuid "a4c76e25-9681-4a62-9a6c-03628cfe294a")
+	)
+	(wire
+		(pts
+			(xy 154.94 162.56)
+			(xy 152.4 162.56)
+		)
+		(uuid "75466e1b-a590-4e05-a737-f690b1ba2e15")
+	)
+	(wire
+		(pts
+			(xy 152.4 160.02)
+			(xy 152.4 162.56)
+		)
+		(uuid "77a54015-bfc4-477d-98d6-8a2ac5ca5675")
+	)
+	(wire
+		(pts
+			(xy 168.91 152.4)
+			(xy 173.99 152.4)
+		)
+		(uuid "6f195b3d-da38-457e-8323-496973b1d506")
+	)
+	(wire
+		(pts
+			(xy 168.91 149.86)
+			(xy 186.69 149.86)
+		)
+		(uuid "6184c3fa-234c-4bec-b139-ccd3687d6788")
+	)
+	(wire
+		(pts
+			(xy 168.91 147.32)
+			(xy 199.39 147.32)
+		)
+		(uuid "416a629d-3620-49ed-b997-37d869812612")
+	)
+	(wire
+		(pts
+			(xy 199.39 147.32)
+			(xy 199.39 165.1)
+		)
+		(uuid "d979193d-24f4-44fa-a289-5ecc1df3b0b3")
+	)
+	(wire
+		(pts
+			(xy 199.39 165.1)
+			(xy 205.74 165.1)
+		)
+		(uuid "8a9de801-1ef8-4e10-b974-ffe97aa82f22")
+	)
+	(wire
+		(pts
+			(xy 168.91 144.78)
+			(xy 219.71 144.78)
+		)
+		(uuid "573db084-5be9-4adc-a240-66a17101cb9a")
+	)
+	(wire
+		(pts
+			(xy 219.71 144.78)
+			(xy 219.71 165.1)
+		)
+		(uuid "4983a24e-4d1c-4682-a893-b491d49e3f0b")
+	)
+	(wire
+		(pts
+			(xy 219.71 165.1)
+			(xy 213.36 165.1)
+		)
+		(uuid "c707c11c-bcad-4557-95cf-2f1906e18ecd")
+	)
+	(wire
+		(pts
+			(xy 209.55 170.18)
+			(xy 209.55 172.72)
+		)
+		(uuid "96d69722-f947-4b8d-89de-08396170bf29")
+	)
+	(wire
+		(pts
+			(xy 168.91 137.16)
+			(xy 241.3 137.16)
+		)
+		(uuid "4ac700ae-2b3b-4227-8bee-ea31698c4ed0")
+	)
+	(wire
+		(pts
+			(xy 168.91 139.7)
+			(xy 232.41 139.7)
+		)
+		(uuid "655f6ce7-e14b-4f15-91a3-b8941167d583")
+	)
+	(wire
+		(pts
+			(xy 232.41 139.7)
+			(xy 232.41 162.56)
+		)
+		(uuid "59e5e3ba-a9c4-43d7-82d3-48347cecc7a4")
+	)
+	(wire
+		(pts
+			(xy 232.41 162.56)
+			(xy 241.3 162.56)
+		)
+		(uuid "7445ac8c-3b6a-47ea-a95d-28ad808f36cb")
+	)
+	(wire
+		(pts
+			(xy 248.92 137.16)
+			(xy 254 137.16)
+		)
+		(uuid "3ee929d2-1c1f-4009-a3f3-6e0cb06118c8")
+	)
+	(wire
+		(pts
+			(xy 254 137.16)
+			(xy 254 146.05)
+		)
+		(uuid "f25afdd1-f452-489e-94d5-d8975bc9fd44")
+	)
+	(wire
+		(pts
+			(xy 254 153.67)
+			(xy 254 162.56)
+		)
+		(uuid "3ff6a2e5-f12d-4c1c-a9ae-66a80d20bb52")
+	)
+	(wire
+		(pts
+			(xy 254 137.16)
+			(xy 266.7 137.16)
+		)
+		(uuid "25135b51-9b32-4024-aca3-db63cc0a0eaa")
+	)
+	(wire
+		(pts
+			(xy 266.7 137.16)
+			(xy 266.7 138.43)
+		)
+		(uuid "14f04947-d98a-4a06-97e7-ed8285dea8c4")
+	)
+	(wire
+		(pts
+			(xy 266.7 146.05)
+			(xy 266.7 147.32)
+		)
+		(uuid "1443de32-314f-4ed5-a876-f62e6fb5d612")
+	)
+	(wire
+		(pts
+			(xy 266.7 137.16)
+			(xy 273.05 137.16)
+		)
+		(uuid "89a58187-6c92-437f-b09d-dbb1937edc5b")
+	)
+	(wire
+		(pts
+			(xy 248.92 162.56)
+			(xy 254 162.56)
+		)
+		(uuid "eea40087-3ae2-4097-ba67-0b2abda25cfb")
+	)
+	(wire
+		(pts
+			(xy 254 162.56)
+			(xy 260.35 162.56)
+		)
+		(uuid "6094af1a-5f63-490e-8f31-321f2ac0172c")
+	)
+	(wire
+		(pts
+			(xy 260.35 162.56)
+			(xy 273.05 162.56)
+		)
+		(uuid "9eb9d4c4-7fb2-44c2-a019-977ca5f193be")
+	)
+	(wire
+		(pts
+			(xy 280.67 162.56)
+			(xy 287.02 162.56)
+		)
+		(uuid "15bd1473-38c3-4133-a5fd-f5ef9efdeaa6")
+	)
+	(wire
+		(pts
+			(xy 287.02 162.56)
+			(xy 287.02 137.16)
+		)
+		(uuid "d9266ecf-fe14-4aef-b2e9-d2eb9f1fd586")
+	)
+	(wire
+		(pts
+			(xy 280.67 137.16)
+			(xy 287.02 137.16)
+		)
+		(uuid "d9e933e2-6294-48b8-8016-ee9e3ba59082")
+	)
+	(wire
+		(pts
+			(xy 287.02 137.16)
+			(xy 292.1 137.16)
+		)
+		(uuid "baa7bc7a-5da5-41d5-82a1-469c20c71427")
+	)
+	(wire
+		(pts
+			(xy 299.72 137.16)
+			(xy 304.8 137.16)
+		)
+		(uuid "0c94a6a6-a8b1-4442-bb3d-9d3ad3ad8cb9")
+	)
+	(wire
+		(pts
+			(xy 304.8 137.16)
+			(xy 309.88 137.16)
+		)
+		(uuid "e8a00c41-76e3-41aa-a6aa-f28d0c845a42")
+	)
+	(wire
+		(pts
+			(xy 317.5 137.16)
+			(xy 322.58 137.16)
+		)
+		(uuid "2b298b4e-f219-4473-a3fc-67f8d164603f")
+	)
+	(wire
+		(pts
+			(xy 322.58 137.16)
+			(xy 328.93 137.16)
+		)
+		(uuid "f02e1680-2695-42d6-bcf5-78b9c3f75053")
+	)
+	(wire
+		(pts
+			(xy 322.58 137.16)
+			(xy 322.58 147.32)
+		)
+		(uuid "9432dc21-5161-4ec5-a590-2c62af66bec2")
+	)
+	(wire
+		(pts
+			(xy 322.58 147.32)
+			(xy 323.85 147.32)
+		)
+		(uuid "1006dead-499e-4b8c-8451-257d1d9cc859")
+	)
+	(wire
+		(pts
+			(xy 331.47 147.32)
+			(xy 335.28 147.32)
+		)
+		(uuid "16d77ed4-4d65-4e6c-ae73-165b6e381437")
+	)
+	(wire
+		(pts
+			(xy 342.9 147.32)
+			(xy 344.17 147.32)
+		)
+		(uuid "4f90931b-7935-4019-9e5c-6bf8015a13d6")
+	)
+	(wire
+		(pts
+			(xy 344.17 147.32)
+			(xy 344.17 137.16)
+		)
+		(uuid "f2de569d-a61d-437f-b5c1-be739b9cad6b")
+	)
+	(wire
+		(pts
+			(xy 336.55 137.16)
+			(xy 344.17 137.16)
+		)
+		(uuid "3cfb48f5-4dd8-4bf3-8c1e-fe475ee00d0f")
+	)
+	(wire
+		(pts
+			(xy 344.17 137.16)
+			(xy 349.25 137.16)
+		)
+		(uuid "5d7e109e-cb26-40d7-ba32-ffd351b028ec")
+	)
+	(wire
+		(pts
+			(xy 349.25 137.16)
+			(xy 355.6 137.16)
+		)
+		(uuid "16bee7fe-b624-4c45-9d2a-1aa7cbe255bc")
+	)
+	(wire
+		(pts
+			(xy 363.22 137.16)
+			(xy 368.3 137.16)
+		)
+		(uuid "77296aac-4255-4378-8362-927cc7868cb0")
+	)
+	(wire
+		(pts
+			(xy 368.3 137.16)
+			(xy 373.38 137.16)
+		)
+		(uuid "bd036ad9-c8e2-43a4-bb89-b8d1ba796d4d")
+	)
+	(wire
+		(pts
+			(xy 378.46 142.24)
+			(xy 378.46 144.78)
+		)
+		(uuid "2e41ca9b-5b20-475d-9ee1-b90e4aacc448")
+	)
+	(label "3V3_RF"
+		(at 88.9 99.06 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "cb6d4d53-a1f0-4600-8c4f-74cc1b03db93")
+	)
+	(label "3V3_RF"
+		(at 99.06 167.64 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "7b4e1bc5-ffac-4e0a-8add-62fa4b83dbcd")
+	)
+	(label "RF_P"
+		(at 233.68 137.16 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "c1dd1b27-c82d-46b3-a600-f18a6f9e7ad3")
+	)
+	(label "RF_N"
+		(at 233.68 162.56 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "3e0ca1a0-7b93-47fe-9f26-c020313c8ef7")
+	)
+	(hierarchical_label "CC_SCK"
+		(shape input)
+		(at 73.66 137.16 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "4ba0038e-03be-462c-80c7-9df067076543")
+	)
+	(hierarchical_label "CC_MOSI"
+		(shape input)
+		(at 73.66 152.4 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "077d6def-1648-4e68-8538-42eadcb55fa1")
+	)
+	(hierarchical_label "CC_MISO"
+		(shape output)
+		(at 73.66 162.56 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "01d46ee3-4387-4be1-85ec-2aeb03fd31ca")
+	)
+	(hierarchical_label "CC_CSN"
+		(shape input)
+		(at 73.66 177.8 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "67ff83e8-18ae-4f63-b184-3e8900d9f1aa")
+	)
+	(hierarchical_label "CC_GDO0"
+		(shape output)
+		(at 73.66 187.96 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "fbb3047e-acd0-40a3-980f-d1fe003350e4")
+	)
+	(hierarchical_label "CC_GDO2"
+		(shape output)
+		(at 73.66 198.12 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "7b0f7ff0-cffe-4319-a8d9-dc3bd2864789")
+	)
+  (text "RF: CC1101 868 MHz transceiver, TI CC1101EM 868/915 MHz rev 3.0.0 topology (SWRR045, spec 5.1)"
+    (at 58.42 78.74 0)
+    (effects (font (size 2.54 2.54) (thickness 0.4)) (justify left bottom))
+    (uuid "33723fe9-adab-4db3-b87b-bc8be79ddccb")
+  )
+  (text "Each 100nF next to its supply pin, with its own vias. Route supply -> capacitor -> pin (spec 6.1)."
+    (at 106.68 93.98 0)
+    (effects (font (size 1.27 1.27)) (justify left bottom))
+    (uuid "31b1b936-8efa-4c3d-b0a4-3d977ac1db39")
+  )
+  (text "Filterbalun L121-L132, C121-C124: copy the TI CC1101EM placement, 0402, symmetric (spec 6.1)."
+    (at 241.3 121.92 0)
+    (effects (font (size 1.27 1.27)) (justify left bottom))
+    (uuid "4bf8bdac-079b-4417-a843-b2dbf600a03b")
+  )
+  (text "Wire-wound LQW15AN inductors. Keep C124 and C125: no DC path from RF_P/RF_N to GND."
+    (at 241.3 124.46 0)
+    (effects (font (size 1.27 1.27)) (justify left bottom))
+    (uuid "89998ef7-aa7d-4806-84dd-efe2287b1213")
+  )
+  (text "C126, L125 DNP: fit only if the spectrum measurement\nshows the 699 MHz spur (SWRS061I Table 10, DN017 4)."
+    (at 320.04 154.94 0)
+    (effects (font (size 1.27 1.27)) (justify left bottom))
+    (uuid "ecafb053-95ca-4969-84d4-b806cc35d1c2")
+  )
+  (text "C191, C192 DNP: pi pads to retune positions.\nC125 -> R191 -> J1: 50 ohm grounded coplanar line.\nJ1: edge SMA at the board edge, hand-soldered."
+    (at 320.04 162.56 0)
+    (effects (font (size 1.27 1.27)) (justify left bottom))
+    (uuid "e40fe2f9-dbfb-4f2f-bfb2-54e096985d56")
+  )
+  (text "X1: no digital lines near XOSC_Q1 or under the X1 pin 1 pad.\nC81, C101 between U1 and X1 (spec 6.1)."
+    (at 193.04 184.15 0)
+    (effects (font (size 1.27 1.27)) (justify left bottom))
+    (uuid "ce9e6fe8-780c-4d50-a11e-22f3edc3433c")
+  )
+  (text "DCOUPL (pin 5): C51 only.\nR171 next to pin 17."
+    (at 160.02 175.26 0)
+    (effects (font (size 1.27 1.27)) (justify left bottom))
+    (uuid "58eb27a8-d180-4eeb-940f-76e94958bea1")
+  )
+  (text "TP101-TP107: 1.5 mm round test pads, top side (spec 5.5).\nR210 keeps U1 deselected while the ESP32 boots."
+    (at 58.42 226.06 0)
+    (effects (font (size 1.27 1.27)) (justify left bottom))
+    (uuid "417804c7-cb3a-419e-ad2b-8a896183fd35")
+  )
+	(symbol
+		(lib_id "freedo-radio:CC1101RGPR")
+		(at 152.4 144.78 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "19f5c67f-8b8f-42a1-9616-1fd3b4b47356")
+		(property "Reference" "U1"
+			(at 139.7 130.81 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "CC1101RGPR"
+			(at 162.56 158.75 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "freedo-radio:QFN-20-1EP_4x4mm_P0.5mm_EP2.4x2.4mm_TI_RGP0020H"
+			(at 152.4 144.78 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" "https://www.ti.com/lit/ds/symlink/cc1101.pdf"
+			(at 152.4 144.78 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "TI CC1101 sub-1 GHz transceiver, QFN-20 4x4 (RGP). Pin 21 = exposed die pad, solder to GND."
+			(at 152.4 144.78 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CC1101RGPR"
+			(at 152.4 144.78 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C29953"
+			(at 152.4 144.78 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "JLC"
+			(at 152.4 144.78 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "U1")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:C")
+		(at 111.76 107.95 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "3ce49aaa-f238-4daa-867c-3beec52ca5f1")
+		(property "Reference" "C41"
+			(at 114.3 106.68 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "100nF"
+			(at 114.3 109.22 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "freedo-radio:C_0402_1005Metric"
+			(at 111.76 107.95 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 111.76 107.95 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Unpolarized capacitor"
+			(at 111.76 107.95 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05B104KO5NNNC"
+			(at 111.76 107.95 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C1525"
+			(at 111.76 107.95 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "JLC"
+			(at 111.76 107.95 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "C41")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:C")
+		(at 127 107.95 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "62083b86-1ba6-406a-9a56-6144d76b6218")
+		(property "Reference" "C91"
+			(at 129.54 106.68 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "100nF"
+			(at 129.54 109.22 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "freedo-radio:C_0402_1005Metric"
+			(at 127 107.95 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 127 107.95 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Unpolarized capacitor"
+			(at 127 107.95 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05B104KO5NNNC"
+			(at 127 107.95 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C1525"
+			(at 127 107.95 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "JLC"
+			(at 127 107.95 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "C91")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:C")
+		(at 142.24 107.95 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "b1f3614d-a2fc-4d6e-849b-fd2f56c452bd")
+		(property "Reference" "C111"
+			(at 144.78 106.68 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "100nF"
+			(at 144.78 109.22 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "freedo-radio:C_0402_1005Metric"
+			(at 142.24 107.95 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 142.24 107.95 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Unpolarized capacitor"
+			(at 142.24 107.95 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05B104KO5NNNC"
+			(at 142.24 107.95 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C1525"
+			(at 142.24 107.95 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "JLC"
+			(at 142.24 107.95 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "C111")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:C")
+		(at 172.72 107.95 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "85175ec0-fc3d-421c-bd70-b67f851bf07c")
+		(property "Reference" "C141"
+			(at 175.26 106.68 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "100nF"
+			(at 175.26 109.22 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "freedo-radio:C_0402_1005Metric"
+			(at 172.72 107.95 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 172.72 107.95 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Unpolarized capacitor"
+			(at 172.72 107.95 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05B104KO5NNNC"
+			(at 172.72 107.95 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C1525"
+			(at 172.72 107.95 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "JLC"
+			(at 172.72 107.95 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "C141")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:C")
+		(at 187.96 107.95 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "052f8a56-14c0-4afc-97f4-f41f8a9f8aa4")
+		(property "Reference" "C151"
+			(at 190.5 106.68 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "100nF"
+			(at 190.5 109.22 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "freedo-radio:C_0402_1005Metric"
+			(at 187.96 107.95 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 187.96 107.95 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Unpolarized capacitor"
+			(at 187.96 107.95 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05B104KO5NNNC"
+			(at 187.96 107.95 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C1525"
+			(at 187.96 107.95 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "JLC"
+			(at 187.96 107.95 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "C151")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:C")
+		(at 203.2 107.95 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "2155eddb-7597-4939-8dc5-2dc0208a5593")
+		(property "Reference" "C181"
+			(at 205.74 106.68 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "100nF"
+			(at 205.74 109.22 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "freedo-radio:C_0402_1005Metric"
+			(at 203.2 107.95 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 203.2 107.95 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Unpolarized capacitor"
+			(at 203.2 107.95 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05B104KO5NNNC"
+			(at 203.2 107.95 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C1525"
+			(at 203.2 107.95 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "JLC"
+			(at 203.2 107.95 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "C181")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:FerriteBead_Small")
+		(at 83.82 99.06 90)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "da7724b7-ee8c-4194-9779-40435cab2d35")
+		(property "Reference" "L1"
+			(at 83.82 95.25 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "BLM15HG102SN1D"
+			(at 82.55 102.87 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "freedo-radio:L_0402_1005Metric"
+			(at 83.82 99.06 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 83.82 99.06 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Ferrite bead, small symbol"
+			(at 83.82 99.06 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "BLM15HG102SN1D"
+			(at 83.82 99.06 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C76889"
+			(at 83.82 99.06 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "JLC"
+			(at 83.82 99.06 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "L1")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:C")
+		(at 93.98 102.87 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "7edd380d-9716-47f7-88d1-207951eb0525")
+		(property "Reference" "C1"
+			(at 96.52 101.6 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "1uF"
+			(at 96.52 104.14 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "freedo-radio:C_0402_1005Metric"
+			(at 93.98 102.87 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 93.98 102.87 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Unpolarized capacitor"
+			(at 93.98 102.87 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05A105KA5NQNC"
+			(at 93.98 102.87 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C52923"
+			(at 93.98 102.87 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "JLC"
+			(at 93.98 102.87 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "C1")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:TestPoint")
+		(at 88.9 137.16 0)
+		(unit 1)
+		(in_bom no)
+		(on_board yes)
+		(dnp no)
+		(uuid "d32ed813-3883-4327-aa19-6117d24630d4")
+		(property "Reference" "TP101"
+			(at 88.9 130.302 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "CC_SCK"
+			(at 88.9 132.08 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "freedo-radio:TestPoint_Pad_D1.5mm"
+			(at 88.9 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 88.9 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "test point"
+			(at 88.9 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "none"
+			(at 88.9 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "TP101")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:TestPoint")
+		(at 88.9 152.4 0)
+		(unit 1)
+		(in_bom no)
+		(on_board yes)
+		(dnp no)
+		(uuid "5f37bc39-79a1-4bb4-8a50-81394ced6c73")
+		(property "Reference" "TP102"
+			(at 88.9 145.542 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "CC_MOSI"
+			(at 88.9 147.32 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "freedo-radio:TestPoint_Pad_D1.5mm"
+			(at 88.9 152.4 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 88.9 152.4 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "test point"
+			(at 88.9 152.4 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "none"
+			(at 88.9 152.4 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "TP102")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:TestPoint")
+		(at 88.9 162.56 0)
+		(unit 1)
+		(in_bom no)
+		(on_board yes)
+		(dnp no)
+		(uuid "de3fc4c5-be38-4579-953a-de7baea04f36")
+		(property "Reference" "TP103"
+			(at 88.9 155.702 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "CC_MISO"
+			(at 88.9 157.48 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "freedo-radio:TestPoint_Pad_D1.5mm"
+			(at 88.9 162.56 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 88.9 162.56 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "test point"
+			(at 88.9 162.56 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "none"
+			(at 88.9 162.56 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "TP103")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:TestPoint")
+		(at 88.9 177.8 0)
+		(unit 1)
+		(in_bom no)
+		(on_board yes)
+		(dnp no)
+		(uuid "5ff4335f-bae0-4fe8-b71c-506746652871")
+		(property "Reference" "TP104"
+			(at 88.9 170.942 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "CC_CSN"
+			(at 88.9 172.72 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "freedo-radio:TestPoint_Pad_D1.5mm"
+			(at 88.9 177.8 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 88.9 177.8 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "test point"
+			(at 88.9 177.8 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "none"
+			(at 88.9 177.8 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "TP104")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:R")
+		(at 99.06 173.99 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "3e019a2e-76e4-4c32-a952-e30c889b53b8")
+		(property "Reference" "R210"
+			(at 101.6 172.72 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "10k"
+			(at 101.6 175.26 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "freedo-radio:R_0603_1608Metric"
+			(at 99.06 173.99 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 99.06 173.99 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Resistor"
+			(at 99.06 173.99 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "0603WAF1002T5E"
+			(at 99.06 173.99 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C25804"
+			(at 99.06 173.99 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "JLC"
+			(at 99.06 173.99 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "R210")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:TestPoint")
+		(at 88.9 187.96 0)
+		(unit 1)
+		(in_bom no)
+		(on_board yes)
+		(dnp no)
+		(uuid "8c1a681e-1119-42f3-84e8-4ce2cb6585d3")
+		(property "Reference" "TP105"
+			(at 88.9 181.102 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "CC_GDO0"
+			(at 88.9 182.88 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "freedo-radio:TestPoint_Pad_D1.5mm"
+			(at 88.9 187.96 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 88.9 187.96 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "test point"
+			(at 88.9 187.96 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "none"
+			(at 88.9 187.96 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "TP105")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:TestPoint")
+		(at 88.9 198.12 0)
+		(unit 1)
+		(in_bom no)
+		(on_board yes)
+		(dnp no)
+		(uuid "147f1c8d-44f4-43d1-830c-55b161705127")
+		(property "Reference" "TP106"
+			(at 88.9 191.262 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "CC_GDO2"
+			(at 88.9 193.04 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "freedo-radio:TestPoint_Pad_D1.5mm"
+			(at 88.9 198.12 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 88.9 198.12 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "test point"
+			(at 88.9 198.12 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "none"
+			(at 88.9 198.12 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "TP106")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:TestPoint")
+		(at 88.9 210.82 0)
+		(unit 1)
+		(in_bom no)
+		(on_board yes)
+		(dnp no)
+		(uuid "57762732-fa88-4e2e-a16e-751dc7bd0c7d")
+		(property "Reference" "TP107"
+			(at 88.9 203.962 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 88.9 205.74 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "freedo-radio:TestPoint_Pad_D1.5mm"
+			(at 88.9 210.82 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 88.9 210.82 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "test point"
+			(at 88.9 210.82 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "none"
+			(at 88.9 210.82 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "TP107")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:C")
+		(at 173.99 156.21 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "5656329b-fcb0-4889-8b28-7a4d67c90d69")
+		(property "Reference" "C51"
+			(at 176.53 154.94 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "100nF"
+			(at 176.53 157.48 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "freedo-radio:C_0402_1005Metric"
+			(at 173.99 156.21 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 173.99 156.21 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Unpolarized capacitor"
+			(at 173.99 156.21 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05B104KO5NNNC"
+			(at 173.99 156.21 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C1525"
+			(at 173.99 156.21 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "JLC"
+			(at 173.99 156.21 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "C51")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:R")
+		(at 186.69 153.67 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "ea20561a-89da-4c9c-b0c3-d0044791c99a")
+		(property "Reference" "R171"
+			(at 189.23 152.4 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "56k"
+			(at 189.23 154.94 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "freedo-radio:R_0402_1005Metric"
+			(at 186.69 153.67 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 186.69 153.67 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Resistor"
+			(at 186.69 153.67 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "0402WGF5602TCE"
+			(at 186.69 153.67 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C25796"
+			(at 186.69 153.67 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "JLC"
+			(at 186.69 153.67 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "R171")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:X322526MMB4SI")
+		(at 209.55 165.1 0)
+		(mirror y)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "c43c01e4-1b1e-4e20-b28b-c4f6a53aef74")
+		(property "Reference" "X1"
+			(at 209.55 156.21 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "X322526MMB4SI"
+			(at 209.55 158.75 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "freedo-radio:CRYSTAL-SMD_4P-L3.2-W2.5-BL"
+			(at 209.55 165.1 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" "https://www.lcsc.com/datasheet/lcsc_datasheet_2403291504_YXC-Crystal-Oscillators-X322526MMB4SI_C15192.pdf"
+			(at 209.55 165.1 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "YXC YSX321SL crystal 26 MHz, CL 10 pF, SMD3225-4P. Pins 1/3 = crystal, pins 2/4 = GND (case)."
+			(at 209.55 165.1 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "X322526MMB4SI"
+			(at 209.55 165.1 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C15192"
+			(at 209.55 165.1 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "JLC"
+			(at 209.55 165.1 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "X1")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:C")
+		(at 199.39 168.91 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "cd7a5d44-665c-4b4a-b5b7-e7f5222e644f")
+		(property "Reference" "C101"
+			(at 196.85 167.64 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
+		(property "Value" "15pF"
+			(at 196.85 170.18 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
+		(property "Footprint" "freedo-radio:C_0402_1005Metric"
+			(at 199.39 168.91 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 199.39 168.91 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Unpolarized capacitor"
+			(at 199.39 168.91 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "0402CG150J500NT"
+			(at 199.39 168.91 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C1548"
+			(at 199.39 168.91 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "JLC"
+			(at 199.39 168.91 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "C101")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:C")
+		(at 219.71 168.91 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "b5577bb1-589d-4337-b1cc-6b67963fc2f0")
+		(property "Reference" "C81"
+			(at 222.25 167.64 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "15pF"
+			(at 222.25 170.18 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "freedo-radio:C_0402_1005Metric"
+			(at 219.71 168.91 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 219.71 168.91 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Unpolarized capacitor"
+			(at 219.71 168.91 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "0402CG150J500NT"
+			(at 219.71 168.91 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C1548"
+			(at 219.71 168.91 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "JLC"
+			(at 219.71 168.91 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "C81")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:L")
+		(at 245.11 137.16 90)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "bbf35958-e625-4081-9bab-ab090bccddcd")
+		(property "Reference" "L121"
+			(at 245.11 131.445 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "12nH"
+			(at 245.11 133.35 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "freedo-radio:L_0402_1005Metric"
+			(at 245.11 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 245.11 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Inductor"
+			(at 245.11 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "LQW15AN12NG00D"
+			(at 245.11 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C86128"
+			(at 245.11 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "JLC"
+			(at 245.11 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "L121")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:L")
+		(at 245.11 162.56 90)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "7693ff0c-a373-4fd8-ad7d-d9f6a242780a")
+		(property "Reference" "L131"
+			(at 245.11 156.845 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "12nH"
+			(at 245.11 158.75 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "freedo-radio:L_0402_1005Metric"
+			(at 245.11 162.56 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 245.11 162.56 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Inductor"
+			(at 245.11 162.56 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "LQW15AN12NG00D"
+			(at 245.11 162.56 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C86128"
+			(at 245.11 162.56 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "JLC"
+			(at 245.11 162.56 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "L131")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:C")
+		(at 254 149.86 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "aa191a51-fc86-45e5-a213-2b9185aecfa4")
+		(property "Reference" "C121"
+			(at 256.54 148.59 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "1pF"
+			(at 256.54 151.13 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "freedo-radio:C_0402_1005Metric"
+			(at 254 149.86 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 254 149.86 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Unpolarized capacitor"
+			(at 254 149.86 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "0402CG1R0C500NT"
+			(at 254 149.86 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C1550"
+			(at 254 149.86 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "JLC"
+			(at 254 149.86 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "C121")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:L")
+		(at 266.7 142.24 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "0ac7fc50-5018-43ac-98c6-0fc591f766ee")
+		(property "Reference" "L122"
+			(at 269.24 140.97 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "18nH"
+			(at 269.24 143.51 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "freedo-radio:L_0402_1005Metric"
+			(at 266.7 142.24 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 266.7 142.24 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Inductor"
+			(at 266.7 142.24 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "LQW15AN18NG00D"
+			(at 266.7 142.24 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C91622"
+			(at 266.7 142.24 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "JLC"
+			(at 266.7 142.24 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "L122")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:C")
+		(at 266.7 151.13 180)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "b9411a3c-87c1-4977-aa29-b4a51f9098be")
+		(property "Reference" "C124"
+			(at 269.24 149.86 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
+		(property "Value" "100pF"
+			(at 269.24 152.4 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
+		(property "Footprint" "freedo-radio:C_0402_1005Metric"
+			(at 266.7 151.13 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 266.7 151.13 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Unpolarized capacitor"
+			(at 266.7 151.13 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "0402CG101J500NT"
+			(at 266.7 151.13 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C1546"
+			(at 266.7 151.13 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "JLC"
+			(at 266.7 151.13 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "C124")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:C")
+		(at 276.86 137.16 90)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "962d12f9-c015-4aba-8c29-eff9af6b6835")
+		(property "Reference" "C122"
+			(at 276.86 131.445 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "1.5pF"
+			(at 276.86 133.35 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "freedo-radio:C_0402_1005Metric"
+			(at 276.86 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 276.86 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Unpolarized capacitor"
+			(at 276.86 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "0402CG1R5C500NT"
+			(at 276.86 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C1552"
+			(at 276.86 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "JLC"
+			(at 276.86 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "C122")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:C")
+		(at 260.35 166.37 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "cac2b649-d0ff-482e-a864-b0adca04e03b")
+		(property "Reference" "C131"
+			(at 262.89 165.1 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "1.5pF"
+			(at 262.89 167.64 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "freedo-radio:C_0402_1005Metric"
+			(at 260.35 166.37 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 260.35 166.37 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Unpolarized capacitor"
+			(at 260.35 166.37 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "0402CG1R5C500NT"
+			(at 260.35 166.37 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C1552"
+			(at 260.35 166.37 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "JLC"
+			(at 260.35 166.37 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "C131")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:L")
+		(at 276.86 162.56 270)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "d6708848-0e0b-4f8b-aebd-3cb49a3dab6f")
+		(property "Reference" "L132"
+			(at 276.86 156.845 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "18nH"
+			(at 276.86 158.75 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "freedo-radio:L_0402_1005Metric"
+			(at 276.86 162.56 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 276.86 162.56 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Inductor"
+			(at 276.86 162.56 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "LQW15AN18NG00D"
+			(at 276.86 162.56 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C91622"
+			(at 276.86 162.56 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "JLC"
+			(at 276.86 162.56 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "L132")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:L")
+		(at 295.91 137.16 270)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "5415e094-4e65-4652-a039-731a0d7bc995")
+		(property "Reference" "L123"
+			(at 295.91 131.445 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "12nH"
+			(at 295.91 133.35 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "freedo-radio:L_0402_1005Metric"
+			(at 295.91 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 295.91 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Inductor"
+			(at 295.91 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "LQW15AN12NG00D"
+			(at 295.91 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C86128"
+			(at 295.91 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "JLC"
+			(at 295.91 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "L123")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:C")
+		(at 304.8 140.97 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "7c30c2db-ffda-42b8-93c5-6e9df30b3969")
+		(property "Reference" "C123"
+			(at 307.34 139.7 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "3.3pF"
+			(at 307.34 142.24 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "freedo-radio:C_0402_1005Metric"
+			(at 304.8 140.97 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 304.8 140.97 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Unpolarized capacitor"
+			(at 304.8 140.97 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "0402CG3R3C500NT"
+			(at 304.8 140.97 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C1565"
+			(at 304.8 140.97 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "JLC"
+			(at 304.8 140.97 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "C123")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:L")
+		(at 313.69 137.16 270)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "cf806e9d-da5e-440d-ac39-18bf0a714153")
+		(property "Reference" "L124"
+			(at 313.69 131.445 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "12nH"
+			(at 313.69 133.35 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "freedo-radio:L_0402_1005Metric"
+			(at 313.69 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 313.69 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Inductor"
+			(at 313.69 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "LQW15AN12NG00D"
+			(at 313.69 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C86128"
+			(at 313.69 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "JLC"
+			(at 313.69 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "L124")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:C")
+		(at 332.74 137.16 90)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "e34006e6-3a41-47bf-a11c-8e932c5d3b64")
+		(property "Reference" "C125"
+			(at 332.74 131.445 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "12pF"
+			(at 332.74 133.35 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "freedo-radio:C_0402_1005Metric"
+			(at 332.74 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 332.74 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Unpolarized capacitor"
+			(at 332.74 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "0402CG120J500NT"
+			(at 332.74 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C1547"
+			(at 332.74 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "JLC"
+			(at 332.74 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "C125")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:C")
+		(at 327.66 147.32 90)
+		(unit 1)
+		(in_bom no)
+		(on_board yes)
+		(dnp yes)
+		(uuid "f32614c5-4523-41ec-b452-978c334e3639")
+		(property "Reference" "C126"
+			(at 327.66 141.605 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "47pF"
+			(at 327.66 143.51 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "freedo-radio:C_0402_1005Metric"
+			(at 327.66 147.32 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 327.66 147.32 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Unpolarized capacitor"
+			(at 327.66 147.32 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "0402CG470J500NT"
+			(at 327.66 147.32 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C1567"
+			(at 327.66 147.32 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "none"
+			(at 327.66 147.32 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "C126")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:L")
+		(at 339.09 147.32 90)
+		(unit 1)
+		(in_bom no)
+		(on_board yes)
+		(dnp yes)
+		(uuid "c439224b-95c0-4b18-abf9-162105d2b408")
+		(property "Reference" "L125"
+			(at 339.09 141.605 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "3.3nH"
+			(at 339.09 143.51 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "freedo-radio:L_0402_1005Metric"
+			(at 339.09 147.32 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 339.09 147.32 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Inductor"
+			(at 339.09 147.32 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "LQW15AN3N3D10D"
+			(at 339.09 147.32 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C98061"
+			(at 339.09 147.32 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "none"
+			(at 339.09 147.32 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "L125")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:C")
+		(at 349.25 140.97 0)
+		(unit 1)
+		(in_bom no)
+		(on_board yes)
+		(dnp yes)
+		(uuid "34e59e4a-1d15-4c36-a28e-340633f32275")
+		(property "Reference" "C191"
+			(at 351.79 139.7 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "DNP"
+			(at 351.79 142.24 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "freedo-radio:C_0402_1005Metric"
+			(at 349.25 140.97 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 349.25 140.97 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Unpolarized capacitor"
+			(at 349.25 140.97 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" ""
+			(at 349.25 140.97 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" ""
+			(at 349.25 140.97 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "none"
+			(at 349.25 140.97 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "C191")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:R")
+		(at 359.41 137.16 90)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "1b4cbb9d-3cfa-419e-8dad-9b8f628f9abb")
+		(property "Reference" "R191"
+			(at 359.41 131.445 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "0R"
+			(at 359.41 133.35 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "freedo-radio:R_0402_1005Metric"
+			(at 359.41 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 359.41 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Resistor"
+			(at 359.41 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "0402WGF0000TCE"
+			(at 359.41 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C17168"
+			(at 359.41 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "JLC"
+			(at 359.41 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "R191")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:C")
+		(at 368.3 140.97 0)
+		(unit 1)
+		(in_bom no)
+		(on_board yes)
+		(dnp yes)
+		(uuid "34c970d1-82d1-4dc2-a91b-237f954cbf97")
+		(property "Reference" "C192"
+			(at 370.84 139.7 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "DNP"
+			(at 370.84 142.24 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "freedo-radio:C_0402_1005Metric"
+			(at 368.3 140.97 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 368.3 140.97 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Unpolarized capacitor"
+			(at 368.3 140.97 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" ""
+			(at 368.3 140.97 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" ""
+			(at 368.3 140.97 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "none"
+			(at 368.3 140.97 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "C192")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:SMA-KE-347-H13.5-1.6")
+		(at 378.46 137.16 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "dccf6df6-18d7-402f-a76a-8c226e46e3d2")
+		(property "Reference" "J1"
+			(at 378.46 132.08 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "SMA-KE-347-H13.5-1.6"
+			(at 384.81 128.27 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
+		(property "Footprint" "freedo-radio:SMA_XUNPU_SMA-KE-347-H13.5-1.6_EdgeMount"
+			(at 378.46 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/2304281213_XUNPU-SMA-KE-347-H13-5-1-6_C5723200.pdf"
+			(at 378.46 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "XUNPU SMA jack, edge mount, 1.6 mm board, 50 ohm. Pin 1 = center, pin 2 = ground (4 pads, top and bottom)."
+			(at 378.46 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "SMA-KE-347-H13.5-1.6"
+			(at 378.46 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C5723200"
+			(at 378.46 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "hand"
+			(at 378.46 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "J1")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:GND")
+		(at 111.76 111.76 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "2a2623fc-c14f-4a19-9aa4-a1bd4f175e49")
+		(property "Reference" "#PWR0101"
+			(at 111.76 118.11 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 111.76 115.57 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 111.76 111.76 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 111.76 111.76 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 111.76 111.76 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "#PWR0101")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:GND")
+		(at 127 111.76 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "8896cb7e-302d-41b8-b002-92c232b1da33")
+		(property "Reference" "#PWR0102"
+			(at 127 118.11 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 127 115.57 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 127 111.76 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 127 111.76 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 127 111.76 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "#PWR0102")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:GND")
+		(at 142.24 111.76 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "708afdc5-cd8e-408e-839b-610cae231c81")
+		(property "Reference" "#PWR0103"
+			(at 142.24 118.11 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 142.24 115.57 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 142.24 111.76 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 142.24 111.76 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 142.24 111.76 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "#PWR0103")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:GND")
+		(at 172.72 111.76 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "46d8b5b5-0734-48d3-8b11-5a233b8abdd4")
+		(property "Reference" "#PWR0104"
+			(at 172.72 118.11 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 172.72 115.57 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 172.72 111.76 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 172.72 111.76 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 172.72 111.76 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "#PWR0104")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:GND")
+		(at 187.96 111.76 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "eaf3f69b-ff64-4e68-90b5-e40f204c943f")
+		(property "Reference" "#PWR0105"
+			(at 187.96 118.11 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 187.96 115.57 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 187.96 111.76 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 187.96 111.76 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 187.96 111.76 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "#PWR0105")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:GND")
+		(at 203.2 111.76 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "2bfc8d59-4842-4454-93f7-4406f23c4282")
+		(property "Reference" "#PWR0106"
+			(at 203.2 118.11 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 203.2 115.57 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 203.2 111.76 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 203.2 111.76 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 203.2 111.76 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "#PWR0106")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:GND")
+		(at 93.98 106.68 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "bb22181e-a362-4f74-b135-de20688a4566")
+		(property "Reference" "#PWR0107"
+			(at 93.98 113.03 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 93.98 110.49 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 93.98 106.68 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 93.98 106.68 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 93.98 106.68 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "#PWR0107")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:GND")
+		(at 88.9 213.36 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "ccf7b053-76f7-44da-8bec-e5fb0f89b5f2")
+		(property "Reference" "#PWR0108"
+			(at 88.9 219.71 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 88.9 217.17 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 88.9 213.36 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 88.9 213.36 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 88.9 213.36 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "#PWR0108")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:GND")
+		(at 152.4 162.56 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "a98d5b22-02a7-4cb6-8192-bb5f0ad25899")
+		(property "Reference" "#PWR0109"
+			(at 152.4 168.91 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 152.4 166.37 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 152.4 162.56 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 152.4 162.56 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 152.4 162.56 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "#PWR0109")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:GND")
+		(at 173.99 160.02 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "782e956c-49d4-4d9b-a423-6cb93c681d41")
+		(property "Reference" "#PWR0110"
+			(at 173.99 166.37 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 173.99 163.83 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 173.99 160.02 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 173.99 160.02 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 173.99 160.02 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "#PWR0110")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:GND")
+		(at 186.69 157.48 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "e76c24e5-407c-455c-9259-05b7b3991983")
+		(property "Reference" "#PWR0111"
+			(at 186.69 163.83 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 186.69 161.29 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 186.69 157.48 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 186.69 157.48 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 186.69 157.48 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "#PWR0111")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:GND")
+		(at 199.39 172.72 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "dcfa0b59-3b56-4fda-9d80-efd205e5fb3a")
+		(property "Reference" "#PWR0112"
+			(at 199.39 179.07 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 199.39 176.53 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 199.39 172.72 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 199.39 172.72 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 199.39 172.72 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "#PWR0112")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:GND")
+		(at 219.71 172.72 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "0072ba0e-2167-4857-8b92-009eeab87815")
+		(property "Reference" "#PWR0113"
+			(at 219.71 179.07 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 219.71 176.53 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 219.71 172.72 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 219.71 172.72 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 219.71 172.72 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "#PWR0113")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:GND")
+		(at 209.55 172.72 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "380c35a6-f824-4cae-b4f3-80d5b1c374a6")
+		(property "Reference" "#PWR0114"
+			(at 209.55 179.07 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 209.55 176.53 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 209.55 172.72 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 209.55 172.72 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 209.55 172.72 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "#PWR0114")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:GND")
+		(at 266.7 154.94 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "d62fe93e-3ede-4f3a-b4a7-4184d531af1a")
+		(property "Reference" "#PWR0115"
+			(at 266.7 161.29 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 266.7 158.75 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 266.7 154.94 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 266.7 154.94 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 266.7 154.94 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "#PWR0115")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:GND")
+		(at 260.35 170.18 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "9b3eb2bf-f310-4388-8517-007972b7a741")
+		(property "Reference" "#PWR0116"
+			(at 260.35 176.53 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 260.35 173.99 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 260.35 170.18 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 260.35 170.18 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 260.35 170.18 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "#PWR0116")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:GND")
+		(at 304.8 144.78 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "e062b069-dd01-417d-9f79-7aa78c3ce4ea")
+		(property "Reference" "#PWR0117"
+			(at 304.8 151.13 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 304.8 148.59 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 304.8 144.78 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 304.8 144.78 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 304.8 144.78 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "#PWR0117")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:GND")
+		(at 349.25 144.78 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "1b228639-50c2-4c86-aef1-b7d8cff0bfeb")
+		(property "Reference" "#PWR0118"
+			(at 349.25 151.13 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 349.25 148.59 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 349.25 144.78 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 349.25 144.78 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 349.25 144.78 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "#PWR0118")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:GND")
+		(at 368.3 144.78 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "fb481103-dba0-4cc4-b7b1-9a3c6b2e4617")
+		(property "Reference" "#PWR0119"
+			(at 368.3 151.13 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 368.3 148.59 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 368.3 144.78 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 368.3 144.78 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 368.3 144.78 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "#PWR0119")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:GND")
+		(at 378.46 144.78 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "0f7952da-8001-492b-a4cf-fd917431bf31")
+		(property "Reference" "#PWR0120"
+			(at 378.46 151.13 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 378.46 148.59 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 378.46 144.78 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 378.46 144.78 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 378.46 144.78 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "#PWR0120")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:+3V3")
+		(at 76.2 99.06 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "cd4ca17c-7d3a-40f0-ac63-7d04d416cc14")
+		(property "Reference" "#PWR0121"
+			(at 76.2 102.87 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "+3V3"
+			(at 76.2 95.504 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 76.2 99.06 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 76.2 99.06 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"+3V3\""
+			(at 76.2 99.06 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "#PWR0121")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:PWR_FLAG")
+		(at 99.06 99.06 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "d2891517-b4e7-4b04-80a3-d82956f34c24")
+		(property "Reference" "#FLG0101"
+			(at 99.06 97.155 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "PWR_FLAG"
+			(at 99.06 95.25 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 99.06 99.06 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 99.06 99.06 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Special symbol for telling ERC where power comes from"
+			(at 99.06 99.06 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/ce37e141-8f8d-46d8-b045-f9eed9e63e67"
+					(reference "#FLG0101")
+					(unit 1)
+				)
+			)
+		)
+	)
+)

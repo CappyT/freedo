@@ -4,6 +4,644 @@
 	(generator_version "10.0")
 	(uuid "11ed978d-3bf3-4322-85f7-9cc8d6b6b029")
 	(paper "A4")
-	(lib_symbols
+	(title_block
+		(title "freedo radio rev A")
+		(date "2026-09-24")
+		(rev "A")
+		(comment 1 "ESP32-S3-MINI-1-N8, CC1101 868 MHz, W5500 Ethernet, optional isolated PoE, USB-C")
+		(comment 2 "Design spec: hardware/radio/README.md")
 	)
+	(lib_symbols)
+	(wire
+		(pts
+			(xy 86.36 73.66)
+			(xy 119.38 73.66)
+		)
+		(uuid "dd799694-1e21-40af-96d4-ff6864306e94")
+	)
+	(wire
+		(pts
+			(xy 86.36 76.2)
+			(xy 119.38 76.2)
+		)
+		(uuid "7c8d05cc-a1c2-4dd5-80b7-dfcc736619fb")
+	)
+	(wire
+		(pts
+			(xy 165.1 55.88)
+			(xy 198.12 55.88)
+		)
+		(uuid "432014ad-b9ba-46b3-96a7-a8e51535e89c")
+	)
+	(wire
+		(pts
+			(xy 165.1 58.42)
+			(xy 198.12 58.42)
+		)
+		(uuid "3a196e45-040a-4cc8-8909-52bec5d75d75")
+	)
+	(wire
+		(pts
+			(xy 165.1 60.96)
+			(xy 198.12 60.96)
+		)
+		(uuid "c185cd1b-e08a-4e13-9d82-49ff940c9ccd")
+	)
+	(wire
+		(pts
+			(xy 165.1 63.5)
+			(xy 198.12 63.5)
+		)
+		(uuid "7574d392-5936-479a-9c24-9e915f9e9f4d")
+	)
+	(wire
+		(pts
+			(xy 165.1 66.04)
+			(xy 198.12 66.04)
+		)
+		(uuid "61aed3c6-d990-4f12-8602-6f5ce6d2ce67")
+	)
+	(wire
+		(pts
+			(xy 165.1 68.58)
+			(xy 198.12 68.58)
+		)
+		(uuid "af7fe4fb-17e6-4335-9d9a-15ea06ecc8db")
+	)
+	(wire
+		(pts
+			(xy 165.1 86.36)
+			(xy 198.12 86.36)
+		)
+		(uuid "d9c2a4ad-f2cc-4a3e-bfe2-067fd83b1ca3")
+	)
+	(wire
+		(pts
+			(xy 165.1 88.9)
+			(xy 198.12 88.9)
+		)
+		(uuid "adb1b4cc-17a5-4ecc-99ba-098b35a6f315")
+	)
+	(wire
+		(pts
+			(xy 165.1 91.44)
+			(xy 198.12 91.44)
+		)
+		(uuid "b16f4606-2efb-4842-83f0-06e462fd24ff")
+	)
+	(wire
+		(pts
+			(xy 165.1 93.98)
+			(xy 198.12 93.98)
+		)
+		(uuid "7f0899ae-f5ad-4b3d-99e4-c021bc0f32dc")
+	)
+	(wire
+		(pts
+			(xy 165.1 96.52)
+			(xy 198.12 96.52)
+		)
+		(uuid "ae3b8201-14fb-48d4-8a48-520f5b21861e")
+	)
+	(wire
+		(pts
+			(xy 165.1 99.06)
+			(xy 198.12 99.06)
+		)
+		(uuid "df99aee5-b6e2-46cf-9562-68a0fb4384dd")
+	)
+	(wire
+		(pts
+			(xy 86.36 88.9)
+			(xy 101.6 88.9)
+		)
+		(uuid "62bdafe4-24ba-4a2c-9238-9c84ac3dfc0b")
+	)
+	(wire
+		(pts
+			(xy 101.6 88.9)
+			(xy 101.6 116.84)
+		)
+		(uuid "d5ad45b4-0e71-4992-b2e0-a6022048ddc6")
+	)
+	(wire
+		(pts
+			(xy 101.6 116.84)
+			(xy 185.42 116.84)
+		)
+		(uuid "34769942-651b-486e-ba0d-768835f0a35a")
+	)
+	(wire
+		(pts
+			(xy 185.42 116.84)
+			(xy 185.42 104.14)
+		)
+		(uuid "8517178c-de22-4476-9aa5-722284c5b169")
+	)
+	(wire
+		(pts
+			(xy 185.42 104.14)
+			(xy 198.12 104.14)
+		)
+		(uuid "f61f10a5-7bca-4e2d-b214-853a4db30713")
+	)
+	(sheet
+		(at 45.72 68.58)
+		(size 40.64 25.4)
+		(fields_autoplaced)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(stroke
+			(width 0.1524)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0.0000)
+		)
+		(uuid "2dddeba1-e87b-4573-8b05-60b009060731")
+		(property "Sheetname" "usb_power"
+			(at 45.72 67.8684 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+		)
+		(property "Sheetfile" "usb_power.kicad_sch"
+			(at 45.72 94.5646 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left top)
+			)
+		)
+		(pin "USB_DN" bidirectional
+			(at 86.36 76.2 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+			(uuid "745808f0-3284-4af5-a5c9-2fc253613326")
+		)
+		(pin "USB_DP" bidirectional
+			(at 86.36 73.66 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+			(uuid "86b669d6-07b4-499c-b24d-4b95ce5c1891")
+		)
+		(pin "5V_SYS" passive
+			(at 86.36 88.9 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+			(uuid "e95af6af-d439-4681-8171-657727ab3dac")
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029"
+					(page "2")
+				)
+			)
+		)
+	)
+	(sheet
+		(at 119.38 50.8)
+		(size 45.72 55.88)
+		(fields_autoplaced)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(stroke
+			(width 0.1524)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0.0000)
+		)
+		(uuid "00b1a12d-78e9-4603-825f-6baf2f84fd14")
+		(property "Sheetname" "mcu"
+			(at 119.38 50.0884 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+		)
+		(property "Sheetfile" "mcu.kicad_sch"
+			(at 119.38 107.2646 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left top)
+			)
+		)
+		(pin "ETH_RST" output
+			(at 165.1 99.06 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+			(uuid "dc590e2f-bab7-4c26-b197-7960de0ea9e2")
+		)
+		(pin "ETH_CS" output
+			(at 165.1 86.36 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+			(uuid "f1cbf81f-d705-4c6c-8f89-ad914f717d18")
+		)
+		(pin "ETH_MOSI" output
+			(at 165.1 91.44 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+			(uuid "b86f4acc-25e5-427a-81a8-342ae0c37fcc")
+		)
+		(pin "ETH_SCK" output
+			(at 165.1 88.9 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+			(uuid "05c31135-b349-4055-afce-9dd42cd3b517")
+		)
+		(pin "ETH_MISO" input
+			(at 165.1 93.98 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+			(uuid "dcc570d2-88d5-4ac0-a3bd-9beeac69d74f")
+		)
+		(pin "ETH_INT" input
+			(at 165.1 96.52 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+			(uuid "56c5e388-d928-4a78-8f5f-5ca117739a98")
+		)
+		(pin "CC_MISO" input
+			(at 165.1 60.96 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+			(uuid "dcacc2c8-12d3-427c-b298-85a4fd7e71c5")
+		)
+		(pin "CC_MOSI" output
+			(at 165.1 58.42 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+			(uuid "47cd5e4b-1edc-4fa6-bc73-359a5c9f9f8c")
+		)
+		(pin "CC_SCK" output
+			(at 165.1 55.88 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+			(uuid "7be97439-6288-4e40-88ff-e0ea59f3a51b")
+		)
+		(pin "CC_CSN" output
+			(at 165.1 63.5 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+			(uuid "906225f4-798a-48d5-833c-a00c26522d6b")
+		)
+		(pin "CC_GDO0" input
+			(at 165.1 66.04 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+			(uuid "861fb4d9-b6cb-4dab-8c4c-537976566143")
+		)
+		(pin "CC_GDO2" input
+			(at 165.1 68.58 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+			(uuid "b8610e67-bff6-4de3-9e97-4e5e2defa5c9")
+		)
+		(pin "USB_DN" bidirectional
+			(at 119.38 76.2 180)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+			(uuid "64fd6f12-a866-4332-b832-9b74c68d4cab")
+		)
+		(pin "USB_DP" bidirectional
+			(at 119.38 73.66 180)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+			(uuid "4b0492c1-1034-4c5c-a897-f4a9bf2e1ee6")
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029"
+					(page "3")
+				)
+			)
+		)
+	)
+	(sheet
+		(at 198.12 50.8)
+		(size 45.72 22.86)
+		(fields_autoplaced)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(stroke
+			(width 0.1524)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0.0000)
+		)
+		(uuid "ce37e141-8f8d-46d8-b045-f9eed9e63e67")
+		(property "Sheetname" "rf"
+			(at 198.12 50.0884 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+		)
+		(property "Sheetfile" "rf.kicad_sch"
+			(at 198.12 74.2446 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left top)
+			)
+		)
+		(pin "CC_SCK" input
+			(at 198.12 55.88 180)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+			(uuid "29a3669e-acab-4240-83ba-691fb70a0894")
+		)
+		(pin "CC_MOSI" input
+			(at 198.12 58.42 180)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+			(uuid "6ee301f0-fb72-4feb-ae8f-8f372c680fbf")
+		)
+		(pin "CC_MISO" output
+			(at 198.12 60.96 180)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+			(uuid "52fe1ba9-13b0-4a01-8622-55dc1ea6a4e7")
+		)
+		(pin "CC_CSN" input
+			(at 198.12 63.5 180)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+			(uuid "843b6343-cca8-488e-bec6-b6c494ba6a81")
+		)
+		(pin "CC_GDO0" output
+			(at 198.12 66.04 180)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+			(uuid "ba11998c-9692-4c75-a5c8-6659191ef27f")
+		)
+		(pin "CC_GDO2" output
+			(at 198.12 68.58 180)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+			(uuid "2242b2c3-b5ff-4979-ab12-7573757cc097")
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029"
+					(page "4")
+				)
+			)
+		)
+	)
+	(sheet
+		(at 198.12 83.82)
+		(size 45.72 25.4)
+		(fields_autoplaced)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(stroke
+			(width 0.1524)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0.0000)
+		)
+		(uuid "b52121c9-5240-43d0-84a9-dfbd7401385c")
+		(property "Sheetname" "ethernet_poe"
+			(at 198.12 83.1084 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+		)
+		(property "Sheetfile" "ethernet_poe.kicad_sch"
+			(at 198.12 109.8046 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left top)
+			)
+		)
+		(pin "5V_SYS" output
+			(at 198.12 104.14 180)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+			(uuid "00fe05c4-d013-4301-aeeb-b009961067fc")
+		)
+		(pin "ETH_CS" input
+			(at 198.12 86.36 180)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+			(uuid "95cc2b32-3d3f-4ee9-9c62-013324a89b95")
+		)
+		(pin "ETH_SCK" input
+			(at 198.12 88.9 180)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+			(uuid "49ab40fe-3709-45a7-916a-26d9242da7a4")
+		)
+		(pin "ETH_MOSI" input
+			(at 198.12 91.44 180)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+			(uuid "358d9185-124b-43a7-a96d-9567fef2cbc6")
+		)
+		(pin "ETH_MISO" output
+			(at 198.12 93.98 180)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+			(uuid "5be98953-bb33-414f-96d2-215d4542abc6")
+		)
+		(pin "ETH_INT" output
+			(at 198.12 96.52 180)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+			(uuid "092c8e76-190a-4fa2-925d-c172e425086e")
+		)
+		(pin "ETH_RST" input
+			(at 198.12 99.06 180)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+			(uuid "5c97dc47-93f2-45f2-bd8c-cdc2cee2b698")
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029"
+					(page "5")
+				)
+			)
+		)
+	)
+	(embedded_fonts no)
+	(sheet_instances
+		(path "/"
+			(page "1")
+		)
+	)
+  (text "J201 USB-C, F201 PTC\nD201 TVS, U202 ESD\nD202 USB OR diode\nU203 LDO 3V3"
+    (at 48.26 72.39 0)
+    (effects (font (size 1.27 1.27)) (justify left top))
+    (uuid "51e2a835-c741-4f24-9d75-27b9830c55ab")
+  )
+  (text "U201 ESP32-S3-MINI-1-N8\nSW201 RESET, SW202 BOOT\nD203-D206 LEDs\nJ202 UART0 (DNP)"
+    (at 121.92 54.61 0)
+    (effects (font (size 1.27 1.27)) (justify left top))
+    (uuid "2dfca106-01c0-4913-95ae-9afaa5f2eeb1")
+  )
+  (text "U1 CC1101, X1 26 MHz\nTI EM 868 MHz match\nJ1 SMA (hand)"
+    (at 215.9 54.61 0)
+    (effects (font (size 1.27 1.27)) (justify left top))
+    (uuid "e4971de1-edbe-46bf-ad26-1e701b2cc7ef")
+  )
+  (text "U301 W5500, T301 B1608S\nJ301 RJ45 (hand)\nU401 PoE module (opt)\nD402 PoE OR diode"
+    (at 215.9 87.63 0)
+    (effects (font (size 1.27 1.27)) (justify left top))
+    (uuid "26554457-d04e-43a8-8631-02c9e9aaf104")
+  )
+  (text "5V_SYS: diode-OR of USB (D202) and PoE (D402)"
+    (at 104.14 115.57 0)
+    (effects (font (size 1.27 1.27)) (justify left bottom))
+    (uuid "5a482dc4-6ef2-49f6-b02e-64194a753453")
+  )
 )

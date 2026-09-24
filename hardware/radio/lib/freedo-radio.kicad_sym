@@ -4988,8 +4988,8 @@
 		)
 		(symbol "CC1101RGPR_0_1"
 			(rectangle
-				(start -13.9700 -12.7000)
-				(end 13.9700 12.7000)
+				(start -15.2400 -12.7000)
+				(end 15.2400 12.7000)
 				(stroke
 					(width 0.254)
 					(type default)
@@ -5000,7 +5000,7 @@
 			)
 			(pin input line
 				(at -16.51 7.62 0)
-				(length 2.54)
+				(length 1.27)
 				(name "SCLK"
 					(effects
 						(font
@@ -5018,7 +5018,7 @@
 			)
 			(pin input line
 				(at -16.51 5.08 0)
-				(length 2.54)
+				(length 1.27)
 				(name "SI"
 					(effects
 						(font
@@ -5036,7 +5036,7 @@
 			)
 			(pin tri_state line
 				(at -16.51 2.54 0)
-				(length 2.54)
+				(length 1.27)
 				(name "SO/GDO1"
 					(effects
 						(font
@@ -5054,7 +5054,7 @@
 			)
 			(pin input line
 				(at -16.51 0 0)
-				(length 2.54)
+				(length 1.27)
 				(name "CSn"
 					(effects
 						(font
@@ -5072,7 +5072,7 @@
 			)
 			(pin bidirectional line
 				(at -16.51 -2.54 0)
-				(length 2.54)
+				(length 1.27)
 				(name "GDO0/ATEST"
 					(effects
 						(font
@@ -5090,7 +5090,7 @@
 			)
 			(pin output line
 				(at -16.51 -5.08 0)
-				(length 2.54)
+				(length 1.27)
 				(name "GDO2"
 					(effects
 						(font
@@ -5108,7 +5108,7 @@
 			)
 			(pin passive line
 				(at 16.51 7.62 180)
-				(length 2.54)
+				(length 1.27)
 				(name "RF_P"
 					(effects
 						(font
@@ -5126,7 +5126,7 @@
 			)
 			(pin passive line
 				(at 16.51 5.08 180)
-				(length 2.54)
+				(length 1.27)
 				(name "RF_N"
 					(effects
 						(font
@@ -5144,7 +5144,7 @@
 			)
 			(pin passive line
 				(at 16.51 0 180)
-				(length 2.54)
+				(length 1.27)
 				(name "XOSC_Q1"
 					(effects
 						(font
@@ -5162,7 +5162,7 @@
 			)
 			(pin passive line
 				(at 16.51 -2.54 180)
-				(length 2.54)
+				(length 1.27)
 				(name "XOSC_Q2"
 					(effects
 						(font
@@ -5180,7 +5180,7 @@
 			)
 			(pin passive line
 				(at 16.51 -5.08 180)
-				(length 2.54)
+				(length 1.27)
 				(name "RBIAS"
 					(effects
 						(font
@@ -5198,7 +5198,7 @@
 			)
 			(pin power_out line
 				(at 16.51 -7.62 180)
-				(length 2.54)
+				(length 1.27)
 				(name "DCOUPL"
 					(effects
 						(font
