@@ -1,0 +1,238 @@
+# freedo - full installation fixture (version 1 config schema)
+#
+# A large install - 3 wall thermostats, 30 valves, 3 heating circuits, 8 heating
+# zones and one hot-water zone - that validates with no errors and no warnings.
+# It is the regression fixture of the installation loader and of the database
+# round trip. Every value in it is synthetic.
+#
+# Everything here is per-installation. The tado-wide protocol constants (PAN id
+# 0xABCD, the 1 s CSL period, the 31:07:c5:1b:00 EUI suffix, the frame control
+# octets) are not configurable and live in the code.
+
+# Schema version of this file. Bump-proof: a build that reads another version
+# refuses the file instead of misreading it.
+version: 1
+
+# The tado home id: the number tado assigned to your account, not a value you
+# choose. THIS IS A PLACEHOLDER. Read yours off the wire - it is the <home> in
+# every resource path ("h/<home>/z/N/act") and the devices echo it back in their
+# d/config writes as TLV 015c.
+home_id: 1234567
+
+# The 802.15.4 network key (keystore id 3), 16 bytes, hex. Persistent across
+# reboots and shared by every node in the installation.
+#
+# THIS IS A PLACEHOLDER. Put your own key here: 32 hex digits and nothing else.
+network_key: "000102030405060708090a0b0c0d0e0f"
+
+# Who we are on the air: the address the devices see as PAN coordinator.
+#
+# Continuing an existing network means using its established coordinator EUI,
+# because the devices keep addressing that node and their stored counters follow
+# it. A newly commissioned network (every device
+# re-paired) can use any unused EUI that ends in the tado suffix c5:1b:00, since
+# the devices filter on it.
+coordinator:
+  eui: "aa016a3107c51b00"
+  serial: "IB0000000000"
+  notes: "local coordinator for the existing installation"
+
+# Every node on the PAN.
+#
+#   kind    valve | thermostat | bridge
+#   eui     8 bytes. Bare hex is read in wire (little-endian) order, exactly as
+#           it appears on air and in the freedo logs. The canonical big-endian
+#           form with colons is accepted too and reversed for you, so
+#           "05a2cafa07c51b00" and "00:1b:c5:07:fa:ca:a2:05" are the same node.
+#   serial  optional, the printed VA.../RU.../IB... string
+#   label   optional room name. The management API keeps it unique, and this
+#           fixture is the older shape: five devices below are labelled
+#           "soggiorno", which loads with a warning per repeat. Anything that
+#           resolves a target by label and finds several gets an error listing
+#           them, never a silent first hit.
+#   zone    optional. The single logical id the device answers to on "?id=N".
+#           A valve accepts exactly one value, so declare it when the device
+#           appears in more than one zone on paper. Must match a zone the device
+#           is a member of.
+#   notes   optional, free text, ignored by the code.
+devices:
+  # --- wall thermostats: one per heating circuit, boiler side ---
+  - kind: thermostat
+    eui: "05a2cafa07c51b00"
+    serial: RU2001000001
+    label: soggiorno
+    notes: "OpenTherm to the boiler; heat source of circuit 1 and DHW"
+  - kind: thermostat
+    eui: "41c8693107c51b00"
+    serial: RU2001000002
+    label: corridoio primo piano
+    notes: "heat source of circuit 2"
+  - kind: thermostat
+    eui: "5e12693107c51b00"
+    serial: RU2001000003
+    label: ufficio
+    notes: "heat source of circuit 4"
+
+  # --- zone 1, soggiorno (4 valves, same label as the thermostat above) ---
+  - {kind: valve, eui: "01026a3107c51b00", serial: VA2001000001, label: soggiorno}
+  - {kind: valve, eui: "03046a3107c51b00", serial: VA2001000002, label: soggiorno}
+  - {kind: valve, eui: "05066a3107c51b00", serial: VA2001000003, label: soggiorno}
+  - {kind: valve, eui: "07086a3107c51b00", serial: VA2001000004, label: soggiorno}
+
+  # --- zone 2, cucina. These four carry an explicit logical id. ---
+  - {kind: valve, eui: "090a6a3107c51b00", serial: VA2001000005, label: cucina, zone: 2}
+  - {kind: valve, eui: "0b0c6a3107c51b00", serial: VA2001000006, label: cucina, zone: 2}
+  - {kind: valve, eui: "0d0e6a3107c51b00", serial: VA2001000007, label: cucina, zone: 2}
+  - {kind: valve, eui: "0f106a3107c51b00", serial: VA2001000008, label: cucina, zone: 2}
+
+  # --- zone 3, sala da pranzo ---
+  - {kind: valve, eui: "11126a3107c51b00", serial: VA2001000009, label: sala da pranzo}
+  - {kind: valve, eui: "13146a3107c51b00", serial: VA2001000010, label: sala da pranzo}
+  - {kind: valve, eui: "15166a3107c51b00", serial: VA2001000011, label: sala da pranzo}
+  - {kind: valve, eui: "17186a3107c51b00", serial: VA2001000012, label: sala da pranzo}
+
+  # --- zone 5, camera matrimoniale ---
+  - {kind: valve, eui: "191a6a3107c51b00", serial: VA2001000013, label: camera matrimoniale}
+  - {kind: valve, eui: "1b1c6a3107c51b00", serial: VA2001000014, label: camera matrimoniale}
+  - {kind: valve, eui: "1d1e6a3107c51b00", serial: VA2001000015, label: camera matrimoniale}
+  - {kind: valve, eui: "1f206a3107c51b00", serial: VA2001000016, label: camera matrimoniale}
+
+  # --- zone 6, corridoio primo piano ---
+  - {kind: valve, eui: "21226a3107c51b00", serial: VA2001000017, label: corridoio primo piano}
+  - {kind: valve, eui: "23246a3107c51b00", serial: VA2001000018, label: corridoio primo piano}
+  - {kind: valve, eui: "25266a3107c51b00", serial: VA2001000019, label: corridoio primo piano}
+  - {kind: valve, eui: "27286a3107c51b00", serial: VA2001000020, label: corridoio primo piano}
+
+  # --- zone 8, bagno ---
+  - {kind: valve, eui: "292a6a3107c51b00", serial: VA2001000021, label: bagno}
+  - {kind: valve, eui: "2b2c6a3107c51b00", serial: VA2001000022, label: bagno}
+  - {kind: valve, eui: "2d2e6a3107c51b00", serial: VA2001000023, label: bagno}
+  - {kind: valve, eui: "2f306a3107c51b00", serial: VA2001000024, label: bagno}
+
+  # --- zone 9, ufficio ---
+  - {kind: valve, eui: "31326a3107c51b00", serial: VA2001000025, label: ufficio}
+  - {kind: valve, eui: "33346a3107c51b00", serial: VA2001000026, label: ufficio}
+  - {kind: valve, eui: "35366a3107c51b00", serial: VA2001000027, label: ufficio}
+
+  # --- zone 10, taverna ---
+  - {kind: valve, eui: "37386a3107c51b00", serial: VA2001000028, label: taverna}
+  - {kind: valve, eui: "393a6a3107c51b00", serial: VA2001000029, label: taverna}
+  - {kind: valve, eui: "3b3c6a3107c51b00", serial: VA2001000030, label: taverna}
+
+# The zone map the cloud allocated. Zone numbers are sparse - 4 and 7 are simply
+# not in use here - and they are not an index into this list: the number is the N
+# of "h/<home>/z/N/..." and of the "?id=N" / "?lid=N" queries.
+#
+# Keep them in 0..10. The zone reaches the per-device tables through a 5-bit
+# local slot (id & 0x1f), and the zone-to-circuit translator on the thermostat
+# rejects a slot above 10 outright: its table holds 11 entries. 11..31 still
+# compose a valid attribute id and load with a warning; above 31 is refused.
+#
+#   kind      heating | hotwater (TLV 6020 = 1 or 2)
+#   members   device references: serial, EUI, short address or label
+#   reporter  the ONE member that publishes the zone demand (tag 40a0). It sets
+#             the role byte of that member's d/config 015e record for the zone:
+#             0x0d for the elected member, 0x05 for the others. Optional - a
+#             device already commissioned keeps its role - but at most one.
+#   measuring_device  the ONE member whose temperature represents the room.
+#             The room-level offset is written only to this device. Absent, freedo
+#             falls back to the reporter, then to the only member of the zone.
+#   circuit   the heating circuit the zone binds to. An unbound zone falls back
+#             to circuit 9, whose demand nobody publishes, so always set it.
+zones:
+  - number: 0
+    name: acqua calda sanitaria
+    kind: hotwater
+    # Only the wall thermostat is wired to the boiler, so a hot-water zone has
+    # exactly one sensible member. No reporter and no circuit: the DHW slot
+    # publishes over the inter-MCU link, not through the circuit table.
+    members: [RU2001000001]
+
+  - number: 1
+    name: soggiorno
+    kind: heating
+    circuit: 1
+    members: [RU2001000001, VA2001000001, VA2001000002, VA2001000003, VA2001000004]
+    # The thermostat measures the room it sits in, so it reports the demand.
+    reporter: RU2001000001
+    measuring_device: RU2001000001
+
+  - number: 2
+    name: cucina
+    kind: heating
+    circuit: 1
+    members: [VA2001000005, VA2001000006, VA2001000007, VA2001000008]
+    reporter: VA2001000005
+    measuring_device: VA2001000005
+
+  - number: 3
+    name: sala da pranzo
+    kind: heating
+    circuit: 1
+    members: [VA2001000009, VA2001000010, VA2001000011, VA2001000012]
+    reporter: VA2001000009
+    measuring_device: VA2001000009
+
+  - number: 5
+    name: camera matrimoniale
+    kind: heating
+    circuit: 2
+    members: [VA2001000013, VA2001000014, VA2001000015, VA2001000016]
+    reporter: VA2001000013
+    measuring_device: VA2001000013
+
+  - number: 6
+    name: corridoio primo piano
+    kind: heating
+    circuit: 2
+    members: [RU2001000002, VA2001000017, VA2001000018, VA2001000019, VA2001000020]
+    reporter: RU2001000002
+    measuring_device: RU2001000002
+
+  - number: 8
+    name: bagno
+    kind: heating
+    circuit: 4
+    members: [VA2001000021, VA2001000022, VA2001000023, VA2001000024]
+    reporter: VA2001000021
+    measuring_device: VA2001000021
+
+  - number: 9
+    name: ufficio
+    kind: heating
+    circuit: 4
+    members: [RU2001000003, VA2001000025, VA2001000026, VA2001000027]
+    reporter: RU2001000003
+    measuring_device: RU2001000003
+
+  - number: 10
+    name: taverna
+    kind: heating
+    circuit: 4
+    members: [VA2001000028, VA2001000029, VA2001000030]
+    reporter: VA2001000028
+    measuring_device: VA2001000028
+
+# The heating circuits. Each one has exactly one heat source: the wall
+# thermostat that takes the max demand of the zones bound to the circuit and
+# drives the boiler over OpenTherm. It must be a thermostat - a valve cannot
+# aggregate anything. Circuit ids are sparse too, and bounded like zone numbers.
+circuits:
+  - id: 1
+    name: piano terra
+    heat_source: RU2001000001
+  - id: 2
+    name: primo piano
+    heat_source: RU2001000002
+  - id: 4
+    name: taverna e uffici
+    heat_source: RU2001000003
+
+# Installation knobs. The block can be omitted. The process knobs - serial port,
+# HTTP listen address, unhandled log, frame counter, CSL phase, zone-GET proxy -
+# live in the bootstrap file instead.
+options:
+  # TLV 02b2, signed minutes east of UTC, range -1440..1440. The device stores no
+  # DST rules: whoever serves the config pushes the new value twice a year
+  # (CET 60, CEST 120). Left at 0 the on-device weekly schedules run on UTC.
+  utc_offset_min: 60

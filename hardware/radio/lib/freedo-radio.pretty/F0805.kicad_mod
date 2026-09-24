@@ -1,0 +1,233 @@
+(footprint "F0805"
+	(version 20260206)
+	(generator "pcbnew")
+	(generator_version "10.0")
+	(layer "F.Cu")
+	(descr "0805 PTC fuse (BHFUSE BSMD0805-075-16V, LCSC C976303), body 2.0 x 1.2 mm. Pads 1.0 x 1.5 mm at 2.2 mm centres.")
+	(tags "0805 PTC fuse")
+	(property "Reference" "REF**"
+		(at 0 -4 0)
+		(layer "F.SilkS")
+		(uuid "6c956b47-97b2-49da-b004-04d2a8a3ea56")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Value" "F0805"
+		(at 0 4 0)
+		(layer "F.Fab")
+		(uuid "d96d09fd-2173-4fc2-9feb-e8f678b6b4f8")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "67ce796f-8164-4b62-a4f6-ff703be57077")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(property "Description" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "44206da9-bc5b-4253-b670-953ea94dbef8")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(property "LCSC Part" "C976303"
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "24058918-22b8-4194-988c-62bf43ed3310")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(attr smd)
+	(duplicate_pad_numbers_are_jumpers no)
+	(fp_line
+		(start -2.06 -0.76)
+		(end -2.06 0.76)
+		(stroke
+			(width 0.15)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "7bc0c46a-d7e9-411d-abeb-2b87c0d4adfc")
+	)
+	(fp_line
+		(start -1.78 -1.02)
+		(end -0.54 -1.02)
+		(stroke
+			(width 0.15)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "2e9e5417-6fdc-489a-92c1-07846256fd27")
+	)
+	(fp_line
+		(start -0.51 1.02)
+		(end -1.78 1.02)
+		(stroke
+			(width 0.15)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "eabbaf98-df70-414a-a7a4-237aa05cc5ed")
+	)
+	(fp_line
+		(start 0.51 1.02)
+		(end 1.78 1.02)
+		(stroke
+			(width 0.15)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "eaf7800f-5a49-4f62-916a-16d88e580130")
+	)
+	(fp_line
+		(start 1.78 -1.02)
+		(end 0.51 -1.02)
+		(stroke
+			(width 0.15)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "abf9e0e3-23a1-4f45-853e-a2667f061025")
+	)
+	(fp_line
+		(start 2.06 -0.76)
+		(end 2.06 0.76)
+		(stroke
+			(width 0.15)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "1598347b-7851-4e99-8698-61e1fdafe639")
+	)
+	(fp_arc
+		(start 0 0)
+		(mid -0.19 -0.19)
+		(end 0 -0.38)
+		(stroke
+			(width 0.15)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "29c23ee7-a4c3-431c-b42d-0731ff65b3b0")
+	)
+	(fp_arc
+		(start 0 0)
+		(mid 0.19 0.19)
+		(end 0 0.38)
+		(stroke
+			(width 0.15)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "0f95622b-fd64-4087-b765-883048bf2e6a")
+	)
+	(fp_circle
+		(center -1.1 0.75)
+		(end -1.07 0.75)
+		(stroke
+			(width 0.06)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.SilkS")
+		(uuid "0992a9a6-9e19-4673-97f3-aee1bf728f2e")
+	)
+	(fp_line
+		(start -1.1 -0.75)
+		(end 1.1 -0.75)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "2991ca3f-debe-453a-9d25-be9edef3ca9f")
+	)
+	(fp_line
+		(start -1.1 0.75)
+		(end -1.1 -0.75)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "0aadcc37-5b7c-4f15-b094-0aaebd6a02c3")
+	)
+	(fp_line
+		(start 1.1 -0.75)
+		(end 1.1 0.75)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "304283b6-42d5-44cb-a4ed-eb2eb72bcd70")
+	)
+	(fp_line
+		(start 1.1 0.75)
+		(end -1.1 0.75)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "0c9d8343-a2f7-43a9-b5a7-ca494920f6ba")
+	)
+	(fp_text user "${REFERENCE}"
+		(at 0 0 0)
+		(layer "F.Fab")
+		(uuid "d1430fa4-a963-4140-a048-83b0982ddfba")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(pad "1" smd rect
+		(at -1.1 0)
+		(size 1 1.5)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(uuid "1253362e-17b7-4e0d-8d6a-7febbf4b1a36")
+	)
+	(pad "2" smd rect
+		(at 1.1 0)
+		(size 1 1.5)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(uuid "2d1b8aa7-dfad-48a6-b32d-fdacbff1e15e")
+	)
+	(embedded_fonts no)
+	(model "${KIPRJMOD}/lib/3dmodels/F0805_L2.1-W1.4-H0.8.wrl"
+		(offset
+			(xyz 0 0 0)
+		)
+		(scale
+			(xyz 1 1 1)
+		)
+		(rotate
+			(xyz 0 0 0)
+		)
+	)
+)

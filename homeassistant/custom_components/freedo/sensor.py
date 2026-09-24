@@ -1,0 +1,235 @@
+"""Sensors: device battery, boiler values and the flow limit state."""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any
+
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorEntityDescription,
+    SensorStateClass,
+)
+from homeassistant.const import (
+    PERCENTAGE,
+    EntityCategory,
+    UnitOfElectricPotential,
+    UnitOfPressure,
+    UnitOfTemperature,
+    UnitOfTime,
+)
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+
+from .coordinator import FreedoConfigEntry, FreedoCoordinator
+from .entity import FreedoEntity
+from .model import KIND_BRIDGE, FreedoData, boiler_unsupported
+
+
+def _boiler(key: str) -> Callable[[FreedoData], Any]:
+    def value(data: FreedoData) -> Any:
+        return data.boiler.get(key) if data.boiler.get("Present") else None
+
+    return value
+
+
+def _outdoor(key: str) -> Callable[[FreedoData], Any]:
+    def value(data: FreedoData) -> Any:
+        outdoor = (data.boiler.get("flowLimit") or {}).get("outdoor")
+        return outdoor.get(key) if outdoor else None
+
+    return value
+
+
+@dataclass(frozen=True, kw_only=True)
+class FreedoSensorDescription(SensorEntityDescription):
+    value_fn: Callable[[FreedoData], Any]
+    # The boiler catalogue name of the value, skipped when the boiler lists it
+    # as unsupported.
+    boiler_attr: str | None = None
+
+
+_TEMP = {
+    "device_class": SensorDeviceClass.TEMPERATURE,
+    "native_unit_of_measurement": UnitOfTemperature.CELSIUS,
+    "state_class": SensorStateClass.MEASUREMENT,
+}
+
+# GET /api/boiler: the boiler bus values the wall thermostat relays, and
+# flowLimit with the outdoor reading the daemon holds.
+BOILER_SENSORS = (
+    FreedoSensorDescription(
+        key="flow_temperature", translation_key="flow_temperature", value_fn=_boiler("FlowC"),
+        boiler_attr="boiler_flow_C", **_TEMP,
+    ),
+    FreedoSensorDescription(
+        key="return_temperature", translation_key="return_temperature", value_fn=_boiler("ReturnC"),
+        boiler_attr="return_water_C", **_TEMP,
+    ),
+    FreedoSensorDescription(
+        key="dhw_temperature", translation_key="dhw_temperature", value_fn=_boiler("DHWC"),
+        boiler_attr="dhw_temp_C", **_TEMP,
+    ),
+    FreedoSensorDescription(
+        key="modulation",
+        translation_key="modulation",
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=_boiler("ModulationPct"),
+        boiler_attr="boiler_mod",
+    ),
+    FreedoSensorDescription(
+        key="ch_pressure",
+        translation_key="ch_pressure",
+        device_class=SensorDeviceClass.PRESSURE,
+        native_unit_of_measurement=UnitOfPressure.BAR,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=_boiler("ChPressureBar"),
+        boiler_attr="ch_pressure_bar",
+    ),
+    FreedoSensorDescription(key="outdoor_temperature", translation_key="outdoor_temperature", value_fn=_outdoor("tempC"), **_TEMP),
+    FreedoSensorDescription(
+        key="outdoor_age",
+        translation_key="outdoor_age",
+        device_class=SensorDeviceClass.DURATION,
+        native_unit_of_measurement=UnitOfTime.SECONDS,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=_outdoor("ageSec"),
+    ),
+    FreedoSensorDescription(
+        key="flow_limit_default",
+        translation_key="flow_limit_default",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: (d.boiler.get("flowLimit") or {}).get("defaultC"),
+    ),
+)
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: FreedoConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
+) -> None:
+    coordinator = entry.runtime_data.coordinator
+    data = coordinator.data
+    unsupported = boiler_unsupported(data)
+    entities: list[SensorEntity] = [
+        BoilerSensor(coordinator, d) for d in BOILER_SENSORS if d.boiler_attr not in unsupported
+    ]
+    for circuit in (data.boiler.get("flowLimit") or {}).get("circuits") or []:
+        entities.append(FlowLimitSensor(coordinator, int(circuit["id"]), "servedC"))
+        entities.append(FlowLimitSensor(coordinator, int(circuit["id"]), "computedC"))
+    for short, dev in sorted(data.devices.items()):
+        if dev.get("kind") == KIND_BRIDGE:
+            continue
+        entities.append(BatterySensor(coordinator, short))
+        entities.append(BatteryVoltageSensor(coordinator, short))
+    async_add_entities(entities)
+
+
+class BoilerSensor(FreedoEntity, SensorEntity):
+    entity_description: FreedoSensorDescription
+
+    def __init__(self, coordinator: FreedoCoordinator, description: FreedoSensorDescription) -> None:
+        super().__init__(coordinator, f"boiler_{description.key}")
+        self.entity_description = description
+        self._attr_device_info = self.hub_device()
+
+    @property
+    def native_value(self) -> Any:
+        return self.entity_description.value_fn(self.coordinator.data)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        if self.entity_description.key != "outdoor_temperature":
+            return None
+        outdoor = (self.coordinator.data.boiler.get("flowLimit") or {}).get("outdoor") or {}
+        return {"at": outdoor.get("at"), "stale": outdoor.get("stale")}
+
+
+class FlowLimitSensor(FreedoEntity, SensorEntity):
+    """GET /api/boiler flowLimit.circuits[]: the flow limit served to the
+    thermostat, or the one the weather curve computes."""
+
+    _attr_device_class = SensorDeviceClass.TEMPERATURE
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+
+    def __init__(self, coordinator: FreedoCoordinator, circuit: int, field: str) -> None:
+        super().__init__(coordinator, f"circuit{circuit}_{field}")
+        self._circuit = circuit
+        self._field = field
+        self._attr_translation_key = "flow_limit_served" if field == "servedC" else "flow_limit_computed"
+        self._attr_translation_placeholders = {"circuit": str(circuit)}
+        self._attr_device_info = self.hub_device()
+
+    @property
+    def _view(self) -> dict[str, Any] | None:
+        for circuit in (self.coordinator.data.boiler.get("flowLimit") or {}).get("circuits") or []:
+            if circuit.get("id") == self._circuit:
+                return circuit
+        return None
+
+    @property
+    def native_value(self) -> Any:
+        view = self._view
+        if view is None:
+            return None
+        value = view.get(self._field)
+        # servedC is 0 until the circuit is served a value.
+        if self._field == "servedC" and not value:
+            return None
+        return value
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        view = self._view or {}
+        return {
+            "curve": view.get("curve"),
+            "fetched": view.get("fetched"),
+            "changed_at": view.get("changedAt"),
+        }
+
+
+class _BatteryBase(FreedoEntity, SensorEntity):
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator: FreedoCoordinator, short: str, key: str) -> None:
+        super().__init__(coordinator, f"{short}_{key}")
+        self._short = short
+        self._attr_device_info = self.node_device(short)
+
+
+class BatterySensor(_BatteryBase):
+    """GET /api/nodes BatteryPct, derived by the daemon from tag 0162."""
+
+    _attr_device_class = SensorDeviceClass.BATTERY
+    _attr_native_unit_of_measurement = PERCENTAGE
+
+    def __init__(self, coordinator: FreedoCoordinator, short: str) -> None:
+        super().__init__(coordinator, short, "battery")
+
+    @property
+    def native_value(self) -> int | None:
+        node = self.coordinator.data.nodes.get(self._short) or {}
+        return node.get("BatteryPct") if node.get("BatteryMV") else None
+
+
+class BatteryVoltageSensor(_BatteryBase):
+    """GET /api/health devices[].batteryMV."""
+
+    _attr_device_class = SensorDeviceClass.VOLTAGE
+    _attr_native_unit_of_measurement = UnitOfElectricPotential.MILLIVOLT
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_translation_key = "battery_voltage"
+
+    def __init__(self, coordinator: FreedoCoordinator, short: str) -> None:
+        super().__init__(coordinator, short, "battery_voltage")
+
+    @property
+    def native_value(self) -> int | None:
+        dev = self.coordinator.data.devices.get(self._short) or {}
+        return dev.get("batteryMV") or None

@@ -1,0 +1,71 @@
+# freedo - bootstrap config (example)
+#
+# Copy this file to freedo.yaml and edit it. It holds no secret and it holds no
+# installation: the network key, the coordinator identity, the devices, the
+# zones and the circuits live in the SQLite database named below, and you manage
+# them through the HTTP API under /api/install. The UTC offset lives there too.
+#
+# The daemon starts without this file: every key has a default. A relative path
+# given here resolves against the directory of this file.
+
+# Schema version of this file. A build that reads another version refuses the
+# file instead of misreading it. Version 1 was the full installation config.
+version: 2
+
+# Serial port of the ESP32 + CC1101 radio. Empty means no live radio, which is
+# what replay and offline analysis want.
+serial_port: /dev/ttyUSB0
+
+# HTTP listen address of the get/set API. With no API token the daemon accepts
+# a loopback address alone, unless --insecure-no-auth is given.
+http_listen: "127.0.0.1:8080"
+
+# File holding the bearer token of the API; surrounding whitespace is trimmed.
+# Every request then needs "Authorization: Bearer <token>". --api-token-file and
+# FREEDO_API_TOKEN take precedence over this key. Unset means no token.
+# api_token_file: /run/secrets/freedo_api_token
+
+# The freedo database: the installation and the desired state. It carries the
+# 16-byte network key, so keep it readable by the daemon user alone. Empty means
+# freedo-state.db beside this file. On a database with no installation the
+# daemon generates a network key and a coordinator identity on the first start.
+database: freedo-state.db
+
+# Where the unhandled-frame log is appended.
+unhandled_log: freedo-unhandled.log
+
+# Serve /api/debug/dissect, /api/debug/decrypt and /api/debug/rx. They decrypt
+# any frame a caller sends and stream live traffic.
+debug_api: false
+
+# CSL phase advertised in our Enhanced ACKs, in 320 us units since our own last
+# channel sample. 0 is correct while the CC1101 listens continuously - there is
+# no sample instant to miss - and becomes mandatory once the radio duty-cycles.
+csl_phase: 0
+
+# Seed of the frame counter we put in our downlinks. No device checks it on
+# receive - acceptance rests on the AES-CCM* MIC alone - so the seed is our own
+# bookkeeping and nonce hygiene. Every process starts from 0 by default.
+tx_counter: 0
+
+# Forward a zone GET addressed to us to the member of that zone we heard from
+# most recently, instead of answering it from our own zone cache. Off by
+# default: no capture holds a zone GET addressed to the bridge, so the proxy is
+# unproven on air.
+zone_get_proxy: false
+
+# How long a proxied zone GET waits for that member's answer before we answer
+# the requester ourselves from the cache. Unset means 10 s; 0 or negative waits
+# for the member indefinitely.
+zone_proxy_timeout_sec: 10
+
+# Log one line per received frame that carries a FREQEST reading: the source,
+# the receive path, the RSSI, the reading, the time since the previous frame of
+# that source and since our own last transmission. FSCTRL0 holds the calibration
+# stored by `freedo-dev autotune` for the whole session.
+tune_debug: false
+
+# How often we broadcast the Router Advertisement, in seconds. 333 is the period
+# of the commercial coordinator: a device that gets none stops reporting after
+# about 20 minutes. 0 sends none. The beacon needs --tx.
+beacon_sec: 333

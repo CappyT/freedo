@@ -1,0 +1,45 @@
+# freedo - compose example. Copy it to docker-compose.yml and edit the device
+# path and the group id. The daemon starts in dry-run: add --tx only after the
+# checks in SYSTEM_VALIDATION.md, with the commercial bridge switched off.
+services:
+  freedo:
+    build: .
+    image: freedo:local
+    restart: unless-stopped
+    command:
+      - --addr=:8080
+      - --port=/dev/ttyUSB0
+      - --api-token-file=/run/secrets/freedo_api_token
+      - --health-public
+    devices:
+      # host path of the ESP32 bridge : path the daemon opens
+      - /dev/serial/by-id/usb-EXAMPLE-if00:/dev/ttyUSB0
+    group_add:
+      # gid of the group that owns the device on the host: stat -c %g <device>
+      - "20"
+    secrets:
+      - freedo_api_token
+    environment:
+      # Example value: set the IANA zone of the installation. Tag 02b2 follows
+      # it, else UTC. The install option timezone overrides it.
+      TZ: Europe/Rome
+      # Alternative to the secret. A variable that is set and blank stops the start.
+      # FREEDO_API_TOKEN: ${FREEDO_API_TOKEN:?set FREEDO_API_TOKEN}
+    volumes:
+      # freedo.yaml (optional), freedo-state.db and freedo-unhandled.log
+      - freedo-data:/data
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+secrets:
+  freedo_api_token:
+    # One line, readable by uid 10001 in the container.
+    file: ./freedo_api_token
+
+volumes:
+  freedo-data:

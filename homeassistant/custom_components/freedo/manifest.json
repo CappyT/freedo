@@ -1,0 +1,12 @@
+{
+  "domain": "freedo",
+  "name": "freedo",
+  "codeowners": ["@CappyT"],
+  "config_flow": true,
+  "documentation": "https://github.com/CappyT/freedo/tree/main/homeassistant/custom_components/freedo",
+  "integration_type": "hub",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/CappyT/freedo/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}

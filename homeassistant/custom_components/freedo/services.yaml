@@ -1,0 +1,10 @@
+boost:
+  target:
+    entity:
+      integration: freedo
+      domain: climate
+  fields:
+    "on":
+      default: true
+      selector:
+        boolean:

@@ -1,0 +1,162 @@
+package tado
+
+import (
+	"errors"
+	"maps"
+	"slices"
+	"strconv"
+)
+
+// The modes of the room temperature correction of a heating zone.
+//
+// OffsetModeConfig writes tag 0140 in a full PUT d/config, as the commercial
+// coordinator does. The valve re-reads d/config and h/<home>/z/N/config and
+// homes its motor after each change (capture 2026-09-23).
+//
+// OffsetModeDbg2 writes the single record 0140 with PUT d/dbg2/tlvs. The valve
+// serves that path with PUT only, on coap_res_tlv_write_handler@0x20118: each
+// record goes to cfg_store_set and to the attribute report FIFO
+// (coap_report_enqueue@0xd8b0), with no call to the d/config client. No capture
+// shows the write on air.
+//
+// OffsetModeSetpoint leaves 0140 on the valve as it is. The coordinator adds
+// the correction to the zone temperature it reports and subtracts it from the
+// setpoints it writes to the zone.
+const (
+	OffsetModeConfig   = "config"
+	OffsetModeDbg2     = "dbg2"
+	OffsetModeSetpoint = "setpoint"
+)
+
+// ZoneOffset is how a heating zone takes its room temperature correction.
+type ZoneOffset struct {
+	Mode string `yaml:"mode" json:"mode"`
+	// SetpointCenti is the correction the coordinator applies itself, in
+	// centi-degrees, on top of the 0140 the valve holds. Only mode setpoint
+	// carries one.
+	SetpointCenti int `yaml:"setpoint_centi,omitempty" json:"setpoint_centi,omitempty"`
+}
+
+// DefaultZoneOffset is the correction mode of a zone that states none.
+var DefaultZoneOffset = ZoneOffset{Mode: OffsetModeConfig}
+
+// ZoneOffset returns the correction mode of zone.
+func (o Options) ZoneOffset(zone int) ZoneOffset {
+	if off, ok := o.ZoneOffsets[zone]; ok {
+		return off
+	}
+	return DefaultZoneOffset
+}
+
+// SetpointShiftC is the correction in degrees the coordinator applies to zone
+// itself: the one of mode setpoint, else 0.
+func (o Options) SetpointShiftC(zone int) float64 {
+	off := o.ZoneOffset(zone)
+	if off.Mode != OffsetModeSetpoint {
+		return 0
+	}
+	return float64(off.SetpointCenti) / 100
+}
+
+// Check reports what is wrong with the mode, or "".
+func (r ZoneOffset) Check() string {
+	switch r.Mode {
+	case OffsetModeConfig, OffsetModeDbg2:
+		if r.SetpointCenti != 0 {
+			return "setpoint_centi needs mode setpoint"
+		}
+	case OffsetModeSetpoint:
+		if r.SetpointCenti < -calibOffsetAbs || r.SetpointCenti > calibOffsetAbs {
+			return "setpoint_centi must be within -" + strconv.Itoa(calibOffsetAbs) + ".." + strconv.Itoa(calibOffsetAbs)
+		}
+	default:
+		return "bad mode " + strconv.Quote(r.Mode) + ": want config, dbg2 or setpoint"
+	}
+	return ""
+}
+
+func (in *Install) checkZoneOffsets(c *issues) {
+	for _, zone := range slices.Sorted(maps.Keys(in.Options.ZoneOffsets)) {
+		path := "options.zone_offset." + strconv.Itoa(zone)
+		switch z, err := in.ZoneByNumber(zone); {
+		case err != nil:
+			c.errf(path, "no zone %d is declared", zone)
+		case z.Kind != ZoneHeating:
+			c.errf(path, "zone %d is not a heating zone", zone)
+		}
+		if msg := in.Options.ZoneOffsets[zone].Check(); msg != "" {
+			c.errf(path, "%s", msg)
+		}
+	}
+}
+
+// BuildDbg2TLVWriteCoAP builds PUT d/dbg2/tlvs, the valve's generic store
+// write. The body is the d/config record form, [tag:2][len:1][value], which
+// the handler parses with the same coap_tlv_stream_parse. No capture carries
+// the request, so the options follow d/config.
+func BuildDbg2TLVWriteCoAP(tlvs []TLV, mid uint16, token, srcEUI, dstEUI []byte) ([]byte, error) {
+	if len(tlvs) == 0 {
+		return nil, errors.New("tado: d/dbg2/tlvs write carries no TLV")
+	}
+	return deviceWrite(deviceReq{
+		Path:    []string{"d", "dbg2", "tlvs"},
+		Options: []CoAPOption{optUriPort, optOctets},
+		Payload: encodeTLVs(tlvs),
+		MID:     mid, Token: token, SrcEUI: srcEUI, DstEUI: dstEUI,
+	})
+}
+
+// EnqueueCalibOffsetDbg2 queues the calibration offset (tag 0140, centi-degrees)
+// as one PUT d/dbg2/tlvs record (enqueueDbg2). The id names the write in the log.
+func (e *EmuState) EnqueueCalibOffsetDbg2(target string, id, centi int) error {
+	w := ConfigWrite{CalibOffset: &centi}
+	if err := w.Validate(); err != nil {
+		return err
+	}
+	desc := "calib offset " + strconv.Itoa(centi) + " id=" + strconv.Itoa(id) + " via d/dbg2/tlvs"
+	return e.enqueueDbg2(target, desc, w.TLVs())
+}
+
+// enqueueDbg2 queues tlvs as one PUT d/dbg2/tlvs and puts them in the d/config
+// document the device is served under the ETag it already holds. The valve
+// presents that ETag on its hourly conditional GET (config_request_build@0x1fd08)
+// and takes 2.03, so the store write alone reaches it. A new ETag would earn a
+// 2.05 and the full config apply, which homes the motor. A later full read, with
+// no ETag or an invalid one, finds the new values and not the old ones.
+func (e *EmuState) enqueueDbg2(target, desc string, tlvs []TLV) error {
+	wire, _, err := e.resolve(target)
+	if err != nil {
+		return err
+	}
+	if e.refusesConfigWrite(wire) {
+		return errors.New("tado: d/dbg2/tlvs is a valve resource, the wall thermostat does not serve it")
+	}
+	mid, token, err := downlinkIDs()
+	if err != nil {
+		return err
+	}
+	pkt, err := BuildDbg2TLVWriteCoAP(tlvs, mid, token, e.selfEUI, wire)
+	if err != nil {
+		return err
+	}
+	if err := e.enqueue(target, "dbg2", desc, pkt, e.key, mid); err != nil {
+		return err
+	}
+	key := hexEUI(wire)
+	q := e.queue[key]
+	q[len(q)-1].requireCoAP = true
+	q[len(q)-1].responseToken = append([]byte(nil), token...)
+	q[len(q)-1].responseCode = "2.04"
+	if previous, ok := e.cfgDoc[key]; ok {
+		e.cfgDoc[key] = patchConfigDocument(previous, tlvs)
+	}
+	return nil
+}
+
+// patchConfigDocument merges updates into the document and keeps its ETag.
+func patchConfigDocument(previous cfgSnapshot, updates []TLV) cfgSnapshot {
+	merged := configDocument(mergeConfigTLVs(withoutConfigETag(parseTLVList(previous.body)), updates))
+	etag := append([]byte(nil), previous.etag...)
+	document := append(merged, TLV{Tag: configEtagTag, Val: etag})
+	return cfgSnapshot{body: encodeTLVs(document), etag: etag}
+}

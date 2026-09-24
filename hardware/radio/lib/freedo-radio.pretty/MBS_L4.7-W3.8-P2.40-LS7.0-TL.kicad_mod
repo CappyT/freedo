@@ -1,0 +1,338 @@
+(footprint "MBS_L4.7-W3.8-P2.40-LS7.0-TL"
+	(version 20260206)
+	(generator "pcbnew")
+	(generator_version "10.0")
+	(layer "F.Cu")
+	(descr "MBS bridge (MDD MB10S, LCSC C2488). MDD numbering: pad 1 = +, 2 = -, 3/4 = AC. Stock KiCad TO-269AA/MBxS use 1/2 = AC, 3 = +, 4 = -: do not mix. Lead span 7.0 max.")
+	(tags "MBS bridge")
+	(property "Reference" "REF**"
+		(at 0 -5.2 0)
+		(layer "F.SilkS")
+		(uuid "400680b1-f32a-4924-a592-46b6e1b45222")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Value" "MBS_L4.7-W3.8-P2.40-LS7.0-TL"
+		(at 0 5.2 0)
+		(layer "F.Fab")
+		(uuid "36beb5e8-eee4-4324-84c7-015f28d8cfef")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "489a38a6-ae22-4ede-9d41-fd1ffb0e8698")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(property "Description" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "99f9e482-a448-4a7e-996e-243709a3cd8a")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(property "LCSC Part" "C2488"
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "9230a4ac-7064-49c2-91d8-ee0ff317c480")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(attr smd)
+	(duplicate_pad_numbers_are_jumpers no)
+	(fp_line
+		(start -2.1 -2.5)
+		(end -2.1 -1.92)
+		(stroke
+			(width 0.25)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "45acd059-8ec4-4d8a-89b6-035a12958533")
+	)
+	(fp_line
+		(start -2.1 -0.48)
+		(end -2.1 0.48)
+		(stroke
+			(width 0.25)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "43c0deb7-003c-4df4-a263-b88ba43e3092")
+	)
+	(fp_line
+		(start -2.1 1.92)
+		(end -2.1 2.5)
+		(stroke
+			(width 0.25)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "a3efdf17-9c2a-4c5d-8542-1f99a2c42b57")
+	)
+	(fp_line
+		(start -1.78 -2.5)
+		(end -1.78 2.5)
+		(stroke
+			(width 0.25)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "0a72bf68-aaf9-4e3a-8d06-f651123f01f6")
+	)
+	(fp_line
+		(start -1.71 -1.27)
+		(end -0.7 -1.27)
+		(stroke
+			(width 0.25)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "9bbcc2fe-7ba2-4512-81ae-90d2ebc936d3")
+	)
+	(fp_line
+		(start -1.46 1.91)
+		(end -1.46 0.89)
+		(stroke
+			(width 0.25)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "b0256c34-80c4-48f3-b663-b5794de5f616")
+	)
+	(fp_line
+		(start -1.21 -0.76)
+		(end -1.21 -1.78)
+		(stroke
+			(width 0.25)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "e3ea81af-c356-4586-8f19-b31e240d5264")
+	)
+	(fp_line
+		(start 2.1 -2.5)
+		(end -2.1 -2.5)
+		(stroke
+			(width 0.25)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "f2f40233-8b15-4dcc-83eb-875d7acfc671")
+	)
+	(fp_line
+		(start 2.1 -2.5)
+		(end 2.1 -1.92)
+		(stroke
+			(width 0.25)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "17152707-d527-4326-aa9b-dd6fb6127d24")
+	)
+	(fp_line
+		(start 2.1 -0.48)
+		(end 2.1 0.48)
+		(stroke
+			(width 0.25)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "ff523dab-1870-4b8b-8473-0a09e5493505")
+	)
+	(fp_line
+		(start 2.1 1.92)
+		(end 2.1 2.5)
+		(stroke
+			(width 0.25)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "29ef731b-51b0-41bb-82cd-3e89869a2997")
+	)
+	(fp_line
+		(start 2.1 2.5)
+		(end -2.1 2.5)
+		(stroke
+			(width 0.25)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "67dc07d4-3d38-425c-8516-5a0b0c92ccb9")
+	)
+	(fp_arc
+		(start 0.95 -2.16)
+		(mid 1.33 -1.78)
+		(end 0.95 -1.4)
+		(stroke
+			(width 0.25)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "cdf5f9ed-1dee-47bd-b414-91e6c50ec5c3")
+	)
+	(fp_arc
+		(start 0.95 -0.64)
+		(mid 0.57 -1.02)
+		(end 0.95 -1.4)
+		(stroke
+			(width 0.25)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "538a288b-f893-4f09-9340-5ecbf3d154fa")
+	)
+	(fp_arc
+		(start 1.02 0.64)
+		(mid 1.4 1.02)
+		(end 1.02 1.4)
+		(stroke
+			(width 0.25)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "4946f603-e002-4a2c-81eb-a984b4ddf881")
+	)
+	(fp_arc
+		(start 1.02 2.16)
+		(mid 0.64 1.78)
+		(end 1.02 1.4)
+		(stroke
+			(width 0.25)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "b70b2f2c-85e3-4d00-a701-568e2eca141f")
+	)
+	(fp_circle
+		(center -3.5 -2.35)
+		(end -3.47 -2.35)
+		(stroke
+			(width 0.06)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.SilkS")
+		(uuid "d85f782a-bab5-45b2-a80f-c3d00a353c64")
+	)
+	(fp_circle
+		(center -3.05 -2.29)
+		(end -2.87 -2.29)
+		(stroke
+			(width 0.25)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.SilkS")
+		(uuid "83010ed3-27a9-46bb-a959-a501dad42639")
+	)
+	(fp_line
+		(start -1.9 -2.35)
+		(end 1.9 -2.35)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "97d211e6-ecab-4d65-9cc7-fa795984a0cd")
+	)
+	(fp_line
+		(start -1.9 2.35)
+		(end -1.9 -2.35)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "0ea7589a-3d97-4d15-89af-14044916c4c0")
+	)
+	(fp_line
+		(start 1.9 -2.35)
+		(end 1.9 2.35)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "b10ea7da-6d1e-42a0-94dc-03c9c898afc7")
+	)
+	(fp_line
+		(start 1.9 2.35)
+		(end -1.9 2.35)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "102c4576-ff5c-4bf1-ac50-ab9845f8f7f7")
+	)
+	(fp_text user "${REFERENCE}"
+		(at 0 0 0)
+		(layer "F.Fab")
+		(uuid "65d39915-1b76-4a7e-ae3d-6bc505b9ca14")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(pad "1" smd rect
+		(at -3.1 -1.2)
+		(size 2 1.1)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(uuid "de13d8e5-3225-4f33-a228-8df8c20e7455")
+	)
+	(pad "2" smd rect
+		(at -3.1 1.2)
+		(size 2 1.1)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(uuid "2d01f72e-0a38-4be7-8298-6ebff266d5a2")
+	)
+	(pad "3" smd rect
+		(at 3.1 1.2)
+		(size 2 1.1)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(uuid "7d27ae2e-01b6-4f46-bd4a-e24d56db3ca7")
+	)
+	(pad "4" smd rect
+		(at 3.1 -1.2)
+		(size 2 1.1)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(uuid "6f217196-78a3-4a0b-9c02-9bed9d1632fa")
+	)
+	(embedded_fonts no)
+	(model "${KIPRJMOD}/lib/3dmodels/MBS_L4.7-W3.8-P2.40-LS7.0-TL.wrl"
+		(offset
+			(xyz 0 0 0)
+		)
+		(scale
+			(xyz 1 1 1)
+		)
+		(rotate
+			(xyz 0 0 270)
+		)
+	)
+)

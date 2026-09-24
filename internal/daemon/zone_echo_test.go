@@ -1,0 +1,132 @@
+package daemon
+
+// zone_echo_test: the z/s?lid=N reports of a zone member after a coordinator
+// write. Frames and clocks are synthetic.
+
+import (
+	"net/http"
+	"strconv"
+	"testing"
+	"time"
+
+	"freedo/tado"
+)
+
+const camera = "VA1000000005" // the only member and writer of zone 10
+
+// cameraBlock is a z/s block of zone 10: a manual overlay at centiC with the
+// valve's own 6200 of 24.10 C.
+func cameraBlock(centiC uint16) []tado.TLV {
+	return []tado.TLV{
+		{Tag: "6280", Val: []byte{byte(centiC >> 8), byte(centiC)}}, {Tag: "6240", Val: []byte{0x02}},
+		{Tag: "6260", Val: []byte{0x01}}, {Tag: "6200", Val: []byte{0x09, 0x6a}},
+		{Tag: "61e0", Val: []byte{0x01}}, {Tag: "62e0", Val: []byte{0x00}},
+	}
+}
+
+// echoZone sends the z/s?lid=N report of ref.
+func echoZone(t *testing.T, d *daemon, in *tado.Install, ref string, zone int, mid uint16, tlvs []tado.TLV) {
+	t.Helper()
+	var body []byte
+	for _, tlv := range tlvs {
+		body = append(body, tlv.Encode()...)
+	}
+	feed(t, d, in, ref, true, tado.CoAPReq{
+		Type: "CON", Code: "0.03", MID: mid, Path: []string{"z", "s"},
+		Query: []string{"lid=" + strconv.Itoa(zone)}, Payload: body,
+	})
+}
+
+func wantZoneTarget(t *testing.T, what, url string, zone int, setpointC float64) {
+	t.Helper()
+	if target := mustTarget(t, url, zone); target["source"] != "overlay" || target["targetC"] != setpointC {
+		t.Errorf("%s: target = %v, want an overlay at %v", what, target, setpointC)
+	}
+}
+
+// TestStaleZoneEchoKeepsNewerSetpoint: the valve echoes the block of a write
+// the newer setpoint already replaced. The zone keeps the newer setpoint and a
+// later rewrite restates it. A wheel change reported after it still wins.
+func TestStaleZoneEchoKeepsNewerSetpoint(t *testing.T) {
+	in := windowInstall(t, nil)
+	d, url := newWindowDaemon(t, in, newTestClock(windowStart), nil)
+	writer := wireOf(t, in, camera)
+	seedBlock(t, d, in, camera, 10, cameraBlock(2460)...)
+	wantZoneTarget(t, "seeded", url, 10, 24.6)
+
+	if _, code := postZone(t, url, 10, "setpoint", map[string]any{"setpointC": 25}); code != http.StatusOK {
+		t.Fatalf("setpoint: code=%d", code)
+	}
+	wantTags(t, "the setpoint", deliver(t, d, in, writer), map[string]string{"6280": "09c4", "6240": "02"})
+
+	echoZone(t, d, in, camera, 10, 0x9812, cameraBlock(2460))
+	wantZoneTarget(t, "after the stale echo", url, 10, 25)
+	if _, err := d.do(func(e *tado.EmuState) (any, error) { return nil, e.EnqueueZoneRewrite(writer, 10) }); err != nil {
+		t.Fatal(err)
+	}
+	wantTags(t, "the rewrite after the stale echo", deliver(t, d, in, writer), map[string]string{"6280": "09c4", "6240": "02"})
+
+	echoZone(t, d, in, camera, 10, 0x9813, cameraBlock(2500))
+	wantZoneTarget(t, "after the current echo", url, 10, 25)
+
+	overlayFromDevice(t, d, in, camera, 10, 2460, 0x9814)
+	echoZone(t, d, in, camera, 10, 0x9815, cameraBlock(2460))
+	wantZoneTarget(t, "after the wheel", url, 10, 24.6)
+}
+
+// TestStaleZoneEchoExpires: past the echo window, a report equal to the
+// replaced block is a change made on the device and the zone takes it.
+func TestStaleZoneEchoExpires(t *testing.T) {
+	in := windowInstall(t, nil)
+	clock := newTestClock(windowStart)
+	d, url := newWindowDaemon(t, in, clock, nil)
+	writer := wireOf(t, in, camera)
+	seedBlock(t, d, in, camera, 10, cameraBlock(2460)...)
+	if _, code := postZone(t, url, 10, "setpoint", map[string]any{"setpointC": 25}); code != http.StatusOK {
+		t.Fatalf("setpoint: code=%d", code)
+	}
+	deliver(t, d, in, writer)
+
+	clock.advance(2 * time.Minute)
+	echoZone(t, d, in, camera, 10, 0x9812, cameraBlock(2460))
+	wantZoneTarget(t, "after the window", url, 10, 24.6)
+}
+
+// TestZoneEchoWithoutProgramQueuesNoRewrite: a zone the daemon holds no
+// program for takes no rewrite when its member echoes the 6200 a delivered
+// write dropped from the zone cache: that is no block change.
+func TestZoneEchoWithoutProgramQueuesNoRewrite(t *testing.T) {
+	in := windowInstall(t, nil)
+	d, url := newWindowDaemon(t, in, newTestClock(windowStart), nil)
+	writer := wireOf(t, in, camera)
+	seedBlock(t, d, in, camera, 10, cameraBlock(2460)...)
+	if _, code := postZone(t, url, 10, "setpoint", map[string]any{"setpointC": 25}); code != http.StatusOK {
+		t.Fatalf("setpoint: code=%d", code)
+	}
+	deliver(t, d, in, writer)
+	tickHome(t, d)
+
+	for i := range 3 {
+		echoZone(t, d, in, camera, 10, 0x9820+uint16(i), cameraBlock(2500))
+		tickHome(t, d)
+		wantNoWrites(t, "the echo", d, writer)
+	}
+}
+
+// TestRewriteBehindSetpointRestatesIt: a rewrite queued behind a setpoint the
+// valve has not taken yet restates that setpoint, not the older block.
+func TestRewriteBehindSetpointRestatesIt(t *testing.T) {
+	in := windowInstall(t, nil)
+	d, url := newWindowDaemon(t, in, newTestClock(windowStart), nil)
+	writer := wireOf(t, in, camera)
+	seedBlock(t, d, in, camera, 10, cameraBlock(2460)...)
+	if _, code := postZone(t, url, 10, "setpoint", map[string]any{"setpointC": 25}); code != http.StatusOK {
+		t.Fatalf("setpoint: code=%d", code)
+	}
+	if _, err := d.do(func(e *tado.EmuState) (any, error) { return nil, e.EnqueueZoneRewrite(writer, 10) }); err != nil {
+		t.Fatal(err)
+	}
+	wantTags(t, "the setpoint", deliverAck(t, d, in, writer), map[string]string{"6280": "09c4", "6240": "02"})
+	wantTags(t, "the rewrite", deliverAck(t, d, in, writer), map[string]string{"6280": "09c4", "6240": "02"}, "6440")
+	wantZoneTarget(t, "after both", url, 10, 25)
+}

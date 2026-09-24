@@ -1,0 +1,9 @@
+# The state database carries the network key; the bootstrap and the captures
+# stay on the host.
+*
+!go.mod
+!go.sum
+!cmd/freedo/
+!internal/
+!tado/
+!cc1101/

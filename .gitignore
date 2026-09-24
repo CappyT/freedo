@@ -1,0 +1,57 @@
+# Go build output
+/freedo
+/freedo-dev
+/cmd/freedo/freedo
+/cmd/freedo-dev/freedo-dev
+*.test
+
+# Python
+__pycache__/
+*.pyc
+
+# private installation data, NEVER commit
+.ha_token
+tado_capture/.ha_token
+.env
+freedo_api_token
+
+# installation config: carries the PAN network key and the real device list.
+# freedo.example.yaml is the committed template.
+freedo.yaml
+freedo.yml
+freedo.*.yaml
+freedo.*.yml
+!freedo.example.yaml
+*.key
+
+# large RF recordings and device images; reduced fixtures live in tado/testdata
+*.iq
+*.bin
+
+# third-party proprietary artifacts
+*.apk
+
+# Arduino build output for the ESP32 bridge firmware
+tado_capture/cc1101_bridge/firmware/cc1101_bridge_v2/build/
+
+# bench campaign artifacts (captures, snapshots, per-test logs)
+/bench/
+
+# debug logs & scratch state
+/.tmp-check/
+/.tmp-race/
+/*.log
+/freedo-state.db
+/freedo-state.db-wal
+/freedo-state.db-shm
+tado_capture/*.log
+tado_capture/*.json
+
+# session notes (working notes, not a project deliverable)
+tado_capture/memory/
+
+# editor configuration, local to each developer
+.idea/
+.vscode/
+.mcp.json
+tado_capture/ota-watch/

@@ -1,0 +1,104 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to freedo",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "token": "API token"
+        },
+        "data_description": {
+          "host": "Address of the freedo daemon.",
+          "port": "Port of the freedo HTTP API (http_listen).",
+          "token": "Bearer token of the API. Leave empty when the daemon has no token."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Update the freedo API token",
+        "data": {
+          "token": "API token"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "The daemon does not answer.",
+      "invalid_auth": "The daemon rejects the API token.",
+      "unknown": "The daemon gives an unexpected answer."
+    },
+    "abort": {
+      "already_configured": "This daemon is already configured.",
+      "reauth_successful": "The API token is updated."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Environment inputs",
+        "description": "Home Assistant sends these states to freedo.",
+        "data": {
+          "outdoor_entity": "Outdoor temperature sensor",
+          "window_entities": "Window and door sensors"
+        },
+        "data_description": {
+          "outdoor_entity": "Sent to the daemon on each change and every 15 minutes. It drives the weather curves of the flow limit.",
+          "window_entities": "On the next step, you select the zone of each sensor."
+        }
+      },
+      "windows": {
+        "title": "Zone of each window sensor",
+        "description": "Select the heating zone of each sensor. A zone is open when one of its sensors is open."
+      }
+    },
+    "abort": {
+      "not_loaded": "The integration is not loaded. Load it, then open the options again.",
+      "no_heating_zone": "The installation declares no heating zone."
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "zone_window": { "name": "Window" },
+      "zone_fallback": { "name": "Fallback" },
+      "low_battery": { "name": "Low battery" },
+      "fault": { "name": "Fault" }
+    },
+    "sensor": {
+      "flow_temperature": { "name": "Flow temperature" },
+      "return_temperature": { "name": "Return temperature" },
+      "dhw_temperature": { "name": "Hot water temperature" },
+      "modulation": { "name": "Modulation" },
+      "ch_pressure": { "name": "Heating pressure" },
+      "outdoor_temperature": { "name": "Outdoor temperature" },
+      "outdoor_age": { "name": "Outdoor temperature age" },
+      "flow_limit_default": { "name": "Default flow limit" },
+      "flow_limit_served": { "name": "Circuit {circuit} flow limit served" },
+      "flow_limit_computed": { "name": "Circuit {circuit} flow limit computed" },
+      "battery_voltage": { "name": "Battery voltage" }
+    },
+    "select": {
+      "orientation": {
+        "name": "Display orientation",
+        "state": {
+          "horizontal": "Horizontal",
+          "vertical": "Vertical"
+        }
+      }
+    },
+    "switch": {
+      "away": { "name": "Away" },
+      "notification": { "name": "Change notification" }
+    }
+  },
+  "services": {
+    "boost": {
+      "name": "Boost",
+      "description": "Starts or stops the boost of a heating zone.",
+      "fields": {
+        "on": {
+          "name": "On",
+          "description": "True starts the boost, false stops it."
+        }
+      }
+    }
+  }
+}

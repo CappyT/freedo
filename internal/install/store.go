@@ -1,0 +1,332 @@
+package install
+
+// store: the freedo database file. It holds the installation and the desired
+// state, and a tool that opens it for the installation alone must still create
+// or migrate the whole layout, so the schema of both lives here. The desired
+// state rows are internal/daemon's.
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"net/url"
+	"os"
+	"strconv"
+	"strings"
+
+	"freedo/tado"
+
+	_ "modernc.org/sqlite"
+)
+
+// SchemaVersion moves when the table layout changes. The daemon refuses a
+// database it cannot read as this layout instead of starting on a guess.
+// Version "1" held the desired state alone, "2" adds the installation, "3"
+// the open window columns of the zone, "4" the per-device offline schedule,
+// "5" the zone window state and the window writes still owed, "6" the
+// interface module id each wall thermostat reported and "7" the recorded plant
+// episodes.
+const (
+	SchemaVersion                = "7"
+	stateSchemaNoInst            = "1"
+	stateSchemaNoOpenWindow      = "2"
+	stateSchemaNoOfflineSchedule = "3"
+	stateSchemaNoZoneWindow      = "4"
+	stateSchemaNoModule          = "5"
+	stateSchemaNoPlantEpisode    = "6"
+)
+
+const stateSchemaDDL = `
+CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE IF NOT EXISTS child_lock (key TEXT PRIMARY KEY, locked INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS temp_unit_f (key TEXT PRIMARY KEY, fahrenheit INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS flow_c (zone_id INTEGER PRIMARY KEY, celsius REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS config_doc (key TEXT PRIMARY KEY, body BLOB NOT NULL, etag BLOB NOT NULL);
+CREATE TABLE IF NOT EXISTS sched_doc (key TEXT PRIMARY KEY, body BLOB NOT NULL, etag BLOB NOT NULL);
+CREATE TABLE IF NOT EXISTS zone_state (key TEXT PRIMARY KEY, body BLOB NOT NULL);
+CREATE TABLE IF NOT EXISTS utc_settled (key TEXT PRIMARY KEY, value INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS boost (key TEXT PRIMARY KEY, id INTEGER NOT NULL, expires_at_ms INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS offline_schedule (key TEXT PRIMARY KEY, enabled INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS interface_module (key TEXT PRIMARY KEY, module INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS zone_window (
+	zone INTEGER NOT NULL,
+	source TEXT NOT NULL,
+	since_ms INTEGER NOT NULL,
+	deadline_ms INTEGER NOT NULL,
+	PRIMARY KEY (zone, source)
+);
+CREATE TABLE IF NOT EXISTS zone_window_owed (
+	zone INTEGER NOT NULL,
+	target TEXT NOT NULL,
+	PRIMARY KEY (zone, target)
+);
+CREATE TABLE IF NOT EXISTS plant_episode (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	zone INTEGER NOT NULL,
+	kind TEXT NOT NULL,
+	body TEXT NOT NULL
+);
+`
+
+// Store is the freedo database. It serves the installation and the receiver
+// calibration; the daemon reads and writes the desired state through DB.
+type Store struct{ db *sql.DB }
+
+// Open opens the freedo database: the desired state and the installation. It
+// creates the file and the schema when they are missing, and refuses a
+// database that is not a freedo store of this layout.
+func Open(path string) (*Store, error) {
+	// synchronous(FULL) costs one more fsync per commit than NORMAL. Saves follow
+	// API mutations, so they are rare, and a committed one must survive a power
+	// cut the way the fsync-then-rename of the previous JSON writer did.
+	// foreign_keys is off per connection by default, and the installation tables
+	// rest on it: a zone member has to name a device that exists.
+	dsn := "file:" + stateDSNPath(path) +
+		"?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=synchronous(FULL)" +
+		"&_pragma=journal_size_limit(1048576)&_pragma=foreign_keys(1)"
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		return nil, fmt.Errorf("state database %s: %w", path, err)
+	}
+	// Every save replaces the whole state, so one connection is enough and it
+	// keeps the writers serialised.
+	db.SetMaxOpenConns(1)
+	if err := initStateSchema(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("state database %s: %w", path, err)
+	}
+	// SQLite creates the database and the two WAL side files under the process
+	// umask. A file the operator widened on purpose still works, so a refused
+	// chmod is a warning, not a startup failure.
+	for _, name := range []string{path, path + "-wal", path + "-shm"} {
+		info, err := os.Stat(name)
+		if err != nil {
+			continue
+		}
+		if info.Mode().Perm()&^0o600 == 0 {
+			continue
+		}
+		if err := os.Chmod(name, 0o600); err != nil {
+			fmt.Fprintf(os.Stderr, "WARNING: %s holds the network key and stays readable by others: %v\n", name, err)
+		}
+	}
+	return &Store{db: db}, nil
+}
+
+// stateDSNPath percent-encodes path for the file: URI. A raw ? or # would start
+// the query or the fragment and open a different file.
+func stateDSNPath(path string) string {
+	parts := strings.Split(path, "/")
+	for i, part := range parts {
+		parts[i] = url.PathEscape(part)
+	}
+	return strings.Join(parts, "/")
+}
+
+func initStateSchema(db *sql.DB) error {
+	var tables int
+	if err := db.QueryRow(
+		`SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`).Scan(&tables); err != nil {
+		return err
+	}
+	// A file that already holds tables must prove it is a freedo store before the
+	// DDL runs: a mistyped --state must not adopt somebody else's database.
+	if tables > 0 {
+		if err := migrateStateSchema(db); err != nil {
+			return err
+		}
+		return checkStateSchema(db)
+	}
+	if _, err := db.Exec(stateSchemaDDL + installSchemaDDL); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', ?)`, SchemaVersion); err != nil {
+		return err
+	}
+	return checkStateSchema(db)
+}
+
+// migrateStateSchema moves an older database forward in one transaction, so a
+// crash before the commit leaves the old version to migrate again: version "1"
+// gets the installation tables, version "2" the open window columns, every
+// version before "4" the offline_schedule table and its schedules re-encoded,
+// every version before "5" the zone_window and zone_window_owed tables, every
+// version before "6" the interface_module table, and every version before "7"
+// the plant_episode table. A thermostat document
+// stored without a learned id is dropped at load (tado.RestoreDesiredState).
+// Every other desired-state row, save_seq and state_version stay as they are,
+// and a zone that predates the columns takes the captured defaults. The
+// installation's options.offline_schedule needs no step: an install table
+// without the key reads as DefaultOfflineSchedule. The migration is one way.
+func migrateStateSchema(db *sql.DB) error {
+	var version string
+	if err := db.QueryRow(`SELECT value FROM meta WHERE key = 'schema_version'`).Scan(&version); err != nil {
+		return fmt.Errorf("not a freedo state database: %w", err)
+	}
+	var steps []string
+	switch version {
+	case stateSchemaNoInst:
+		// The DDL creates the zone table with the open window columns already
+		// in it, so the "2" step has nothing left to add.
+		steps = append(steps, installSchemaDDL)
+	case stateSchemaNoOpenWindow:
+		steps = append(steps, zoneOpenWindowDDL)
+	case stateSchemaNoOfflineSchedule, stateSchemaNoZoneWindow, stateSchemaNoModule, stateSchemaNoPlantEpisode:
+	default:
+		return nil
+	}
+	// Every statement of the state DDL is idempotent, so it adds the tables an
+	// older version lacks and leaves the others alone.
+	steps = append(steps, stateSchemaDDL)
+
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, ddl := range steps {
+		if _, err := tx.Exec(ddl); err != nil {
+			return err
+		}
+	}
+	// A version "4", "5" or "6" schedule already holds the current encoding: a
+	// second re-encode would flip every enabled value back.
+	if version != stateSchemaNoZoneWindow && version != stateSchemaNoModule && version != stateSchemaNoPlantEpisode {
+		if err := reencodeLegacySchedules(tx); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec(`UPDATE meta SET value = ? WHERE key = 'schema_version'`, SchemaVersion); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// reencodeLegacySchedules rewrites every stored schedule written before
+// version "4", whose entry field 3 meant "off", so each entry keeps its enabled
+// value under the current encoding. The ETag is derived from the body, so it
+// moves with it.
+func reencodeLegacySchedules(tx *sql.Tx) error {
+	rows, err := tx.Query(`SELECT key, body FROM sched_doc`)
+	if err != nil {
+		return err
+	}
+	type doc struct {
+		key  string
+		body []byte
+	}
+	var docs []doc
+	for rows.Next() {
+		var d doc
+		if err := rows.Scan(&d.key, &d.body); err != nil {
+			rows.Close()
+			return err
+		}
+		docs = append(docs, d)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	for _, d := range docs {
+		body, etag, err := tado.ReencodeLegacySchedule(d.body)
+		if err != nil {
+			return fmt.Errorf("schedule %s: %w", d.key, err)
+		}
+		if _, err := tx.Exec(`UPDATE sched_doc SET body = ?, etag = ? WHERE key = ?`, body, etag, d.key); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func checkStateSchema(db *sql.DB) error {
+	var got string
+	if err := db.QueryRow(`SELECT value FROM meta WHERE key = 'schema_version'`).Scan(&got); err != nil {
+		return fmt.Errorf("not a freedo state database: %w", err)
+	}
+	if got != SchemaVersion {
+		return fmt.Errorf("schema version %q is unsupported, want %q", got, SchemaVersion)
+	}
+	return nil
+}
+
+// CheckSchema reports a database whose layout is not SchemaVersion.
+func (s *Store) CheckSchema() error { return checkStateSchema(s.db) }
+
+// DB is the connection the desired state goes through.
+func (s *Store) DB() *sql.DB { return s.db }
+
+func (s *Store) Close() error { return s.db.Close() }
+
+// RowQuerier is what ReadMetaUint needs of a *sql.DB or a *sql.Tx: the
+// installation reads the counter outside a transaction too.
+type RowQuerier interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+// ReadMetaUint reads the meta counter key, and whether the database holds it.
+func ReadMetaUint(ctx context.Context, q RowQuerier, key string) (uint64, bool, error) {
+	var raw string
+	switch err := q.QueryRowContext(ctx, `SELECT value FROM meta WHERE key = ?`, key).Scan(&raw); {
+	case errors.Is(err, sql.ErrNoRows):
+		return 0, false, nil
+	case err != nil:
+		return 0, false, err
+	}
+	value, err := strconv.ParseUint(raw, 10, 64)
+	if err != nil {
+		return 0, false, fmt.Errorf("meta %s %q: %w", key, raw, err)
+	}
+	return value, true, nil
+}
+
+// FSCTRL0 returns the passive receiver calibration, and whether the database
+// holds one.
+func (s *Store) FSCTRL0(ctx context.Context) (byte, bool, error) {
+	value, ok, err := ReadMetaUint(ctx, s.db, "fsctrl0")
+	if err != nil || !ok {
+		return 0, false, err
+	}
+	if value > 0xFF {
+		return 0, false, fmt.Errorf("meta fsctrl0 %d is not a register value", value)
+	}
+	return byte(value), true, nil
+}
+
+// SetFSCTRL0 stores the passive receiver calibration, so the next start seeds
+// the radio with it.
+func (s *Store) SetFSCTRL0(ctx context.Context, value byte) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT OR REPLACE INTO meta (key, value) VALUES ('fsctrl0', ?)`,
+		strconv.FormatUint(uint64(value), 10))
+	return err
+}
+
+// StoreFSCTRL0 writes the passive receiver calibration into the database at
+// path, through the store code the daemon seeds from. A path that holds no
+// database is refused: creating one here would put the calibration in a file
+// the daemon never reads.
+func StoreFSCTRL0(path string, value byte) error {
+	if _, err := os.Stat(path); err != nil {
+		return fmt.Errorf("state database %s: %w", path, err)
+	}
+	store, err := Open(path)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+	if err := store.SetFSCTRL0(context.Background(), value); err != nil {
+		return fmt.Errorf("state database %s: %w", path, err)
+	}
+	return nil
+}
+
+func boolInt(v bool) int64 {
+	if v {
+		return 1
+	}
+	return 0
+}
