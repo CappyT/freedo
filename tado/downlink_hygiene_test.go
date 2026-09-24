@@ -209,6 +209,45 @@ func TestSilentDeviceKeepsOneZoneWrite(t *testing.T) {
 	}
 }
 
+// TestZoneWriteDeliveredFollowsMarks: a write superseded while it waits is
+// confirmed by the delivery of the newer one. A write still queued, a 4.xx
+// answer and a write to another zone confirm nothing.
+func TestZoneWriteDeliveredFollowsMarks(t *testing.T) {
+	in := synthInstall(t)
+	e := NewEmu(in.EmuConfig(), NewUnhandledLogger(io.Discard))
+	e.SetHomeState(true, map[int]float64{0: 55, 4: 20.5})
+	va := mustHex("3000000000c51b00")
+	const target = "VA0000000001"
+	if err := e.EnqueueZoneRewrite(target, 4); err != nil {
+		t.Fatal(err)
+	}
+	first, ok := e.ZoneWriteMark(target, 4)
+	if !ok || e.ZoneWriteDelivered(target, 4, first) {
+		t.Fatalf("mark=%d ok=%t, delivered before any answer", first, ok)
+	}
+	if err := e.EnqueueZoneRewrite(target, 4); err != nil {
+		t.Fatal(err)
+	}
+	second, _ := e.ZoneWriteMark(target, 4)
+	if second <= first || e.Pending(target) != 1 {
+		t.Fatalf("second mark %d after %d with %d queued, want a newer mark on one write", second, first, e.Pending(target))
+	}
+	answerQueued(t, e, va, "4.00")
+	if e.ZoneWriteDelivered(target, 4, first) {
+		t.Fatal("a 4.00 answer confirmed the write")
+	}
+	if err := e.EnqueueZoneRewrite(target, 4); err != nil {
+		t.Fatal(err)
+	}
+	answerQueued(t, e, va, "2.04")
+	if !e.ZoneWriteDelivered(target, 4, first) || !e.ZoneWriteDelivered(target, 4, second) {
+		t.Error("the delivered write does not confirm the ones queued before it")
+	}
+	if e.ZoneWriteDelivered(target, 5, first) {
+		t.Error("a write to zone 4 confirmed zone 5")
+	}
+}
+
 func mustPayload(t *testing.T, coap []byte) []byte {
 	t.Helper()
 	m, err := parseCoAPCore(coap)

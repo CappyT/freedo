@@ -102,6 +102,9 @@ type heatEpisode struct {
 }
 
 // earlyStart is a block a zone runs before the program reaches it at boundary.
+// It is stored with the program blocks: the stored block of the zone is this
+// one, and a restart that forgot it would write the zone back to the colder
+// block before the boundary.
 type earlyStart struct {
 	at, boundary time.Time
 	block        scheduledBlock
@@ -208,7 +211,10 @@ func (d *daemon) forgetRemovedZones(before, in *tado.Install) {
 		delete(d.thermal, zone)
 		delete(d.heating, zone)
 		delete(d.thermalTarget, zone)
-		delete(d.early, zone)
+		if _, ok := d.early[zone]; ok {
+			delete(d.early, zone)
+			d.schedUnsaved = true
+		}
 		delete(d.plant, zone)
 		delete(d.zoneSched, zone)
 		if _, ok := d.schedPushed[zone]; ok {
@@ -376,6 +382,7 @@ func (d *daemon) planEarlyStarts(e *tado.EmuState) {
 			continue
 		}
 		d.early[zone] = plan
+		d.schedUnsaved = true
 		log.Printf("zone %d early start: %g C, %s before the block", zone, plan.block.c, plan.boundary.Sub(now).Round(time.Minute))
 	}
 }
@@ -390,6 +397,7 @@ func (d *daemon) earlyBlock(e *tado.EmuState, inst *tado.Install, zone int, bloc
 	}
 	if d.away || !inst.Options.EarlyStart(zone) || !now.Before(es.boundary) || !d.stillPlanned(e, inst, zone, es, now) {
 		delete(d.early, zone)
+		d.schedUnsaved = true
 		return block
 	}
 	return es.block

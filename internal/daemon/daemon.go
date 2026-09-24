@@ -6,6 +6,7 @@ package daemon
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	cryptorand "crypto/rand"
 	"encoding/binary"
@@ -102,17 +103,25 @@ type daemon struct {
 	linkMaintCursor  int
 	linkMaintTick    uint16
 	linkMaintWait    uint16
+	// txResume, bcastResume and midResume are the frame counters and the
+	// Message ID the database resumes from, see leaseCounters. They belong to
+	// the engine goroutine.
+	txResume, bcastResume uint32
+	midResume             uint16
 	// away is the state of the whole home, home by default. zoneSched holds the
 	// block each zone follows now, and schedPushed the block each zone took at
 	// the last tick or zone rewrite: a program zone whose two blocks differ owes
 	// its members a write of 6200 and 61e0. schedSeeded says whether
-	// schedPushed holds a baseline, and schedUnsaved whether it moved since the
-	// last save. dhwProgram is the hot-water program, nil when none is stored.
-	// All six belong to the engine goroutine.
+	// schedPushed holds a baseline. programOwed holds the zone rewrites queued
+	// and not yet confirmed, see programWrite. schedUnsaved says whether
+	// schedPushed, programOwed or early moved since the last save. dhwProgram
+	// is the hot-water program, nil when none is stored. All seven belong to
+	// the engine goroutine.
 	away         bool
 	zoneSched    map[int]scheduledBlock
 	schedPushed  map[int]scheduledBlock
 	schedSeeded  bool
+	programOwed  map[programWrite]uint64
 	schedUnsaved bool
 	dhwProgram   []tado.ScheduleProgram
 	// progLoc is the wall clock of the programs of progLocOf, see programClock.
@@ -222,6 +231,7 @@ func newDaemon(in *tado.Install, emu *tado.EmuState, radio radio.Radio, dryRun b
 		linkMaint:        make(map[string]linkMaintEntry),
 		zoneSched:        make(map[int]scheduledBlock),
 		schedPushed:      make(map[int]scheduledBlock),
+		programOwed:      make(map[programWrite]uint64),
 		windows:          make(map[int]zoneWindow),
 		windowOwed:       make(map[windowWrite]*windowOwed),
 		flowChanged:      make(map[int]time.Time),
@@ -361,6 +371,7 @@ func (d *daemon) run(ctx context.Context) {
 			for _, a := range d.emu.ExpireZoneProxies() {
 				d.tx(a)
 			}
+			d.tickCounters(d.emu)
 			d.tickHomeState(d.emu)
 			d.tickWindows(d.emu)
 			flowChanged := d.tickFlowLimits(d.emu)
@@ -1260,6 +1271,98 @@ func (d *daemon) attachState(store *stateStore) error {
 	}
 	d.saveSeq = seq
 	return nil
+}
+
+const (
+	// counterLease is how far past the frame counter in use the stored resume
+	// point runs. The tick stores a new one once less than half is left: a
+	// second of traffic never spends 2048 frames, so a restart after a crash
+	// resumes above every counter used.
+	counterLease = 4096
+	// midLease is the same for the CoAP Message ID. It wraps through 0: what
+	// matters is that a restart does not repeat a Message ID a device still
+	// holds in its deduplication state (EXCHANGE_LIFETIME, 247 s).
+	midLease = 4096
+)
+
+// Meta keys of the stored resume points.
+const (
+	metaTxResume    = "tx_counter_resume"
+	metaBcastResume = "broadcast_counter_resume"
+	metaMIDResume   = "coap_mid_resume"
+)
+
+// restoreCounters resumes the unicast and the broadcast frame counters and the
+// CoAP Message ID from their stored resume points. The configured frame
+// counter seed stays a floor. A daemon that transmits on a live radio then
+// stores new resume points before its first frame. A dry-run or a replay puts
+// nothing on the air: it reads the resume points and stores none.
+func (d *daemon) restoreCounters(e *tado.EmuState) error {
+	if d.state == nil {
+		return nil
+	}
+	ctx := context.Background()
+	stored := make(map[string]uint64, 3)
+	for _, key := range []string{metaTxResume, metaBcastResume, metaMIDResume} {
+		v, found, err := install.ReadMetaUint(ctx, d.state.db, key)
+		if err != nil {
+			return err
+		}
+		if found {
+			stored[key] = v
+		}
+	}
+	if v := uint32(stored[metaTxResume]); v > e.TxCounter() {
+		e.SetTxCounter(v)
+	}
+	if v := uint32(stored[metaBcastResume]); v > e.BroadcastCounter() {
+		e.SetBroadcastCounter(v)
+	}
+	if v, ok := stored[metaMIDResume]; ok {
+		tado.SeedMID(uint16(v))
+	}
+	if !d.leasesCounters() {
+		return nil
+	}
+	return d.leaseCounters(e, true)
+}
+
+// leasesCounters reports whether the daemon stores resume points: it
+// transmits on a live radio.
+func (d *daemon) leasesCounters() bool {
+	return d.state != nil && !d.dryRun && d.mode == "live"
+}
+
+// leaseCounters stores resume points a lease past the counters in use once
+// less than half a lease is left, or at once with force.
+func (d *daemon) leaseCounters(e *tado.EmuState, force bool) error {
+	tx, bcast, mid := e.TxCounter(), e.BroadcastCounter(), tado.LastMID()
+	if !force && int32(d.txResume-tx) >= counterLease/2 && int32(d.bcastResume-bcast) >= counterLease/2 &&
+		int16(d.midResume-mid) >= midLease/2 {
+		return nil
+	}
+	txResume, bcastResume, midResume := leaseAbove(tx), leaseAbove(bcast), mid+midLease
+	if err := d.state.SetCounterResume(context.Background(), map[string]uint64{
+		metaTxResume: uint64(txResume), metaBcastResume: uint64(bcastResume), metaMIDResume: uint64(midResume),
+	}); err != nil {
+		return err
+	}
+	d.txResume, d.bcastResume, d.midResume = txResume, bcastResume, midResume
+	return nil
+}
+
+func leaseAbove(v uint32) uint32 {
+	return uint32(min(uint64(v)+counterLease, uint64(^uint32(0))))
+}
+
+// tickCounters moves the stored resume points ahead on the tick.
+func (d *daemon) tickCounters(e *tado.EmuState) {
+	if !d.leasesCounters() {
+		return
+	}
+	if err := d.leaseCounters(e, false); err != nil {
+		log.Printf("persist frame counter resume points: %v", err)
+	}
 }
 
 func (d *daemon) saveDesiredStateSnapshot(ctx context.Context, state tado.DesiredState, seq uint64) error {
@@ -2253,14 +2356,81 @@ func (d *daemon) markPushed(zone int) {
 	d.schedUnsaved = true
 }
 
-// saveProgramBlocks stores schedPushed once it moved, so a restart knows which
-// block each zone holds. A failed save stays owed to the next tick.
+// programWrite names one member of a zone that owes a zone rewrite: a program
+// block change, the home or away switch, or a setpoint shift. schedPushed moves
+// when the write is queued, and the queue is not durable, so the owed write is:
+// a restart re-queues it once. The 2.xx of that write, or of any newer zone
+// block write to the member, settles it.
+type programWrite struct {
+	zone   int
+	target string
+}
+
+// oweProgramWrite records the zone rewrite just queued to target. Its mark
+// names the write whose delivery settles it.
+func (d *daemon) oweProgramWrite(e *tado.EmuState, zone int, target string) {
+	mark, ok := e.ZoneWriteMark(target, zone)
+	if !ok {
+		return
+	}
+	w := programWrite{zone: zone, target: target}
+	if _, had := d.programOwed[w]; !had {
+		d.schedUnsaved = true
+	}
+	d.programOwed[w] = mark
+}
+
+// settleProgramWrites drops every owed write its member confirmed, and the ones
+// whose target left the zone. A write restored from the database carries mark 0
+// until requeueProgramWrites queues it.
+func (d *daemon) settleProgramWrites(e *tado.EmuState) {
+	for w, mark := range d.programOwed {
+		if !d.zoneMember(w.zone, w.target) || mark != 0 && e.ZoneWriteDelivered(w.target, w.zone, mark) {
+			delete(d.programOwed, w)
+			d.schedUnsaved = true
+		}
+	}
+}
+
+// requeueProgramWrites queues again each write restored as owed and not queued
+// since, once: a member that fails it stays owed until a restart or a newer
+// zone write. The write stamps the home state and the block in force now.
+func (d *daemon) requeueProgramWrites(e *tado.EmuState) {
+	var restored []programWrite
+	for w, mark := range d.programOwed {
+		if mark == 0 {
+			restored = append(restored, w)
+		}
+	}
+	slices.SortFunc(restored, func(a, b programWrite) int {
+		return cmp.Or(cmp.Compare(a.zone, b.zone), strings.Compare(a.target, b.target))
+	})
+	for _, w := range restored {
+		if err := e.EnqueueZoneRewrite(w.target, w.zone); err != nil {
+			log.Printf("zone %d owed rewrite on %s: %v", w.zone, w.target, err)
+			delete(d.programOwed, w)
+			d.schedUnsaved = true
+			continue
+		}
+		log.Printf("zone %d owed rewrite on %s queued again", w.zone, w.target)
+		d.oweProgramWrite(e, w.zone, w.target)
+		d.requestQueuedDispatch(w.target)
+	}
+}
+
+// saveProgramBlocks stores schedPushed, the owed zone rewrites and the early
+// starts once they moved, so a restart knows which block each zone holds and
+// which writes it still owes. A failed save stays owed to the next tick.
 func (d *daemon) saveProgramBlocks() {
 	if !d.schedUnsaved {
 		return
 	}
 	if d.state != nil {
-		if err := d.state.SetProgramBlocks(context.Background(), d.schedPushed); err != nil {
+		owed := make([]programWrite, 0, len(d.programOwed))
+		for w := range d.programOwed {
+			owed = append(owed, w)
+		}
+		if err := d.state.SetProgramState(context.Background(), d.schedPushed, owed, d.early); err != nil {
 			log.Printf("persist program blocks: %v", err)
 			return
 		}
@@ -2283,15 +2453,18 @@ func (d *daemon) tickHomeState(e *tado.EmuState) {
 	if len(zones) > 0 {
 		d.rewriteZones(e, zones, d.requestQueuedDispatch)
 	}
+	d.settleProgramWrites(e)
+	d.requeueProgramWrites(e)
 	d.pushedAll()
 	d.saveProgramBlocks()
 	d.observeHeatUps(e)
 }
 
 // restoreHomeState loads the home state the engine keeps in the database: the
-// away flag, the hot-water program, the windows, the heat-up models and the
-// block each zone last took. With that baseline the first tick writes each zone
-// whose program moved while the daemon was down, and no other.
+// away flag, the hot-water program, the windows, the heat-up models, the block
+// each zone last took, the zone rewrites still owed and the early starts
+// running. With that baseline the first tick writes each zone whose program
+// moved while the daemon was down, and each owed write, and no other.
 func (d *daemon) restoreHomeState(e *tado.EmuState) error {
 	if d.state == nil {
 		return nil
@@ -2317,7 +2490,15 @@ func (d *daemon) restoreHomeState(e *tado.EmuState) error {
 	if stored {
 		d.schedPushed, d.schedSeeded = blocks, true
 	}
-	return nil
+	owed, err := d.state.ProgramOwed(ctx)
+	if err != nil {
+		return err
+	}
+	for _, w := range owed {
+		d.programOwed[w] = 0
+	}
+	d.early, err = d.state.EarlyStarts(ctx)
+	return err
 }
 
 // tickUTCOffset serves tag 02b2 at the current instant: a DST transition moves
@@ -2348,6 +2529,7 @@ func (d *daemon) rewriteZones(e *tado.EmuState, zones []int, dispatch func(strin
 			if q := e.Queue(target); len(q) > 0 {
 				log.Printf("zone %d queued %s", zone, q[len(q)-1].Desc)
 			}
+			d.oweProgramWrite(e, zone, target)
 			written++
 			dispatch(target)
 		}
@@ -2407,6 +2589,9 @@ func (d *daemon) patchHome(w http.ResponseWriter, r *http.Request) {
 		queued := 0
 		if changed {
 			queued = d.rewriteZones(e, d.allZones(), func(target string) { d.dispatchQueued(e, target) })
+			// The owed writes reach the database before the flag: a restart
+			// between the two rewrites the zones once more, never none.
+			d.saveProgramBlocks()
 		}
 		scheduled, off := d.scheduledView()
 		return map[string]any{"away": d.away, "queued": queued, "scheduled": scheduled, "scheduledOff": off}, nil
@@ -3787,6 +3972,10 @@ flags:
 	if err := d.restoreHomeState(emu); err != nil {
 		closeStore(store)
 		die("%v", err)
+	}
+	if err := d.restoreCounters(emu); err != nil {
+		closeStore(store)
+		die("frame counters: %v", err)
 	}
 	d.applyHomeState(emu)
 	unknownModules := emu.UnknownInterfaceModules()

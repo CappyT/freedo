@@ -223,8 +223,9 @@ type EmuConfig struct {
 	// TxCounter seeds the frame counter we put in our own downlinks. No device
 	// checks it on receive - valve and bridge alike accept a frame on the
 	// AES-CCM* MIC alone and keep no last-accepted counter - so any seed is
-	// accepted and a low one cannot lock us out. It exists for our own
-	// bookkeeping and to keep the CCM* nonce unique per key.
+	// accepted and a low one cannot lock us out. The counter sits in the
+	// plaintext, not in the CCM* nonce (frame.go): it exists for our own
+	// bookkeeping. The daemon resumes it from the database.
 	TxCounter uint32
 	// BroadcastCounter seeds the 32-bit counter split across a broadcast frame.
 	BroadcastCounter     uint32
@@ -352,8 +353,9 @@ type queuedDownlink struct {
 	// zone, so a newer one replaces it while it waits (supersedeZoneWrites).
 	zoneBlock bool
 	zone      int
-	dbg2      []TLV // d/dbg2/tlvs records, patched into the served d/config on delivery
-	childLock *bool // the d/lock state the write sets, recorded on delivery
+	mark      uint64 // zone block writes only: its place in the order they were queued
+	dbg2      []TLV  // d/dbg2/tlvs records, patched into the served d/config on delivery
+	childLock *bool  // the d/lock state the write sets, recorded on delivery
 }
 
 type activeGet struct {
@@ -584,7 +586,12 @@ type EmuState struct {
 	// windowOpen holds the 62e0 the daemon wants in each zone its window engine
 	// drives. The daemon
 	// owns it and pushes it with SetOpenWindows.
-	windowOpen          map[int]bool
+	windowOpen map[int]bool
+	// zoneWriteMark numbers the zone block writes in the order they are
+	// queued, and zoneDelivered holds the mark of the newest one each node
+	// took, per zone, keyed by overlayTimerKey. See ZoneWriteDelivered.
+	zoneWriteMark       uint64
+	zoneDelivered       map[string]uint64
 	tx                  uint32 // our anti-replay counter
 	seq                 byte   // our MAC sequence number
 	bcastCt             uint32
@@ -663,6 +670,7 @@ func NewEmu(cfg EmuConfig, log *UnhandledLogger) *EmuState {
 		fwPut:          map[string]FwStateReport{},
 		fwGet:          map[string]FwStateReport{},
 		schedC:         map[int]float64{},
+		zoneDelivered:  map[string]uint64{},
 		tx:             cfg.TxCounter,
 		bcastCt:        cfg.BroadcastCounter,
 		fragTag:        fragTag,
@@ -710,6 +718,12 @@ func (e *EmuState) SetTxCounter(v uint32) { e.tx = v }
 
 // TxCounter returns our current downlink anti-replay counter.
 func (e *EmuState) TxCounter() uint32 { return e.tx }
+
+// SetBroadcastCounter reseeds the broadcast frame counter.
+func (e *EmuState) SetBroadcastCounter(v uint32) { e.bcastCt = v }
+
+// BroadcastCounter returns the broadcast frame counter.
+func (e *EmuState) BroadcastCounter() uint32 { return e.bcastCt }
 
 // Nodes returns a snapshot of learned node state, sorted by short address.
 func (e *EmuState) Nodes() []NodeState {
@@ -2078,6 +2092,8 @@ func (e *EmuState) supersedeZoneWrites(wire []byte, zone int) {
 	q := e.queue[key]
 	newest := q[len(q)-1]
 	newest.zoneBlock, newest.zone = true, zone
+	e.zoneWriteMark++
+	newest.mark = e.zoneWriteMark
 	events := zoneWriteEvents(newest.coap)
 	kept := make([]*queuedDownlink, 0, len(q))
 	for _, d := range q[:len(q)-1] {
@@ -2088,6 +2104,34 @@ func (e *EmuState) supersedeZoneWrites(wire []byte, zone int) {
 		kept = append(kept, d)
 	}
 	e.queue[key] = append(kept, newest)
+}
+
+// ZoneWriteMark returns the mark of the newest zone block write queued to
+// target for zone, and false when none waits.
+func (e *EmuState) ZoneWriteMark(target string, zone int) (uint64, bool) {
+	wire, _, err := e.resolve(target)
+	if err != nil {
+		return 0, false
+	}
+	q := e.queue[hexEUI(wire)]
+	for i := len(q) - 1; i >= 0; i-- {
+		if q[i].zoneBlock && q[i].zone == zone {
+			return q[i].mark, true
+		}
+	}
+	return 0, false
+}
+
+// ZoneWriteDelivered reports whether target answered 2.xx to a zone block
+// write for zone queued at or after mark. Each such write stamps the home state
+// and the program block in force when it was queued, so a newer write that
+// superseded the one mark names confirms it as well.
+func (e *EmuState) ZoneWriteDelivered(target string, zone int, mark uint64) bool {
+	wire, _, err := e.resolve(target)
+	if err != nil {
+		return false
+	}
+	return e.zoneDelivered[overlayTimerKey(hexEUI(wire), zone)] >= mark
 }
 
 // zoneEventTags are the z/s tags that mark an event rather than a state: the
@@ -2984,6 +3028,10 @@ func (e *EmuState) EnqueueChildLock(target string, id int, on bool) error {
 
 // noteDelivered records what a delivered downlink d to key sets on the device.
 func (e *EmuState) noteDelivered(key string, d *queuedDownlink) {
+	if d.zoneBlock {
+		k := overlayTimerKey(key, d.zone)
+		e.zoneDelivered[k] = max(e.zoneDelivered[k], d.mark)
+	}
 	if d.childLock != nil {
 		e.childLock[key] = *d.childLock
 		e.deliveredChanged = true

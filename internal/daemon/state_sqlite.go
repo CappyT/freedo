@@ -5,12 +5,14 @@ package daemon
 // only moves rows. internal/install owns the database file and its schema.
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -249,18 +251,118 @@ func (s *stateStore) ProgramBlocks(ctx context.Context) (map[int]scheduledBlock,
 	return out, true, nil
 }
 
-// SetProgramBlocks stores the block each zone took.
-func (s *stateStore) SetProgramBlocks(ctx context.Context, blocks map[int]scheduledBlock) error {
-	stored := make(map[int]storedBlock, len(blocks))
-	for zone, b := range blocks {
-		stored[zone] = storedBlock{C: b.c, Off: b.off}
-	}
-	raw, err := json.Marshal(stored)
+// SetCounterResume stores the counter resume points, keyed by meta key, in one
+// transaction.
+func (s *stateStore) SetCounterResume(ctx context.Context, resume map[string]uint64) error {
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, `INSERT OR REPLACE INTO meta (key, value) VALUES ('program_blocks', ?)`, string(raw))
-	return err
+	defer tx.Rollback()
+	for key, v := range resume {
+		if _, err := tx.ExecContext(ctx, `INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)`,
+			key, strconv.FormatUint(v, 10)); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// storedProgramWrite is the JSON of one programWrite in meta program_owed.
+type storedProgramWrite struct {
+	Zone   int    `json:"zone"`
+	Target string `json:"target"`
+}
+
+// storedEarlyStart is the JSON of one earlyStart in meta early_starts.
+type storedEarlyStart struct {
+	AtMs       int64   `json:"atMs"`
+	BoundaryMs int64   `json:"boundaryMs"`
+	C          float64 `json:"c"`
+	Off        bool    `json:"off,omitempty"`
+}
+
+// ProgramOwed returns the zone rewrites queued and not confirmed at the last
+// save.
+func (s *stateStore) ProgramOwed(ctx context.Context) ([]programWrite, error) {
+	var stored []storedProgramWrite
+	if err := s.metaJSON(ctx, "program_owed", &stored); err != nil {
+		return nil, err
+	}
+	out := make([]programWrite, 0, len(stored))
+	for _, w := range stored {
+		out = append(out, programWrite{zone: w.Zone, target: w.Target})
+	}
+	return out, nil
+}
+
+// EarlyStarts returns the early starts running at the last save.
+func (s *stateStore) EarlyStarts(ctx context.Context) (map[int]earlyStart, error) {
+	var stored map[int]storedEarlyStart
+	if err := s.metaJSON(ctx, "early_starts", &stored); err != nil {
+		return nil, err
+	}
+	out := make(map[int]earlyStart, len(stored))
+	for zone, es := range stored {
+		out[zone] = earlyStart{
+			at: time.UnixMilli(es.AtMs).UTC(), boundary: time.UnixMilli(es.BoundaryMs).UTC(),
+			block: scheduledBlock{c: es.C, off: es.Off},
+		}
+	}
+	return out, nil
+}
+
+// metaJSON decodes the JSON meta value of key into v, and leaves v alone when
+// the key is not stored.
+func (s *stateStore) metaJSON(ctx context.Context, key string, v any) error {
+	var raw string
+	switch err := s.db.QueryRowContext(ctx, `SELECT value FROM meta WHERE key = ?`, key).Scan(&raw); {
+	case errors.Is(err, sql.ErrNoRows):
+		return nil
+	case err != nil:
+		return err
+	}
+	if err := json.Unmarshal([]byte(raw), v); err != nil {
+		return fmt.Errorf("meta %s: %w", key, err)
+	}
+	return nil
+}
+
+// SetProgramState stores in one transaction the block each zone took, the
+// zone rewrites still owed and the early starts running.
+func (s *stateStore) SetProgramState(ctx context.Context, blocks map[int]scheduledBlock, owed []programWrite, early map[int]earlyStart) error {
+	storedBlocks := make(map[int]storedBlock, len(blocks))
+	for zone, b := range blocks {
+		storedBlocks[zone] = storedBlock{C: b.c, Off: b.off}
+	}
+	storedOwed := make([]storedProgramWrite, 0, len(owed))
+	for _, w := range owed {
+		storedOwed = append(storedOwed, storedProgramWrite{Zone: w.zone, Target: w.target})
+	}
+	slices.SortFunc(storedOwed, func(a, b storedProgramWrite) int {
+		return cmp.Or(cmp.Compare(a.Zone, b.Zone), strings.Compare(a.Target, b.Target))
+	})
+	storedEarly := make(map[int]storedEarlyStart, len(early))
+	for zone, es := range early {
+		storedEarly[zone] = storedEarlyStart{
+			AtMs: es.at.UnixMilli(), BoundaryMs: es.boundary.UnixMilli(), C: es.block.c, Off: es.block.off,
+		}
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for key, v := range map[string]any{"program_blocks": storedBlocks, "program_owed": storedOwed, "early_starts": storedEarly} {
+		raw, err := json.Marshal(v)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)`, key, string(raw)); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // thermalModelPrefix starts the meta key of the heat-up model of a zone, stored

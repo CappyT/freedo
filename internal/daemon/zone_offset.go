@@ -97,6 +97,7 @@ func (d *daemon) restateShiftedZones(e *tado.EmuState, before, after *tado.Insta
 				log.Printf("zone %d offset restate: %v", m.zone, err)
 				continue
 			}
+			d.oweProgramWrite(e, m.zone, target)
 			d.requestQueuedDispatch(target)
 		}
 		d.markPushed(m.zone)

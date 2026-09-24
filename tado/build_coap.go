@@ -769,3 +769,11 @@ func init() {
 func nextMID() uint16 {
 	return uint16(midCounter.Add(1))
 }
+
+// LastMID returns the last Message ID minted.
+func LastMID() uint16 { return uint16(midCounter.Load()) }
+
+// SeedMID makes v+1 the next Message ID minted. The daemon seeds it past the
+// value it stored, so a restart cannot repeat a Message ID a device still
+// holds in its deduplication state.
+func SeedMID(v uint16) { midCounter.Store(uint32(v)) }
