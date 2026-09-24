@@ -5827,7 +5827,67 @@
 		)
 		(uuid "fa410d8c-bea0-4495-95fa-14e3f029d8e9")
 	)
-	(label "MDI_1"
+	(label "TD_P"
+		(at 152.4 55.88 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "7eee2b57-743c-41bd-b729-4fc6af000fa0")
+	)
+	(label "TD_N"
+		(at 152.4 60.96 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "ac003e4e-d53b-4a69-8871-ee0ef927eb8b")
+	)
+	(label "RD_P"
+		(at 152.4 66.04 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "1e384f16-bf3d-4c5f-bc14-9f7733f38b83")
+	)
+	(label "RD_N"
+		(at 152.4 71.12 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "fc33aecd-50ca-4ae7-af53-71250d4ba826")
+	)
+	(label "RX_TERM_P"
+		(at 186.69 81.28 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "cabb8748-a65a-4767-9df4-56966d41b001")
+	)
+	(label "RX_TERM_N"
+		(at 186.69 101.6 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "3b8b5b99-bfcf-4800-8e56-1cafcb39518d")
+	)
+	(label "MDI_TX_P"
 		(at 40.64 54.61 0)
 		(effects
 			(font
@@ -5837,7 +5897,7 @@
 		)
 		(uuid "bb01edbc-54b8-4ad7-967d-99045aac6fa4")
 	)
-	(label "MDI_1"
+	(label "MDI_TX_P"
 		(at 127 55.88 180)
 		(effects
 			(font
@@ -5847,7 +5907,7 @@
 		)
 		(uuid "6ff37684-0a1e-4819-8966-f0bed86cca82")
 	)
-	(label "MDI_2"
+	(label "MDI_TX_N"
 		(at 40.64 57.15 0)
 		(effects
 			(font
@@ -5857,7 +5917,7 @@
 		)
 		(uuid "59314f87-1e3a-4b5a-ae42-335a9eecffb6")
 	)
-	(label "MDI_2"
+	(label "MDI_TX_N"
 		(at 127 60.96 180)
 		(effects
 			(font
@@ -5867,7 +5927,7 @@
 		)
 		(uuid "a4d5baaa-9e26-4d7d-b0ad-455738c42600")
 	)
-	(label "MDI_3"
+	(label "MDI_RX_P"
 		(at 40.64 59.69 0)
 		(effects
 			(font
@@ -5877,7 +5937,7 @@
 		)
 		(uuid "37dd2fd2-70cb-4496-8df8-8854117915b4")
 	)
-	(label "MDI_3"
+	(label "MDI_RX_P"
 		(at 127 66.04 180)
 		(effects
 			(font
@@ -5887,7 +5947,7 @@
 		)
 		(uuid "e6eb531f-6fd2-4840-94a5-4954996923ec")
 	)
-	(label "MDI_6"
+	(label "MDI_RX_N"
 		(at 40.64 67.31 0)
 		(effects
 			(font
@@ -5897,7 +5957,7 @@
 		)
 		(uuid "ab7d69d3-34bb-473d-8409-afd257c6781b")
 	)
-	(label "MDI_6"
+	(label "MDI_RX_N"
 		(at 127 71.12 180)
 		(effects
 			(font

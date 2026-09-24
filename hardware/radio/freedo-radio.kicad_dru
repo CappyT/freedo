@@ -1,0 +1,75 @@
+(version 1)
+
+# Later rules take precedence: general limits first, the isolation rules last.
+
+# Hole to copper 0.25 mm. The HRO TYPE-C-31-M-12 maker land puts four pads 0.2 mm from the J201 pegs.
+(rule "hole_clearance"
+	(condition "!(A.memberOfFootprint('J201') && B.memberOfFootprint('J201'))")
+	(constraint hole_clearance (min 0.25mm)))
+
+# JLC: 0.45 mm between the holes of two pads. Via holes use the board minimum of 0.2 mm.
+(rule "pad_hole_to_hole"
+	(condition "A.Type == 'Pad' && B.Type == 'Pad'")
+	(constraint hole_to_hole (min 0.45mm)))
+
+# JLC: NPTH holes at least 0.5 mm.
+(rule "npth_min_drill"
+	(condition "A.Type == 'Pad' && A.Pad_Type == 'NPTH, mechanical'")
+	(constraint hole_size (min 0.5mm)))
+
+# JLC multilayer: 0.15 mm annular ring on plated component holes. Vias use the board minimum (0.45/0.2 mm, 0.125 mm ring).
+(rule "pth_annular_ring"
+	(condition "A.Type == 'Pad' && A.Pad_Type == 'Through-hole'")
+	(constraint annular_width (min 0.15mm)))
+
+# Main rails at least 0.5 mm (net class 0.65 mm, HDG 1.4.2 25 mil). Necks into U201 and U301 pins inside their courtyards are exempt.
+(rule "power_rail_width"
+	(condition "A.Type == 'Track' && (A.NetName == '*/5V_SYS' || A.NetName == '+3V3' || A.NetName == '*/VBUS' || A.NetName == 'Net-(F201-Pad1)' || A.NetName == '*/+VDC') && !A.intersectsCourtyard('U201') && !A.intersectsCourtyard('U301')")
+	(constraint track_width (min 0.5mm)))
+
+# Copper pours keep 0.5 mm from the 90/100 ohm pairs, so the pairs stay close to the edge-coupled model of the JLC calculator.
+(rule "pour_to_pairs"
+	(condition "(A.Type == 'Zone' && (B.NetClass == 'USB_90' || B.NetClass == 'ETH_100')) || (B.Type == 'Zone' && (A.NetClass == 'USB_90' || A.NetClass == 'ETH_100'))")
+	(constraint clearance (min 0.5mm)))
+
+# USB D+/D- (README 6.3): 90 ohm differential on F.Cu over In1.Cu, 0.29 mm track, 0.20 mm gap.
+(rule "usb_90_pair"
+	(condition "A.NetClass == 'USB_90'")
+	(constraint track_width (min 0.27mm) (opt 0.29mm) (max 0.31mm))
+	(constraint diff_pair_gap (min 0.18mm) (opt 0.20mm) (max 0.22mm)))
+
+# Ethernet MDI, both sides of T301 (README 6.3): 100 ohm differential, 0.23 mm track, 0.20 mm gap. The line-side pairs are POE_LINE nets.
+(rule "eth_100_pair"
+	(condition "A.NetClass == 'ETH_100' || A.NetName == '/ethernet_poe/MDI_*'")
+	(constraint track_width (min 0.21mm) (opt 0.23mm) (max 0.25mm))
+	(constraint diff_pair_gap (min 0.18mm) (opt 0.20mm) (max 0.22mm)))
+
+# RF feed C125 -> R191 -> J1 (README 6.3): 50 ohm grounded coplanar on F.Cu over In1.Cu, 0.30 mm track, 0.20 mm gap (net class clearance).
+(rule "rf_50_track"
+	(condition "A.NetClass == 'RF_50'")
+	(constraint track_width (min 0.28mm) (opt 0.30mm) (max 0.32mm)))
+
+# The RF feed stays on F.Cu: no vias on it.
+(rule "rf_50_no_via"
+	(condition "A.NetClass == 'RF_50'")
+	(constraint disallow via))
+
+# J1 is an end-launch SMA: its pads end at the board edge by design (XUNPU drawing).
+(rule "j1_edge_launch"
+	(condition "A.memberOfFootprint('J1')")
+	(constraint edge_clearance (min 0mm)))
+
+# Isolation: the screws are chassis. Line-side copper keeps 2.0 mm beyond the 6.9 mm screw-head courtyard, 3.9 mm from the hole wall.
+(rule "iso_line_to_mounting_holes"
+	(condition "(A.NetClass == 'POE_LINE' && B.memberOfFootprint('H*')) || (B.NetClass == 'POE_LINE' && A.memberOfFootprint('H*'))")
+	(constraint hole_clearance (min 3.9mm)))
+
+# Isolation (README 6.2): SHIELD to system copper 2.0 mm on every layer. C323 crosses (SHIELD -> GND); J301 shield pins and pegs share one footprint.
+(rule "iso_shield_to_system"
+	(condition "((A.NetClass == 'SHIELD' && B.NetClass != 'SHIELD' && B.NetClass != 'POE_LINE') || (B.NetClass == 'SHIELD' && A.NetClass != 'SHIELD' && A.NetClass != 'POE_LINE')) && !(A.Type == 'Pad' && B.Type == 'Pad' && ((A.memberOfFootprint('C323') && B.memberOfFootprint('C323')) || (A.memberOfFootprint('J301') && B.memberOfFootprint('J301'))))")
+	(constraint clearance (min 2.0mm)))
+
+# Isolation (README 6.2): line side to every other class, SHIELD included, 2.0 mm on every layer. T301, U401 and C322 cross the barrier, so their own pads are exempt from each other.
+(rule "iso_line_side"
+	(condition "((A.NetClass == 'POE_LINE' && B.NetClass != 'POE_LINE') || (B.NetClass == 'POE_LINE' && A.NetClass != 'POE_LINE')) && !(A.Type == 'Pad' && B.Type == 'Pad' && ((A.memberOfFootprint('T301') && B.memberOfFootprint('T301')) || (A.memberOfFootprint('U401') && B.memberOfFootprint('U401')) || (A.memberOfFootprint('C322') && B.memberOfFootprint('C322'))))")
+	(constraint clearance (min 2.0mm)))
