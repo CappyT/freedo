@@ -217,14 +217,14 @@ func TestParseRxBlobFreqEst(t *testing.T) {
 
 func TestParseAutoAckRXBlobFreqEst(t *testing.T) {
 	blob := []byte{0x02, 0x69, 0xec, 0xc0, 0xff}
-	if frame := parseAutoAckRXBlob(blob); frame == nil || frame.HasFreqEst {
+	if frame := parseRxBlobExact(blob); frame == nil || frame.HasFreqEst {
 		t.Errorf("a v2 AUTOACK blob must parse without a FREQEST reading: %+v", frame)
 	}
-	frame := parseAutoAckRXBlob(append(append([]byte(nil), blob...), 0xf3))
+	frame := parseRxBlobExact(append(append([]byte(nil), blob...), 0xf3))
 	if frame == nil || !frame.HasFreqEst || frame.FreqEst != -13 {
 		t.Errorf("a v2.1 AUTOACK blob must carry FREQEST: %+v", frame)
 	}
-	if parseAutoAckRXBlob(append(append([]byte(nil), blob...), 0xf3, 0x00)) != nil {
+	if parseRxBlobExact(append(append([]byte(nil), blob...), 0xf3, 0x00)) != nil {
 		t.Error("an AUTOACK blob with two trailing bytes must not parse")
 	}
 }

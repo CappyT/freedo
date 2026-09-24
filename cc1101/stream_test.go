@@ -20,7 +20,7 @@ func (p *streamPort) Write(data []byte) (int, error) {
 		p.read = append(p.read, p.inFlight...)
 		p.read = append(p.read, rspMagic, streamEnd, 0x00)
 	case len(data) >= 2 && data[0] == reqMagic && data[1] == cmdPing:
-		p.read = append(p.read, rspMagic, 0x00, 0x00, 0x02, 'o', 'k')
+		p.read = append(p.read, autoAckResponse(0, []byte("CC1101BRIDGE v2.5"))...)
 	}
 	return len(data), nil
 }
@@ -66,7 +66,7 @@ func TestStreamUntilEndsAtStreamEnd(t *testing.T) {
 	if aborts != 1 || !bytes.Equal(p.writes[0][:2], []byte{reqMagic, cmdStream}) {
 		t.Fatalf("writes %x, want the stream request and one abort byte", p.writes)
 	}
-	if got, err := b.Ping(); err != nil || got != "ok" {
-		t.Fatalf("ping after the stream: %q %v, want ok", got, err)
+	if got, err := b.Ping(); err != nil || got != "CC1101BRIDGE v2.5" {
+		t.Fatalf("ping after the stream: %q %v, want the banner", got, err)
 	}
 }

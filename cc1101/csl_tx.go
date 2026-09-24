@@ -43,7 +43,13 @@ func (b *Bridge) SendCSLData(frame, dstShort []byte, ackTimeout, timeout time.Du
 		b.timeout = timeout
 	}
 	defer func() { b.timeout = savedTimeout }()
-	status, data, err := b.req(cmdCSLTx, payload)
+	status, data, err := b.req(cmdCSLTx, payload, func(status byte, data []byte) bool {
+		if status == 0 {
+			_, err := parseCSLTxResult(status, data, bootstrap, waitResponse)
+			return err == nil
+		}
+		return len(data) == 1
+	})
 	if err != nil {
 		return nil, err
 	}

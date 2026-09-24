@@ -104,7 +104,15 @@ func (b *Bridge) EnqueueCSLBatch(jobs []CSLQueueRequest) error {
 	if len(payload) > maxReqPayload {
 		return fmt.Errorf("CSL queue batch exceeds serial payload")
 	}
-	status, data, err := b.req(cmdCSLQueue, payload)
+	status, data, err := b.req(cmdCSLQueue, payload, func(status byte, data []byte) bool {
+		switch status {
+		case 0:
+			return len(data) == 1 && int(data[0]) == len(jobs)
+		case cslTxInput, cslQueueFull, cslQueueNeighborFull:
+			return len(data) == 0
+		}
+		return false
+	})
 	if err != nil {
 		return err
 	}
@@ -134,43 +142,73 @@ func (b *Bridge) PollCSLQueueWithin(timeout time.Duration) (*CSLQueueEvent, erro
 }
 
 func (b *Bridge) pollCSLQueueUntil(deadline time.Time) (*CSLQueueEvent, error) {
-	status, data, err := b.reqUntil(cmdCSLQueue, []byte{cslQueuePoll}, deadline)
-	if err != nil {
-		if errors.Is(err, errSerialDeadline) {
-			return nil, fmt.Errorf("%w: %v", ErrCSLPollTimeout, err)
+	if len(b.late) == 0 {
+		status, data, err := b.reqUntil(cmdCSLQueue, []byte{cslQueuePoll}, deadline, validCSLQueueEvent, b.keepLateEvent)
+		if err != nil {
+			if errors.Is(err, errSerialDeadline) {
+				return nil, fmt.Errorf("%w: %v", ErrCSLPollTimeout, err)
+			}
+			return nil, err
 		}
-		return nil, err
+		if parserReject(status) {
+			return nil, fmt.Errorf("CSL queue poll status 0x%02x", status)
+		}
+		// The resync of this request can put late events ahead of this reply.
+		b.keepLateEvent(status, data)
 	}
+	if len(b.late) == 0 {
+		return nil, nil
+	}
+	event := b.late[0]
+	b.late = b.late[1:]
+	return event, nil
+}
+
+// keepLateEvent queues the event a poll reply carries for the next poll.
+func (b *Bridge) keepLateEvent(status byte, data []byte) {
+	if event, err := parseCSLQueueEvent(status, data); err == nil && event != nil {
+		b.late = append(b.late, event)
+	}
+}
+
+func validCSLQueueEvent(status byte, data []byte) bool {
+	_, err := parseCSLQueueEvent(status, data)
+	return err == nil
+}
+
+// parseCSLQueueEvent decodes a poll reply: nil for an empty queue, else one
+// completion or one inbound frame.
+func parseCSLQueueEvent(status byte, data []byte) (*CSLQueueEvent, error) {
 	if len(data) == 0 && status == 0 {
 		return nil, nil
 	}
-	// A malformed event is most likely the late reply of an earlier request, so
-	// the reply to this poll is still on the wire: drop it before the next one.
 	if len(data) < 1 {
-		b.drain(serialResyncQuiet)
 		return nil, fmt.Errorf("CSL queue event is malformed")
 	}
 	if data[0] == 1 {
-		frame := parseRxBlob(data[1:])
-		if frame == nil {
-			b.drain(serialResyncQuiet)
+		frame := parseRxBlobExact(data[1:])
+		if status != 0 || frame == nil {
 			return nil, fmt.Errorf("CSL queue inbound frame is malformed")
 		}
 		return &CSLQueueEvent{Inbound: frame}, nil
 	}
-	if data[0] != 0 || len(data) < 5 {
-		b.drain(serialResyncQuiet)
+	// The firmware appends the Enhanced ACK and the follow frames to an OK
+	// completion only, and every other outcome is a CSLTX failure status.
+	if data[0] != 0 || len(data) < 5 || (status != 0 && (len(data) != 5 || status < cslTxInput || status > cslTxNoAnchor)) {
 		return nil, fmt.Errorf("CSL queue completion is malformed")
 	}
 	completion := &CSLQueueCompletion{ID: binary.BigEndian.Uint16(data[1:3])}
 	flags := data[3]
 	completion.Result, completion.Err = parseCSLTxResult(status, data[4:], flags&cslTxFlagBootstrap != 0, flags&cslTxFlagFollow != 0)
+	if status == 0 && completion.Err != nil {
+		return nil, fmt.Errorf("CSL queue completion is malformed: %w", completion.Err)
+	}
 	return &CSLQueueEvent{Completion: completion}, nil
 }
 
 // FlushCSLQueue cancels queued jobs and prevents a stale downlink after a gate change.
 func (b *Bridge) FlushCSLQueue() error {
-	status, data, err := b.req(cmdCSLQueue, []byte{cslQueueFlush})
+	status, data, err := b.req(cmdCSLQueue, []byte{cslQueueFlush}, okLen(0))
 	if err != nil {
 		return err
 	}

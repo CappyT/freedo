@@ -42,8 +42,8 @@ const (
 // 868.324 MHz, 2-GFSK, 25.39 kHz dev, 49.99 kBaud, sync 0xD391, variable length,
 // hardware CRC16, no whitening. See docs "RF Protocol e PHY".
 var tadoRegs = []struct{ addr, val byte }{
-	{IOCFG2, 0x00},  // GDO2: RX FIFO threshold
-	{IOCFG0, 0x07},  // GDO0: asserts on CRC-OK packet received
+	{IOCFG2, 0x00}, // GDO2: RX FIFO threshold
+	{IOCFG0, iocfg0Tado},
 	{FIFOTHR, 0x47}, // ADC_RETENTION on (RX BW < 325 kHz), FIFO thr 33/32
 	{SYNC1, 0xD3},
 	{SYNC0, 0x91},
@@ -83,12 +83,17 @@ var tadoRegs = []struct{ addr, val byte }{
 	{TEST0, 0x09},
 }
 
+// iocfg0Tado makes GDO0 assert on a CRC-OK packet. The firmware sets IOCFG0 to
+// 0x2F after its own reset, and a CC1101 power-on reset leaves 0x3F, so the
+// register also tells whether the chip still holds the Tado register set.
+const iocfg0Tado = 0x07
+
 const paTable0 = 0xC0 // ~+11 dBm at 868 MHz
 
 // --- register access ---
 
 func (b *Bridge) Strobe(addr byte) (byte, error) {
-	_, d, err := b.req(cmdStrobe, []byte{addr})
+	_, d, err := b.req(cmdStrobe, []byte{addr}, okLen(1))
 	if err != nil {
 		return 0, err
 	}
@@ -130,8 +135,14 @@ func (b *Bridge) ReadBurst(addr byte, n int) ([]byte, error) {
 	return d[1:], nil
 }
 
-// Configure resets the chip, loads the Tado PHY registers, and calibrates.
+// Configure resets the chip, loads the Tado PHY registers, and calibrates. It
+// first flushes the CSL queue: jobs a crashed session left in the bridge would
+// otherwise transmit on a chip that is half configured. Firmware v2.5 clears
+// the queue on the reset as well.
 func (b *Bridge) Configure() error {
+	if err := b.FlushCSLQueue(); err != nil {
+		return err
+	}
 	if err := b.Reset(); err != nil {
 		return err
 	}
@@ -152,6 +163,18 @@ func (b *Bridge) Configure() error {
 	b.Strobe(SCAL)
 	time.Sleep(5 * time.Millisecond)
 	return nil
+}
+
+// Configured reports whether the chip still holds the register set Configure
+// loaded. An ESP32 that rebooted with the USB link up, or a CC1101 that browned
+// out, leaves the chip on reset defaults: every request still gets an answer,
+// but the radio hears nothing.
+func (b *Bridge) Configured() (bool, error) {
+	v, err := b.ReadReg(IOCFG0)
+	if err != nil {
+		return false, err
+	}
+	return v == iocfg0Tado, nil
 }
 
 // PartVersion returns PARTNUM and VERSION (VERSION 0x04/0x14 = a live CC1101).
@@ -493,7 +516,9 @@ func (b *Bridge) SendTrain(frames [][]byte, timeout time.Duration) (int, error) 
 	if timeout > saved {
 		b.timeout = timeout
 	}
-	status, d, err := b.req(cmdTxTrain, pkt)
+	status, d, err := b.req(cmdTxTrain, pkt, func(status byte, d []byte) bool {
+		return status == 0 && len(d) == 1 && int(d[0]) <= len(frames)
+	})
 	b.timeout = saved
 	if err != nil {
 		return 0, err
@@ -555,7 +580,9 @@ func (b *Bridge) RecvFW(timeout time.Duration) (*RxFrame, error) {
 	if ms > 0xFFFF {
 		ms = 0xFFFF
 	}
-	status, data, err := b.req(cmdRecv, []byte{byte(ms >> 8), byte(ms)})
+	status, data, err := b.req(cmdRecv, []byte{byte(ms >> 8), byte(ms)}, func(status byte, data []byte) bool {
+		return (status == autoAckNoFrame && len(data) == 0) || (status == 0 && parseRxBlobExact(data) != nil)
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -586,6 +613,9 @@ func (b *Bridge) Stream(dur time.Duration, cb func(*RxFrame)) error {
 // reaches cb.
 func (b *Bridge) StreamUntil(dur time.Duration, cb func(*RxFrame) bool) error {
 	ms := durMS(dur)
+	if err := b.resync(time.Now().Add(b.timeout + time.Second)); err != nil {
+		return err
+	}
 	if _, err := b.port.Write([]byte{reqMagic, cmdStream, 0x00, 0x02, byte(ms >> 8), byte(ms)}); err != nil {
 		return err
 	}
@@ -673,6 +703,8 @@ func (b *Bridge) readStream(dur time.Duration, cb func(*RxFrame) bool) error {
 // It returns the original cause so the caller still sees why the stream failed.
 func (b *Bridge) resyncStream(cause error) error {
 	b.port.Write([]byte{0x00})
-	b.drain(300 * time.Millisecond)
+	if err := b.drain(300*time.Millisecond, serialDrainLimit); err != nil {
+		return fmt.Errorf("%w; %v", cause, err)
+	}
 	return cause
 }

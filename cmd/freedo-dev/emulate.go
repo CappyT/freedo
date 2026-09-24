@@ -37,7 +37,7 @@ func cmdEmulate(args []string) {
 	unhandledPath := fs.String("unhandled", "-", `unhandled-frame log destination ("-" = stderr)`)
 	beacon := fs.Duration("beacon", 0, "interval of the 0x49e8 router advertisement (0 = off)")
 	ack := fs.Bool("ack", true, "answer uplinks with a MAC Enhanced ACK and a CoAP ACK")
-	doTx := fs.Bool("tx", false, "transmit the decided frames (default: dry-run, transmit nothing)")
+	doTx := fs.Bool("tx", false, "transmit the decided frames after the capture window, host-driven and with no wake train: too late for any ACK window (default: dry-run, transmit nothing)")
 	duration := fs.Duration("duration", 0, "stop the live daemon after this long (0 = until Ctrl-C)")
 	txctr := fs.Uint("txctr", 0, "initial frame counter for downlinks (overrides tx_counter)")
 	cslphase := fs.Uint("cslphase", 0, "CSL phase in our Enhanced ACKs: 320 us units elapsed since our own last CSL sample; 0 is safe while our receiver listens continuously (overrides csl_phase)")
@@ -54,6 +54,9 @@ downlinks) and logs whatever it cannot fully handle. The real bridge must be
 powered OFF: the emulator assumes it is the only PAN coordinator on air.
 
 The default is a dry-run. Nothing is transmitted unless --tx is given.
+--tx sends each action from the host once the stream stops, 10-25 ms after
+the frame that decided it, as a plain frame with no CSL wake train. That misses
+every ACK window and every sleeping device: use the daemon for real traffic.
 --replay runs the same state machine offline, with no hardware at all.
 --replay --analyze skips the state machine and reports the capture instead,
 decoding both directions (the bridge-sourced downlink commands included).
@@ -344,7 +347,9 @@ func completeDryRunBeacon(emu *tado.EmuState, doTx bool) {
 }
 
 // emitLive transmits one decided action, or prints it in dry-run. It runs only
-// outside a firmware stream; see emulateWindow.
+// outside a firmware stream; see emulateWindow. The host-driven Send has no
+// wake train and comes too late for an ACK window: it is a bench tool, and the
+// daemon sends real traffic through the firmware CSL queue.
 func emitLive(br liveLink, a tado.Action, doTx bool) {
 	if !doTx {
 		fmt.Printf("       (dry-run) would send [%s] node=%s reason=%s tx=%s\n",

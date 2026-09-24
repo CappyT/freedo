@@ -115,7 +115,7 @@ func TestResponsePayloadLength(t *testing.T) {
 func TestReqRejectsOversizedResponse(t *testing.T) {
 	p := &fakePort{read: []byte{rspMagic, 0x00, 0x04, 0x01}}
 	b := &Bridge{port: p, timeout: time.Millisecond}
-	if _, _, err := b.req(cmdPing, nil); err == nil {
+	if _, _, err := b.req(cmdPing, nil, isBanner); err == nil {
 		t.Fatal("oversized response accepted")
 	}
 }

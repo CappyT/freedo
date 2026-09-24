@@ -158,3 +158,154 @@ func TestLiveRadioStopsAfterTwoFailedCSLQueuePolls(t *testing.T) {
 		t.Fatalf("radio error=%v", radio.RadioError())
 	}
 }
+
+// configBridge reports whether the chip still holds the register set, like the
+// IOCFG0 read back of cc1101.Bridge.Configured.
+type configBridge struct {
+	*queuedLiveBridge
+	configured atomic.Bool
+	checks     atomic.Int32
+}
+
+func (b *configBridge) Configured() (bool, error) {
+	b.checks.Add(1)
+	return b.configured.Load(), nil
+}
+
+// A bridge that rebooted answers every request, but the chip listens on reset
+// defaults: every poll and every window is empty. The owner reads the register
+// set back after a run of empty windows and ends, so the daemon restarts and
+// configures the chip again.
+func TestLiveRadioEndsWhenQuietBridgeLostRegisters(t *testing.T) {
+	bridge := &configBridge{queuedLiveBridge: &queuedLiveBridge{orderedLiveBridge: &orderedLiveBridge{}}}
+	radio, err := StartLive(bridge, defaultInstall.CoordinatorEUI(), 0, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer radio.Close()
+	select {
+	case <-radio.ended:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("owner kept running on a chip that lost its registers, checks=%d", bridge.checks.Load())
+	}
+	if err := radio.RadioError(); !errors.Is(err, errLiveEnded) || !errors.Is(err, errBridgeUnconfigured) {
+		t.Fatalf("radio error=%v", radio.RadioError())
+	}
+}
+
+// A configured chip keeps the owner running, and the check stays rare: one
+// read back per run of empty windows.
+func TestLiveRadioKeepsRunningWhenRegistersHold(t *testing.T) {
+	bridge := &configBridge{queuedLiveBridge: &queuedLiveBridge{orderedLiveBridge: &orderedLiveBridge{}}}
+	bridge.configured.Store(true)
+	radio, err := StartLive(bridge, defaultInstall.CoordinatorEUI(), 0, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer radio.Close()
+	deadline := time.Now().Add(2 * time.Second)
+	for bridge.receives() < 100 {
+		if time.Now().After(deadline) {
+			t.Fatalf("receives=%d", bridge.receives())
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if err := radio.RadioError(); err != nil {
+		t.Fatalf("radio error=%v", err)
+	}
+	checks := int(bridge.checks.Load())
+	if checks == 0 || checks > bridge.receives()/10 {
+		t.Fatalf("checks=%d over %d receives", checks, bridge.receives())
+	}
+}
+
+// A job whose completion never came is the first sign of a reboot. The owner
+// reads the register set back right after it expires the job, without waiting
+// for a run of empty windows.
+func TestLiveRadioChecksRegistersAfterLostCompletion(t *testing.T) {
+	frame := []byte{0x69, 0xec, 0x10, 0x01, 0x0a, 0xce, 0xfa, 0x07, 0xc5, 0x1b, 0x00, 0x09, 0xa1, 0xce, 0xfa, 0x07}
+	bridge := &configBridge{queuedLiveBridge: &queuedLiveBridge{orderedLiveBridge: &orderedLiveBridge{}}}
+	bridge.configured.Store(true)
+	radio, err := buildLiveRadio(bridge, defaultInstall.CoordinatorEUI(), 0, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var skew atomic.Int64
+	radio.clock = func() time.Time { return time.Now().Add(time.Duration(skew.Load())) }
+	go radio.loop()
+	defer radio.Close()
+	if _, err := radio.SendImmediate([]tado.Action{{Node: "office", Bytes: frame, CSLTx: true, QueueAttempt: true}}, true); err != nil {
+		t.Fatal(err)
+	}
+	bridge.configured.Store(false)
+	received := bridge.receives()
+	skew.Store(int64(time.Minute))
+	select {
+	case <-radio.ended:
+	case <-time.After(2 * time.Second):
+		t.Fatal("owner kept running after a lost completion on a chip that lost its registers")
+	}
+	if n := bridge.receives() - received; n >= 10 {
+		t.Fatalf("owner ended after %d more windows, want the check at the expiry", n)
+	}
+}
+
+// slowTrainBridge moves the owner clock while it sends a train, like a long
+// train that holds the bridge scheduler.
+type slowTrainBridge struct {
+	*queuedLiveBridge
+	skew *atomic.Int64
+	hold time.Duration
+}
+
+func (b *slowTrainBridge) SendTrain(frames [][]byte, timeout time.Duration) (int, error) {
+	b.skew.Add(int64(b.hold))
+	return b.queuedLiveBridge.SendTrain(frames, timeout)
+}
+
+// A batch that answers a received frame runs inside awaitImmediate. A train it
+// sends after a queued job holds the bridge, so the job deadline moves by the
+// time the batch took, as it does for a batch the loop takes between windows.
+func TestLiveRadioAwaitedBatchHoldsCSLDeadline(t *testing.T) {
+	frame := []byte{0x69, 0xec, 0x10, 0x01, 0x0a, 0xce, 0xfa, 0x07, 0xc5, 0x1b, 0x00, 0x09, 0xa1, 0xce, 0xfa, 0x07}
+	uplink := &cc1101.RxFrame{Payload: []byte{0x69, 0xec, 0x11}, CRCOK: true}
+	var skew atomic.Int64
+	bridge := &slowTrainBridge{
+		queuedLiveBridge: &queuedLiveBridge{orderedLiveBridge: &orderedLiveBridge{result: &cc1101.AutoAckResult{Status: cc1101.AutoAckSent, Frame: uplink}}},
+		skew:             &skew,
+		hold:             5 * time.Second,
+	}
+	radio, err := buildLiveRadio(bridge, defaultInstall.CoordinatorEUI(), 0, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	radio.clock = func() time.Time { return time.Now().Add(time.Duration(skew.Load())) }
+	go radio.loop()
+	defer radio.Close()
+	select {
+	case <-radio.Frames():
+	case <-time.After(time.Second):
+		t.Fatal("no uplink")
+	}
+	actions := []tado.Action{
+		{Node: "office", Bytes: frame, CSLTx: true, QueueAttempt: true},
+		{Node: "office", Bytes: []byte{0x41, 0xd8, 0x01, 0xcd, 0xab}},
+	}
+	if result, err := radio.SendImmediate(actions, true); err != nil || len(result.Accepted) != 1 {
+		t.Fatalf("result=%+v err=%v", result, err)
+	}
+	select {
+	case completion := <-radio.CSLCompletions():
+		t.Fatalf("job expired while the train held the bridge: %+v", completion)
+	case <-time.After(100 * time.Millisecond):
+	}
+	skew.Add(int64(time.Minute))
+	select {
+	case completion := <-radio.CSLCompletions():
+		if !errors.Is(completion.Err, errCSLCompletionLost) {
+			t.Fatalf("completion=%+v", completion)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the job never expired")
+	}
+}

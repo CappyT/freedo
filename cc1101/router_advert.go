@@ -25,7 +25,7 @@ func (b *Bridge) SendRouterAdvertBurst(frame []byte, timeout time.Duration) (int
 		b.timeout = timeout
 	}
 	defer func() { b.timeout = savedTimeout }()
-	status, data, err := b.req(cmdRABurst, frame)
+	status, data, err := b.req(cmdRABurst, frame, func(_ byte, data []byte) bool { return len(data) == 1 })
 	if err != nil {
 		return 0, err
 	}

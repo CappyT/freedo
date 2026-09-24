@@ -355,39 +355,90 @@ func pollCompletionID(t *testing.T, b *Bridge) uint16 {
 	return event.Completion.ID
 }
 
+func bannerReply() []byte {
+	return autoAckResponse(0, []byte("CC1101BRIDGE v2.5"))
+}
+
 // A reply carries no command echo. A reply that lands after the poll deadline
-// must not answer the next poll.
-func TestCSLQueuePollDropsLateReplyAfterDeadline(t *testing.T) {
-	p := &scriptedPort{timeout: 5 * time.Millisecond, script: [][]timedReply{
-		{{delay: 40 * time.Millisecond, data: cslQueueNoAckReply(7)}},
-		{{data: cslQueueNoAckReply(8)}},
-		{{data: autoAckResponse(0, nil)}},
-	}}
-	b := &Bridge{port: p, timeout: time.Second}
-	if _, err := b.PollCSLQueueWithin(20 * time.Millisecond); !errors.Is(err, ErrCSLPollTimeout) {
-		t.Fatalf("error=%v", err)
-	}
-	time.Sleep(50 * time.Millisecond)
-	if id := pollCompletionID(t, b); id != 8 {
-		t.Fatalf("poll read completion %d, the late reply of the previous poll", id)
-	}
-	if event, err := b.PollCSLQueueWithin(time.Second); err != nil || event != nil {
-		t.Fatalf("event=%+v err=%v, want the empty reply of this poll", event, err)
+// belongs to that poll: the next request resyncs behind a PING, so the late
+// event still reaches the host and no later poll reads a reply of another one.
+// The first case lands inside the old 100 ms drain window, the second after it.
+func TestCSLQueuePollDeliversLateReplyAfterDeadline(t *testing.T) {
+	for _, late := range []time.Duration{40 * time.Millisecond, 200 * time.Millisecond} {
+		t.Run(late.String(), func(t *testing.T) {
+			p := &scriptedPort{timeout: 5 * time.Millisecond, script: [][]timedReply{
+				{{delay: late, data: cslQueueNoAckReply(7)}},
+				{{data: bannerReply()}},
+				{{data: cslQueueNoAckReply(8)}},
+				{{data: autoAckResponse(0, nil)}},
+			}}
+			b := &Bridge{port: p, timeout: time.Second}
+			if _, err := b.PollCSLQueueWithin(20 * time.Millisecond); !errors.Is(err, ErrCSLPollTimeout) {
+				t.Fatalf("error=%v", err)
+			}
+			time.Sleep(late + 50*time.Millisecond)
+			if id := pollCompletionID(t, b); id != 7 {
+				t.Fatalf("poll read completion %d, want the late completion 7", id)
+			}
+			if id := pollCompletionID(t, b); id != 8 {
+				t.Fatalf("poll read completion %d, want 8", id)
+			}
+			if event, err := b.PollCSLQueueWithin(time.Second); err != nil || event != nil {
+				t.Fatalf("event=%+v err=%v, want the empty reply of this poll", event, err)
+			}
+		})
 	}
 }
 
-// A poll that reads the late reply of another request finds it malformed. The
-// reply to that poll is still in the input, so the next poll has to skip it.
+// A poll that reads the late reply of another request finds it malformed. Its
+// own reply follows on the wire, so the poll reads it instead of dropping it.
 func TestCSLQueuePollResyncsAfterMalformedReply(t *testing.T) {
 	p := &scriptedPort{timeout: 5 * time.Millisecond, script: [][]timedReply{
 		{{data: autoAckResponse(0, []byte{1})}, {data: cslQueueNoAckReply(7)}},
 		{{data: cslQueueNoAckReply(8)}},
 	}}
 	b := &Bridge{port: p, timeout: time.Second}
-	if _, err := b.PollCSLQueueWithin(time.Second); err == nil || !strings.Contains(err.Error(), "malformed") {
-		t.Fatalf("error=%v", err)
+	if id := pollCompletionID(t, b); id != 7 {
+		t.Fatalf("poll read completion %d, want its own completion 7", id)
 	}
 	if id := pollCompletionID(t, b); id != 8 {
-		t.Fatalf("poll read completion %d, the reply of the previous poll", id)
+		t.Fatalf("poll read completion %d, want 8", id)
+	}
+}
+
+// An enqueue that reads the late empty reply of a poll must read its own reply
+// next: the firmware admitted the job, and a false failure leaves its later
+// completion with an id the host does not know.
+func TestCSLQueueEnqueueSkipsLatePollReply(t *testing.T) {
+	p := &scriptedPort{timeout: 5 * time.Millisecond, script: [][]timedReply{
+		{{data: autoAckResponse(0, nil)}, {data: autoAckResponse(0, []byte{1})}},
+	}}
+	b := &Bridge{port: p, timeout: time.Second}
+	if err := b.EnqueueCSLData(7, cslTxData(), []byte{0x0a, 0x01}, 50*time.Millisecond, false, false, 0); err != nil {
+		t.Fatalf("enqueue error=%v, want the admission of its own reply", err)
+	}
+}
+
+// A poll that hit its deadline owes a reply. The next request, an enqueue here,
+// reads it behind a PING before its own reply, and the next poll gets its event.
+func TestCSLQueueEnqueueAfterPollDeadlineKeepsLateEvent(t *testing.T) {
+	p := &scriptedPort{timeout: 5 * time.Millisecond, script: [][]timedReply{
+		{{delay: 40 * time.Millisecond, data: cslQueueNoAckReply(7)}},
+		{{data: bannerReply()}},
+		{{data: autoAckResponse(0, []byte{1})}},
+	}}
+	b := &Bridge{port: p, timeout: time.Second}
+	if _, err := b.PollCSLQueueWithin(20 * time.Millisecond); !errors.Is(err, ErrCSLPollTimeout) {
+		t.Fatalf("error=%v", err)
+	}
+	time.Sleep(200 * time.Millisecond)
+	if err := b.EnqueueCSLData(9, cslTxData(), []byte{0x0a, 0x01}, 50*time.Millisecond, false, false, 0); err != nil {
+		t.Fatalf("enqueue error=%v", err)
+	}
+	if id := pollCompletionID(t, b); id != 7 {
+		t.Fatalf("poll read completion %d, want the late completion 7", id)
+	}
+	if len(p.writes) != 3 || p.writes[1][1] != cmdPing {
+		t.Fatalf("writes=%x, want poll, ping, enqueue", p.writes)
 	}
 }

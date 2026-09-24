@@ -39,7 +39,7 @@ func (b *Bridge) RecvAutoAck(timeout time.Duration, coordinatorEUI []byte, cslPh
 		b.timeout = timeout
 	}
 	defer func() { b.timeout = savedTimeout }()
-	status, raw, err := b.req(cmdAutoAck, payload)
+	status, raw, err := b.req(cmdAutoAck, payload, validAutoAck)
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +60,7 @@ func (b *Bridge) RecvAutoAck(timeout time.Duration, coordinatorEUI []byte, cslPh
 		return nil, fmt.Errorf("AUTOACK status 0x%02x", status)
 	}
 	if result.Status != AutoAckNoFrame {
-		result.Frame = parseAutoAckRXBlob(raw)
+		result.Frame = parseRxBlobExact(raw)
 		if result.Frame == nil {
 			return nil, fmt.Errorf("AUTOACK response has malformed RX blob")
 		}
@@ -68,9 +68,22 @@ func (b *Bridge) RecvAutoAck(timeout time.Duration, coordinatorEUI []byte, cslPh
 	return result, nil
 }
 
-// parseAutoAckRXBlob accepts the blob with and without the trailing FREQEST byte
-// firmware v2.1 appends, so the host runs on either firmware.
-func parseAutoAckRXBlob(raw []byte) *RxFrame {
+// validAutoAck accepts the reply shapes of CMD_AUTOACK: no frame, or one
+// received frame with the outcome of its Enhanced ACK.
+func validAutoAck(status byte, raw []byte) bool {
+	switch status {
+	case autoAckNoFrame:
+		return len(raw) == 0
+	case 0x00, autoAckFrameNoAck, autoAckTransmitFail:
+		return parseRxBlobExact(raw) != nil
+	}
+	return false
+}
+
+// parseRxBlobExact accepts a blob of exactly one frame, with and without the
+// trailing FREQEST byte firmware v2.1 appends, so the host runs on either
+// firmware.
+func parseRxBlobExact(raw []byte) *RxFrame {
 	if len(raw) < 3 {
 		return nil
 	}

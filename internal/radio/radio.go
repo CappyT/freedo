@@ -21,6 +21,8 @@ var (
 	errCSLPollStalled = errors.New("CSL queue poll stalled")
 	// errCSLCompletionLost fails a queued CSL job the bridge never completed.
 	errCSLCompletionLost = errors.New("CSL queue completion lost")
+	// errBridgeUnconfigured ends the owner of a chip on reset defaults.
+	errBridgeUnconfigured = errors.New("CC1101 lost its register set: the bridge or the chip reset")
 )
 
 // Radio is the frame source and sink the engine drives.

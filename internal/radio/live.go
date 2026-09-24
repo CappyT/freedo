@@ -35,6 +35,11 @@ type routerAdvertBurstBridge interface {
 	SendRouterAdvertBurst([]byte, time.Duration) (int, error)
 }
 
+// configuredBridge reads back whether the chip still holds its register set.
+type configuredBridge interface {
+	Configured() (bool, error)
+}
+
 // TunableBridge is the frequency-offset register of the radio. The daemon writes
 // it once, at start, and never while it runs.
 type TunableBridge interface {
@@ -144,6 +149,10 @@ const liveCSLBootstrapGlobalCooldown = 2 * time.Second
 const liveCSLBootstrapRetryCooldown = 30 * time.Second
 const liveCSLBootstrapTargetCooldown = 10 * time.Minute
 
+// liveConfigCheckWindows is the run of receive windows with no CRC-OK frame,
+// about 10 s, after which the owner reads the register set back.
+const liveConfigCheckWindows = 40
+
 // liveCSLCompletionSlack covers the serial round trips between the end of a job
 // on the bridge and the poll that reads its completion.
 const liveCSLCompletionSlack = 500 * time.Millisecond
@@ -206,7 +215,7 @@ func (r *Live) loop() {
 	r.ownerGone()
 	var loopErr error
 	defer r.finishLoop(&loopErr)
-	errs := 0
+	errs, quiet := 0, 0
 	for {
 		select {
 		case <-r.stop:
@@ -220,9 +229,7 @@ func (r *Live) loop() {
 		}
 		r.drainFrames()
 		r.drainCSLCompletions()
-		immediateAt := r.now()
 		if r.takeImmediate() {
-			r.holdCSLDeadline(immediateAt)
 			continue
 		}
 		drained, err := r.drainCSL()
@@ -235,6 +242,10 @@ func (r *Live) loop() {
 		}
 		if len(r.cslPending) != 0 {
 			if r.expireCSL() {
+				// A lost completion is the first sign of a bridge that rebooted.
+				if loopErr = r.checkConfigured(&errs); loopErr != nil {
+					return
+				}
 				continue
 			}
 			select {
@@ -277,8 +288,15 @@ func (r *Live) loop() {
 		}
 		errs = 0
 		if frame == nil || !frame.CRCOK {
+			if quiet++; quiet >= liveConfigCheckWindows {
+				quiet = 0
+				if loopErr = r.checkConfigured(&errs); loopErr != nil {
+					return
+				}
+			}
 			continue
 		}
+		quiet = 0
 		r.publishAcks([][]byte{frame.Payload})
 		if r.batch && !r.awaitImmediate() {
 			return
@@ -390,6 +408,29 @@ func (r *Live) rxError(mode string, err error, errs *int) bool {
 	}
 }
 
+// checkConfigured returns an error when the chip lost its register set. A
+// bridge that rebooted with the USB link up answers every request, with empty
+// polls and empty receive windows, so only the register read back shows it.
+// The error ends the owner, and the daemon restarts and configures the chip.
+// A serial error of the read back counts as a receive error.
+func (r *Live) checkConfigured(errs *int) error {
+	br, ok := r.br.(configuredBridge)
+	if !ok {
+		return nil
+	}
+	configured, err := br.Configured()
+	if err != nil {
+		if r.rxError("register check", err, errs) {
+			return nil
+		}
+		return fmt.Errorf("register check: %w", err)
+	}
+	if !configured {
+		return errBridgeUnconfigured
+	}
+	return nil
+}
+
 func (r *Live) receiveErrorLimit() int {
 	if r.rxErrorLimit > 0 {
 		return r.rxErrorLimit
@@ -491,7 +532,9 @@ func (r *Live) finishImmediate(batch liveBatch) {
 		return
 	}
 	r.autoAck = true
+	at := r.now()
 	result, err := r.sendActions(batch.actions)
+	r.holdCSLDeadline(at)
 	if batch.done != nil {
 		batch.done <- liveBatchResult{result: result, err: err}
 	}
