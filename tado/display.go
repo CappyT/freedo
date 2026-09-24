@@ -168,7 +168,7 @@ func displayValues(doc []TLV) (uint8, uint16) {
 }
 
 // displayValve resolves target to the wire key of a declared valve. The wall
-// thermostat has no display orientation and refuses every d/config write.
+// thermostat has no display orientation and ignores a d/config write payload.
 func (e *EmuState) displayValve(target string) (string, error) {
 	if e.inst == nil {
 		return "", errors.New("tado: display settings need a declared valve")

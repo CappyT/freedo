@@ -3344,9 +3344,10 @@ func (d *daemon) postConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	// A body that omits utcOffsetMin inherits the installation's offset now: the
 	// device keeps no DST rules, so that is what it has to be told. An explicit
-	// value in the body wins.
+	// value in the body wins. The wall thermostat's served document already
+	// follows the offset in force (SyncUTCOffset).
 	inst := d.inst.Load()
-	if cw.UTCOffsetMin == nil && inst != nil {
+	if cw.UTCOffsetMin == nil && inst != nil && n.Kind != tado.KindThermostat {
 		off := inst.Options.UTCOffsetAt(d.retryNow())
 		cw.UTCOffsetMin = &off
 	}
@@ -3359,18 +3360,44 @@ func (d *daemon) postConfig(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
+	d.configWrite(w, r, target, nil, func(e *tado.EmuState) error {
+		// The wall thermostat takes no write, so the id of its two zones
+		// matters to nobody.
 		id, err := resolveID(e, inst, n.Short(), b.ID)
-		if err != nil {
+		if err != nil && n.Kind != tado.KindThermostat {
+			return err
+		}
+		return e.EnqueueConfig(target, id, cw)
+	})
+}
+
+// configWrite runs a d/config write on the engine and answers how it reaches
+// the device: queued, or served on the device's own next read when the device
+// drops the written document (the wall thermostat). reread tells whether a
+// trigger that makes that read come at once waits in the queue. extra merges
+// endpoint fields.
+func (d *daemon) configWrite(w http.ResponseWriter, r *http.Request, target string, extra map[string]any,
+	write func(*tado.EmuState) error) {
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
+		if err := write(e); err != nil {
 			return nil, err
 		}
-		if err := e.EnqueueConfig(target, id, cw); err != nil {
-			return nil, err
+		body := map[string]any{"queued": true}
+		if e.ServesConfigOnRead(target) {
+			body["queued"], body["served"] = false, true
+			body["reread"] = e.ConfigRereadQueued(target)
 		}
 		d.dispatchQueued(e, target)
-		return e.Pending(target), nil
+		body["pending"] = e.Pending(target)
+		for k, v := range extra {
+			body[k] = v
+		}
+		return body, nil
 	})
-	queued(w, v, d.persist(err), nil)
+	if writeHandlerErr(w, d.persist(err)) {
+		return
+	}
+	writeJSON(w, http.StatusOK, v)
 }
 
 // deleteOfflineSchedule drops the per-device offlineScheduleEnabled (02b3), so
@@ -3461,21 +3488,12 @@ func (d *daemon) postZoneOffset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	target := hex.EncodeToString(targetDevice.WireEUI())
-	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
-		var err error
+	extra := map[string]any{"zone": zoneNumber, "target": targetName(targetDevice), "offsetC": *b.OffsetC, "mode": mode}
+	d.configWrite(w, r, target, extra, func(e *tado.EmuState) error {
 		if mode == tado.OffsetModeDbg2 {
-			err = e.EnqueueCalibOffsetDbg2(target, zoneNumber, offset)
-		} else {
-			err = e.EnqueueConfig(target, zoneNumber, cw)
+			return e.EnqueueCalibOffsetDbg2(target, zoneNumber, offset)
 		}
-		if err != nil {
-			return nil, err
-		}
-		d.dispatchQueued(e, target)
-		return e.Pending(target), nil
-	})
-	queued(w, v, d.persist(err), map[string]any{
-		"zone": zoneNumber, "target": targetName(targetDevice), "offsetC": *b.OffsetC, "mode": mode,
+		return e.EnqueueConfig(target, zoneNumber, cw)
 	})
 }
 

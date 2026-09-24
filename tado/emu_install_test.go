@@ -186,9 +186,10 @@ func TestUTCOffsetOperatorWriteWins(t *testing.T) {
 	}
 }
 
-// TestConfigWriteRefusedByWallThermostat: the wall thermostat answers every
-// d/config write 5.01, so neither an operator nor the automatic UTC-offset push
-// puts one on the air. A valve in the same zone still takes its write.
+// TestConfigWriteRefusedByWallThermostat: the wall thermostat drops the
+// document a d/config write carries, and its served document takes no
+// operator's 02b2, so neither an operator nor the automatic UTC-offset push
+// puts a write on the air. A valve in the same zone still takes its write.
 func TestConfigWriteRefusedByWallThermostat(t *testing.T) {
 	in := fixtureInstall(t)
 	e := NewEmu(in.EmuConfig(), NewUnhandledLogger(io.Discard))

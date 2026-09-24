@@ -318,8 +318,9 @@ func TestZoneOffsetTargetsMeasuringDevice(t *testing.T) {
 		t.Errorf("0140 missing from %+v", app.TLVs)
 	}
 
-	// Zone 1 measures with the wall thermostat, which refuses every d/config
-	// write, so the API answers with the refusal instead of queuing one.
+	// Zone 1 measures with the wall thermostat, which is served no d/config
+	// document until it reports its interface module id, so the offset has
+	// nowhere to go (TestThermostatOffsetServed covers a known id).
 	var refused struct {
 		Queued bool   `json:"queued"`
 		Error  string `json:"error"`

@@ -158,6 +158,20 @@ func BuildConfigWriteCoAP(tlvs []TLV, mid uint16, token, srcEUI, dstEUI []byte) 
 	})
 }
 
+// BuildConfigRereadCoAP builds an empty PUT d/config, the wall thermostat's
+// re-read trigger. Its handler (thermostat 0x1e230) ignores the payload: it
+// writes ff..ff to 015a and flags config_request_build@0x1e64c to GET d/config
+// at once instead of on the hourly timer. It sends 2.04 and does not echo
+// Block1, so coap_server_request_process@0x21150 turns the last block of a
+// Block1 upload into 5.01. This request carries no Block1 and gets the 2.04.
+func BuildConfigRereadCoAP(mid uint16, token, srcEUI, dstEUI []byte) ([]byte, error) {
+	return deviceWrite(deviceReq{
+		Path:    []string{"d", "config"},
+		Options: []CoAPOption{optUriPort, optOctets},
+		MID:     mid, Token: token, SrcEUI: srcEUI, DstEUI: dstEUI,
+	})
+}
+
 // configConst021a is tag 021a, which every captured d/config document carries
 // with this value. The device's dispatcher accepts the record and no store
 // backend claims it, so the coordinator sends the constant and nothing reads it.

@@ -142,6 +142,88 @@ func TestZoneOffsetModes(t *testing.T) {
 	}
 }
 
+// TestThermostatOffsetServed: zone 1 measures with the wall thermostat, which
+// drops the document a d/config write carries. In mode config the offset goes into the
+// document it is served, under a new ETag, is stored, and queues only the
+// empty PUT d/config that makes the device GET it at once
+// (TestThermostatCalibOffsetServed follows the device's GET). The node
+// config API takes calibOffset the same way and refuses any other tag. Mode
+// dbg2 stays refused: d/dbg2/tlvs is a valve resource.
+func TestThermostatOffsetServed(t *testing.T) {
+	a := newInstallAPIOn(t, windowInstall(t, nil))
+	d := a.d
+	in := d.inst.Load()
+	thermostat := wireOf(t, in, dhwNode)
+	frame := thermostatModuleReport(t, in, thermostat, 71, 0x5e01)
+	if _, err := d.do(func(*tado.EmuState) (any, error) {
+		d.handleFrame(frame, true)
+		return nil, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	dropQueue(t, d, thermostat)
+	before := configDocOf(t, d, thermostat)
+	if len(before.ETag) == 0 {
+		t.Fatal("no thermostat document after the module report")
+	}
+
+	var res map[string]any
+	if code := postJSON(t, http.MethodPost, a.base+"/api/zones/1/offset",
+		map[string]any{"offsetC": -0.7}, &res); code != http.StatusOK {
+		t.Fatalf("zone 1 offset: code=%d %v", code, res)
+	}
+	if res["queued"] != false || res["served"] != true || res["reread"] != true ||
+		res["target"] != dhwNode || res["mode"] != tado.OffsetModeConfig {
+		t.Errorf("zone 1 offset answer = %v, want served to %s with a re-read trigger, not queued", res, dhwNode)
+	}
+	if n := pending(t, d, thermostat); n != 1 {
+		t.Errorf("%d downlinks queued to the thermostat, want the one re-read trigger", n)
+	}
+	if uri, tags := deliverRequest(t, d, in, thermostat); uri != "d/config" || len(tags) != 0 {
+		t.Errorf("trigger = %s %v, want an empty PUT d/config", uri, tags)
+	}
+	after := configDocOf(t, d, thermostat)
+	if served0140(after) != "ffba" || string(after.ETag) == string(before.ETag) {
+		t.Errorf("served d/config: 0140 %q etag %x, want ffba under a new ETag (was %x)", served0140(after), after.ETag, before.ETag)
+	}
+	stored, err := a.store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if doc := stored.Config[thermostat]; served0140(doc) != "ffba" || string(doc.ETag) != string(after.ETag) {
+		t.Errorf("stored d/config: 0140 %q etag %x, want ffba and %x", served0140(doc), doc.ETag, after.ETag)
+	}
+
+	if code := postJSON(t, http.MethodPost, a.base+"/api/nodes/"+dhwNode+"/config",
+		map[string]any{"calibOffset": 0}, &res); code != http.StatusOK {
+		t.Fatalf("node config: code=%d %v", code, res)
+	}
+	if res["queued"] != false || res["served"] != true || res["reread"] != true {
+		t.Errorf("node config answer = %v, want served with a re-read trigger, not queued", res)
+	}
+	if doc := configDocOf(t, d, thermostat); served0140(doc) != "0000" {
+		t.Errorf("served 0140 after calibOffset 0 = %q, want 0000", served0140(doc))
+	}
+	if code := postJSON(t, http.MethodPost, a.base+"/api/nodes/"+dhwNode+"/config",
+		map[string]any{"utcOffsetMin": 90}, &res); code != http.StatusBadRequest {
+		t.Errorf("utcOffsetMin to the thermostat: code=%d %v, want 400", code, res)
+	}
+
+	a.mutate(http.MethodPatch, "/api/install/zones/1", map[string]any{"offset_mode": tado.OffsetModeDbg2})
+	dropQueue(t, d, thermostat)
+	kept := configDocOf(t, d, thermostat)
+	if code := postJSON(t, http.MethodPost, a.base+"/api/zones/1/offset",
+		map[string]any{"offsetC": -0.7}, &res); code != http.StatusBadRequest {
+		t.Errorf("zone 1 offset in mode dbg2: code=%d %v, want 400", code, res)
+	}
+	if n := pending(t, d, thermostat); n != 0 {
+		t.Errorf("%d downlinks queued to the thermostat in mode dbg2, want none", n)
+	}
+	if doc := configDocOf(t, d, thermostat); string(doc.Body) != string(kept.Body) {
+		t.Error("the refused dbg2 write moved the served document")
+	}
+}
+
 // deliverAck is deliverRequest with the TLVs alone.
 func deliverAck(t *testing.T, d *daemon, in *tado.Install, target string) map[string]string {
 	t.Helper()

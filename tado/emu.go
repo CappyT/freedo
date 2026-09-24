@@ -3994,6 +3994,9 @@ func initialNodeTable(in *Install, dev *Device) []NodeTableRec {
 // it replaces the d/config writes queued to the device and not on the air yet.
 //
 // The id names the write in the log and in the queue: the path carries no query.
+//
+// A write to the wall thermostat goes into the document it is served, and only
+// a re-read trigger goes on the queue (serveConfig).
 func (e *EmuState) EnqueueConfig(target string, id int, w ConfigWrite) error {
 	_, err := e.enqueueConfig(target, id, w)
 	return err
@@ -4008,7 +4011,7 @@ func (e *EmuState) enqueueConfig(target string, id int, w ConfigWrite) (bool, er
 		return false, err
 	}
 	if e.refusesConfigWrite(wire) {
-		return false, errors.New("tado: the wall thermostat refuses every d/config write with 5.01")
+		return false, e.serveConfig(wire, w)
 	}
 	if w.InterfaceModuleID != nil && *w.InterfaceModuleID != valveInterfaceModule {
 		return false, errors.New("tado: only a valve accepts a d/config write, and its interface module id is 112")
@@ -4121,16 +4124,105 @@ func (e *EmuState) ClearOfflineSchedule(target string, id int) (bool, error) {
 	return false, nil
 }
 
-// refusesConfigWrite reports whether the device answers a d/config write 5.01.
-// The wall thermostat does, so the coordinator writes its configuration nowhere
-// and serves it on the read path only. A device the installation does not
-// declare has no known kind, and no capture refuses a write to one.
+// refusesConfigWrite reports whether the device drops the document a d/config
+// write carries. The wall thermostat does: its PUT handler (0x1e230) ignores
+// the payload and only makes it GET d/config again. The coordinator serves its
+// configuration on the read path only (serveConfig). A device the installation
+// does not declare has no known kind, and no capture refuses a write to one.
 func (e *EmuState) refusesConfigWrite(wire []byte) bool {
 	if e.inst == nil {
 		return false
 	}
 	dev, err := e.inst.Resolve(hexEUI(wire))
 	return err == nil && dev.Kind == KindThermostat
+}
+
+// ServesConfigOnRead reports whether target takes its d/config only on its own
+// read. EnqueueConfig to such a device patches the served document and queues
+// no document write.
+func (e *EmuState) ServesConfigOnRead(target string) bool {
+	wire, _, err := e.resolve(target)
+	return err == nil && e.refusesConfigWrite(wire)
+}
+
+// servedConfigTags are the tags a write may move in the document served to the
+// wall thermostat. Its d/config client (config_request_build@0x1e64c) GETs with
+// the stored ETag, and config_report_response_handle@0x1e4b4 parses a 2.05 body
+// through the per-tag callback at 0x1e2e8, which hands 0140 to
+// cfg_set_and_report. The other tags stay with the installation.
+var servedConfigTags = map[string]bool{"0140": true}
+
+var errThermostatConfig = errors.New("tado: the wall thermostat ignores a d/config write payload; " +
+	"its served d/config document takes only calibOffset (tag 0140)")
+
+// serveConfig merges a write to the wall thermostat into the document it is
+// served, under a new ETag. The device takes the document on its next d/config
+// GET, answered 2.05. When the document moves, it queues the re-read trigger
+// (BuildConfigRereadCoAP), so that GET comes at once, not within the hour. A
+// write that moves a tag outside servedConfigTags is refused whole.
+func (e *EmuState) serveConfig(wire []byte, w ConfigWrite) error {
+	key := hexEUI(wire)
+	base, ok := e.cfgDoc[key]
+	if !ok {
+		return errors.New("tado: the wall thermostat is served no d/config document: its interface module id is not known")
+	}
+	if len(w.Etag) > 0 || w.Resend {
+		return errThermostatConfig
+	}
+	_, snap, err := e.mergeDeviceConfig(key, w)
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(configTagsKept(base), configTagsKept(snap)) {
+		return errThermostatConfig
+	}
+	e.cfgDoc[key] = snap
+	if bytes.Equal(base.etag, snap.etag) || e.ConfigRereadQueued(key) {
+		return nil
+	}
+	mid, token, err := downlinkIDs()
+	if err != nil {
+		return err
+	}
+	pkt, err := BuildConfigRereadCoAP(mid, token, e.selfEUI, wire)
+	if err != nil {
+		return err
+	}
+	if err := e.enqueue(key, configRereadKind, "config reread", pkt, e.key, mid); err != nil {
+		return err
+	}
+	q := e.queue[key]
+	q[len(q)-1].requireCoAP = true
+	q[len(q)-1].responseToken = append([]byte(nil), token...)
+	q[len(q)-1].responseCode = "2.04"
+	return nil
+}
+
+// configRereadKind names the wall thermostat's re-read trigger in the queue.
+const configRereadKind = "reread"
+
+// ConfigRereadQueued reports whether a re-read trigger waits in the queue of
+// target, not on the air yet. The device's GET after it reads the newest
+// document, so one such trigger is enough.
+func (e *EmuState) ConfigRereadQueued(target string) bool {
+	wire, _, err := e.resolve(target)
+	if err != nil {
+		return false
+	}
+	return slices.ContainsFunc(e.queue[hexEUI(wire)], func(d *queuedDownlink) bool {
+		return d.kind == configRereadKind && !d.inFlight
+	})
+}
+
+// configTagsKept encodes the document without its ETag and servedConfigTags.
+func configTagsKept(doc cfgSnapshot) []byte {
+	var kept []TLV
+	for _, tlv := range withoutConfigETag(parseTLVList(doc.body)) {
+		if !servedConfigTags[tlv.Tag] {
+			kept = append(kept, tlv)
+		}
+	}
+	return encodeTLVs(kept)
 }
 
 // deviceID is the logical id a device's own "?id=N" resources answer to: the one
