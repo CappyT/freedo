@@ -222,6 +222,47 @@ func (s *stateStore) SetHotWaterProgram(ctx context.Context, programs []tado.Sch
 	return err
 }
 
+// storedBlock is the JSON of one scheduledBlock in meta program_blocks.
+type storedBlock struct {
+	C   float64 `json:"c"`
+	Off bool    `json:"off,omitempty"`
+}
+
+// ProgramBlocks returns the block each zone took at the last tick or zone
+// rewrite, and false when none is stored.
+func (s *stateStore) ProgramBlocks(ctx context.Context) (map[int]scheduledBlock, bool, error) {
+	var raw string
+	switch err := s.db.QueryRowContext(ctx, `SELECT value FROM meta WHERE key = 'program_blocks'`).Scan(&raw); {
+	case errors.Is(err, sql.ErrNoRows):
+		return nil, false, nil
+	case err != nil:
+		return nil, false, err
+	}
+	var stored map[int]storedBlock
+	if err := json.Unmarshal([]byte(raw), &stored); err != nil {
+		return nil, false, fmt.Errorf("meta program_blocks: %w", err)
+	}
+	out := make(map[int]scheduledBlock, len(stored))
+	for zone, b := range stored {
+		out[zone] = scheduledBlock{c: b.C, off: b.Off}
+	}
+	return out, true, nil
+}
+
+// SetProgramBlocks stores the block each zone took.
+func (s *stateStore) SetProgramBlocks(ctx context.Context, blocks map[int]scheduledBlock) error {
+	stored := make(map[int]storedBlock, len(blocks))
+	for zone, b := range blocks {
+		stored[zone] = storedBlock{C: b.c, Off: b.off}
+	}
+	raw, err := json.Marshal(stored)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `INSERT OR REPLACE INTO meta (key, value) VALUES ('program_blocks', ?)`, string(raw))
+	return err
+}
+
 // thermalModelPrefix starts the meta key of the heat-up model of a zone, stored
 // as JSON. The daemon learns it and serves it to no device, like the hot-water
 // program, so it needs no table of its own.

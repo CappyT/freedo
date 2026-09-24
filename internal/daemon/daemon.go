@@ -102,15 +102,18 @@ type daemon struct {
 	linkMaintTick    uint16
 	linkMaintWait    uint16
 	// away is the state of the whole home, home by default. zoneSched holds the
-	// block the weekly program of each zone holds now, and schedSeeded says
-	// whether it has been evaluated once: the first evaluation only seeds, a
-	// later change pushes 6200 and 61e0 to the zone members. dhwProgram is the
-	// hot-water program, nil when none is stored. All four belong to the engine
-	// goroutine.
-	away        bool
-	zoneSched   map[int]scheduledBlock
-	schedSeeded bool
-	dhwProgram  []tado.ScheduleProgram
+	// block each zone follows now, and schedPushed the block each zone took at
+	// the last tick or zone rewrite: a program zone whose two blocks differ owes
+	// its members a write of 6200 and 61e0. schedSeeded says whether
+	// schedPushed holds a baseline, and schedUnsaved whether it moved since the
+	// last save. dhwProgram is the hot-water program, nil when none is stored.
+	// All six belong to the engine goroutine.
+	away         bool
+	zoneSched    map[int]scheduledBlock
+	schedPushed  map[int]scheduledBlock
+	schedSeeded  bool
+	schedUnsaved bool
+	dhwProgram   []tado.ScheduleProgram
 	// windows holds the open window state of each heating zone and windowOwed
 	// the valve writes still owed. Both belong to the engine goroutine; see
 	// window.go.
@@ -212,6 +215,7 @@ func newDaemon(in *tado.Install, emu *tado.EmuState, radio radio.Radio, dryRun b
 		cslAdmissionWait: make(map[string]cslAdmissionWait),
 		linkMaint:        make(map[string]linkMaintEntry),
 		zoneSched:        make(map[int]scheduledBlock),
+		schedPushed:      make(map[int]scheduledBlock),
 		windows:          make(map[int]zoneWindow),
 		windowOwed:       make(map[windowWrite]*windowOwed),
 		flowChanged:      make(map[int]time.Time),
@@ -2078,15 +2082,18 @@ func runningOverlay(e *tado.EmuState, short string) bool {
 
 // applyHomeState pushes the home flag and the per-zone scheduled blocks into
 // the emulator, so every z/s write it builds stamps the current state. It
-// returns the zones whose program moved to another block. The first
-// evaluation only seeds: there is no earlier block to move away from. A block
-// read back from the zone cache is no program: the zone already holds it, and
-// every member echo carries it back after a write drops it from the cache.
+// returns the zones whose program holds another block than the one they last
+// took. Only tickHomeState writes them: a command between a block boundary and
+// the next tick leaves the change owed to every other zone. The first
+// evaluation with no stored baseline only seeds: there is no earlier block to
+// move away from. A block read back from the zone cache is no program: the zone
+// already holds it, and every member echo carries it back after a write drops
+// it from the cache.
 func (d *daemon) applyHomeState(e *tado.EmuState) []int {
 	blocks := make(map[int]scheduledBlock)
 	sched := make(map[int]float64)
 	off := make(map[int]bool)
-	var changed []int
+	var programs []int
 	if inst := d.inst.Load(); inst != nil {
 		now := d.retryNow()
 		for i := range inst.Zones {
@@ -2097,8 +2104,8 @@ func (d *daemon) applyHomeState(e *tado.EmuState) []int {
 			}
 			block = d.earlyBlock(e, inst, zone, block, now)
 			blocks[zone], sched[zone], off[zone] = block, rawSetpointC(inst, zone, block.c), block.off
-			if prev, had := d.zoneSched[zone]; program && (!had || prev != block) {
-				changed = append(changed, zone)
+			if program {
+				programs = append(programs, zone)
 			}
 		}
 	}
@@ -2107,18 +2114,75 @@ func (d *daemon) applyHomeState(e *tado.EmuState) []int {
 	d.zoneSched = blocks
 	if !d.schedSeeded {
 		d.schedSeeded = true
+		d.pushedAll()
 		return nil
+	}
+	var changed []int
+	for _, zone := range programs {
+		if prev, had := d.schedPushed[zone]; !had || prev != blocks[zone] {
+			changed = append(changed, zone)
+		}
 	}
 	sort.Ints(changed)
 	return changed
 }
 
+// pushedAll records every zone as holding the block it follows now.
+func (d *daemon) pushedAll() {
+	same := len(d.schedPushed) == len(d.zoneSched)
+	for zone, block := range d.zoneSched {
+		if prev, had := d.schedPushed[zone]; !had || prev != block {
+			same = false
+			break
+		}
+	}
+	if same {
+		return
+	}
+	d.schedPushed = make(map[int]scheduledBlock, len(d.zoneSched))
+	for zone, block := range d.zoneSched {
+		d.schedPushed[zone] = block
+	}
+	d.schedUnsaved = true
+}
+
+// markPushed records that zone took the block it follows now: a write went to
+// every zoneWriteTargets member and stamped it.
+func (d *daemon) markPushed(zone int) {
+	block, ok := d.zoneSched[zone]
+	prev, had := d.schedPushed[zone]
+	switch {
+	case ok == had && prev == block:
+		return
+	case ok:
+		d.schedPushed[zone] = block
+	default:
+		delete(d.schedPushed, zone)
+	}
+	d.schedUnsaved = true
+}
+
+// saveProgramBlocks stores schedPushed once it moved, so a restart knows which
+// block each zone holds. A failed save stays owed to the next tick.
+func (d *daemon) saveProgramBlocks() {
+	if !d.schedUnsaved {
+		return
+	}
+	if d.state != nil {
+		if err := d.state.SetProgramBlocks(context.Background(), d.schedPushed); err != nil {
+			log.Printf("persist program blocks: %v", err)
+			return
+		}
+	}
+	d.schedUnsaved = false
+}
+
 // tickHomeState re-evaluates the weekly programs and pushes the new 6200 and
-// 61e0 to the members of every zone whose program moved to another block. Away,
-// the hot-water zone takes no block change: an away write carries neither tag,
-// and the return home rewrites every zone with the block then in force. An
-// early start due now goes out as a block change of its own, and the heat-up
-// learner then sees the targets this tick settled on.
+// 61e0 to the members of every zone whose program holds another block than the
+// one it last took. Away, the hot-water zone takes no block change: an away
+// write carries neither tag, and the return home rewrites every zone with the
+// block then in force. An early start due now goes out as a block change of its
+// own, and the heat-up learner then sees the targets this tick settled on.
 func (d *daemon) tickHomeState(e *tado.EmuState) {
 	d.planEarlyStarts(e)
 	zones := d.applyHomeState(e)
@@ -2128,7 +2192,41 @@ func (d *daemon) tickHomeState(e *tado.EmuState) {
 	if len(zones) > 0 {
 		d.rewriteZones(e, zones, d.requestQueuedDispatch)
 	}
+	d.pushedAll()
+	d.saveProgramBlocks()
 	d.observeHeatUps(e)
+}
+
+// restoreHomeState loads the home state the engine keeps in the database: the
+// away flag, the hot-water program, the windows, the heat-up models and the
+// block each zone last took. With that baseline the first tick writes each zone
+// whose program moved while the daemon was down, and no other.
+func (d *daemon) restoreHomeState(e *tado.EmuState) error {
+	if d.state == nil {
+		return nil
+	}
+	ctx := context.Background()
+	var err error
+	if d.away, err = d.state.Away(ctx); err != nil {
+		return err
+	}
+	if d.dhwProgram, err = d.state.HotWaterProgram(ctx); err != nil {
+		return err
+	}
+	if err := d.restoreWindows(e); err != nil {
+		return err
+	}
+	if d.thermal, err = d.state.ThermalModels(ctx); err != nil {
+		return err
+	}
+	blocks, stored, err := d.state.ProgramBlocks(ctx)
+	if err != nil {
+		return err
+	}
+	if stored {
+		d.schedPushed, d.schedSeeded = blocks, true
+	}
+	return nil
 }
 
 // tickUTCOffset serves tag 02b2 at the current instant: a DST transition moves
@@ -2147,7 +2245,7 @@ func (d *daemon) tickUTCOffset(e *tado.EmuState) bool {
 // rewriteZones queues one z/s write per zone, to its zoneWriteTargets. The
 // write keeps the overlay and the setpoint the zone already holds, so it
 // carries no 6440: it is the shape of the home or away burst and of a schedule
-// block change.
+// block change. Each zone then holds the block it follows now.
 func (d *daemon) rewriteZones(e *tado.EmuState, zones []int, dispatch func(string)) int {
 	written := 0
 	for _, zone := range zones {
@@ -2162,6 +2260,7 @@ func (d *daemon) rewriteZones(e *tado.EmuState, zones []int, dispatch func(strin
 			written++
 			dispatch(target)
 		}
+		d.markPushed(zone)
 	}
 	return written
 }
@@ -3586,25 +3685,9 @@ flags:
 	}
 	d.ulog = ulog
 	d.beaconEvery = *beacon
-	if store != nil {
-		away, err := store.Away(context.Background())
-		if err != nil {
-			closeStore(store)
-			die("%v", err)
-		}
-		d.away = away
-		if d.dhwProgram, err = store.HotWaterProgram(context.Background()); err != nil {
-			closeStore(store)
-			die("%v", err)
-		}
-		if err := d.restoreWindows(emu); err != nil {
-			closeStore(store)
-			die("%v", err)
-		}
-		if d.thermal, err = store.ThermalModels(context.Background()); err != nil {
-			closeStore(store)
-			die("%v", err)
-		}
+	if err := d.restoreHomeState(emu); err != nil {
+		closeStore(store)
+		die("%v", err)
 	}
 	d.applyHomeState(emu)
 	unknownModules := emu.UnknownInterfaceModules()

@@ -99,6 +99,7 @@ func (d *daemon) restateShiftedZones(e *tado.EmuState, before, after *tado.Insta
 			}
 			d.requestQueuedDispatch(target)
 		}
+		d.markPushed(m.zone)
 	}
 }
 
