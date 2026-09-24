@@ -65,7 +65,8 @@ zone_proxy_timeout_sec: 10
 # stored by `freedo-dev autotune` for the whole session.
 tune_debug: false
 
-# How often we broadcast the Router Advertisement, in seconds. 333 is the period
-# of the commercial coordinator: a device that gets none stops reporting after
-# about 20 minutes. 0 sends none. The beacon needs --tx.
-beacon_sec: 333
+# Longest interval of the Router Advertisement we broadcast, in seconds. Each
+# interval is random between a third of it and all of it. 600 matches the
+# commercial coordinator, which sends one every 200 to 600 s: a device that gets
+# none stops reporting after about 20 minutes. 0 sends none. The beacon needs --tx.
+beacon_sec: 600

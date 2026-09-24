@@ -120,13 +120,15 @@ func TestDryRunReadsCountersStoresNone(t *testing.T) {
 		if err := e.EnqueueChildLock(valve, 3, true); err != nil {
 			return nil, err
 		}
-		return []uint64{uint64(e.TxCounter()), uint64(e.BroadcastCounter()), uint64(e.Queue(valve)[0].MID)}, nil
+		return []uint64{uint64(e.TxCounter()), uint64(e.Queue(valve)[0].MID)}, nil
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := v.([]uint64); got[0] != 5000 || got[1] != 7000 || got[2] != 0x1235 {
-		t.Errorf("tx=%d broadcast=%d first MID=%#x, want 5000, 7000 and 0x1235", got[0], got[1], got[2])
+	// Broadcasts share the frame counter: a stored broadcast resume point is a
+	// floor for it.
+	if got := v.([]uint64); got[0] != 7000 || got[1] != 0x1235 {
+		t.Errorf("tx=%d first MID=%#x, want 7000 and 0x1235", got[0], got[1])
 	}
 	for key, want := range resume {
 		if got, _ := metaUint(t, store, key); got != want {

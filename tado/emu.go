@@ -9,6 +9,7 @@ import (
 	"hash/fnv"
 	"io"
 	"maps"
+	"math/rand/v2"
 	"slices"
 	"sort"
 	"strconv"
@@ -57,10 +58,9 @@ const (
 )
 
 var (
-	ErrBroadcastCounterExhausted = errors.New("tado: broadcast frame counter exhausted")
-	ErrHeatingBlockUnavailable   = errors.New("tado: mode/openwindow needs a complete heating block")
-	ErrHeatingBlockPending       = errors.New("tado: mode/openwindow waits for the previous heating update")
-	ErrTxCounterExhausted        = errors.New("tado: unicast frame counter exhausted")
+	ErrHeatingBlockUnavailable = errors.New("tado: mode/openwindow needs a complete heating block")
+	ErrHeatingBlockPending     = errors.New("tado: mode/openwindow waits for the previous heating update")
+	ErrTxCounterExhausted      = errors.New("tado: frame counter exhausted")
 )
 
 // ActionKind is the class of on-air frame an Action carries.
@@ -105,14 +105,13 @@ type Action struct {
 	CSLTx     bool
 	// HasCSLBatch and CSLBatchTag identify RFC 4944 fragments of one datagram.
 	// The tag may be zero after the RFC 4944 counter wraps.
-	HasCSLBatch    bool
-	CSLBatchTag    uint16
-	NoCSLBootstrap bool
-	QueueAttempt   bool
-	QueueTarget    string
-	WaitResponse   bool
-	QueueTry       int
-	QueueMID       uint16
+	HasCSLBatch  bool
+	CSLBatchTag  uint16
+	QueueAttempt bool
+	QueueTarget  string
+	WaitResponse bool
+	QueueTry     int
+	QueueMID     uint16
 	// CoAPTransaction marks the API commands whose bridge-side CON exchange
 	// uses the generic retransmission transaction, not MAC acknowledgement.
 	CoAPTransaction bool
@@ -230,10 +229,13 @@ type EmuConfig struct {
 	// AES-CCM* MIC alone and keep no last-accepted counter - so any seed is
 	// accepted and a low one cannot lock us out. The counter sits in the
 	// plaintext, not in the CCM* nonce (frame.go): it exists for our own
-	// bookkeeping. The daemon resumes it from the database.
+	// bookkeeping. The daemon resumes it from the database. Broadcasts take
+	// the same counter, as on the commercial coordinator.
 	TxCounter uint32
-	// BroadcastCounter seeds the 32-bit counter split across a broadcast frame.
-	BroadcastCounter     uint32
+	// RouterAdvertInterval is MaxRtrAdvInterval: each periodic advertisement
+	// follows the last one after a random time between a third of it and all
+	// of it (RFC 4861 6.2.4). The commercial coordinator runs the Contiki
+	// default of 200 s to 600 s.
 	RouterAdvertInterval time.Duration
 	// CSLPhase is advertised in the Enhanced ACKs we send: 320 us units elapsed
 	// since our own last CSL sample. It only serves to centre the device's ~79 ms
@@ -332,10 +334,10 @@ type EmuStats struct {
 
 // queuedDownlink is one pending command to a device. The CoAP datagram is built
 // once at enqueue and reused verbatim on every attempt, so its MID and token stay
-// put and the device can deduplicate at the app layer. Ordinary commands advance
-// the MAC sequence and anti-replay counter. Responses (captured relayed NON
-// responses, auth answers) retain their MAC sequence while advancing only the
-// anti-replay counter.
+// put and the device can deduplicate at the app layer. Every attempt advances the
+// anti-replay counter. A retry of a downlink that the Enhanced ACK delivers keeps
+// its MAC sequence, as a MAC retransmission does; a retry of one that waits for
+// a CoAP answer takes a new MAC sequence (buildFrames).
 type queuedDownlink struct {
 	kind          string // resource class: setpoint, childlock, identify, pair, ...
 	desc          string // human note used in the Action.Reason
@@ -621,9 +623,9 @@ type EmuState struct {
 	zoneDelivered       map[string]uint64
 	tx                  uint32 // our anti-replay counter
 	seq                 byte   // our MAC sequence number
-	bcastCt             uint32
 	txArmed             func() bool
 	lastRouterAdvert    time.Time
+	nextRouterAdvert    time.Duration // after lastRouterAdvert, drawn per advertisement
 	routerAdvertSent    bool
 	routerAdvertPending bool
 	fragTag             uint16
@@ -701,7 +703,6 @@ func NewEmu(cfg EmuConfig, log *UnhandledLogger) *EmuState {
 		schedC:         map[int]float64{},
 		zoneDelivered:  map[string]uint64{},
 		tx:             cfg.TxCounter,
-		bcastCt:        cfg.BroadcastCounter,
 		fragTag:        fragTag,
 	}
 	for zone, members := range cfg.Zones {
@@ -747,12 +748,6 @@ func (e *EmuState) SetTxCounter(v uint32) { e.tx = v }
 
 // TxCounter returns our current downlink anti-replay counter.
 func (e *EmuState) TxCounter() uint32 { return e.tx }
-
-// SetBroadcastCounter reseeds the broadcast frame counter.
-func (e *EmuState) SetBroadcastCounter(v uint32) { e.bcastCt = v }
-
-// BroadcastCounter returns the broadcast frame counter.
-func (e *EmuState) BroadcastCounter() uint32 { return e.bcastCt }
 
 // Nodes returns a snapshot of learned node state, sorted by short address.
 func (e *EmuState) Nodes() []NodeState {
@@ -1137,12 +1132,13 @@ func dataFrameLen(pkt []byte) int {
 
 func (e *EmuState) coapReplyActions(pkt, dst []byte, code, uri string, mid uint16, node string) ([]Action, error) {
 	reason := fmt.Sprintf("coap-ack %s %s mid=%04x", code, uri, mid)
+	more := len(e.queue[hexEUI(dst)]) > 0
 	if dataFrameLen(pkt) <= maxPHYFrame {
 		ctr, err := e.nextTx()
 		if err != nil {
 			return nil, err
 		}
-		frame, err := BuildData(e.key, e.nextSeq(), dst, e.selfEUI[:5], WrapAppPayload(pkt, ctr, nil))
+		frame, err := buildDownlinkData(more, e.key, e.nextSeq(), dst, e.selfEUI[:5], WrapAppPayload(pkt, ctr, nil))
 		if err != nil {
 			return nil, err
 		}
@@ -1164,7 +1160,7 @@ func (e *EmuState) coapReplyActions(pkt, dst []byte, code, uri string, mid uint1
 		if err != nil {
 			return nil, err
 		}
-		frame, err := BuildDataPending(e.key, e.nextSeq(), dst, e.selfEUI[:5], WrapAppPayload(fragment, ctr, nil))
+		frame, err := buildDownlinkData(i < len(fragments)-1 || more, e.key, e.nextSeq(), dst, e.selfEUI[:5], WrapAppPayload(fragment, ctr, nil))
 		if err != nil {
 			return nil, err
 		}
@@ -4741,7 +4737,9 @@ func (e *EmuState) LinkMaintenanceEcho(target string) (Action, error) {
 	if err != nil {
 		return Action{}, err
 	}
-	return Action{Kind: ActData, Bytes: frame.Bytes(), Reason: "link-maintenance echo", Node: label, CSLTx: true, NoCSLBootstrap: true, WaitResponse: true}, nil
+	// The commercial coordinator sends the echo to a device it holds no sample
+	// for behind a train of one whole period, as any other frame.
+	return Action{Kind: ActData, Bytes: frame.Bytes(), Reason: "link-maintenance echo", Node: label, CSLTx: true, CSLBootstrapAlways: true, WaitResponse: true}, nil
 }
 
 func (e *EmuState) AutoQueueEnabled() bool { return !e.cfg.NoAutoQueue }
@@ -4846,17 +4844,21 @@ func (e *EmuState) nextDownlink(dstEUI []byte, label string) ([]Action, bool) {
 
 // buildFrames frames one CoAP datagram for one more attempt. A fragmented
 // config write stays one CoAP exchange and uses a fresh RFC 4944 tag per try.
+// A downlink that the Enhanced ACK delivers retries as a MAC retransmission: the
+// same MAC seq under the next frame counter, as the commercial coordinator
+// does. A downlink that waits for a CoAP answer retries as a new frame.
 func (e *EmuState) buildFrames(dstEUI []byte, d *queuedDownlink) ([][]byte, byte, error) {
+	more := len(e.queue[hexEUI(dstEUI)]) > 1
 	if !d.fragmented {
 		ctr, err := e.nextTx()
 		if err != nil {
 			return nil, 0, err
 		}
 		seq := d.seq
-		if !d.responseRetry || d.tries == 0 {
+		if d.tries == 0 || d.requireCoAP || d.kind == "get" {
 			seq = e.nextSeq()
 		}
-		f, err := BuildData(d.key, seq, dstEUI, e.selfEUI[:5], WrapAppPayload(d.coap, ctr, nil))
+		f, err := buildDownlinkData(more, d.key, seq, dstEUI, e.selfEUI[:5], WrapAppPayload(d.coap, ctr, nil))
 		if err != nil {
 			return nil, 0, err
 		}
@@ -4872,19 +4874,29 @@ func (e *EmuState) buildFrames(dstEUI []byte, d *queuedDownlink) ([][]byte, byte
 	}
 	frames := make([][]byte, 0, len(fragments))
 	var lastSeq byte
-	for _, fragment := range fragments {
+	for i, fragment := range fragments {
 		ctr, err := e.nextTx()
 		if err != nil {
 			return nil, 0, err
 		}
 		lastSeq = e.nextSeq()
-		f, err := BuildDataPending(d.key, lastSeq, dstEUI, e.selfEUI[:5], WrapAppPayload(fragment, ctr, nil))
+		f, err := buildDownlinkData(i < len(fragments)-1 || more, d.key, lastSeq, dstEUI, e.selfEUI[:5], WrapAppPayload(fragment, ctr, nil))
 		if err != nil {
 			return nil, 0, err
 		}
 		frames = append(frames, f.Bytes())
 	}
 	return frames, lastSeq, nil
+}
+
+// buildDownlinkData sets Frame Pending when another frame for the device
+// follows this one. The commercial coordinator sets it on each fragment but the
+// last, and on a last or single frame only while more wait for the device.
+func buildDownlinkData(pending bool, key []byte, seq byte, dstEUI, srcPrefix, plaintext []byte) (*Frame, error) {
+	if pending {
+		return BuildDataPending(key, seq, dstEUI, srcPrefix, plaintext)
+	}
+	return BuildData(key, seq, dstEUI, srcPrefix, plaintext)
 }
 
 func (e *EmuState) nextFragTag() uint16 {
@@ -5143,19 +5155,19 @@ func (e *EmuState) Beacon() (Action, error) {
 	if err != nil {
 		return Action{}, err
 	}
-	if e.bcastCt == ^uint32(0) {
-		return Action{}, ErrBroadcastCounterExhausted
+	ctr, err := e.nextTx()
+	if err != nil {
+		return Action{}, err
 	}
-	e.bcastCt++
-	frame, err := BuildBroadcast(e.key, e.nextSeq(), e.selfEUI, uint16(e.bcastCt), bcastSecCtrl,
-		WrapBroadcastPayload(pkt, uint16(e.bcastCt>>16)))
+	frame, err := BuildBroadcast(e.key, e.nextSeq(), e.selfEUI, uint16(ctr), bcastSecCtrl,
+		WrapBroadcastPayload(pkt, uint16(ctr>>16)))
 	if err != nil {
 		return Action{}, err
 	}
 	return Action{
 		Kind:   ActBroadcast,
 		Bytes:  frame,
-		Reason: fmt.Sprintf("beacon router-advert ctr=%d", e.bcastCt),
+		Reason: fmt.Sprintf("beacon router-advert ctr=%d", ctr),
 		Node:   "ffff",
 	}, nil
 }
@@ -5188,8 +5200,19 @@ func (e *EmuState) CompleteBeacon(sent bool) {
 		return
 	}
 	e.lastRouterAdvert = e.cfg.Now()
+	e.nextRouterAdvert = routerAdvertDelay(e.cfg.RouterAdvertInterval)
 	e.routerAdvertSent = true
 	e.stats.RouterAdvertisementsSent++
+}
+
+// routerAdvertDelay draws the time to the next periodic advertisement,
+// uniform between max/3 and max.
+func routerAdvertDelay(longest time.Duration) time.Duration {
+	if longest <= 0 {
+		return 0
+	}
+	shortest := longest / 3
+	return shortest + time.Duration(rand.Int64N(int64(longest-shortest)+1))
 }
 
 // routerSolicitAnswerWindow bounds the answer to one burst. Devices that lose
@@ -5201,7 +5224,7 @@ func (e *EmuState) MaybeBeacon() ([]Action, bool, error) {
 	if e.cfg.RouterAdvertInterval <= 0 {
 		return nil, false, nil
 	}
-	return e.beaconIfDue(e.cfg.RouterAdvertInterval)
+	return e.beaconIfDue(e.nextRouterAdvert)
 }
 
 // beaconIfDue returns the burst when the last advertisement on air is older

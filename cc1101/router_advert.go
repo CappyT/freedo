@@ -43,6 +43,8 @@ func (b *Bridge) SendRouterAdvertBurst(frame []byte, timeout time.Duration) (int
 		return sent, fmt.Errorf("RABURST rejected input")
 	case routerAdvertBurstTXFail:
 		return sent, fmt.Errorf("RABURST transmit failed after %d frames", sent)
+	case cslTxBusy:
+		return sent, fmt.Errorf("RABURST: %w", ErrCSLTxBusy)
 	default:
 		return sent, fmt.Errorf("RABURST status 0x%02x", status)
 	}

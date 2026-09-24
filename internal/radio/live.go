@@ -807,7 +807,7 @@ func (r *Live) sendActions(actions []tado.Action) (ImmediateResult, error) {
 			if len(action.Bytes) < 5 {
 				return result, fmt.Errorf("CSL Data frame is too short")
 			}
-			bootstrap := action.HasCSLBatch || (!action.NoCSLBootstrap && r.cslBootstrap(action))
+			bootstrap := action.HasCSLBatch || r.cslBootstrap(action)
 			if br, ok := r.br.(queuedCSLBridge); ok {
 				result.CSLQueue = true
 				if r.cslPending == nil {
@@ -820,7 +820,7 @@ func (r *Live) sendActions(actions []tado.Action) (ImmediateResult, error) {
 					next := actions[i]
 					// A fragmented datagram needs every frame to have the same cold-start path.
 					// The first frame can finish without creating an anchor for the next one.
-					nextBootstrap := next.HasCSLBatch || (bootstrap && !next.NoCSLBootstrap)
+					nextBootstrap := next.HasCSLBatch || bootstrap
 					jobs = append(jobs, cc1101.CSLQueueRequest{ID: r.nextCSLID(), Frame: next.Bytes, DstShort: []byte{next.Bytes[4], next.Bytes[3]}, AckTimeout: liveCSLTxAckTimeout, Bootstrap: nextBootstrap, WaitResponse: next.WaitResponse, CSLPhase: r.phase})
 					pending = append(pending, liveCSLPending{action: next, bootstrap: nextBootstrap})
 				}
@@ -969,6 +969,12 @@ func (r *Live) confirmCSLBootstrap(frame []byte, bootstrap bool, result *cc1101.
 	}
 	if errors.Is(err, cc1101.ErrCSLTxNoAnchor) {
 		delete(r.bootstrapConfirmedAt, cslShort(frame))
+		return
+	}
+	// A busy channel stopped the train before its first frame: the attempt
+	// never reached the air, so it does not hold the next one back.
+	if bootstrap && errors.Is(err, cc1101.ErrCSLTxBusy) {
+		delete(r.bootstrapAttemptAt, cslShort(frame))
 		return
 	}
 	if !bootstrap || err != nil || result == nil || result.Ack == nil {

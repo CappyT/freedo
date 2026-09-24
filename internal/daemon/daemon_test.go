@@ -626,23 +626,22 @@ func TestDaemonBroadcastCounterCLISeed(t *testing.T) {
 		name      string
 		tx        uint64
 		broadcast uint64
-		explicit  bool
-		wantTX    uint32
-		wantBcast uint32
+		want      uint32
 		wantErr   bool
 	}{
-		{name: "inherits txctr", tx: 65535, wantTX: 65535, wantBcast: 65535},
-		{name: "explicit seed", tx: 65535, broadcast: 7, explicit: true, wantTX: 65535, wantBcast: 7},
+		{name: "txctr alone", tx: 65535, want: 65535},
+		{name: "bcastctr is a floor", tx: 7, broadcast: 65535, want: 65535},
+		{name: "txctr above bcastctr", tx: 65535, broadcast: 7, want: 65535},
 		{name: "tx overflow", tx: uint64(^uint32(0)) + 1, wantErr: true},
-		{name: "broadcast overflow", broadcast: uint64(^uint32(0)) + 1, explicit: true, wantErr: true},
+		{name: "broadcast overflow", broadcast: uint64(^uint32(0)) + 1, wantErr: true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			gotTX, gotBcast, err := daemonCounterSeeds(tt.tx, tt.broadcast, tt.explicit)
+			got, err := daemonCounterSeed(tt.tx, tt.broadcast)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("error=%v, wantErr=%v", err, tt.wantErr)
 			}
-			if err == nil && (gotTX != tt.wantTX || gotBcast != tt.wantBcast) {
-				t.Errorf("seeds=%d/%d, want %d/%d", gotTX, gotBcast, tt.wantTX, tt.wantBcast)
+			if err == nil && got != tt.want {
+				t.Errorf("seed=%d, want %d", got, tt.want)
 			}
 		})
 	}
@@ -1825,7 +1824,7 @@ func TestDaemonIdentifyCoAPRetransmitParity(t *testing.T) {
 	t.Fatal("expired transaction remained pending")
 }
 
-func TestLinkMaintenanceUsesAnchorOnlyAndResetsAfterFourProbes(t *testing.T) {
+func TestLinkMaintenanceBootstrapsAndResetsAfterFourProbes(t *testing.T) {
 	radio := newImmediateTestRadio(true, nil)
 	emu := tado.NewEmu(tado.EmuConfig{TxCounter: 100000}, tado.NewUnhandledLogger(io.Discard))
 	d := newDaemon(defaultInstall, emu, radio, false, "live")
@@ -1854,7 +1853,7 @@ func TestLinkMaintenanceUsesAnchorOnlyAndResetsAfterFourProbes(t *testing.T) {
 		t.Fatalf("maintenance sends=%d, want 4", len(radio.batches))
 	}
 	for i, batch := range radio.batches {
-		if len(batch) != 1 || !batch[0].CSLTx || !batch[0].NoCSLBootstrap || !batch[0].WaitResponse || batch[0].QueueAttempt {
+		if len(batch) != 1 || !batch[0].CSLTx || !batch[0].CSLBootstrapAlways || !batch[0].WaitResponse || batch[0].QueueAttempt {
 			t.Fatalf("send %d action=%+v", i+1, batch)
 		}
 	}
@@ -3792,6 +3791,41 @@ func TestQueuedCSLNoAnchorWaitsForRetryDeadline(t *testing.T) {
 	}
 }
 
+// A job that found the channel busy put nothing on the air: it counts no
+// attempt and retries on the scale of a MAC retransmission, not after 30 s.
+func TestQueuedCSLBusyRetriesSoon(t *testing.T) {
+	device, err := defaultInstall.Resolve("VA1000000005")
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 8, 20, 10, 47, 56, 0, time.UTC)
+	cfg := defaultInstall.EmuConfig()
+	cfg.Now = func() time.Time { return now }
+	emu := tado.NewEmu(cfg, tado.NewUnhandledLogger(io.Discard))
+	if err := emu.EnqueueChildLock(device.Serial, 5, true); err != nil {
+		t.Fatal(err)
+	}
+	immediate := newImmediateTestRadio(false, nil)
+	immediate.cslQueue, immediate.accept = true, true
+	d := newDaemon(defaultInstall, emu, immediate, false, "live")
+	clock := newManualRetryClock()
+	d.retryAfter, d.retryNow = clock.after, func() time.Time { return now }
+	t.Cleanup(func() { close(d.done) })
+
+	d.dispatchQueued(emu, device.Serial)
+	attempts := immediate.queuedAttempts()
+	if len(attempts) != 1 {
+		t.Fatalf("initial attempts=%+v", attempts)
+	}
+	d.handleCSLCompletion(radio.CSLCompletion{Action: attempts[0], Result: &cc1101.CSLTxResult{Sent: 0}, Err: cc1101.ErrCSLTxBusy})
+	if got := clock.wait(t); got != cslBusyRetryBackoff {
+		t.Fatalf("busy retry delay=%s, want %s", got, cslBusyRetryBackoff)
+	}
+	if queued := emu.Queue(device.Serial); len(queued) != 1 || queued[0].Tries != 0 {
+		t.Fatalf("busy counted an attempt: queue=%+v", queued)
+	}
+}
+
 func TestQueuedCSLConfigNoAnchorReplacesAdmissionT0(t *testing.T) {
 	device, err := defaultInstall.Resolve("0a06")
 	if err != nil {
@@ -4386,10 +4420,10 @@ func TestDryRunLogsSolicitationWithoutAnswer(t *testing.T) {
 	}
 }
 
-// The beacon runs at the period of the commercial coordinator.
+// The beacon runs at the longest interval of the commercial coordinator.
 func TestBeaconDefaultInterval(t *testing.T) {
-	if defaultBeaconInterval != 333*time.Second {
-		t.Errorf("defaultBeaconInterval=%v, want 333s", defaultBeaconInterval)
+	if defaultBeaconInterval != 600*time.Second {
+		t.Errorf("defaultBeaconInterval=%v, want 600s", defaultBeaconInterval)
 	}
 	var b cli.Bootstrap
 	if got := b.BeaconInterval(); got != defaultBeaconInterval {

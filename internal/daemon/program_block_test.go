@@ -71,7 +71,7 @@ func startDaemonAs(t *testing.T, in *tado.Install, clock *testClock, store *stat
 	t.Helper()
 	cfg := in.EmuConfig()
 	cfg.Now = clock.now
-	cfg.TxCounter, cfg.BroadcastCounter = txSeed, txSeed
+	cfg.TxCounter = txSeed
 	emu := tado.NewEmu(cfg, tado.NewUnhandledLogger(io.Discard))
 	if err := restoreDesiredState(store, emu); err != nil {
 		t.Fatal(err)

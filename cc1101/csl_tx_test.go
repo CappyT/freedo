@@ -2,6 +2,7 @@ package cc1101
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -186,24 +187,42 @@ func TestSendCSLDataRestoresHostTimeout(t *testing.T) {
 	}
 }
 
-func TestSendCSLDataBootstrapFrameCount(t *testing.T) {
+// An anchor that ages widens the train up to the bootstrap length, so an
+// anchored job reports up to 255 frames, and fewer than 3 is malformed.
+func TestSendCSLDataFrameCount(t *testing.T) {
 	data := cslTxData()
 	for _, tc := range []struct {
-		status byte
-		body   []byte
-		err    bool
+		status    byte
+		body      []byte
+		bootstrap bool
+		err       bool
 	}{
-		{0x00, append([]byte{255}, cslTxAck(data)...), false},
-		{cslTxNoAck, []byte{255}, false},
-		{0x00, append([]byte{255}, cslTxAck(data)...), true},
+		{0x00, append([]byte{255}, cslTxAck(data)...), true, false},
+		{cslTxNoAck, []byte{255}, true, false},
+		{0x00, append([]byte{255}, cslTxAck(data)...), false, false},
+		{cslTxNoAck, []byte{200}, false, false},
+		{0x00, append([]byte{2}, cslTxAck(data)...), false, true},
 	} {
 		p := &fakePort{read: autoAckResponse(tc.status, tc.body)}
 		b := &Bridge{port: p, timeout: time.Millisecond}
-		bootstrap := !tc.err
-		_, err := b.SendCSLData(data, []byte{0x0a, 0x01}, time.Millisecond, time.Second, bootstrap, false, 0)
+		_, err := b.SendCSLData(data, []byte{0x0a, 0x01}, time.Millisecond, time.Second, tc.bootstrap, false, 0)
 		if (err != nil) != tc.err {
-			t.Fatalf("status=%02x bootstrap=%t err=%v", tc.status, bootstrap, err)
+			t.Fatalf("status=%02x sent=%d bootstrap=%t err=%v", tc.status, tc.body[0], tc.bootstrap, err)
 		}
+	}
+}
+
+// A packet on the air in the listen before the first frame ends the job with
+// status 0x1b and nothing sent.
+func TestSendCSLDataBusy(t *testing.T) {
+	p := &fakePort{read: autoAckResponse(cslTxBusy, []byte{0})}
+	b := &Bridge{port: p, timeout: time.Millisecond}
+	result, err := b.SendCSLData(cslTxData(), []byte{0x0a, 0x01}, time.Millisecond, time.Second, true, false, 0)
+	if !errors.Is(err, ErrCSLTxBusy) {
+		t.Fatalf("err=%v, want ErrCSLTxBusy", err)
+	}
+	if result == nil || result.Sent != 0 {
+		t.Fatalf("result=%+v, want sent 0", result)
 	}
 }
 

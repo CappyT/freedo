@@ -237,6 +237,35 @@ func TestCSLQueueColdBootstrapNoAckKeepsTrainCount(t *testing.T) {
 	}
 }
 
+// A job that found the channel busy completes with status 0x1b and nothing
+// sent, so the host can run it again.
+func TestCSLQueueBusyCompletion(t *testing.T) {
+	body := []byte{0, 0x00, 0x2b, cslTxFlagBootstrap, 0}
+	b := &Bridge{port: &fakePort{read: autoAckResponse(cslTxBusy, body)}, timeout: time.Millisecond}
+	event, err := b.PollCSLQueue()
+	if err != nil || event == nil || event.Completion == nil {
+		t.Fatalf("event=%+v err=%v", event, err)
+	}
+	completion := event.Completion
+	if completion.ID != 0x2b || !errors.Is(completion.Err, ErrCSLTxBusy) || completion.Result == nil || completion.Result.Sent != 0 {
+		t.Fatalf("completion=%+v", completion)
+	}
+}
+
+// An anchored job reports its whole train: the guard widens with the age of
+// the anchor, up to the bootstrap length.
+func TestCSLQueueJobGuardCoversWidestTrain(t *testing.T) {
+	job := CSLQueueRequest{AckTimeout: 50 * time.Millisecond}
+	want := 2*time.Second + 7808*time.Microsecond + 50*time.Millisecond + 400*time.Millisecond
+	if got := CSLQueueJobGuard(job); got != want {
+		t.Fatalf("guard=%s, want %s", got, want)
+	}
+	job.WaitResponse = true
+	if got := CSLQueueJobGuard(job); got != want+500*time.Millisecond {
+		t.Fatalf("follow guard=%s, want %s", got, want+500*time.Millisecond)
+	}
+}
+
 func TestCSLQueueBatchIsAtomicWhenNeighborHasOneSlot(t *testing.T) {
 	data := cslTxData()
 	p := &fakePort{read: autoAckResponse(cslQueueFull, nil)}

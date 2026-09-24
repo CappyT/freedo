@@ -103,11 +103,11 @@ type daemon struct {
 	linkMaintCursor  int
 	linkMaintTick    uint16
 	linkMaintWait    uint16
-	// txResume, bcastResume and midResume are the frame counters and the
-	// Message ID the database resumes from, see leaseCounters. They belong to
-	// the engine goroutine.
-	txResume, bcastResume uint32
-	midResume             uint16
+	// txResume and midResume are the frame counter and the Message ID the
+	// database resumes from, see leaseCounters. They belong to the engine
+	// goroutine.
+	txResume  uint32
+	midResume uint16
 	// away is the state of the whole home, home by default. zoneSched holds the
 	// block each zone follows now, and schedPushed the block each zone took at
 	// the last tick or zone rewrite: a program zone whose two blocks differ owes
@@ -190,8 +190,14 @@ const (
 	// A relayed zone datagram retries on the scale of the requester's own CoAP
 	// retransmission: a 30 s hold outlives the exchange it answers.
 	zoneRelayRetryBackoff = 2 * time.Second
-	coapRetryMin          = 0x501 * time.Millisecond
-	coapRetrySpread       = 0x280
+	// A job that found the channel busy put nothing on the air. It retries on
+	// the scale of the commercial MAC retransmission, 2 to 6 s.
+	cslBusyRetryBackoff = 2 * time.Second
+	coapRetryMin        = 0x501 * time.Millisecond
+	coapRetrySpread     = 0x280
+	// beaconPoll is how often the daemon asks whether a periodic Router
+	// Advertisement is due.
+	beaconPoll = time.Second
 )
 
 // Shutdown budgets. `docker stop` grants 10 s before SIGKILL, so every wait on
@@ -344,7 +350,9 @@ func (d *daemon) run(ctx context.Context) {
 	var beaconC <-chan time.Time
 	var beaconTicker *time.Ticker
 	if d.beaconEvery > 0 {
-		beaconTicker = time.NewTicker(d.beaconEvery)
+		// The emulator draws each interval between a third of beaconEvery and
+		// all of it, so the tick only polls it.
+		beaconTicker = time.NewTicker(min(d.beaconEvery, beaconPoll))
 		beaconC = beaconTicker.C
 		defer beaconTicker.Stop()
 	}
@@ -450,7 +458,11 @@ func (d *daemon) handleCSLCompletion(completion radio.CSLCompletion) {
 	}
 	d.emu.CompleteQueuedDownlinkAttempt(action.Bytes[3:11], action.Bytes[2])
 	if completion.Result == nil || completion.Result.Sent == 0 {
-		retryAt := d.retryNow().Add(proactiveDownlinkRetryBackoff)
+		delay := proactiveDownlinkRetryBackoff
+		if errors.Is(completion.Err, cc1101.ErrCSLTxBusy) {
+			delay = cslBusyRetryBackoff
+		}
+		retryAt := d.retryNow().Add(delay)
 		if d.emu.DeferDownlinkAttempt(action.Bytes[3:11], action.Bytes[2], retryAt) {
 			// Sent=0 did not start the CoAP transaction. Replace its admission T0.
 			d.replaceQueuedRetryAt(d.emu, target, retryAt)
@@ -1285,18 +1297,20 @@ const (
 	midLease = 4096
 )
 
-// Meta keys of the stored resume points.
+// Meta keys of the stored resume points. Broadcasts share the unicast frame
+// counter, so metaBcastResume is only read: a database written while they
+// had a counter of their own keeps it as a floor.
 const (
 	metaTxResume    = "tx_counter_resume"
 	metaBcastResume = "broadcast_counter_resume"
 	metaMIDResume   = "coap_mid_resume"
 )
 
-// restoreCounters resumes the unicast and the broadcast frame counters and the
-// CoAP Message ID from their stored resume points. The configured frame
-// counter seed stays a floor. A daemon that transmits on a live radio then
-// stores new resume points before its first frame. A dry-run or a replay puts
-// nothing on the air: it reads the resume points and stores none.
+// restoreCounters resumes the frame counter and the CoAP Message ID from their
+// stored resume points. The configured frame counter seed stays a floor. A
+// daemon that transmits on a live radio then stores new resume points before
+// its first frame. A dry-run or a replay puts nothing on the air: it reads the
+// resume points and stores none.
 func (d *daemon) restoreCounters(e *tado.EmuState) error {
 	if d.state == nil {
 		return nil
@@ -1312,11 +1326,8 @@ func (d *daemon) restoreCounters(e *tado.EmuState) error {
 			stored[key] = v
 		}
 	}
-	if v := uint32(stored[metaTxResume]); v > e.TxCounter() {
+	if v := uint32(max(stored[metaTxResume], stored[metaBcastResume])); v > e.TxCounter() {
 		e.SetTxCounter(v)
-	}
-	if v := uint32(stored[metaBcastResume]); v > e.BroadcastCounter() {
-		e.SetBroadcastCounter(v)
 	}
 	if v, ok := stored[metaMIDResume]; ok {
 		tado.SeedMID(uint16(v))
@@ -1336,18 +1347,17 @@ func (d *daemon) leasesCounters() bool {
 // leaseCounters stores resume points a lease past the counters in use once
 // less than half a lease is left, or at once with force.
 func (d *daemon) leaseCounters(e *tado.EmuState, force bool) error {
-	tx, bcast, mid := e.TxCounter(), e.BroadcastCounter(), tado.LastMID()
-	if !force && int32(d.txResume-tx) >= counterLease/2 && int32(d.bcastResume-bcast) >= counterLease/2 &&
-		int16(d.midResume-mid) >= midLease/2 {
+	tx, mid := e.TxCounter(), tado.LastMID()
+	if !force && int32(d.txResume-tx) >= counterLease/2 && int16(d.midResume-mid) >= midLease/2 {
 		return nil
 	}
-	txResume, bcastResume, midResume := leaseAbove(tx), leaseAbove(bcast), mid+midLease
+	txResume, midResume := leaseAbove(tx), mid+midLease
 	if err := d.state.SetCounterResume(context.Background(), map[string]uint64{
-		metaTxResume: uint64(txResume), metaBcastResume: uint64(bcastResume), metaMIDResume: uint64(midResume),
+		metaTxResume: uint64(txResume), metaMIDResume: uint64(midResume),
 	}); err != nil {
 		return err
 	}
-	d.txResume, d.bcastResume, d.midResume = txResume, bcastResume, midResume
+	d.txResume, d.midResume = txResume, midResume
 	return nil
 }
 
@@ -3832,11 +3842,11 @@ func Main(args []string) {
 	replay := fs.String("replay", "", "feed this capture file instead of a radio")
 	doTx := fs.Bool("tx", false, "transmit the decided frames (default: dry-run, transmit nothing)")
 	txctr := fs.Uint64("txctr", 0, "initial 32-bit frame counter for downlinks (overrides tx_counter)")
-	bcastctr := fs.Uint64("bcastctr", 0, "seed of the 32-bit broadcast frame counter (default: --txctr)")
+	bcastctr := fs.Uint64("bcastctr", 0, "floor of the frame counter, which broadcasts share with downlinks (same as --txctr)")
 	cslphase := fs.Uint("cslphase", 0, "CSL phase in our Enhanced ACKs: 320 us units elapsed since our own last CSL sample; 0 is safe while our receiver listens continuously (overrides csl_phase)")
 	unhandled := fs.String("unhandled", "freedo-unhandled.log", "append the unhandled-frame log to this file (overrides unhandled_log)")
 	duration := fs.Duration("duration", 0, "stop the daemon after this long (0 = until Ctrl-C)")
-	beacon := fs.Duration("beacon", defaultBeaconInterval, "interval of the 0x49e8 router advertisement, transmitted with --tx alone (0 = disabled; overrides beacon_sec)")
+	beacon := fs.Duration("beacon", defaultBeaconInterval, "longest interval of the 0x49e8 router advertisement, each one random from a third of it, transmitted with --tx alone (0 = disabled; overrides beacon_sec)")
 	noAutoQueue := fs.Bool("no-auto-queue", false, "never queue automatic UTC-offset writes or zone forwarding")
 	tuneDebug := fs.Bool("tune-debug", false, "log the FREQEST reading of every received frame (overrides tune_debug)")
 	debugAPI := fs.Bool("debug-api", false, "serve /api/debug/dissect, /api/debug/decrypt and /api/debug/rx; they decrypt any frame a caller sends and stream live traffic (overrides debug_api)")
@@ -3930,7 +3940,7 @@ flags:
 	if token == "" {
 		fmt.Fprintf(os.Stderr, "WARNING: no API token is configured: the API on %s has no authentication\n", *addr)
 	}
-	txSeed, bcastSeed, err := daemonCounterSeeds(*txctr, *bcastctr, given["bcastctr"])
+	txSeed, err := daemonCounterSeed(*txctr, *bcastctr)
 	if err != nil {
 		die("counter seed: %v", err)
 	}
@@ -3979,7 +3989,6 @@ flags:
 	}
 	cfg := in.EmuConfig()
 	cfg.TxCounter, cfg.CSLPhase = txSeed, uint16(*cslphase)
-	cfg.BroadcastCounter = bcastSeed
 	cfg.ZoneGetProxy = b.ZoneGetProxy
 	cfg.ZoneProxyTimeout = b.ZoneProxyTimeout()
 	cfg.RouterAdvertInterval = *beacon
@@ -4155,16 +4164,14 @@ func closeWithinTo(warn io.Writer, what string, budget time.Duration, close func
 	}
 }
 
-func daemonCounterSeeds(tx, broadcast uint64, explicit bool) (uint32, uint32, error) {
+// daemonCounterSeed is the floor of the frame counter. Broadcasts share it,
+// so --bcastctr is one more floor.
+func daemonCounterSeed(tx, broadcast uint64) (uint32, error) {
 	if tx > uint64(^uint32(0)) {
-		return 0, 0, errors.New("--txctr must fit in uint32")
+		return 0, errors.New("--txctr must fit in uint32")
 	}
 	if broadcast > uint64(^uint32(0)) {
-		return 0, 0, errors.New("--bcastctr must fit in uint32")
+		return 0, errors.New("--bcastctr must fit in uint32")
 	}
-	tx32 := uint32(tx)
-	if !explicit {
-		return tx32, tx32, nil
-	}
-	return tx32, uint32(broadcast), nil
+	return uint32(max(tx, broadcast)), nil
 }

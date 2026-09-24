@@ -7,21 +7,28 @@ import (
 	"time"
 )
 
-var ErrCSLTxNoAnchor = errors.New("CSLTX has no target sample anchor")
+var (
+	ErrCSLTxNoAnchor = errors.New("CSLTX has no target sample anchor")
+	// ErrCSLTxBusy is a packet on the air in the listen before the first frame.
+	// Nothing went out, so the job can run again.
+	ErrCSLTxBusy = errors.New("CSLTX found the channel busy")
+)
 
 const (
-	cslTxInput            = 0x14
-	cslTxTXFail           = 0x15
-	cslTxNoAck            = 0x16
-	cslTxBadAck           = 0x17
-	cslTxNoAnchor         = 0x18
-	cslTxMinSent          = 3
-	cslTxMaxSent          = 34
-	cslTxBootstrapMaxSent = 255
-	cslTxFlagBootstrap    = 1 << 0
-	cslTxFlagFollow       = 1 << 1
-	cslTxFollowMaxFrames  = 6
-	cslTxMaxRawFrame      = 1 + maxTrainFrame + 2
+	cslTxInput    = 0x14
+	cslTxTXFail   = 0x15
+	cslTxNoAck    = 0x16
+	cslTxBadAck   = 0x17
+	cslTxNoAnchor = 0x18
+	cslTxBusy     = 0x1b
+	cslTxMinSent  = 3
+	// An anchor that ages widens its train up to the bootstrap length, so an
+	// anchored job has the same bound as a bootstrap one.
+	cslTxMaxSent         = 255
+	cslTxFlagBootstrap   = 1 << 0
+	cslTxFlagFollow      = 1 << 1
+	cslTxFollowMaxFrames = 6
+	cslTxMaxRawFrame     = 1 + maxTrainFrame + 2
 )
 
 // CSLTxResult is the on-chip CSL transmit outcome.
@@ -45,7 +52,7 @@ func (b *Bridge) SendCSLData(frame, dstShort []byte, ackTimeout, timeout time.Du
 	defer func() { b.timeout = savedTimeout }()
 	status, data, err := b.req(cmdCSLTx, payload, func(status byte, data []byte) bool {
 		if status == 0 {
-			_, err := parseCSLTxResult(status, data, bootstrap, waitResponse)
+			_, err := parseCSLTxResult(status, data, waitResponse)
 			return err == nil
 		}
 		return len(data) == 1
@@ -53,7 +60,7 @@ func (b *Bridge) SendCSLData(frame, dstShort []byte, ackTimeout, timeout time.Du
 	if err != nil {
 		return nil, err
 	}
-	return parseCSLTxResult(status, data, bootstrap, waitResponse)
+	return parseCSLTxResult(status, data, waitResponse)
 }
 
 func cslTxRequest(frame, dstShort []byte, ackTimeout time.Duration, bootstrap, waitResponse bool, cslPhase uint16) ([]byte, error) {
@@ -87,18 +94,14 @@ func cslTxRequest(frame, dstShort []byte, ackTimeout time.Duration, bootstrap, w
 	return payload, nil
 }
 
-func parseCSLTxResult(status byte, data []byte, bootstrap, waitResponse bool) (*CSLTxResult, error) {
+func parseCSLTxResult(status byte, data []byte, waitResponse bool) (*CSLTxResult, error) {
 	if len(data) < 1 {
 		return nil, fmt.Errorf("CSLTX response has no frame count")
 	}
 	result := &CSLTxResult{Sent: int(data[0])}
-	maxSent := cslTxMaxSent
-	if bootstrap {
-		maxSent = cslTxBootstrapMaxSent
-	}
 	switch status {
 	case 0x00:
-		if result.Sent < cslTxMinSent || result.Sent > maxSent {
+		if result.Sent < cslTxMinSent || result.Sent > cslTxMaxSent {
 			return result, fmt.Errorf("CSLTX returned invalid frame count %d", result.Sent)
 		}
 		var ackRaw []byte
@@ -116,7 +119,7 @@ func parseCSLTxResult(status byte, data []byte, bootstrap, waitResponse bool) (*
 		}
 		return result, nil
 	case cslTxNoAck:
-		if len(data) != 1 || result.Sent < cslTxMinSent || result.Sent > maxSent {
+		if len(data) != 1 || result.Sent < cslTxMinSent || result.Sent > cslTxMaxSent {
 			return result, fmt.Errorf("CSLTX no-ACK response is malformed")
 		}
 		return result, nil
@@ -128,6 +131,8 @@ func parseCSLTxResult(status byte, data []byte, bootstrap, waitResponse bool) (*
 		return result, fmt.Errorf("CSLTX received invalid Enhanced ACK")
 	case cslTxNoAnchor:
 		return result, ErrCSLTxNoAnchor
+	case cslTxBusy:
+		return result, ErrCSLTxBusy
 	default:
 		return result, fmt.Errorf("CSLTX status 0x%02x", status)
 	}
@@ -180,4 +185,10 @@ func parseCSLTxAck(raw []byte) *RxFrame {
 		return nil
 	}
 	return frame
+}
+
+// cslTxFailure reports a CSLTX status that ends a job with nothing to report
+// but the frame count.
+func cslTxFailure(status byte) bool {
+	return (status >= cslTxInput && status <= cslTxNoAnchor) || status == cslTxBusy
 }

@@ -21,25 +21,28 @@ const (
 	cslQueueNeighborFull = 0x1a
 )
 
-// Firmware CSL timing (cc1101_bridge_v2.ino): CSL_PERIOD_US, CSL_SAMPLE_GUARD_US,
-// CSL_BOOTSTRAP_US, CSL_FOLLOW_TMO_MS and CSL_GUARD_MARGIN_MS.
+// Firmware CSL timing (cc1101_bridge_v2.ino): CSL_PERIOD_US, CSL_GUARD_MAX_US,
+// CCA_MAX_US, CSL_BOOTSTRAP_US, CSL_FOLLOW_TMO_MS and CSL_GUARD_MARGIN_MS.
 const (
-	cslFirmwarePeriod      = time.Second
-	cslFirmwareSampleGuard = 40 * time.Millisecond
-	cslFirmwareBootstrap   = time.Second
-	cslFirmwareFollow      = 500 * time.Millisecond
-	cslFirmwareGuardMargin = 400 * time.Millisecond
+	cslFirmwarePeriod         = time.Second
+	cslFirmwareMaxSampleGuard = 500 * time.Millisecond
+	cslFirmwareMaxListen      = 7808 * time.Microsecond
+	cslFirmwareBootstrap      = time.Second
+	cslFirmwareFollow         = 500 * time.Millisecond
+	cslFirmwareGuardMargin    = 400 * time.Millisecond
 )
 
 // CSLQueueJobGuard is the longest time the firmware spends on one queued job
 // once it schedules it. cslStart ends every job at its guard: wake window, ACK
 // timeout, follow window and margin. An anchored job waits for the first sample
-// of the target at least one sample guard away, up to one CSL period plus the
-// guard, and its wake window ends one guard after that sample. A bootstrap job
-// also takes that path when the target has an anchor with no miss, so the wake
-// window is the longer of the two for every job.
+// of the target at least one guard and the longest listen away, up to one CSL
+// period more, and its wake window ends one guard after that sample. The guard
+// grows with the age of the anchor up to half a period. A bootstrap job listens
+// and then sends a train of one period, and it also takes the anchored path
+// when the target has an anchor with no miss, so the wake window is the longer
+// of the two for every job.
 func CSLQueueJobGuard(job CSLQueueRequest) time.Duration {
-	wake := max(cslFirmwarePeriod+2*cslFirmwareSampleGuard, cslFirmwareBootstrap)
+	wake := max(cslFirmwarePeriod+2*cslFirmwareMaxSampleGuard, cslFirmwareBootstrap) + cslFirmwareMaxListen
 	guard := wake + job.AckTimeout + cslFirmwareGuardMargin
 	if job.WaitResponse {
 		guard += cslFirmwareFollow
@@ -194,12 +197,12 @@ func parseCSLQueueEvent(status byte, data []byte) (*CSLQueueEvent, error) {
 	}
 	// The firmware appends the Enhanced ACK and the follow frames to an OK
 	// completion only, and every other outcome is a CSLTX failure status.
-	if data[0] != 0 || len(data) < 5 || (status != 0 && (len(data) != 5 || status < cslTxInput || status > cslTxNoAnchor)) {
+	if data[0] != 0 || len(data) < 5 || (status != 0 && (len(data) != 5 || !cslTxFailure(status))) {
 		return nil, fmt.Errorf("CSL queue completion is malformed")
 	}
 	completion := &CSLQueueCompletion{ID: binary.BigEndian.Uint16(data[1:3])}
 	flags := data[3]
-	completion.Result, completion.Err = parseCSLTxResult(status, data[4:], flags&cslTxFlagBootstrap != 0, flags&cslTxFlagFollow != 0)
+	completion.Result, completion.Err = parseCSLTxResult(status, data[4:], flags&cslTxFlagFollow != 0)
 	if status == 0 && completion.Err != nil {
 		return nil, fmt.Errorf("CSL queue completion is malformed: %w", completion.Err)
 	}

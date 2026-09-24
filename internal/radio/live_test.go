@@ -1260,6 +1260,47 @@ func TestLiveRadioQueuedNoAnchorInvalidatesConfirmedBootstrap(t *testing.T) {
 	}
 }
 
+// A busy channel stops the train before its first frame, so the next attempt
+// of the target may bootstrap at once.
+func TestLiveRadioBusyBootstrapKeepsNoRetryCooldown(t *testing.T) {
+	now := time.Unix(100, 0)
+	bridge := &orderedLiveBridge{cslResult: &cc1101.CSLTxResult{}, cslErr: cc1101.ErrCSLTxBusy}
+	radio := &Live{br: bridge, clock: func() time.Time { return now }}
+	action := tado.Action{Bytes: []byte{0x69, 0xec, 0, 0x06, 0x0a}, CSLTx: true, QueueAttempt: true}
+	if _, err := radio.sendActions([]tado.Action{action}); !errors.Is(err, cc1101.ErrCSLTxBusy) {
+		t.Fatalf("busy error=%v", err)
+	}
+	now = now.Add(liveCSLBootstrapGlobalCooldown)
+	bridge.cslResult, bridge.cslErr = &cc1101.CSLTxResult{Sent: 255, Ack: &cc1101.RxFrame{}}, nil
+	if _, err := radio.sendActions([]tado.Action{action}); err != nil {
+		t.Fatal(err)
+	}
+	if got := bridge.bootstrapSnapshot(); !reflect.DeepEqual(got, []bool{true, true}) {
+		t.Fatalf("bootstrap flags=%v, want [true true]", got)
+	}
+}
+
+// The link-maintenance echo may use the train of one period on every attempt,
+// as the commercial coordinator does for a device it holds no sample for.
+func TestLiveRadioLinkMaintenanceEchoBootstraps(t *testing.T) {
+	now := time.Unix(100, 0)
+	bridge := &orderedLiveBridge{cslResult: &cc1101.CSLTxResult{Sent: 23}, cslErr: errors.New("CSLTX no ACK")}
+	radio := &Live{br: bridge, clock: func() time.Time { return now }}
+	e := tado.NewEmu(tado.EmuConfig{TxCounter: 100000}, nil)
+	for range 2 {
+		echo, err := e.LinkMaintenanceEcho("0a06")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := radio.sendActions([]tado.Action{echo}); err == nil {
+			t.Fatal("no-ACK echo succeeded")
+		}
+	}
+	if got := bridge.bootstrapSnapshot(); !reflect.DeepEqual(got, []bool{true, true}) {
+		t.Fatalf("bootstrap flags=%v, want [true true]", got)
+	}
+}
+
 func TestLiveRadioCSLBootstrapFailureRetriesAfterBackoff(t *testing.T) {
 	now := time.Unix(100, 0)
 	radio := &Live{clock: func() time.Time { return now }}

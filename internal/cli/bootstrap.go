@@ -35,10 +35,12 @@ const (
 // hosts.
 const DefaultHTTPListen = "127.0.0.1:8080"
 
-// DefaultBeaconSec is the Router Advertisement period of the commercial
-// coordinator, measured on air. A device that gets no advertisement stops
-// reporting after about 20 minutes and solicits one in broadcast.
-const DefaultBeaconSec = 333
+// DefaultBeaconSec is the longest Router Advertisement interval of the
+// commercial coordinator: its intervals fall between 200 s and 600 s on air, the
+// Contiki MaxRtrAdvInterval of 600 s with MinRtrAdvInterval at a third of it. A
+// device that gets no advertisement stops reporting after about 20 minutes and
+// solicits one in broadcast.
+const DefaultBeaconSec = 600
 
 // Bootstrap is the whole freedo.yaml: twelve flat keys and a version.
 type Bootstrap struct {
@@ -67,8 +69,9 @@ type Bootstrap struct {
 	RadioTune *bool `yaml:"radio_tune"`
 	// TuneDebug logs the FREQEST reading of every received frame.
 	TuneDebug bool `yaml:"tune_debug"`
-	// BeaconSec is the period of the Router Advertisement we broadcast, in
-	// seconds. Unset takes DefaultBeaconSec; 0 sends none.
+	// BeaconSec is the longest interval of the Router Advertisement we
+	// broadcast, in seconds: each interval is random between a third of it and
+	// all of it. Unset takes DefaultBeaconSec; 0 sends none.
 	BeaconSec *int `yaml:"beacon_sec"`
 
 	dir string
@@ -217,8 +220,8 @@ func (b *Bootstrap) ZoneProxyTimeout() time.Duration {
 	return time.Duration(*b.ZoneProxyTimeoutSec) * time.Second
 }
 
-// BeaconInterval is the period of our Router Advertisement. Unset takes the
-// period of the commercial coordinator; 0 and below disable the beacon.
+// BeaconInterval is the longest interval of our Router Advertisement. Unset
+// takes the one of the commercial coordinator; 0 and below disable the beacon.
 func (b *Bootstrap) BeaconInterval() time.Duration {
 	if b.BeaconSec == nil {
 		return DefaultBeaconSec * time.Second

@@ -94,7 +94,9 @@ func TestLiveRadioCSLDeadlineAddsJobGuards(t *testing.T) {
 		{AckTimeout: liveCSLTxAckTimeout, WaitResponse: true},
 	}
 	radio.armCSLDeadline(jobs)
-	want := now.Add(1530*time.Millisecond + 2030*time.Millisecond)
+	// Wake window: one period, two widest guards and the longest listen.
+	const plain = 2007808*time.Microsecond + liveCSLTxAckTimeout + 400*time.Millisecond
+	want := now.Add(plain + plain + 500*time.Millisecond)
 	if !radio.cslDeadline.Equal(want) {
 		t.Fatalf("deadline=%s want %s", radio.cslDeadline.Sub(now), want.Sub(now))
 	}
@@ -103,7 +105,7 @@ func TestLiveRadioCSLDeadlineAddsJobGuards(t *testing.T) {
 	now = now.Add(300 * time.Millisecond)
 	radio.holdCSLDeadline(start)
 	radio.armCSLDeadline(jobs[:1])
-	want = want.Add(300*time.Millisecond + 1530*time.Millisecond)
+	want = want.Add(300*time.Millisecond + plain)
 	if !radio.cslDeadline.Equal(want) {
 		t.Fatalf("deadline=%s want %s", radio.cslDeadline.Sub(now), want.Sub(now))
 	}

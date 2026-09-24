@@ -786,6 +786,7 @@ func TestServedZoneConfigBlock2AndETag(t *testing.T) {
 		}
 		body = append(body, m.Payload...)
 		dataFrames, fragmented := 0, false
+		var fcfs []byte
 		for _, a := range actions {
 			if a.Kind == ActData && len(a.Bytes) > 127 {
 				t.Errorf("block %d frame is %d B, exceeds PHY limit", block, len(a.Bytes))
@@ -798,10 +799,18 @@ func TestServedZoneConfigBlock2AndETag(t *testing.T) {
 				}
 				if IsFragment(f.Plaintext) {
 					fragmented = true
-					if a.Bytes[0] != fcfDataPending[0] || a.Bytes[1] != fcfDataPending[1] {
-						t.Fatalf("block %d fragment is not Data-pending", block)
-					}
+					fcfs = append(fcfs, a.Bytes[0])
 				}
+			}
+		}
+		// Every fragment but the last carries Frame Pending: nothing is queued.
+		for i, fcf := range fcfs {
+			want := fcfDataPending[0]
+			if i == len(fcfs)-1 {
+				want = fcfData[0]
+			}
+			if fcf != want {
+				t.Fatalf("block %d fragment %d FCF=%02x, want %02x", block, i, fcf, want)
 			}
 		}
 		if len(m.Payload) == 128 && (!fragmented || dataFrames < 2) {
@@ -3240,7 +3249,7 @@ func TestBeacon(t *testing.T) {
 }
 
 func TestBeaconCounterCarry(t *testing.T) {
-	e := NewEmu(EmuConfig{BroadcastCounter: 0xffff}, nil)
+	e := NewEmu(EmuConfig{TxCounter: 0xffff}, nil)
 	a, err := e.Beacon()
 	if err != nil {
 		t.Fatal(err)
@@ -3261,7 +3270,7 @@ func TestBeaconCounterCarry(t *testing.T) {
 }
 
 func TestBeaconCounterExhausted(t *testing.T) {
-	e := NewEmu(EmuConfig{BroadcastCounter: ^uint32(0) - 1}, nil)
+	e := NewEmu(EmuConfig{TxCounter: ^uint32(0) - 1}, nil)
 	a, err := e.Beacon()
 	if err != nil {
 		t.Fatal(err)
@@ -3274,8 +3283,8 @@ func TestBeaconCounterExhausted(t *testing.T) {
 		t.Errorf("FrameCounter=%#x, want %#x", m.FrameCounter, ^uint32(0))
 	}
 	for i := 0; i < 2; i++ {
-		if _, err := e.Beacon(); !errors.Is(err, ErrBroadcastCounterExhausted) {
-			t.Errorf("Beacon error=%v, want ErrBroadcastCounterExhausted", err)
+		if _, err := e.Beacon(); !errors.Is(err, ErrTxCounterExhausted) {
+			t.Errorf("Beacon error=%v, want ErrTxCounterExhausted", err)
 		}
 	}
 }
@@ -3873,8 +3882,13 @@ func TestEnqueueConfigFragmentsOversizedNodeTable(t *testing.T) {
 		if err != nil {
 			t.Fatalf("fragment %d: %v", i, err)
 		}
-		if a.Bytes[0] != fcfDataPending[0] || a.Bytes[1] != fcfDataPending[1] {
-			t.Fatalf("fragment %d FCF=%02x%02x, want Data-pending", i, a.Bytes[0], a.Bytes[1])
+		// Only the last fragment of the only queued downlink clears Frame Pending.
+		want := fcfDataPending
+		if i == len(actions)-1 {
+			want = fcfData
+		}
+		if a.Bytes[0] != want[0] || a.Bytes[1] != want[1] {
+			t.Fatalf("fragment %d FCF=%02x%02x, want %02x%02x", i, a.Bytes[0], a.Bytes[1], want[0], want[1])
 		}
 		if len(a.Bytes) > 127 {
 			t.Fatalf("fragment %d is %d B, exceeds PHY limit", i, len(a.Bytes))
