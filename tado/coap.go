@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/plgd-dev/go-coap/v3/message"
-	"github.com/plgd-dev/go-coap/v3/udp/coder"
 )
 
 // The decrypted app payload of a Data frame is a compressed IPv6 packet:
@@ -133,10 +132,8 @@ func (m *CoAPMessage) LinkLocal() bool {
 // RecomputeChecksum returns the UDP checksum the message's addresses and bytes
 // imply. srcEUI and dstEUI are the wire (little-endian) L2 addresses of the frame
 // that carried it; they supply whichever IID the header elided. It reports false
-// when an address cannot be expanded.
-//
-// Raw holds one datagram's bytes, so this is meaningful only for a message that
-// arrived whole: a reassembled one covers more than its first fragment carried.
+// when an address cannot be expanded. Raw is the whole CoAP message, also for a
+// message reassembled from 6LoWPAN fragments.
 func (m *CoAPMessage) RecomputeChecksum(srcEUI, dstEUI []byte) (uint16, bool) {
 	src, dst := m.Src.IPv6(srcEUI), m.Dst.IPv6(dstEUI)
 	if src == nil || dst == nil {
@@ -370,52 +367,120 @@ func udpChecksumInline(b []byte, i int) (uint16, bool) {
 	return binary.BigEndian.Uint16(b[off : off+2]), true
 }
 
-// parseCoAPMessage decodes a CoAP RFC 7252 message with go-coap's UDP coder.
-//
-// The coder keeps an option it has no definition for as opaque bytes, which is
-// what the proprietary tado option 2048 needs, and it never rewrites a value it
-// does know, so the sentinel Uri-Port ffff comes back verbatim.
+// parseCoAPMessage decodes a CoAP RFC 7252 message. Every option value stays
+// opaque bytes, whatever its number and length. go-coap's UDP coder skips a
+// known option with an illegal length (RFC 7252 5.4.3), such as a 3-byte
+// Content-Format, an empty or 9-byte ETag or a 4-byte Block2. A relayed message
+// must keep those bytes, and a malformed option must reach the code that checks
+// it.
 func parseCoAPMessage(b []byte) (*CoAPMessage, error) {
-	msg, err := decodeCoAP(b)
+	opts, end, err := walkCoAPOptions(b)
 	if err != nil {
 		return nil, ErrNoCoAP
 	}
 	m := &CoAPMessage{
-		Type:  coapTypes[msg.Type&3],
-		Code:  formatCode(byte(msg.Code)),
-		MID:   uint16(msg.MessageID),
-		Token: append([]byte{}, msg.Token...),
+		Type:  coapTypes[(b[0]>>4)&3],
+		Code:  formatCode(b[1]),
+		MID:   binary.BigEndian.Uint16(b[2:4]),
+		Token: append([]byte{}, b[4:4+int(b[0]&0x0f)]...),
 	}
 	var path, query []string
-	for _, o := range msg.Options {
-		switch o.ID {
+	for _, o := range opts {
+		val := b[o.val:o.end]
+		switch message.OptionID(o.num) {
 		case message.URIPath:
-			path = append(path, string(o.Value))
+			path = append(path, string(val))
 		case message.URIQuery:
-			query = append(query, string(o.Value))
+			query = append(query, string(val))
 		default:
-			m.Options = append(m.Options, CoAPOption{Num: int(o.ID), Val: append([]byte{}, o.Value...)})
+			m.Options = append(m.Options, CoAPOption{Num: o.num, Val: append([]byte{}, val...)})
 		}
 	}
-	if len(msg.Payload) > 0 {
-		m.Payload = append([]byte{}, msg.Payload...)
+	// A marker with no payload after it is a format error in RFC 7252; it is
+	// read as no payload.
+	if end+1 < len(b) {
+		m.Payload = append([]byte{}, b[end+1:]...)
 	}
 	m.Path = strings.Join(path, "/")
 	m.Query = strings.Join(query, "&")
 	return m, nil
 }
 
-// decodeCoAP unmarshals one CoAP message. The coder never grows the option
-// slice, it fails with ErrOptionsTooSmall instead, so retry with a bigger one.
-func decodeCoAP(b []byte) (message.Message, error) {
-	for n := 32; ; n *= 2 {
-		m := message.Message{Options: make(message.Options, 0, n)}
-		_, err := coder.DefaultCoder.Decode(b, &m)
-		if errors.Is(err, message.ErrOptionsTooSmall) && n < 1024 {
-			continue
-		}
-		return m, err
+// rawCoAPOption locates one option inside a serialized CoAP message: its
+// header starts at start, its value runs from val to end.
+type rawCoAPOption struct {
+	num             int
+	start, val, end int
+}
+
+// walkCoAPOptions checks the CoAP header and locates every option. end is the
+// offset of the payload marker, or len(b) when the message has no payload.
+func walkCoAPOptions(b []byte) (opts []rawCoAPOption, end int, err error) {
+	if len(b) < 4 || b[0]>>6 != 1 {
+		return nil, 0, ErrNoCoAP
 	}
+	i := 4 + int(b[0]&0x0f)
+	if b[0]&0x0f > 8 || i > len(b) {
+		return nil, 0, ErrNoCoAP
+	}
+	num := 0
+	for i < len(b) && b[i] != 0xff {
+		o := rawCoAPOption{start: i}
+		delta, length := int(b[i]>>4), int(b[i]&0x0f)
+		i++
+		if delta, i, err = coapOptionExt(b, i, delta); err != nil {
+			return nil, 0, err
+		}
+		if length, i, err = coapOptionExt(b, i, length); err != nil {
+			return nil, 0, err
+		}
+		num += delta
+		if num > 0xffff || length > len(b)-i {
+			return nil, 0, ErrNoCoAP
+		}
+		o.num, o.val, o.end = num, i, i+length
+		opts = append(opts, o)
+		i = o.end
+	}
+	return opts, i, nil
+}
+
+// coapOptionExt reads the extended form of an option delta or length nibble.
+func coapOptionExt(b []byte, i, v int) (int, int, error) {
+	switch v {
+	case 13:
+		if i >= len(b) {
+			return 0, 0, ErrNoCoAP
+		}
+		return int(b[i]) + 13, i + 1, nil
+	case 14:
+		if i+2 > len(b) {
+			return 0, 0, ErrNoCoAP
+		}
+		return int(binary.BigEndian.Uint16(b[i:i+2])) + 269, i + 2, nil
+	case 15:
+		return 0, 0, ErrNoCoAP
+	}
+	return v, i, nil
+}
+
+// appendCoAPOptionHeader appends the RFC 7252 option header for a delta and a
+// value length.
+func appendCoAPOptionHeader(out []byte, delta, length int) []byte {
+	nibble := func(v int) (byte, []byte) {
+		switch {
+		case v < 13:
+			return byte(v), nil
+		case v < 269:
+			return 13, []byte{byte(v - 13)}
+		}
+		return 14, binary.BigEndian.AppendUint16(nil, uint16(v-269))
+	}
+	d, dx := nibble(delta)
+	l, lx := nibble(length)
+	out = append(out, d<<4|l)
+	out = append(out, dx...)
+	return append(out, lx...)
 }
 
 // --- context-0 (zone / "lid=") downlink builder ---
@@ -474,9 +539,6 @@ func BuildContextCoAP(r CoAPReq) ([]byte, error) {
 // sets. The addressing arguments are the response's own, so the caller passes the
 // uplink's src/dst and ports swapped.
 func BuildContextAck(code string, mid uint16, token, srcEUI, dstEUI []byte, srcPort, dstPort uint16) ([]byte, error) {
-	if mid == 0 {
-		return nil, errors.New("tado: ACK needs the MID of the request it answers")
-	}
 	if token == nil {
 		token = []byte{} // an ACK echoes the request token verbatim, empty included
 	}

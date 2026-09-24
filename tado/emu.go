@@ -470,8 +470,9 @@ type EmuState struct {
 	// value the thermostat has not fetched yet.
 	flowC     map[int]float64
 	flowFresh map[int]bool
-	// pendGet maps the live request MID to one active GET exchange.
-	pendGet   map[uint16]*activeGet
+	// pendGet maps the device and the live request MID to one active GET
+	// exchange.
+	pendGet   map[midKey]*activeGet
 	getRes    map[string][]byte
 	getCode   map[string]string
 	childLock map[string]bool
@@ -508,9 +509,14 @@ type EmuState struct {
 	zoneState        map[string][]byte
 	zoneStateChanged bool
 	// zoneProxyPend holds the zone GETs we forwarded to a member on a
-	// requester's behalf, keyed by the MID the member echoes back. An entry that
-	// outlives its deadline is answered by us instead: see ExpireZoneProxies.
-	zoneProxyPend map[uint16]*zoneProxyWait
+	// requester's behalf, keyed by the requester and the MID the member echoes
+	// back. An entry that outlives its deadline is answered by us instead: see
+	// ExpireZoneProxies.
+	zoneProxyPend map[midKey]*zoneProxyWait
+	// answered holds the answers to the CONs we served, and block2Tx the
+	// Block2 transfers in progress. See coap_exchange.go.
+	answered map[midKey]*answeredCON
+	block2Tx map[string]block2Transfer
 	// zoneRep and circuitRep hold the merged heat-demand chain, keyed by zone
 	// number and by heating-circuit id. obsRoles holds the 015e role records a
 	// device published about itself. See demand.go.
@@ -617,7 +623,7 @@ func NewEmu(cfg EmuConfig, log *UnhandledLogger) *EmuState {
 		history:        map[string][]DownlinkOutcome{},
 		flowC:          map[int]float64{},
 		flowFresh:      map[int]bool{},
-		pendGet:        map[uint16]*activeGet{},
+		pendGet:        map[midKey]*activeGet{},
 		getRes:         map[string][]byte{},
 		getCode:        map[string]string{},
 		childLock:      map[string]bool{},
@@ -632,7 +638,7 @@ func NewEmu(cfg EmuConfig, log *UnhandledLogger) *EmuState {
 		zones:          map[int]map[string]bool{},
 		zoneState:      map[string][]byte{},
 		zoneWrites:     map[int]deliveredWrite{},
-		zoneProxyPend:  map[uint16]*zoneProxyWait{},
+		zoneProxyPend:  map[midKey]*zoneProxyWait{},
 		zoneRep:        map[int]*demandReport{},
 		circuitRep:     map[int]*demandReport{},
 		zoneFallback:   map[int]*fallbackState{},
@@ -819,6 +825,15 @@ func (e *EmuState) onData(class FrameClass, raw []byte) []Action {
 		e.cacheBody(ns, srcEUI, m, nil, class, srcLbl, dstLbl, f.Hex())
 	}
 
+	if dup, ok := e.answerDuplicate(srcEUI, msg, srcLbl); ok {
+		e.acceptedInboundIPv6 = append(e.acceptedInboundIPv6[:0], srcEUI...)
+		actions = append(actions, dup...)
+		if a, ok := e.nextDownlink(srcEUI, srcLbl); ok {
+			actions = append(actions, a...)
+		}
+		return actions
+	}
+
 	if msg != nil {
 		if id, ok := queryID(msg.Query); ok {
 			ns.LastID = id
@@ -861,7 +876,7 @@ func (e *EmuState) handleCoAP(f *Frame, m *CoAPMessage, class FrameClass, srcLbl
 		e.confirmByMID(f.SrcEUI(), m) // the device answered a request we forwarded
 		// A member answering a GET we proxied on someone's behalf: its 2.05 goes
 		// to the requester through the relay below, so we must not also answer.
-		e.resolveZoneProxy(m.MID)
+		e.resolveZoneProxy(m)
 		e.relayZone(f, m, class, srcLbl, dstLbl)
 		return nil, false
 	}
@@ -890,11 +905,6 @@ func (e *EmuState) handleCoAP(f *Frame, m *CoAPMessage, class FrameClass, srcLbl
 		e.log.Log(class.String(), srcLbl, dstLbl, rsnRelayedPath+" uri="+m.URI(), f.Hex())
 		return nil, false
 	}
-	if m.MID == 0 {
-		e.log.Log(class.String(), srcLbl, dstLbl, rsnNoMID, f.Hex())
-		return nil, false
-	}
-
 	code := "2.04" // Changed, the bridge's default answer
 	if m.Code == "0.01" {
 		code = "2.05" // Content, for a GET
@@ -992,14 +1002,25 @@ func (e *EmuState) handleCoAP(f *Frame, m *CoAPMessage, class FrameClass, srcLbl
 			actions[i].NotBefore = e.cfg.Now().Add(d)
 			actions[i].Reason += fmt.Sprintf(" (fault-injection: held %s)", d)
 		}
+	} else if normalizeResource(m.Path) != "time" {
+		// A retransmitted time GET gets the clock again, not a stale answer.
+		e.rememberAnswer(dst, m, pkt, code)
 	}
 	return actions, true
 }
 
+// maxPHYFrame is the largest frame the radio sends without 6LoWPAN
+// fragmentation.
+const maxPHYFrame = 127
+
+// dataFrameLen is the on-air length of the Data frame that carries pkt whole.
+func dataFrameLen(pkt []byte) int {
+	return headerLen + len(WrapAppPayload(pkt, 0, nil)) + micLen
+}
+
 func (e *EmuState) coapReplyActions(pkt, dst []byte, code, uri string, mid uint16, node string) ([]Action, error) {
 	reason := fmt.Sprintf("coap-ack %s %s mid=%04x", code, uri, mid)
-	frameLen := headerLen + len(WrapAppPayload(pkt, 0, nil)) + micLen
-	if frameLen <= 127 {
+	if dataFrameLen(pkt) <= maxPHYFrame {
 		ctr, err := e.nextTx()
 		if err != nil {
 			return nil, err
@@ -1233,8 +1254,8 @@ func (e *EmuState) servedConfigGet(m *CoAPMessage, dst []byte, srcLbl string) ([
 		return pkt, "2.03", true, err
 	}
 	body := encodeTLVs(withoutConfigETag(parseTLVList(snap.body)))
-	pkt, err := e.buildBlock2Response(m, dst, body, snap.etag)
-	return pkt, "2.05", true, err
+	pkt, code, err := e.buildBlock2Response(m, dst, body, snap.etag)
+	return pkt, code, true, err
 }
 
 // servedSchedule answers the valve's conditional zone schedule GET. The device
@@ -1262,8 +1283,8 @@ func (e *EmuState) servedSchedule(m *CoAPMessage, dst []byte) ([]byte, string, b
 		pkt, err := BuildCoAPAck("2.03", m.MID, m.Token, nil, e.selfEUI, dst, m.DstPort, m.SrcPort)
 		return pkt, "2.03", true, err
 	}
-	pkt, err := e.buildBlock2Response(m, dst, snap.body, snap.etag)
-	return pkt, "2.05", true, err
+	pkt, code, err := e.buildBlock2Response(m, dst, snap.body, snap.etag)
+	return pkt, code, true, err
 }
 
 func schedulePath(path string, in *Install) bool {
@@ -1367,17 +1388,27 @@ func (e *EmuState) servedZoneConfig(m *CoAPMessage, dst []byte) ([]byte, string,
 			CoAPOption{Num: 4, Val: doc.ETag})
 		return pkt, "2.03", true, err
 	}
-	pkt, err := e.buildBlock2Response(m, dst, doc.Body, doc.ETag)
-	return pkt, "2.05", true, err
+	pkt, code, err := e.buildBlock2Response(m, dst, doc.Body, doc.ETag)
+	return pkt, code, true, err
 }
 
-func (e *EmuState) buildBlock2Response(m *CoAPMessage, dst, body, etag []byte) ([]byte, error) {
+// buildBlock2Response answers one Block2 block of a document and returns the
+// answer and its code. The blocks of one transfer all come from the document
+// block 0 came from, see block2Document. A later block with no transfer behind
+// it gets an empty 5.03, so the device restarts at block 0.
+func (e *EmuState) buildBlock2Response(m *CoAPMessage, dst, body, etag []byte) ([]byte, string, error) {
 	offset, size, szx, err := requestedBlock2(m)
 	if err != nil {
-		return nil, err
+		return nil, "", err
+	}
+	body, etag, ok := e.block2Document(dst, m.URI(), offset, body, etag)
+	if !ok {
+		e.log.Log(ClassData.String(), e.name(dst), "", rsnBlock2NoTransfer+" uri="+m.URI(), "")
+		pkt, err := BuildCoAPAck(configUnavailable, m.MID, m.Token, nil, e.selfEUI, dst, m.DstPort, m.SrcPort)
+		return pkt, configUnavailable, err
 	}
 	if offset > len(body) {
-		return nil, errors.New("tado: Block2 offset past document")
+		return nil, "", errors.New("tado: Block2 offset past document")
 	}
 	end := offset + size
 	if end > len(body) {
@@ -1386,12 +1417,14 @@ func (e *EmuState) buildBlock2Response(m *CoAPMessage, dst, body, etag []byte) (
 	block := uint32(offset/size)<<4 | uint32(szx)
 	if end < len(body) {
 		block |= 0x08
+	} else {
+		e.endBlock2Transfer(dst, m.URI())
 	}
 	token := m.Token
 	if token == nil {
 		token = []byte{}
 	}
-	return BuildCoAP(CoAPReq{
+	pkt, err := BuildCoAP(CoAPReq{
 		Type: "ACK", Code: "2.05", MID: m.MID, Token: token,
 		Options: []CoAPOption{
 			{Num: 4, Val: etag},
@@ -1401,6 +1434,7 @@ func (e *EmuState) buildBlock2Response(m *CoAPMessage, dst, body, etag []byte) (
 		Payload: body[offset:end], SrcEUI: e.selfEUI, DstEUI: dst,
 		SrcPort: m.DstPort, DstPort: m.SrcPort,
 	})
+	return pkt, "2.05", err
 }
 
 func zoneConfigPath(path string, in *Install) (int, bool) {
@@ -1572,8 +1606,8 @@ func (e *EmuState) recordGetResult(srcEUI []byte, m *CoAPMessage) (complete, acc
 	if (m.Type != "ACK" && m.Type != "NON") || !isResponseCode(m.Code) {
 		return false, false
 	}
-	pending, ok := e.pendGet[m.MID]
-	if !ok || !strings.HasPrefix(pending.resultKey, hexEUI(srcEUI)+"|") {
+	pending, ok := e.pendGet[midKey{hexEUI(srcEUI), m.MID}]
+	if !ok {
 		return false, false
 	}
 	blockNum, more, szx, hasBlock, err := responseBlock2(m)
@@ -1599,7 +1633,7 @@ func (e *EmuState) recordGetResult(srcEUI []byte, m *CoAPMessage) (complete, acc
 	if m.Code == "2.05" && pending.resultKey == hexEUI(srcEUI)+"|"+fwStateResource {
 		e.noteFwState(e.fwGet, hexEUI(srcEUI), pending.body)
 	}
-	delete(e.pendGet, m.MID)
+	delete(e.pendGet, midKey{hexEUI(srcEUI), m.MID})
 	return true, true
 }
 
@@ -1625,10 +1659,7 @@ func (e *EmuState) advanceActiveGet(srcEUI []byte, oldMID uint16, pending *activ
 	if len(q) == 0 || !q[0].inFlight || q[0].kind != "get" || q[0].mid != oldMID {
 		return false
 	}
-	mid, err := randMID()
-	if err != nil {
-		return false
-	}
+	mid := nextMID()
 	block := (pending.blockNum+1)<<4 | uint32(szx)
 	pkt, err := BuildGetBlock2CoAP(pending.path, pending.query, block, mid, pending.token, e.selfEUI, srcEUI)
 	if err != nil {
@@ -1637,8 +1668,8 @@ func (e *EmuState) advanceActiveGet(srcEUI []byte, oldMID uint16, pending *activ
 	pending.body = append(pending.body, body...)
 	pending.blockNum++
 	pending.blockSZX = szx
-	delete(e.pendGet, oldMID)
-	e.pendGet[mid] = pending
+	delete(e.pendGet, midKey{key, oldMID})
+	e.pendGet[midKey{key, mid}] = pending
 	d := q[0]
 	d.coap = pkt
 	d.mid = mid
@@ -1666,7 +1697,12 @@ func (e *EmuState) cacheBody(ns *NodeState, srcEUI []byte, m *CoAPMessage, fallb
 		return
 	}
 	num, more, szx, present, err := responseBlock2(m)
-	if err != nil || !present || !isResponseCode(m.Code) {
+	if err != nil {
+		// A malformed Block2 names no block, so the payload is no document.
+		e.log.Log(class.String(), srcLbl, dstLbl, rsnBlock2Dropped+"="+err.Error(), hexFrame)
+		return
+	}
+	if !present || !isResponseCode(m.Code) {
 		tlvs := parseTLVList(m.Payload)
 		e.cacheTLVs(ns, tlvs, m.URI(), class, srcLbl, dstLbl, hexFrame)
 		e.observeModuleID(srcEUI, m, tlvs)
@@ -1891,9 +1927,8 @@ func (e *EmuState) fanOutZone(f *Frame, m *CoAPMessage, class FrameClass, srcLbl
 
 // buildZoneHop serializes one re-emission of m towards dst, keeping srcIID as
 // the IPv6 source. It refuses a datagram whose inline checksum we cannot
-// reproduce: a reassembled packet keeps only its first fragment in Raw, and
-// forwarding that would put a truncated body under a checksum that no longer
-// covers it.
+// reproduce from the addresses and Raw, and a hop too large for one Data
+// frame: the relay path does not fragment.
 func (e *EmuState) buildZoneHop(f *Frame, m *CoAPMessage, srcIID, dst []byte, class FrameClass, srcLbl, dstLbl string) ([]byte, bool) {
 	if ck, ok := m.RecomputeChecksum(f.SrcEUI(), f.DstEUI); !ok || ck != m.Checksum {
 		e.log.Log(class.String(), srcLbl, dstLbl, rsnZoneIncomplete+" uri="+m.URI(), f.Hex())
@@ -1907,6 +1942,10 @@ func (e *EmuState) buildZoneHop(f *Frame, m *CoAPMessage, srcIID, dst []byte, cl
 	pkt, err := BuildZoneRelay(msg, srcIID, dst, m.SrcPort, m.DstPort)
 	if err != nil {
 		e.log.Log(class.String(), srcLbl, dstLbl, rsnBuildFail+" "+err.Error(), f.Hex())
+		return nil, false
+	}
+	if n := dataFrameLen(pkt); n > maxPHYFrame {
+		e.log.Log(class.String(), srcLbl, dstLbl, fmt.Sprintf("%s bytes=%d uri=%s", rsnZoneRelayTooLarge, n, m.URI()), f.Hex())
 		return nil, false
 	}
 	return pkt, true
@@ -2133,13 +2172,13 @@ func (e *EmuState) zonePeer(zone int, asking []byte) []byte {
 }
 
 // trackZoneProxy records a proxied GET so ExpireZoneProxies can answer the
-// requester if the member we asked stays silent. Keyed by MID, which is what the
-// member's relayed 2.05 carries back.
+// requester if the member we asked stays silent. Keyed by the requester and the
+// MID, which is what the member's relayed 2.05 carries back.
 func (e *EmuState) trackZoneProxy(f *Frame, m *CoAPMessage, zone int, src, dst []byte, srcLbl string) {
 	if e.zoneProxyTimeout() <= 0 {
 		return
 	}
-	e.zoneProxyPend[m.MID] = &zoneProxyWait{
+	e.zoneProxyPend[midKey{hexEUI(src), m.MID}] = &zoneProxyWait{
 		requester: append([]byte{}, src...),
 		asked:     append([]byte{}, dst...),
 		label:     srcLbl,
@@ -2164,10 +2203,13 @@ func (e *EmuState) zoneProxyTimeout() time.Duration {
 	return e.cfg.ZoneProxyTimeout
 }
 
-// resolveZoneProxy drops the pending record for mid, if any: the member answered
-// and its 2.05 is on its way to the requester, so we must not answer too.
-func (e *EmuState) resolveZoneProxy(mid uint16) {
-	delete(e.zoneProxyPend, mid)
+// resolveZoneProxy drops the pending record m answers, if any: the member
+// answered and its 2.05 is on its way to the requester, so we must not answer
+// too.
+func (e *EmuState) resolveZoneProxy(m *CoAPMessage) {
+	if requester := wireFromIID(m.Dst.IID); requester != nil {
+		delete(e.zoneProxyPend, midKey{hexEUI(requester), m.MID})
+	}
 }
 
 // ExpireZoneProxies answers every proxied zone GET whose member did not reply in
@@ -2184,12 +2226,12 @@ func (e *EmuState) ExpireZoneProxies() []Action {
 	}
 	now := e.cfg.Now()
 	var due []*zoneProxyWait
-	for mid, w := range e.zoneProxyPend {
+	for k, w := range e.zoneProxyPend {
 		if now.Before(w.deadline) {
 			continue
 		}
 		due = append(due, w)
-		delete(e.zoneProxyPend, mid)
+		delete(e.zoneProxyPend, k)
 	}
 	sort.Slice(due, func(i, j int) bool { return due[i].mid < due[j].mid })
 
@@ -2311,7 +2353,11 @@ func (e *EmuState) onEnhAck(raw []byte) {
 	}
 	ns.CSLPhase, ns.CSLPeriod = a.CSLPhase, a.CSLPeriod
 	ns.LastSeen = e.cfg.Now()
-	e.confirmBySeq(a.SrcEUI, a.Seq)
+	// An overheard ACK of another node's frame carries a sequence number from
+	// that node's space: it confirms none of ours.
+	if bytes.Equal(a.DstEUI, e.selfEUI) {
+		e.confirmBySeq(a.SrcEUI, a.Seq)
+	}
 }
 
 // --- wake-up ---
@@ -2429,10 +2475,7 @@ func (e *EmuState) enqueue(target, kind, desc string, coap, key []byte, mid uint
 
 // downlinkIDs mints the CoAP MID and token of one queued command.
 func downlinkIDs() (uint16, []byte, error) {
-	mid, err := randMID()
-	if err != nil {
-		return 0, nil, err
-	}
+	mid := nextMID()
 	token, err := randBytes(4)
 	if err != nil {
 		return 0, nil, err
@@ -3139,10 +3182,7 @@ func (e *EmuState) EnqueuePair(target string, networkKey []byte) error {
 	if err != nil {
 		return err
 	}
-	mid, err := randMID()
-	if err != nil {
-		return err
-	}
+	mid := nextMID()
 	pkt, err := BuildPairCoAP(networkKey, mid, e.selfEUI, wire)
 	if err != nil {
 		return err
@@ -3341,14 +3381,14 @@ func (e *EmuState) EnqueueGet(target, resource string, path, query []string) err
 	if err != nil {
 		return err
 	}
-	e.pendGet[mid] = &activeGet{
+	e.pendGet[midKey{hexEUI(wire), mid}] = &activeGet{
 		resultKey: activeGetResultKey(wire, resource, query),
 		path:      append([]string(nil), path...),
 		query:     append([]string(nil), query...),
 		token:     append([]byte(nil), token...),
 	}
 	if err := e.enqueue(target, "get", "get "+resource, pkt, e.key, mid); err != nil {
-		delete(e.pendGet, mid)
+		delete(e.pendGet, midKey{hexEUI(wire), mid})
 		return err
 	}
 	return nil
@@ -3365,16 +3405,16 @@ func activeGetResultKey(wire []byte, resource string, query []string) string {
 func (e *EmuState) hasPendingGet(wire []byte, resource string, query []string) bool {
 	key := hexEUI(wire)
 	resultKey := activeGetResultKey(wire, resource, query)
-	for mid, pending := range e.pendGet {
+	for k, pending := range e.pendGet {
 		if pending.resultKey != resultKey {
 			continue
 		}
 		for _, d := range e.queue[key] {
-			if d.kind == "get" && d.mid == mid {
+			if d.kind == "get" && d.mid == k.mid {
 				return true
 			}
 		}
-		delete(e.pendGet, mid)
+		delete(e.pendGet, k)
 	}
 	return false
 }
@@ -3383,9 +3423,7 @@ func (e *EmuState) clearPendingGet(key string, d *queuedDownlink) {
 	if d.kind != "get" {
 		return
 	}
-	if pending, ok := e.pendGet[d.mid]; ok && strings.HasPrefix(pending.resultKey, key+"|") {
-		delete(e.pendGet, d.mid)
-	}
+	delete(e.pendGet, midKey{key, d.mid})
 }
 
 func (e *EmuState) ActiveGetResponse(target, resource string) (string, []byte, bool) {
@@ -4783,13 +4821,14 @@ const (
 	rsnRelayedPath       = "relayed-not-addressed-to-us"
 	rsnZoneUnroutable    = "zone-destination-not-on-pan"
 	rsnZoneIncomplete    = "zone-datagram-incomplete"
+	rsnZoneRelayTooLarge = "zone-relay-too-large"
+	rsnBlock2NoTransfer  = "block2-without-transfer"
 	rsnZoneTarget        = "zone-config-unknown-target"
 	rsnZoneProxyTimeout  = "zone-proxy-timeout"
 	rsnTimeSuppressed    = "fault-time-suppressed"
 	rsnTimeDelayed       = "fault-time-delayed"
 	rsnZoneIDUnverified  = "zone-id-unverified"
 	rsnUnknownAddrMode   = "unsupported-6lowpan-addressing"
-	rsnNoMID             = "coap-con-without-mid"
 	rsnForeignPAN        = "foreign-pan"
 	rsnUnknownWakeTarget = "unknown-wakeup-target"
 	rsnForeignBroadcast  = "foreign-broadcast"

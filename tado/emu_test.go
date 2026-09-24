@@ -2166,7 +2166,7 @@ func TestGoldenSweep(t *testing.T) {
 	if n := countPrefix(counts, rsnUnknownRes); n != 0 {
 		t.Errorf("%d unknown CoAP resources; extend knownResources:\n%s", n, log.Summary())
 	}
-	for _, kind := range []string{rsnBuildFail, rsnUnclassified, rsnMICFail, rsnAppParse, rsnUnhandledMethod, rsnNoMID} {
+	for _, kind := range []string{rsnBuildFail, rsnUnclassified, rsnMICFail, rsnAppParse, rsnUnhandledMethod} {
 		if n := countPrefix(counts, kind); n != 0 {
 			t.Errorf("unexpected %q x%d:\n%s", kind, n, log.Summary())
 		}

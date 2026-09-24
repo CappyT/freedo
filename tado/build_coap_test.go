@@ -920,9 +920,6 @@ func TestBuildCoAPAck(t *testing.T) {
 	if err := checkInlineUDP(BridgeEUI, dev, pkt); err != nil {
 		t.Error(err)
 	}
-	if _, err := BuildCoAPAck("2.04", 0, token, nil, BridgeEUI, dev, 0, 0); err == nil {
-		t.Error("ACK with MID 0 should be rejected")
-	}
 }
 
 // TestCoAPCode covers the dotted-code mapping and its rejections.

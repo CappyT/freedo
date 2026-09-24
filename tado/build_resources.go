@@ -518,9 +518,6 @@ func BuildFlowSetpointCoAP(id int, tempC float64, mid uint16, token, srcEUI, dst
 	if err := flowInRange(tempC); err != nil {
 		return nil, err
 	}
-	if mid == 0 {
-		return nil, errors.New("tado: flow setpoint answer needs the MID of the GET it answers")
-	}
 	_ = id // documents the target circuit; the 2.05 answer is matched by MID
 	payload := flowSetpointPayload(tempC)
 	if token == nil {
@@ -584,9 +581,6 @@ func EncodeTimePayload(now time.Time) []byte {
 // discards a response arriving more than 5 s after the device built the request
 // (cmp r2,#4; bls accept), so it must never be queued for a later rendezvous.
 func BuildTimeCoAP(now time.Time, mid uint16, token, srcEUI, dstEUI []byte, srcPort, dstPort uint16) ([]byte, error) {
-	if mid == 0 {
-		return nil, errors.New("tado: time answer needs the MID of the GET it answers")
-	}
 	if token == nil {
 		token = []byte{} // the request carries TKL=0; echo it rather than mint one
 	}

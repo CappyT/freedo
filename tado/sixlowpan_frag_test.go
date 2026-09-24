@@ -293,3 +293,58 @@ func TestReassemblerExpiresIncompleteDatagram(t *testing.T) {
 		t.Fatal("expired transfer completed from continuation fragments")
 	}
 }
+
+// fragmentRoundTrip fragments one link-local datagram carrying r and returns
+// the message the reassembler rebuilds from the fragments.
+func fragmentRoundTrip(t *testing.T, r CoAPReq) *CoAPMessage {
+	t.Helper()
+	r.SrcEUI, r.DstEUI = BridgeEUI, testDstEUI(t)
+	pkt, err := BuildCoAP(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fragments, err := Fragment6LoWPANDatagram(pkt, 0x4242)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := completeFragments(t, NewReassembler(), parsedFragments(t, fragments))
+	if got == nil {
+		t.Fatal("the fragments did not reassemble")
+	}
+	return got
+}
+
+// TestReassemblyOptionsPastFrag1Cut: an option that crosses the end of FRAG1
+// cannot be parsed from FRAG1 alone. The datagram still reassembles, because
+// the CoAP message is parsed once, whole.
+func TestReassemblyOptionsPastFrag1Cut(t *testing.T) {
+	seg := strings.Repeat("p", 100)
+	payload := bytes.Repeat([]byte{0x5a}, 30)
+	got := fragmentRoundTrip(t, CoAPReq{
+		Type: "CON", Code: "0.03", MID: 0x7201, Token: []byte{0x72},
+		Path: []string{seg}, Options: []CoAPOption{optOctets}, Payload: payload,
+	})
+	if got.Path != seg || got.MID != 0x7201 || !bytes.Equal(got.Payload, payload) {
+		t.Errorf("path=%d bytes mid=%04x payload=%x, want %d bytes, 7201, %x", len(got.Path), got.MID, got.Payload, len(seg), payload)
+	}
+	if ck, ok := got.RecomputeChecksum(BridgeEUI, testDstEUI(t)); !ok || ck != got.Checksum {
+		t.Errorf("checksum %04x does not cover the reassembled message (recomputed %04x)", got.Checksum, ck)
+	}
+}
+
+// TestReassemblyOptionsEndAtFrag1Cut: header and options that end exactly at
+// the FRAG1 cut leave the payload marker as the first FRAGN byte. The payload
+// must not start with that marker.
+func TestReassemblyOptionsEndAtFrag1Cut(t *testing.T) {
+	// 4-byte header, 1-byte token, 2-byte option header and 73 bytes of value:
+	// the 80 CoAP bytes a link-local FRAG1 carries.
+	seg := strings.Repeat("q", 73)
+	payload := bytes.Repeat([]byte{0xa5}, 40)
+	got := fragmentRoundTrip(t, CoAPReq{
+		Type: "CON", Code: "0.03", MID: 0x7202, Token: []byte{0x73},
+		Path: []string{seg}, Payload: payload,
+	})
+	if got.Path != seg || !bytes.Equal(got.Payload, payload) {
+		t.Errorf("path=%d bytes payload=%x, want %d bytes, %x", len(got.Path), got.Payload, len(seg), payload)
+	}
+}

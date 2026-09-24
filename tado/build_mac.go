@@ -10,8 +10,8 @@ import (
 // Enhanced ACK answered at the rendezvous, and the broadcast Data frame. The
 // unicast Data frame is built by BuildData in frame.go.
 //
-// Every frame here is produced WITHOUT the on-air FCS: the CC1101 appends the
-// CRC-16 in hardware.
+// Every frame here is produced WITHOUT the PHY CRC: the CC1101 appends the
+// CRC-16 in hardware. The Enhanced ACK carries its software MAC FCS.
 
 // fcfBroadcast is the Frame Control of the 0x49e8 broadcast Data frame, which
 // carries an aux security header on the wire instead of the implicit one.

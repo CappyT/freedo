@@ -7,7 +7,11 @@ import (
 	"time"
 )
 
-// RFC 4944 size and offsets refer to the uncompressed IPv6 datagram.
+// RFC 4944 size and offsets refer to the uncompressed IPv6 datagram. FRAG1
+// carries the compressed IPv6 and UDP headers, which stand for the 48 bytes of
+// the uncompressed ones, and then the first CoAP bytes. A FRAGN at offset o
+// carries the CoAP bytes from o-48. The CoAP message is parsed once, over the
+// whole datagram: an option can cross the end of FRAG1.
 
 const defaultFragmentReassemblyTimeout = 60 * time.Second
 
@@ -19,7 +23,8 @@ type reasmKey struct {
 }
 
 type reasmBuf struct {
-	frag1   *CoAPMessage
+	frag1   []byte // FRAG1 body: compressed headers and the first CoAP bytes
+	coap1   int    // CoAP bytes in frag1
 	pieces  []reasmPiece
 	frames  int
 	started time.Time
@@ -158,21 +163,22 @@ func (r *Reassembler) AddFrame(f *Frame) (Reassembly, bool) {
 
 	switch {
 	case fr.First:
-		m, err := parseCoAPCore(body[lowpanFrag1HeaderLen:])
-		if err != nil || len(m.Raw)+ipv6UDPHeaderLen > fr.Size {
+		frag1 := append([]byte{}, body[lowpanFrag1HeaderLen:]...)
+		hdr, err := coapOffset(frag1)
+		coap1 := len(frag1) - hdr
+		if err != nil || coap1+ipv6UDPHeaderLen > fr.Size {
 			return rs, false
 		}
 		buf := r.m[k]
 		if buf == nil {
-			buf = &reasmBuf{frag1: m, started: now}
+			buf = &reasmBuf{started: now}
 			r.m[k] = buf
-		} else if buf.frag1 != nil && !bytes.Equal(buf.frag1.Raw, m.Raw) {
+		} else if buf.frag1 != nil && !bytes.Equal(buf.frag1, frag1) {
 			// A different first fragment reuses the tag for a new datagram.
-			buf = &reasmBuf{frag1: m, started: now}
+			buf = &reasmBuf{started: now}
 			r.m[k] = buf
-		} else {
-			buf.frag1 = m
 		}
+		buf.frag1, buf.coap1 = frag1, coap1
 		if firstFragmentOverlaps(buf) {
 			delete(r.m, k)
 			return rs, false
@@ -201,7 +207,9 @@ func (r *Reassembler) AddFrame(f *Frame) (Reassembly, bool) {
 	rs.Frames, rs.Held = buf.frames, heldBytes(buf)
 	if buf.frag1 != nil && reassemblyComplete(k, buf) {
 		delete(r.m, k)
-		rs.Message = assemble(buf)
+		if rs.Message = assemble(buf); rs.Message == nil {
+			return rs, false
+		}
 	}
 	return rs, true
 }
@@ -211,7 +219,7 @@ func (r *Reassembler) AddFrame(f *Frame) (Reassembly, bool) {
 func heldBytes(buf *reasmBuf) int {
 	n := 0
 	if buf.frag1 != nil {
-		n = ipv6UDPHeaderLen + len(buf.frag1.Raw)
+		n = ipv6UDPHeaderLen + buf.coap1
 	}
 	for _, p := range buf.pieces {
 		n += len(p.data)
@@ -237,7 +245,7 @@ func addPiece(buf *reasmBuf, off int, data []byte) bool {
 }
 
 func firstFragmentOverlaps(buf *reasmBuf) bool {
-	end := ipv6UDPHeaderLen + len(buf.frag1.Raw)
+	end := ipv6UDPHeaderLen + buf.coap1
 	for _, p := range buf.pieces {
 		if p.off < end {
 			return true
@@ -249,7 +257,7 @@ func firstFragmentOverlaps(buf *reasmBuf) bool {
 // reassemblyComplete requires a contiguous CoAP tail.
 func reassemblyComplete(k reasmKey, buf *reasmBuf) bool {
 	sortPieces(buf.pieces)
-	want := len(buf.frag1.Raw)
+	want := buf.coap1
 	for _, p := range buf.pieces {
 		if p.off-ipv6UDPHeaderLen != want {
 			return false
@@ -267,15 +275,29 @@ func sortPieces(pieces []reasmPiece) {
 	}
 }
 
+// assemble parses the whole datagram, or returns nil when it holds no CoAP
+// message.
 func assemble(buf *reasmBuf) *CoAPMessage {
-	m := buf.frag1
-	payload := append([]byte{}, m.Payload...)
+	core := append([]byte{}, buf.frag1...)
 	for _, p := range buf.pieces {
-		payload = append(payload, p.data...)
-		m.Raw = append(m.Raw, p.data...)
+		core = append(core, p.data...)
 	}
-	m.Payload = payload
+	m, err := parseCoAPCore(core)
+	if err != nil {
+		return nil
+	}
 	return m
+}
+
+// coapOffset returns where the CoAP message starts in a datagram: the length
+// of its compressed IPv6 and UDP headers.
+func coapOffset(core []byte) (int, error) {
+	i, err := skipIPHC(core)
+	if err != nil {
+		return 0, err
+	}
+	_, i, err = parseUDPNHC(core, i)
+	return i, err
 }
 
 func hexEUI(b []byte) string {

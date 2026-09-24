@@ -6,6 +6,7 @@ import (
 	"errors"
 	"sort"
 	"strconv"
+	"sync/atomic"
 
 	"github.com/plgd-dev/go-coap/v3/message"
 	"github.com/plgd-dev/go-coap/v3/message/codes"
@@ -48,7 +49,8 @@ const coapSessionOption = 2048
 type CoAPReq struct {
 	Type          string       // "CON","NON","ACK","RST"; "" => "CON"
 	Code          string       // "0.01".."2.05" dotted form (see CoAPCode)
-	MID           uint16       // 0 => generated
+	MID           uint16       // sent verbatim, 0 included, unless GenerateMID
+	GenerateMID   bool         // mint the next MID instead of using MID
 	Token         []byte       // nil => generated (>=1 byte)
 	Path          []string     // Uri-Path segments (option 11)
 	Query         []string     // Uri-Query items (option 15), e.g. "id=3"
@@ -117,9 +119,6 @@ func WrapAppPayload(coapPacket []byte, counter uint32, trailer []byte) []byte {
 // to a device uplink, echoing its MID and token. The addressing arguments are
 // the response's own: the caller passes the uplink's src/dst and ports swapped.
 func BuildCoAPAck(code string, mid uint16, token []byte, payload []byte, srcEUI, dstEUI []byte, srcPort, dstPort uint16, extra ...CoAPOption) ([]byte, error) {
-	if mid == 0 {
-		return nil, errors.New("tado: ACK needs the MID of the request it answers")
-	}
 	r := CoAPReq{
 		Type:    "ACK",
 		Code:    code,
@@ -193,47 +192,53 @@ func BuildZoneRelay(msg, srcIID, dstEUI []byte, srcPort, dstPort uint16) ([]byte
 	return append(out, msg...), nil
 }
 
-// StampSessionID re-serializes a CoAP message with option 2048 set to id. It
-// returns msg untouched when id is empty or the message already carries the
-// option, which is the normal case on the relay path: a device stamps its own
-// session id and the bridge forwards those bytes verbatim.
+// StampSessionID inserts option 2048 set to id into a CoAP message. It returns
+// msg untouched when id is empty or the message already carries the option,
+// which is the normal case on the relay path: a device stamps its own session
+// id and the bridge forwards those bytes verbatim.
 //
-// The re-serialization keeps the message identity - type, code, Message-ID,
-// token, every other option in its own order and the payload - so a caller that
-// recomputes the UDP checksum over the result stays consistent.
+// The insertion splices the serialized message and decodes no option value, so
+// every byte of the original stays, malformed options included. Only the header
+// of the option that follows 2048, if any, is re-encoded for its new delta.
 func StampSessionID(msg, id []byte) ([]byte, error) {
 	if len(id) == 0 {
 		return msg, nil
 	}
-	m, err := decodeCoAP(msg)
+	opts, end, err := walkCoAPOptions(msg)
 	if err != nil {
 		return nil, err
 	}
-	for _, o := range m.Options {
-		if o.ID == coapSessionOption {
+	prev, next := 0, len(opts)
+	for i, o := range opts {
+		if o.num == coapSessionOption {
 			return msg, nil
 		}
+		if o.num > coapSessionOption {
+			next = i
+			break
+		}
+		prev = o.num
 	}
-	m.Options = append(m.Options, message.Option{ID: coapSessionOption, Value: id})
-	sort.SliceStable(m.Options, func(i, j int) bool { return m.Options[i].ID < m.Options[j].ID })
-	n, err := coder.DefaultCoder.Size(m)
-	if err != nil {
-		return nil, err
+	at := end
+	if next < len(opts) {
+		at = opts[next].start
 	}
-	out := make([]byte, n)
-	if _, err := coder.DefaultCoder.Encode(m, out); err != nil {
-		return nil, err
+	out := make([]byte, 0, len(msg)+len(id)+8)
+	out = append(out, msg[:at]...)
+	out = appendCoAPOptionHeader(out, coapSessionOption-prev, len(id))
+	out = append(out, id...)
+	if next < len(opts) {
+		o := opts[next]
+		out = appendCoAPOptionHeader(out, o.num-coapSessionOption, o.end-o.val)
+		at = o.val
 	}
-	return out, nil
+	return append(out, msg[at:]...), nil
 }
 
 // BuildContextAckBody is BuildContextAck carrying a body: the answer to a zone
 // GET the bridge serves from its own cache. The extra options follow the
 // Content-Format one, so the caller passes them in ascending option order.
 func BuildContextAckBody(code string, mid uint16, token, payload, srcEUI, dstEUI []byte, srcPort, dstPort uint16, extra ...CoAPOption) ([]byte, error) {
-	if mid == 0 {
-		return nil, errors.New("tado: ACK needs the MID of the request it answers")
-	}
 	if token == nil {
 		token = []byte{}
 	}
@@ -394,7 +399,7 @@ type SetpointCoAP struct {
 	// Off writes the room off overlay: 6260=0 and no 6280. It needs an
 	// overlay (6240 != 0) and ignores Setpoint.
 	Off    bool
-	MID    uint16 // 0 => generated
+	MID    uint16 // sent verbatim, 0 included
 	Token  []byte // nil => generated
 	SrcEUI []byte // nil => BridgeEUI
 	DstEUI []byte // target valve wire EUI (8B)
@@ -506,7 +511,7 @@ type DHWSetpointCoAP struct {
 	NoSchedC   bool
 	ProgramOff bool
 	NewOverlay bool   // 6440
-	MID        uint16 // 0 => generated
+	MID        uint16 // sent verbatim, 0 included
 	Token      []byte // nil => generated
 	SrcEUI     []byte // nil => BridgeEUI
 	DstEUI     []byte // wall thermostat wire EUI (8B)
@@ -598,10 +603,8 @@ func buildCoAPMessage(r CoAPReq) ([]byte, error) {
 		return nil, err
 	}
 	mid := r.MID
-	if mid == 0 {
-		if mid, err = randMID(); err != nil {
-			return nil, err
-		}
+	if r.GenerateMID {
+		mid = nextMID()
 	}
 	tok := r.Token
 	if tok == nil {
@@ -717,13 +720,22 @@ func randBytes(n int) ([]byte, error) {
 	return b, nil
 }
 
-func randMID() (uint16, error) {
-	b, err := randBytes(2)
-	if err != nil {
-		return 0, err
+// midCounter holds the last Message ID minted. The commercial bridge takes its
+// requests from one counter shared by every device (capture-app-20260907: its
+// own requests advance from 0x0efc to 0x608f), as Contiki's coap_get_mid does
+// from a random start. A sequential MID cannot repeat inside a device's
+// EXCHANGE_LIFETIME the way two random ones can, and a repeat reads as a
+// duplicate that the device answers without applying.
+var midCounter atomic.Uint32
+
+func init() {
+	if b, err := randBytes(2); err == nil {
+		midCounter.Store(uint32(binary.BigEndian.Uint16(b)))
 	}
-	if m := binary.BigEndian.Uint16(b); m != 0 {
-		return m, nil
-	}
-	return 1, nil
+}
+
+// nextMID mints the Message ID of one new request. It wraps through 0, which
+// is a valid Message ID.
+func nextMID() uint16 {
+	return uint16(midCounter.Add(1))
 }

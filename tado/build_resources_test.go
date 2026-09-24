@@ -422,9 +422,6 @@ func TestBuildTimeCoAP(t *testing.T) {
 	if got := hex.EncodeToString(EncodeTimePayload(now.Add(time.Second))); got != "0df8a57d6a" {
 		t.Errorf("epoch+1 payload = %s, want 0df8a57d6a", got)
 	}
-	if _, err := BuildTimeCoAP(now, 0, nil, BridgeEUI, dst, bridgeCoAPPort, coapPort); err == nil {
-		t.Error("an answer without the request MID should be refused")
-	}
 }
 
 // TestBuildAuthTokenBody: the auth/token body is the session id (025e) plus the

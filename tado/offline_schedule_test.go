@@ -70,12 +70,16 @@ func TestOfflineSchedulePerDeviceWriteWins(t *testing.T) {
 	if err := e.EnqueueConfig(cameraEUIHex, 10, ConfigWrite{OfflineScheduleEnabled: &disabled}); err != nil {
 		t.Fatal(err)
 	}
+	// Each GET takes a new MID: a repeated one is a retransmission, answered
+	// from the first answer.
+	mid := uint16(0xd300)
 	check := func(step string, e *EmuState, camera, bagno byte) {
 		t.Helper()
-		if got := served02b3(t, e, cameraEUIHex, 0xd300); got != camera {
+		mid += 2
+		if got := served02b3(t, e, cameraEUIHex, mid); got != camera {
 			t.Errorf("%s: camera 02b3 = %d, want %d", step, got, camera)
 		}
-		if got := served02b3(t, e, bagnoEUIHex, 0xd301); got != bagno {
+		if got := served02b3(t, e, bagnoEUIHex, mid+1); got != bagno {
 			t.Errorf("%s: bagno 02b3 = %d, want %d", step, got, bagno)
 		}
 	}

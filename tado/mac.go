@@ -111,17 +111,21 @@ type EnhAck struct {
 	SrcEUI    []byte // 8-byte wire EUI
 	CSLPhase  uint16 // 320 us units elapsed since the sender's last CSL sample
 	CSLPeriod uint16 // fixed 0x0C35
-	Trailer   []byte // 2-byte field after the Header Termination IE; undocumented,
-	//                  not the FCS (verified). Bridge-origin tends to XX00, device
-	//                  origin looks pseudo-random.
+	Trailer   []byte // the 2-byte software MAC FCS over the 27 bytes before it (macFCS)
 }
 
-// ParseEnhAck decodes a 29-byte Enhanced ACK:
+// ParseEnhAck decodes a 29-byte Enhanced ACK and verifies its MAC FCS:
 //
-//	FCF(2) Seq(1) Dst(8) Src(8) CSL-IE(2) Phase(2 LE) Period(2 LE) TermIE(2) Trailer(2)
+//	FCF(2) Seq(1) Dst(8) Src(8) CSL-IE(2) Phase(2 LE) Period(2 LE) TermIE(2) FCS(2)
+//
+// The CC1101 strips only the PHY CRC, so the software FCS is the one check left
+// on a frame whose sequence number closes a downlink.
 func ParseEnhAck(frame []byte) (*EnhAck, error) {
 	if len(frame) < 29 || frame[0] != 0x42 || frame[1] != 0xee {
 		return nil, fmt.Errorf("tado: not a 29-byte Enhanced ACK")
+	}
+	if !bytes.Equal(frame[27:29], macFCS(frame[:27])) {
+		return nil, ErrMACFCS
 	}
 	return &EnhAck{
 		Seq:       frame[2],
