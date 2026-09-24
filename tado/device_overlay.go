@@ -71,10 +71,13 @@ func (in *Install) checkDeviceOverlayEnds(c *issues) {
 
 // OverlayReport is one PUT h/<home>/z/<Zone>/overlay from a device: a manual
 // change made on it. The captured body carries 6280 (the new setpoint), 6240
-// and 6260, no 6200 and no end rule.
+// and 6260, no 6200 and no end rule. End marks a DELETE of the same path: the
+// elected reporter returned the zone to its schedule (6240 = 0, valve 0x11d1c,
+// thermostat 0x11a94).
 type OverlayReport struct {
 	Zone   int
 	Device string // wire EUI hex of the reporter
+	End    bool
 }
 
 // takeDeviceOverlay records the report and merges the overlay into the zone
@@ -95,6 +98,23 @@ func (e *EmuState) takeDeviceOverlay(zone int, dev []byte, body []byte) {
 	}
 	delete(e.zoneWrites, zone)
 	e.overlayReports = append(e.overlayReports, OverlayReport{Zone: zone, Device: hexEUI(dev)})
+}
+
+// endDeviceOverlay takes the DELETE of h/<home>/z/<Zone>/overlay: the device
+// returned the zone to its schedule and the request carries no body. The zone
+// block and the reporter's own block go to overlay auto, so a later rewrite
+// restates the schedule, and the queued writes that restate the old overlay
+// give way to a rewrite. The owner ends the coordinator-side deadline.
+func (e *EmuState) endDeviceOverlay(zone int, dev []byte) {
+	auto := []TLV{{Tag: "6240", Val: []byte{overlayAuto}}}
+	key := zoneKey(zone, "z/s")
+	e.storeZoneState(zone, "z/s", encodeTLVs(mergeConfigTLVs(parseTLVList(e.zoneState[key]), auto)))
+	if ns, ok := e.nodes[hexEUI(dev)]; ok && ns.holdsZone(zone) && len(ns.raw["6240"]) == 1 {
+		e.cacheTLVs(ns, auto, "", ClassData, e.name(dev), "self", "")
+	}
+	e.restateDeviceOverlay(zone)
+	delete(e.zoneWrites, zone)
+	e.overlayReports = append(e.overlayReports, OverlayReport{Zone: zone, Device: hexEUI(dev), End: true})
 }
 
 // restateDeviceOverlay rebuilds the zone writes queued before a device overlay

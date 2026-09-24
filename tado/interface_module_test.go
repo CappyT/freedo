@@ -75,10 +75,46 @@ func TestValveDocumentCarriesModule112(t *testing.T) {
 	}
 }
 
-// TestThermostatWithoutModuleGetsNoDocument: before the thermostat reports tag
-// 015d, freedo holds no document for it, answers its d/config GET 5.03 with no
-// body, queues no write to it on a reload and flags it.
-func TestThermostatWithoutModuleGetsNoDocument(t *testing.T) {
+// servedConfigDocument reads the whole d/config document dev is served, block by
+// block, with etag in option 4 when it is not nil. It returns the code of the
+// first answer, the body and the ETag of block 0.
+func servedConfigDocument(t *testing.T, in *Install, e *EmuState, dev []byte, mid uint16, etag []byte) (string, []byte, []byte) {
+	t.Helper()
+	var body, served []byte
+	for block := 0; ; block++ {
+		options := []CoAPOption{{Num: 23, Val: []byte{byte(block<<4 | 3)}}}
+		if etag != nil {
+			options = append(options, CoAPOption{Num: 4, Val: etag})
+		}
+		raw := synthDeviceUplink(t, in, dev, CoAPReq{
+			Type: "CON", Code: "0.01", MID: mid + uint16(block), Token: []byte{0x21},
+			Path: []string{"d", "RU0000000001", "config"}, Options: options,
+		})
+		m := synthAnswer(t, in, e.OnFrame(raw), mid+uint16(block))
+		if m.Code != "2.05" {
+			return m.Code, m.Payload, nil
+		}
+		if block == 0 {
+			if o, ok := m.Option(4); ok {
+				served = append([]byte(nil), o.Val...)
+			}
+		}
+		body = append(body, m.Payload...)
+		if o, ok := m.Option(23); !ok || decodeCoAPUint(o.Val)&0x08 == 0 {
+			return "2.05", body, served
+		}
+	}
+}
+
+// TestThermostatWithoutModuleServedWithout015d: before the thermostat reports
+// tag 015d, freedo holds no document for it, queues no write to it on a reload
+// and flags it. Its d/config GET still gets a 2.05: every uplink after d/config
+// waits for a 2.05 or 2.03 of it (thermostat 0x1e6dc, response handler
+// 0x1e4b4), hvac/codes, which carries 015d, too. The document leaves 015d out,
+// and the tag handler (thermostat 0x1e2e8) writes only the tags a body carries,
+// so the device keeps its own id. Once the id is learned the ETag moves and the
+// next GET gets the document with 015d.
+func TestThermostatWithoutModuleServedWithout015d(t *testing.T) {
 	in := synthInstall(t)
 	ru, _ := synthDevices(t, in)
 	e := NewEmu(in.EmuConfig(), nil)
@@ -88,9 +124,22 @@ func TestThermostatWithoutModuleGetsNoDocument(t *testing.T) {
 	if got := e.UnknownInterfaceModules(); len(got) != 1 {
 		t.Errorf("unknown modules = %v, want the thermostat", got)
 	}
-	answer := configGET(t, in, e, ru, 0x7001)
-	if answer.Code != "5.03" || len(answer.Payload) != 0 {
-		t.Errorf("d/config GET = %s with %x, want 5.03 and no body", answer.Code, answer.Payload)
+	code, body, etag := servedConfigDocument(t, in, e, ru, 0x7001, nil)
+	if code != "2.05" || len(etag) == 0 {
+		t.Fatalf("d/config GET = %s with ETag %x, want 2.05 with an ETag", code, etag)
+	}
+	tlvs := parseTLVList(body)
+	if _, ok := tlvU16(tlvs, interfaceModuleTag); ok {
+		t.Errorf("the document carries 015d: %x", body)
+	}
+	if len(tlvs) == 0 {
+		t.Error("the document is empty")
+	}
+	if _, ok := e.cfgDoc[hexEUI(ru)]; ok {
+		t.Error("the served document is held as the thermostat's")
+	}
+	if code, _, _ := servedConfigDocument(t, in, e, ru, 0x7011, etag); code != "2.03" {
+		t.Errorf("GET with the served ETag = %s, want 2.03", code)
 	}
 	if _, _, err := e.SetInstall(synthInstall(t)); err != nil {
 		t.Fatal(err)
@@ -103,6 +152,12 @@ func TestThermostatWithoutModuleGetsNoDocument(t *testing.T) {
 	}
 	if err := e.EnqueueConfig(hexEUI(ru), 0, ConfigWrite{Resend: true}); err == nil {
 		t.Error("a d/config write to the thermostat was queued")
+	}
+
+	e.OnFrame(moduleReport(t, in, ru, 71, 0x7021))
+	code, body, _ = servedConfigDocument(t, in, e, ru, 0x7031, etag)
+	if v, ok := tlvU16(parseTLVList(body), interfaceModuleTag); code != "2.05" || !ok || v != 71 {
+		t.Errorf("GET after the report = %s with 015d=%d (present=%t), want 2.05 with 71", code, v, ok)
 	}
 }
 

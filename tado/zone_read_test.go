@@ -723,6 +723,29 @@ func TestZoneOpenWindowReportTaken(t *testing.T) {
 	}
 }
 
+// TestZoneOpenWindowCloseTaken: a DELETE of h/<home>/z/N/ow, the report a
+// member sends when the 62e0 of its zone drops to 0 from a source other than
+// the coordinator (valve 0x11bb8, thermostat 0x11930), gets the same 2.05 and
+// reaches the owner once as a close.
+func TestZoneOpenWindowCloseTaken(t *testing.T) {
+	in := synthInstall(t)
+	e := NewEmu(in.EmuConfig(), nil)
+	va, err := in.Resolve("VA0000000001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := synthDeviceUplink(t, in, va.WireEUI(), CoAPReq{
+		Type: "CON", Code: "0.04", MID: 0x7303, Path: homePath(in, "z", "4", "ow"),
+	})
+	if m := synthAnswer(t, in, e.OnFrame(raw), 0x7303); m.Code != "2.05" || len(m.Payload) != 0 {
+		t.Fatalf("answer=%s payload=%x, want 2.05 with no body", m.Code, m.Payload)
+	}
+	want := OpenWindowReport{Zone: 4, Device: hex.EncodeToString(va.WireEUI()), Close: true}
+	if got := e.TakeOpenWindowReports(); len(got) != 1 || got[0] != want {
+		t.Fatalf("reports=%+v, want [%+v]", got, want)
+	}
+}
+
 // TestHeldOpenWindowStampsZoneWrites: while the daemon holds a zone open, a
 // setpoint write or a zone rewrite to it carries 62e0 = 1.
 func TestHeldOpenWindowStampsZoneWrites(t *testing.T) {

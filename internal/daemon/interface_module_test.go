@@ -98,8 +98,8 @@ func TestConfigAPIRejectsInterfaceModule(t *testing.T) {
 }
 
 // TestThermostatModuleLearnedAndPersisted: until the thermostat reports tag 015d
-// the health flag names it and its d/config GET gets no document. The report
-// is stored at once, and a restart serves the reported id.
+// the health flag names it and its d/config GET gets the document without
+// 015d. The report is stored at once, and a restart serves the reported id.
 func TestThermostatModuleLearnedAndPersisted(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
 	if err := install.WriteInstall(path, defaultInstall); err != nil {
@@ -123,8 +123,11 @@ func TestThermostatModuleLearnedAndPersisted(t *testing.T) {
 	if got, _ := health["interfaceModuleUnknown"].([]string); len(got) != 1 || !strings.Contains(got[0], dhwNode) {
 		t.Errorf("health interfaceModuleUnknown = %v, want the thermostat", health["interfaceModuleUnknown"])
 	}
-	if answer := deviceConfigGET(t, emu, wire, 0x9101, nil); answer.Code != "5.03" || len(answer.Payload) != 0 {
-		t.Errorf("GET before the report = %s with %d bytes, want an empty 5.03", answer.Code, len(answer.Payload))
+	if answer := deviceConfigGET(t, emu, wire, 0x9101, nil); answer.Code != "2.05" || len(answer.Payload) == 0 {
+		t.Errorf("GET before the report = %s with %d bytes, want a 2.05 with a body", answer.Code, len(answer.Payload))
+	}
+	if _, held := emu.ExportDesiredState().Config[key]; held {
+		t.Error("the document served before the report is held")
 	}
 
 	d.handleFrame(thermostatModuleReport(t, defaultInstall, key, 71, 0x9102), true)
@@ -158,7 +161,7 @@ func TestThermostatModuleLearnedAndPersisted(t *testing.T) {
 
 // TestStoredRefusedModuleIsDropped: a database holding the valve's 112 for the
 // thermostat restores and boots, health lists the drop, and the thermostat is
-// served no d/config until it reports again.
+// served its d/config without 015d until it reports again.
 func TestStoredRefusedModuleIsDropped(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
 	if err := install.WriteInstall(path, defaultInstall); err != nil {
@@ -191,8 +194,11 @@ func TestStoredRefusedModuleIsDropped(t *testing.T) {
 	if got, _ := health["interfaceModuleUnknown"].([]string); len(got) != 1 || !strings.Contains(got[0], dhwNode) {
 		t.Errorf("health interfaceModuleUnknown = %v, want the thermostat", health["interfaceModuleUnknown"])
 	}
-	if answer := deviceConfigGET(t, emu, wire, 0x9301, nil); answer.Code != "5.03" || len(answer.Payload) != 0 {
-		t.Errorf("GET after the drop = %s with %d bytes, want an empty 5.03", answer.Code, len(answer.Payload))
+	if answer := deviceConfigGET(t, emu, wire, 0x9301, nil); answer.Code != "2.05" || len(answer.Payload) == 0 {
+		t.Errorf("GET after the drop = %s with %d bytes, want the document without 015d", answer.Code, len(answer.Payload))
+	}
+	if _, held := emu.ExportDesiredState().Config[key]; held {
+		t.Error("a document is held for the thermostat after the drop")
 	}
 }
 

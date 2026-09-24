@@ -114,14 +114,15 @@ func (e *EmuState) thermostatModule(dev *Device) (uint16, bool) {
 }
 
 // noteConfigWithheld logs, once per device until a thermostat's module id is
-// learned, a d/config GET answered without a document.
-func (e *EmuState) noteConfigWithheld(dst []byte, srcLbl string) {
+// learned, a d/config GET answered without the held document: what names the
+// answer.
+func (e *EmuState) noteConfigWithheld(dst []byte, srcLbl, what string) {
 	key := hexEUI(dst)
 	if e.withheldLogged[key] {
 		return
 	}
 	e.withheldLogged[key] = true
-	e.log.Log("Data", srcLbl, "self", rsnConfigWithheld+"="+configUnavailable, "")
+	e.log.Log("Data", srcLbl, "self", rsnConfigWithheld+"="+what, "")
 }
 
 // learnModuleID records the interface module id a wall thermostat reported. It

@@ -1021,13 +1021,20 @@ func (e *EmuState) handleCoAP(f *Frame, m *CoAPMessage, class FrameClass, srcLbl
 		switch normalizeResource(m.Path) {
 		case "z/ow":
 			code = "2.05" // the open-window report is answered with Content
-			if zone, ok := zoneResourcePath(m.Path, e.inst, "ow"); ok && m.Code == "0.03" {
-				e.owReports = append(e.owReports, OpenWindowReport{Zone: zone, Device: hexEUI(dst)})
+			// The DELETE takes the same answer: the response handler clears
+			// its report flag on any code.
+			if zone, ok := zoneResourcePath(m.Path, e.inst, "ow"); ok && (m.Code == "0.03" || m.Code == "0.04") {
+				e.owReports = append(e.owReports, OpenWindowReport{Zone: zone, Device: hexEUI(dst), Close: m.Code == "0.04"})
 			}
 		case "z/overlay":
 			code = "2.05" // the captured answer to a device overlay, with no body
-			if zone, ok := zoneResourcePath(m.Path, e.inst, "overlay"); ok && m.Code == "0.03" {
-				e.takeDeviceOverlay(zone, dst, m.Payload)
+			if zone, ok := zoneResourcePath(m.Path, e.inst, "overlay"); ok {
+				switch m.Code {
+				case "0.03":
+					e.takeDeviceOverlay(zone, dst, m.Payload)
+				case "0.04":
+					e.endDeviceOverlay(zone, dst)
+				}
 			}
 		}
 		pkt, err = BuildCoAPAck(code, m.MID, m.Token, nil, e.selfEUI, dst, m.DstPort, m.SrcPort)
@@ -1327,18 +1334,24 @@ func (e *EmuState) zoneIDMatches(dev []byte, id int, srcLbl string) bool {
 // overwritten, or, during one of its uploads, invalidate the ETag
 // (config_doc_tlv_cb@0x1fac0).
 //
-// A device we hold no document for gets 5.03 with no body. An empty 2.05 is a
-// success answer whose missing 015d no capture shows the effect of, and on the
-// wall thermostat 015d selects the STM32 image it reflashes. An error answer
-// carries no document to apply. How the thermostat retries after it is not
-// captured.
+// A wall thermostat whose interface module id is not known gets the document
+// without 015d (withheldModuleDocument): on the thermostat 015d selects the
+// STM32 image it reflashes, and an error answer keeps its uplinks gated. Any
+// other device we hold no document for gets 5.03 with no body.
 func (e *EmuState) servedConfigGet(m *CoAPMessage, dst []byte, srcLbl string) ([]byte, string, bool, error) {
 	if m.Code != "0.01" || normalizeResource(m.Path) != "d/config" {
 		return nil, "", false, nil
 	}
 	snap, ok := e.cfgDoc[hexEUI(dst)]
 	if !ok {
-		e.noteConfigWithheld(dst, srcLbl)
+		snap, ok = e.withheldModuleDocument(dst)
+		withheld := configUnavailable
+		if ok {
+			withheld = "no-015d"
+		}
+		e.noteConfigWithheld(dst, srcLbl, withheld)
+	}
+	if !ok {
 		pkt, err := BuildCoAPAck(configUnavailable, m.MID, m.Token, nil, e.selfEUI, dst, m.DstPort, m.SrcPort)
 		return pkt, configUnavailable, true, err
 	}
@@ -3159,11 +3172,15 @@ func (e *EmuState) FlowPending() int {
 }
 
 // EnqueueChildLock queues the d/lock child-lock write. The write goes to the
-// bare path: id only labels the queue entry.
+// bare path: id only labels the queue entry. The wall thermostat has no d/lock
+// resource: its firmware holds no d/lock path and it answers the write 4.04.
 func (e *EmuState) EnqueueChildLock(target string, id int, on bool) error {
 	wire, _, err := e.resolve(target)
 	if err != nil {
 		return err
+	}
+	if e.isThermostat(hexEUI(wire)) {
+		return errors.New("tado: the wall thermostat has no d/lock resource, it has no child lock")
 	}
 	mid, token, err := downlinkIDs()
 	if err != nil {
@@ -3495,10 +3512,14 @@ func (e *EmuState) EnqueueOpenWindow(target string, id int, open bool) error {
 }
 
 // OpenWindowReport is one PUT h/<home>/z/<Zone>/ow from a device: its own
-// detector saw the window open. The captured report carries no body.
+// detector saw the window open. The captured report carries no body. Close
+// marks a DELETE of the same path: the 62e0 of the zone dropped to 0 on the
+// device from a source other than the coordinator (valve 0x11bb8, thermostat
+// 0x11930).
 type OpenWindowReport struct {
 	Zone   int
 	Device string // wire EUI hex of the reporter
+	Close  bool
 }
 
 // TakeOpenWindowReports returns the reports received since the last call.

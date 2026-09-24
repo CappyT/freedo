@@ -236,7 +236,9 @@ func (d *daemon) windowTarget(w windowWrite) bool {
 }
 
 // takeWindowReports opens the window of every zone whose member reported one,
-// when the zone has its detection on. The hold lasts the 62c0 of the zone.
+// when the zone has its detection on. The hold lasts the 62c0 of the zone. A
+// close report drops the device hold at once: the member's 62e0 went to 0 from
+// a source other than the coordinator, so restating 1 would reopen it.
 func (d *daemon) takeWindowReports(e *tado.EmuState) {
 	for _, r := range e.TakeOpenWindowReports() {
 		z, err := d.windowZone(r.Zone)
@@ -248,11 +250,11 @@ func (d *daemon) takeWindowReports(e *tado.EmuState) {
 			log.Printf("open window report from %s: not a member of zone %d", r.Device, r.Zone)
 			continue
 		}
-		if !z.OpenWindowEnabled() {
+		if !r.Close && !z.OpenWindowEnabled() {
 			continue
 		}
 		hold := time.Duration(z.OpenWindowSeconds()) * time.Second
-		if d.setWindow(e, r.Zone, windowDevice, true, hold, d.requestQueuedDispatch) {
+		if d.setWindow(e, r.Zone, windowDevice, !r.Close, hold, d.requestQueuedDispatch) {
 			if err := d.saveWindows(); err != nil {
 				log.Printf("persist zone %d window: %v", r.Zone, err)
 			}

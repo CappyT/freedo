@@ -1909,7 +1909,7 @@ func (d *daemon) healthEngine(e *tado.EmuState, txArmed bool) map[string]any {
 			"zoneProxies": e.PendingZoneProxies(),
 		},
 	}
-	// A thermostat listed here is served no d/config until it reports tag 015d.
+	// A thermostat listed here is served its d/config without tag 015d until it reports one.
 	if unknown := e.UnknownInterfaceModules(); len(unknown) > 0 {
 		health["interfaceModuleUnknown"] = unknown
 	}
@@ -4025,7 +4025,7 @@ flags:
 		fmt.Println(calibrationWarning(*port))
 	}
 	if len(unknownModules) > 0 {
-		fmt.Printf("WARNING: no interface module id (tag 015d) known for %s: it is served no d/config until it reports one\n",
+		fmt.Printf("WARNING: no interface module id (tag 015d) known for %s: it is served its d/config without 015d until it reports one\n",
 			strings.Join(unknownModules, ", "))
 	}
 	if commissioned {

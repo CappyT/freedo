@@ -2505,6 +2505,25 @@ func TestDaemonModeAndOpenWindowNeedHeatingBlock(t *testing.T) {
 	}
 }
 
+// TestChildLockRefusedOnThermostat: the wall thermostat serves no d/lock
+// resource (its firmware holds no d/lock path and it answers 4.04), so the
+// child lock route answers 400 and queues nothing.
+func TestChildLockRefusedOnThermostat(t *testing.T) {
+	in := windowInstall(t, nil)
+	d, url := newWindowDaemon(t, in, newTestClock(windowStart), nil)
+	var response struct {
+		Queued bool   `json:"queued"`
+		Error  string `json:"error"`
+	}
+	code := postJSON(t, http.MethodPost, url+"/api/nodes/"+dhwNode+"/childlock", map[string]any{"on": true, "id": 1}, &response)
+	if code != http.StatusBadRequest || response.Queued || !strings.Contains(response.Error, "d/lock") {
+		t.Errorf("child lock on the thermostat: got %d %+v, want 400 naming d/lock", code, response)
+	}
+	if n := pending(t, d, wireOf(t, in, dhwNode)); n != 0 {
+		t.Errorf("thermostat pending = %d, want 0", n)
+	}
+}
+
 func TestDaemonPersistsDesiredState(t *testing.T) {
 	in := defaultInstall
 	emu := tado.NewEmu(in.EmuConfig(), tado.NewUnhandledLogger(io.Discard))

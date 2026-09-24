@@ -14,18 +14,10 @@ import (
 // state) survives a reload because the write is merged, never substituted.
 // Tag 02b3 is not in it: every merge resolves that tag (mergeDeviceConfig).
 // ok=false names a wall thermostat whose interface module id is not known:
-// it gets no document at all, since the only safe 015d is the one it reported.
+// it holds no document, since the only safe 015d is the one it reported. Its
+// d/config GET is served withheldModuleDocument.
 func (e *EmuState) installConfigWrite(dev *Device) (ConfigWrite, bool) {
-	home := e.inst.HomeID
-	w := ConfigWrite{
-		HomeID:    &home,
-		NodeTable: initialNodeTable(e.inst, dev),
-	}
-	// A valve that already holds a document takes a new offset from
-	// PushUTCOffset, one valve at a time: each write homes its motor.
-	if _, held := e.cfgDoc[hexEUI(dev.WireEUI())]; !held || dev.Kind == KindThermostat {
-		w.UTCOffsetMin = e.UTCOffset()
-	}
+	w := e.installConfigBase(dev)
 	switch dev.Kind {
 	case KindValve:
 		module := valveInterfaceModule
@@ -38,6 +30,46 @@ func (e *EmuState) installConfigWrite(dev *Device) (ConfigWrite, bool) {
 		w.InterfaceModuleID = &module
 	}
 	return w, true
+}
+
+// installConfigBase is installConfigWrite without tag 015d.
+func (e *EmuState) installConfigBase(dev *Device) ConfigWrite {
+	home := e.inst.HomeID
+	w := ConfigWrite{
+		HomeID:    &home,
+		NodeTable: initialNodeTable(e.inst, dev),
+	}
+	// A valve that already holds a document takes a new offset from
+	// PushUTCOffset, one valve at a time: each write homes its motor.
+	if _, held := e.cfgDoc[hexEUI(dev.WireEUI())]; !held || dev.Kind == KindThermostat {
+		w.UTCOffsetMin = e.UTCOffset()
+	}
+	return w
+}
+
+// withheldModuleDocument is the d/config document served to a declared wall
+// thermostat whose interface module id is not known: the installation's
+// document without tag 015d. Every uplink after d/config waits for a 2.05 or
+// 2.03 of it (thermostat 0x1e6dc, response handler 0x1e4b4), and hvac/codes,
+// which carries 015d, is one of them: an error answer would leave the id
+// unknown for good. The tag handler (0x1e2e8) writes only the tags a body
+// carries, so the thermostat keeps its own 015d. The document is not held:
+// once the id is known, the held one replaces it and its ETag differs.
+func (e *EmuState) withheldModuleDocument(dst []byte) (cfgSnapshot, bool) {
+	if e.inst == nil {
+		return cfgSnapshot{}, false
+	}
+	key := hexEUI(dst)
+	dev, err := e.inst.Resolve(key)
+	if err != nil || dev.Kind != KindThermostat {
+		return cfgSnapshot{}, false
+	}
+	_, snap, err := e.mergeDeviceConfigOn(cfgSnapshot{}, key, e.installConfigBase(dev))
+	if err != nil {
+		e.log.Log("Config", dev.Ref(), "", rsnBuildFail+" d/config "+err.Error(), "")
+		return cfgSnapshot{}, false
+	}
+	return snap, true
 }
 
 // SetInstall replaces the installation the emulator coordinates and returns the

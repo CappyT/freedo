@@ -15,7 +15,8 @@ import (
 
 // takeOverlayReports gives every device overlay the end rule of its zone: the
 // deadline goes on the zoneWriteTargets, and its expiry writes overlay auto
-// with no 6440, as the captured expiry does.
+// with no 6440, as the captured expiry does. An end report drops the deadline
+// of the zone: the device already follows its schedule.
 func (d *daemon) takeOverlayReports(e *tado.EmuState) {
 	reports := e.TakeOverlayReports()
 	if len(reports) == 0 {
@@ -32,12 +33,18 @@ func (d *daemon) takeOverlayReports(e *tado.EmuState) {
 			log.Printf("device overlay from %s: %v", r.Device, err)
 			continue
 		}
-		if z.Kind != tado.ZoneHeating {
-			log.Printf("device overlay from %s: zone %d is not a heating zone, no end rule applies", r.Device, r.Zone)
-			continue
-		}
 		if !d.zoneMember(r.Zone, r.Device) {
 			log.Printf("device overlay from %s: not a member of zone %d", r.Device, r.Zone)
+			continue
+		}
+		if r.End {
+			if err := e.SetZoneOverlayTimer(r.Zone, nil, 0); err != nil {
+				log.Printf("device overlay end on zone %d: %v", r.Zone, err)
+			}
+			continue
+		}
+		if z.Kind != tado.ZoneHeating {
+			log.Printf("device overlay from %s: zone %d is not a heating zone, no end rule applies", r.Device, r.Zone)
 			continue
 		}
 		duration := d.deviceOverlayDuration(e, inst, r.Zone)

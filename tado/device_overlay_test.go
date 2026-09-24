@@ -148,3 +148,51 @@ func TestDeviceOverlayRestatesQueuedZoneWrites(t *testing.T) {
 		t.Errorf("the wheel member got %d writes, want none", len(q))
 	}
 }
+
+// TestDeviceOverlayEndRestatesQueuedZoneWrites: the elected reporter returns
+// the zone to its schedule on the device and sends DELETE
+// h/<home>/z/N/overlay (valve 0x11d1c, thermostat 0x11a94: 6240 = 0). The zone
+// block drops the overlay, the owner takes an end report, and the queued write
+// that restates the old overlay gives way to a rewrite in overlay auto.
+func TestDeviceOverlayEndRestatesQueuedZoneWrites(t *testing.T) {
+	in := fixtureInstall(t)
+	e := NewEmu(in.EmuConfig(), NewUnhandledLogger(io.Discard))
+	e.SetHomeState(true, map[int]float64{5: 20})
+	e.OnFrame(synthDeviceUplink(t, in, mustHex(cucinaAEUIHex), CoAPReq{
+		Type: "CON", Code: "0.03", MID: 0x7511, Token: []byte{0x23},
+		Path: homePath(in, "z", "5", "overlay"), Options: []CoAPOption{optOctets},
+		Payload: encodeTLVs([]TLV{
+			{Tag: "6280", Val: []byte{0x08, 0x98}}, {Tag: "6240", Val: []byte{0x02}}, {Tag: "6260", Val: []byte{0x01}},
+		}),
+	}))
+	e.TakeOverlayReports()
+	e.queue[cucinaBEUIHex] = nil
+	if err := e.EnqueueZoneRewrite(cucinaBEUIHex, 5); err != nil {
+		t.Fatal(err)
+	}
+	if got := queuedTags(t, e, cucinaBEUIHex); len(got) != 1 || got[0]["6240"] != "02" {
+		t.Fatalf("writer queue = %v, want one rewrite of the overlay", got)
+	}
+
+	raw := synthDeviceUplink(t, in, mustHex(cucinaAEUIHex), CoAPReq{
+		Type: "CON", Code: "0.04", MID: 0x7512, Token: []byte{0x24},
+		Path: homePath(in, "z", "5", "overlay"),
+	})
+	if m := synthAnswer(t, in, e.OnFrame(raw), 0x7512); m.Code != "2.05" || len(m.Payload) != 0 {
+		t.Fatalf("answer=%s payload=%x, want 2.05 with no body", m.Code, m.Payload)
+	}
+	want := OverlayReport{Zone: 5, Device: cucinaAEUIHex, End: true}
+	if got := e.TakeOverlayReports(); len(got) != 1 || got[0] != want {
+		t.Fatalf("reports=%+v, want [%+v]", got, want)
+	}
+	if block, ok := e.ZoneBlock(5); !ok || block.Overlay != overlayAuto {
+		t.Errorf("zone block = %+v (known=%t), want overlay auto", block, ok)
+	}
+	got := queuedTags(t, e, cucinaBEUIHex)
+	if len(got) != 1 || got[0]["6240"] != "00" || got[0]["6440"] != "" {
+		t.Errorf("writer queue = %v, want one rewrite in overlay auto with no 6440", got)
+	}
+	if q := e.queue[cucinaAEUIHex]; len(q) != 0 {
+		t.Errorf("the reporter got %d writes, want none", len(q))
+	}
+}

@@ -324,6 +324,49 @@ func TestWindowDeviceReportOpensZone(t *testing.T) {
 	wantWindow(t, "after 62c0", zoneWindowOf(t, url, 5), false, "", time.Time{})
 }
 
+// closeReport sends the DELETE of the open window resource of ref for zone:
+// the 62e0 of the zone dropped to 0 on the device from a source other than the
+// coordinator.
+func closeReport(t *testing.T, d *daemon, in *tado.Install, ref string, zone int, mid uint16) {
+	t.Helper()
+	feed(t, d, in, ref, false, tado.CoAPReq{
+		Type: "CON", Code: "0.04", MID: mid,
+		Path: []string{"h", "7654321", "z", strconv.Itoa(zone), "ow"},
+	})
+}
+
+// TestWindowDeviceCloseEndsHold: a member's DELETE of z/N/ow drops the device
+// hold before its 62c0 runs out, and the zone writer owes 62e0 = 0 at once. An
+// external hold keeps the zone open.
+func TestWindowDeviceCloseEndsHold(t *testing.T) {
+	in := windowInstall(t, nil)
+	clock := newTestClock(windowStart)
+	d, url := newWindowDaemon(t, in, clock, nil)
+	a, b := wireOf(t, in, "VA1000000006"), wireOf(t, in, "VA1000000001")
+	seedBlock(t, d, in, "VA1000000006", 5)
+	seedBlock(t, d, in, "VA1000000001", 5)
+
+	report(t, d, in, "VA1000000006", 5, 0x6011)
+	wantWindowWrites(t, "the device open", d, in, "01", a)
+
+	clock.advance(60 * time.Second)
+	closeReport(t, d, in, "VA1000000001", 5, 0x6012)
+	wantWindowWrites(t, "the device close", d, in, "00", a)
+	wantNoWrites(t, "the device close on the relayed member", d, b)
+	wantWindow(t, "after the device close", zoneWindowOf(t, url, 5), false, "", time.Time{})
+
+	clock.advance(time.Second)
+	report(t, d, in, "VA1000000006", 5, 0x6013)
+	wantWindowWrites(t, "the second device open", d, in, "01", a)
+	externalEnd := clock.now().Add(2 * time.Hour)
+	if _, code := postWindow(t, url, 5, true); code != http.StatusOK {
+		t.Fatalf("external open: code=%d", code)
+	}
+	closeReport(t, d, in, "VA1000000006", 5, 0x6014)
+	wantNoWrites(t, "a device close under an external hold", d, a, b)
+	wantWindow(t, "a device close under an external hold", zoneWindowOf(t, url, 5), true, "external", externalEnd)
+}
+
 // TestWindowDeviceReportHonoursZoneConfig: a zone with the detection off takes
 // no write, a zone duration other than the default sets the deadline, and a
 // device outside the zone opens nothing.

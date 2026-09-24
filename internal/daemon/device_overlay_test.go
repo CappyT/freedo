@@ -94,6 +94,36 @@ func TestDeviceOverlayTimerExpires(t *testing.T) {
 	})
 }
 
+// TestDeviceOverlayEndedOnDevice: the elected reporter returns the zone to its
+// schedule on the device and sends DELETE z/N/overlay. The zone follows its
+// program at once, the deadline of the device overlay ends, and its expiry
+// writes nothing.
+func TestDeviceOverlayEndedOnDevice(t *testing.T) {
+	clock := newTestClock(windowStart)
+	d, url, in := deviceOverlayDaemon(t, &tado.OverlayEnd{Mode: tado.OverlayEndTimer, DurationSec: 1800}, clock, nil)
+	writer, other := wireOf(t, in, "VA1000000006"), wireOf(t, in, "VA1000000001")
+	overlayFromDevice(t, d, in, "VA1000000006", 5, 2200, 0x6111)
+	wantDeviceOverlay(t, "after the overlay", url, 22, windowStart.Add(30*time.Minute).Format(time.RFC3339))
+
+	clock.advance(time.Minute)
+	feed(t, d, in, "VA1000000006", false, tado.CoAPReq{
+		Type: "CON", Code: "0.04", MID: 0x6112,
+		Path: []string{"h", "7654321", "z", "5", "overlay"},
+	})
+	if target := mustTarget(t, url, 5); target["source"] != "program" || target["overlay"] != nil {
+		t.Errorf("target after the end = %v, want the program with no overlay", target)
+	}
+	if v, err := d.do(func(e *tado.EmuState) (any, error) {
+		_, timed := e.ZoneOverlayTimer(5)
+		return timed, nil
+	}); err != nil || v.(bool) {
+		t.Errorf("the overlay deadline outlives the end on the device (err=%v)", err)
+	}
+	clock.advance(30 * time.Minute)
+	expireOverlays(t, d)
+	wantNoWrites(t, "the old deadline", d, writer, other)
+}
+
 // TestDeviceOverlayUntilNextIsDefault: a zone with no rule ends the device
 // overlay at the start of the next program block.
 func TestDeviceOverlayUntilNextIsDefault(t *testing.T) {
