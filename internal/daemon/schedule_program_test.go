@@ -193,6 +193,123 @@ func TestHotWaterProgramAwayUnchanged(t *testing.T) {
 	}, "6440")
 }
 
+// TestHotWaterDayProgram: a hot-water program per day, like a room program:
+// working days on 06:00-08:00 at 50 C and 18:00-22:00 at 48 C, a weekend block
+// at 55 C, off the rest. Each block change writes 6200 and 61e0 of the block in
+// force; an off block writes 61e0=0. Away the zone takes the away shape and
+// no block change, and the return home writes the block then in force.
+func TestHotWaterDayProgram(t *testing.T) {
+	clock := newTestClock(time.Date(2026, 1, 5, 5, 0, 0, 0, time.UTC)) // a Monday
+	d, url := newHomeDaemon(t, clock)
+	thermostat := hex.EncodeToString(mustResolve(t, dhwNode).WireEUI())
+	off := func(minute int) map[string]any {
+		return map[string]any{"minute": minute, "setpoint_c": 30.0, "enabled": false}
+	}
+	on := func(minute int, c float64) map[string]any {
+		return map[string]any{"minute": minute, "setpoint_c": c}
+	}
+	week := map[string]any{"programs": []map[string]any{
+		{"days": []string{"mon", "tue", "wed", "thu", "fri"}, "entries": []map[string]any{
+			off(0), on(360, 50), off(480), on(1080, 48), off(1320),
+		}},
+		{"days": []string{"sat", "sun"}, "entries": []map[string]any{off(0), on(480, 55), off(1380)}},
+	}}
+	var view map[string]any
+	if code := postJSON(t, http.MethodPut, url+"/api/zones/0/schedule", week, &view); code != http.StatusOK {
+		t.Fatalf("hot-water schedule: code=%d %v", code, view)
+	}
+	tickHome(t, d)
+	dropQueue(t, d, thermostat)
+
+	block := func(what string, advance time.Duration, want map[string]string, absent ...string) {
+		t.Helper()
+		clock.advance(advance)
+		tickHome(t, d)
+		if n := pending(t, d, thermostat); n != 1 {
+			t.Fatalf("%s queued %d writes, want 1", what, n)
+		}
+		wantTags(t, what, nextZoneWrite(t, d, thermostat), want, append(absent, "6260", "6280", "6440")...)
+		dropQueue(t, d, thermostat)
+	}
+	block("monday 06:00", time.Hour, map[string]string{"6020": "02", "6160": "01", "61e0": "01", "6200": "1388", "6240": "00"})
+	block("monday 08:00 off", 2*time.Hour, map[string]string{"6020": "02", "6160": "01", "61e0": "00", "6200": "0bb8", "6240": "00"})
+	block("monday 18:00", 10*time.Hour, map[string]string{"6020": "02", "6160": "01", "61e0": "01", "6200": "12c0", "6240": "00"})
+
+	var res map[string]any
+	if code := postJSON(t, http.MethodPatch, url+"/api/home", map[string]any{"away": true}, &res); code != http.StatusOK {
+		t.Fatalf("away: code=%d %v", code, res)
+	}
+	wantTags(t, "the away burst on the program", nextZoneWrite(t, d, thermostat), map[string]string{
+		"6020": "02", "6160": "02", "61e0": "00", "6240": "00", "62e0": "00",
+	}, "6200", "6260", "6280", "6440")
+	dropQueue(t, d, thermostat)
+	if target := mustTarget(t, url, 0); target["source"] != "away" || target["on"] != false || target["targetC"] != nil {
+		t.Errorf("away on the program: target = %v, want away and off", target)
+	}
+	clock.advance(4 * time.Hour) // 22:00, the off block
+	tickHome(t, d)
+	if n := pending(t, d, thermostat); n != 0 {
+		t.Fatalf("away, the 22:00 block queued %d writes, want none", n)
+	}
+	if code := postJSON(t, http.MethodPatch, url+"/api/home", map[string]any{"away": false}, &res); code != http.StatusOK {
+		t.Fatalf("home: code=%d %v", code, res)
+	}
+	wantTags(t, "the return home in the off block", nextZoneWrite(t, d, thermostat), map[string]string{
+		"6020": "02", "6160": "01", "61e0": "00", "6200": "0bb8", "6240": "00",
+	}, "6260", "6280", "6440")
+	dropQueue(t, d, thermostat)
+
+	block("saturday 08:00", 4*24*time.Hour+10*time.Hour, map[string]string{"6020": "02", "6160": "01", "61e0": "01", "6200": "157c", "6240": "00"})
+}
+
+// TestHotWaterOverlayHoldsThroughAway: a permanent manual hot-water overlay
+// keeps hot water on while the home is away, as the cloud does. The away burst
+// restates it under the away head, a block change writes nothing, the target
+// view reports the overlay, and the return home restates it with the home head
+// and the block then in force.
+func TestHotWaterOverlayHoldsThroughAway(t *testing.T) {
+	clock := newTestClock(time.Date(2026, 1, 5, 5, 0, 0, 0, time.UTC))
+	d, url := newHomeDaemon(t, clock)
+	thermostat := hex.EncodeToString(mustResolve(t, dhwNode).WireEUI())
+	putHotWaterWeek(t, url)
+	tickHome(t, d)
+	dropQueue(t, d, thermostat)
+
+	if _, code := postZone(t, url, 0, "setpoint", map[string]any{"setpointC": 48, "mode": "manual"}); code != http.StatusOK {
+		t.Fatalf("hot water overlay: code=%d", code)
+	}
+	wantTags(t, "the overlay", deliver(t, d, defaultInstall, thermostat), map[string]string{
+		"6020": "02", "6160": "01", "61e0": "01", "6200": "1194", "6240": "02", "6260": "01", "6280": "12c0", "6440": "0001",
+	})
+
+	var res map[string]any
+	if code := postJSON(t, http.MethodPatch, url+"/api/home", map[string]any{"away": true}, &res); code != http.StatusOK {
+		t.Fatalf("away: code=%d %v", code, res)
+	}
+	wantTags(t, "the away burst", nextZoneWrite(t, d, thermostat), map[string]string{
+		"6020": "02", "6160": "02", "61e0": "00", "6240": "02", "6260": "01", "6280": "12c0", "62e0": "00",
+	}, "6200", "6440")
+	dropQueue(t, d, thermostat)
+	target := mustTarget(t, url, 0)
+	if target["source"] != "overlay" || target["on"] != true || target["targetC"] != 48.0 ||
+		overlayOfTarget(t, target)["kind"] != "manual" {
+		t.Errorf("away with the overlay: target = %v, want the manual overlay at 48", target)
+	}
+
+	clock.advance(2 * time.Hour)
+	tickHome(t, d)
+	if n := pending(t, d, thermostat); n != 0 {
+		t.Fatalf("away, the 06:00 block queued %d writes, want none", n)
+	}
+
+	if code := postJSON(t, http.MethodPatch, url+"/api/home", map[string]any{"away": false}, &res); code != http.StatusOK {
+		t.Fatalf("home: code=%d %v", code, res)
+	}
+	wantTags(t, "the return home", nextZoneWrite(t, d, thermostat), map[string]string{
+		"6020": "02", "6160": "01", "61e0": "01", "6200": "157c", "6240": "02", "6260": "01", "6280": "12c0",
+	}, "6440")
+}
+
 // TestDisabledRoomBlockPowersOff: a disabled block of a room program writes
 // 61e0=0 with no 6200, as captured, and the next enabled block 61e0=1 with
 // its setpoint in 6200.

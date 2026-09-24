@@ -464,6 +464,82 @@ func TestHotWaterReadWithoutProgramKeepsHotWaterOn(t *testing.T) {
 	}
 }
 
+// TestHotWaterFollowsAway: hot water follows the home state as the cloud does.
+// Away, a zone on its program reads and is rewritten with 6160=2, 61e0=0 and
+// 6240=0, so zone_state_timer_cb takes the enable from 61e0 and turns hot water
+// off. A manual overlay keeps 6240=2 6260=1 6280 under the away head, as the
+// cloud away read of zone 0 in capture-analysis-20260827 shows, so the enable
+// comes from 6260 and hot water stays on at the overlay setpoint.
+func TestHotWaterFollowsAway(t *testing.T) {
+	in := synthInstall(t)
+	ru, err := in.Resolve("RU0000000001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	overlay48 := []TLV{
+		{Tag: "6240", Val: []byte{0x02}},
+		{Tag: "6260", Val: []byte{0x01}},
+		{Tag: "6280", Val: []byte{0x12, 0xc0}},
+		{Tag: "62e0", Val: []byte{0x00}},
+	}
+	program := []TLV{{Tag: "6240", Val: []byte{0x00}}, {Tag: "62e0", Val: []byte{0x00}}}
+	for _, tc := range []struct {
+		name       string
+		home       bool
+		cache      []TLV
+		want       string
+		wantEnable byte
+	}{{
+		name: "away, manual overlay", cache: overlay48,
+		want: "61600102" + "61800100" + "60200102" + "61e00100" +
+			"62400102" + "62600101" + "62800212c0" + "62e00100",
+		wantEnable: 1,
+	}, {
+		name: "away, program", cache: program,
+		want:       "61600102" + "61800100" + "60200102" + "61e00100" + "62400100" + "62e00100",
+		wantEnable: 0,
+	}, {
+		name: "home, manual overlay", home: true, cache: overlay48,
+		want: "61600101" + "61800100" + "60200102" + "61e00101" + "620002157c" +
+			"62400102" + "62600101" + "62800212c0" + "62e00100",
+		wantEnable: 1,
+	}, {
+		name: "home, program", home: true, cache: program,
+		want:       "61600101" + "61800100" + "60200102" + "61e00101" + "620002157c" + "62400100" + "62e00100",
+		wantEnable: 1,
+	}} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := NewEmu(in.EmuConfig(), nil)
+			e.SetHomeState(tc.home, map[int]float64{0: 55, 4: 20})
+			e.zoneState[zoneKey(0, "z/s")] = encodeTLVs(tc.cache)
+			raw := synthDeviceUplink(t, in, ru.WireEUI(), CoAPReq{
+				Type: "CON", Code: "0.01", MID: 0x7115, Token: []byte{0x07},
+				Path: homePath(in, "z", "0", "s"),
+			})
+			read := synthAnswer(t, in, e.OnFrame(raw), 0x7115)
+			if err := e.EnqueueZoneRewrite("RU0000000001", 0); err != nil {
+				t.Fatal(err)
+			}
+			q := e.queue[hexEUI(ru.WireEUI())]
+			rewrite := parseBuilt(t, q[len(q)-1].coap)
+			for what, body := range map[string][]byte{"read": read.Payload, "rewrite": rewrite.Payload} {
+				if got := hex.EncodeToString(body); got != tc.want {
+					t.Errorf("%s body=%s, want %s", what, got, tc.want)
+				}
+				state := make(map[string]byte)
+				for _, tlv := range parseTLVList(body) {
+					if len(tlv.Val) == 1 {
+						state[tlv.Tag] = tlv.Val[0]
+					}
+				}
+				if enable, published := thermostatDHWEnable(state); !published || enable != tc.wantEnable {
+					t.Errorf("%s: DHW enable=%d published=%v, want %d published", what, enable, published, tc.wantEnable)
+				}
+			}
+		})
+	}
+}
+
 // TestDirectZoneReadValveRebuilt: a valve reading a cached zone gets the block
 // the thermostat gets, as the cloud answers every valve read of
 // capture-app-20260907: the pushed home state and program block, the overlay
