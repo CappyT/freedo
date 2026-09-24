@@ -2495,11 +2495,22 @@ func (e *EmuState) EnqueueSetpoint(target string, sp SetpointParams) error {
 	return nil
 }
 
+// overlayTimerKey keys the deadline of the overlay zone runs on node eui. A
+// node writes several zones (the wall thermostat: hot water and a room), each
+// with its own deadline.
+func overlayTimerKey(eui string, zone int) string { return eui + "|" + strconv.Itoa(zone) }
+
+// overlayTimerNode returns the wire EUI hex of the node a timer key restores.
+func overlayTimerNode(key string) string {
+	eui, _, _ := strings.Cut(key, "|")
+	return eui
+}
+
 // armOverlayTimer starts, replaces or clears the coordinator-side deadline of
-// an overlay on target. A zero duration clears it, which is what a return to
-// schedule does.
+// the overlay zone id runs on target. A zero duration clears it, which is what
+// a return to schedule does.
 func (e *EmuState) armOverlayTimer(wire []byte, id int, d time.Duration, dhw, boost bool) {
-	key := hexEUI(wire)
+	key := overlayTimerKey(hexEUI(wire), id)
 	if d <= 0 {
 		delete(e.boostTimers, key)
 		return
@@ -2723,7 +2734,7 @@ func (e *EmuState) EnqueueDHWSchedule(target string, id int) error {
 	q[len(q)-1].requireCoAP = true
 	q[len(q)-1].responseToken = append([]byte(nil), token...)
 	q[len(q)-1].responseCode = "2.04"
-	delete(e.boostTimers, hexEUI(wire))
+	delete(e.boostTimers, overlayTimerKey(hexEUI(wire), id))
 	return nil
 }
 
@@ -2893,17 +2904,19 @@ func (e *EmuState) zoneOpenWindow(zone int, wire []byte) byte {
 // ExpireBoosts queues the return to schedule for every elapsed coordinator
 // timer: the boost restore and the deadline of any other overlay take the same
 // path. The captured room expiry carries no 6440, unlike the return to schedule
-// a user asks for. It returns the targets whose queue changed.
+// a user asks for. Each expiry ends the overlay of its own zone. It returns
+// the targets whose queue changed.
 func (e *EmuState) ExpireBoosts(now time.Time) ([]string, error) {
 	due := make([]string, 0)
-	for target, timer := range e.boostTimers {
+	for key, timer := range e.boostTimers {
 		if !now.Before(timer.expiresAt) {
-			due = append(due, target)
+			due = append(due, key)
 		}
 	}
 	sort.Strings(due)
-	for i, target := range due {
-		timer := e.boostTimers[target]
+	changed := make([]string, 0, len(due))
+	for _, key := range due {
+		timer, target := e.boostTimers[key], overlayTimerNode(key)
 		var err error
 		if timer.dhw {
 			err = e.EnqueueDHWSchedule(target, timer.id)
@@ -2911,10 +2924,13 @@ func (e *EmuState) ExpireBoosts(now time.Time) ([]string, error) {
 			err = e.enqueueBoostBlock(target, timer.id, false, false, "boost", fmt.Sprintf("boost id=%d on=false", timer.id))
 		}
 		if err != nil {
-			return due[:i], err
+			return changed, err
+		}
+		if !slices.Contains(changed, target) {
+			changed = append(changed, target)
 		}
 	}
-	return due, nil
+	return changed, nil
 }
 
 // EnqueueIdentify queues the d/identify blink request. The write goes to the
@@ -3028,7 +3044,7 @@ func (e *EmuState) EnqueueMode(target string, id int, overlay byte) error {
 	c.Overlay = overlay
 	if overlay == overlayAuto {
 		// The return to schedule ends the overlay, so its deadline goes with it.
-		delete(e.boostTimers, hexEUI(wire))
+		delete(e.boostTimers, overlayTimerKey(hexEUI(wire), id))
 		c.Off = false
 	}
 	pkt, err := BuildSetpointCoAP(c)
@@ -4795,6 +4811,7 @@ const (
 	rsnModuleRefused     = "interface-module-refused"
 	rsnModuleWarning     = "interface-module-warning"
 	rsnModuleDropped     = "interface-module-dropped"
+	rsnTimerDropped      = "overlay-timer-dropped"
 )
 
 // UnhandledLogger is the structured sink for everything the emulator cannot

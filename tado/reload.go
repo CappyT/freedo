@@ -218,7 +218,6 @@ func (e *EmuState) dropDevice(key string) {
 	delete(e.tempUnitF, key)
 	delete(e.offlineSched, key)
 	delete(e.utcSettled, key)
-	delete(e.boostTimers, key)
 	delete(e.sessions, key)
 	delete(e.obsRoles, key)
 	delete(e.queue, key)
@@ -228,6 +227,11 @@ func (e *EmuState) dropDevice(key string) {
 	delete(e.fwPut, key)
 	delete(e.fwGet, key)
 	prefix := key + "|"
+	for k := range e.boostTimers {
+		if strings.HasPrefix(k, prefix) {
+			delete(e.boostTimers, k)
+		}
+	}
 	for k := range e.getRes {
 		if strings.HasPrefix(k, prefix) {
 			delete(e.getRes, k)

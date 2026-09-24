@@ -144,19 +144,23 @@ func (e *EmuState) pendingHeating(wire []byte, zone int) *heatingBlock {
 
 // restatePending makes a rewrite keep the block of a write queued ahead of it,
 // which the node has not taken yet: the node's last block is older than it.
+// The off overlay comes from the pending block alone: the cache still holds
+// the off overlay a queued return to schedule ends.
 func restatePending(c *SetpointCoAP, b *heatingBlock) {
 	if b.body == nil {
 		c.Setpoint, c.Overlay, c.Off = float64(be(b.setpoint))/100, b.overlay, false
 		return
 	}
+	off := false
 	for _, tlv := range parseTLVList(b.body) {
 		switch {
 		case tlv.Tag == "6240" && len(tlv.Val) == 1:
 			c.Overlay = tlv.Val[0]
 		case tlv.Tag == "6260" && len(tlv.Val) == 1:
-			c.Off = tlv.Val[0] == 0x00
+			off = tlv.Val[0] == 0x00
 		case tlv.Tag == "6280" && len(tlv.Val) == 2:
 			c.Setpoint = float64(be(tlv.Val)) / 100
 		}
 	}
+	c.Off = off && c.Overlay != overlayAuto
 }

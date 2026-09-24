@@ -31,6 +31,9 @@ type DesiredSession struct {
 	IssuedAt time.Time `json:"issuedAt"`
 }
 
+// DesiredBoostTimer is the deadline of the overlay zone ID runs on one node.
+// Its key is "<wire EUI>|<zone>". A bare wire EUI is the key of a store that
+// kept one timer per node: the restore moves it to the zone ID names.
 type DesiredBoostTimer struct {
 	ID        int       `json:"id"`
 	ExpiresAt time.Time `json:"expiresAt"`
@@ -163,7 +166,20 @@ func (e *EmuState) RestoreDesiredState(in DesiredState) error {
 	e.utcSettled = utcSettled
 	e.boostTimers = make(map[string]boostTimer, len(in.Boost))
 	for key, value := range in.Boost {
-		e.boostTimers[key] = e.restoredTimer(value)
+		if strings.Contains(key, "|") {
+			e.boostTimers[key] = e.restoredTimer(value)
+		}
+	}
+	for key, value := range in.Boost {
+		if strings.Contains(key, "|") {
+			continue
+		}
+		zoned := overlayTimerKey(key, value.ID)
+		if _, ok := e.boostTimers[zoned]; ok {
+			e.log.Log("Config", key, "", rsnTimerDropped+"="+strconv.Itoa(value.ID), "")
+			continue
+		}
+		e.boostTimers[zoned] = e.restoredTimer(value)
 	}
 	e.moduleID = moduleID
 	for key, issue := range dropped {
@@ -239,10 +255,11 @@ func validateDesiredState(in DesiredState) error {
 		}
 	}
 	for key, timer := range in.Boost {
-		if err := validateStateEUI(key); err != nil {
+		eui, zone, zoned := strings.Cut(key, "|")
+		if err := validateStateEUI(eui); err != nil {
 			return err
 		}
-		if timer.ID < 0 || timer.ExpiresAt.IsZero() {
+		if timer.ID < 0 || timer.ExpiresAt.IsZero() || zoned && zone != strconv.Itoa(timer.ID) {
 			return fmt.Errorf("tado: desired state has invalid boost timer for %s", key)
 		}
 	}

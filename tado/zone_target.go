@@ -47,21 +47,21 @@ type OverlayTimer struct {
 // ZoneOverlayTimer returns the deadline of the overlay zone runs: the latest
 // one when several members hold a timer for it.
 func (e *EmuState) ZoneOverlayTimer(zone int) (OverlayTimer, bool) {
-	targets := make([]string, 0, len(e.boostTimers))
-	for target, timer := range e.boostTimers {
+	keys := make([]string, 0, len(e.boostTimers))
+	for key, timer := range e.boostTimers {
 		if timer.id == zone {
-			targets = append(targets, target)
+			keys = append(keys, key)
 		}
 	}
-	if len(targets) == 0 {
+	if len(keys) == 0 {
 		return OverlayTimer{}, false
 	}
-	sort.Strings(targets)
+	sort.Strings(keys)
 	var out OverlayTimer
-	for _, target := range targets {
-		timer := e.boostTimers[target]
+	for _, key := range keys {
+		timer := e.boostTimers[key]
 		if out.Target == "" || timer.expiresAt.After(out.ExpiresAt) {
-			out = OverlayTimer{Target: target, ExpiresAt: timer.expiresAt, Boost: timer.boost}
+			out = OverlayTimer{Target: overlayTimerNode(key), ExpiresAt: timer.expiresAt, Boost: timer.boost}
 		}
 	}
 	return out, true

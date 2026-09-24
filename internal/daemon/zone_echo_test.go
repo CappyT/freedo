@@ -130,3 +130,34 @@ func TestRewriteBehindSetpointRestatesIt(t *testing.T) {
 	wantTags(t, "the rewrite", deliverAck(t, d, in, writer), map[string]string{"6280": "09c4", "6240": "02"}, "6440")
 	wantZoneTarget(t, "after both", url, 10, 25)
 }
+
+// TestRewriteBehindReturnFromOffReachesZone: the room runs the off overlay
+// and its return to schedule is still queued. The away switch restates that
+// return to schedule, not the cached off overlay, so the zone takes the away
+// block instead of being skipped.
+func TestRewriteBehindReturnFromOffReachesZone(t *testing.T) {
+	in := windowInstall(t, nil)
+	d, url := newWindowDaemon(t, in, newTestClock(windowStart), nil)
+	writer := wireOf(t, in, camera)
+	seedBlock(t, d, in, camera, 10, cameraBlock(2460)...)
+	if _, code := postZone(t, url, 10, "off", map[string]any{"mode": "manual"}); code != http.StatusOK {
+		t.Fatalf("off: code=%d", code)
+	}
+	wantTags(t, "the off overlay", deliverAck(t, d, in, writer), map[string]string{"6240": "02", "6260": "00"}, "6280")
+	if _, code := postZone(t, url, 10, "auto", map[string]any{}); code != http.StatusOK {
+		t.Fatalf("auto: code=%d", code)
+	}
+	var res struct {
+		Away   bool `json:"away"`
+		Queued int  `json:"queued"`
+	}
+	if code := postJSON(t, http.MethodPatch, url+"/api/home", map[string]any{"away": true}, &res); code != http.StatusOK || !res.Away {
+		t.Fatalf("away: code=%d %+v", code, res)
+	}
+	if n := pending(t, d, writer); n != 2 {
+		t.Fatalf("%s holds %d queued writes, want the return to schedule and the away rewrite", writer, n)
+	}
+	wantTags(t, "the return to schedule", deliverAck(t, d, in, writer), map[string]string{"6240": "00", "6440": "0001"}, "6260", "6280")
+	wantTags(t, "the away rewrite", deliverAck(t, d, in, writer), map[string]string{"6160": "02", "61e0": "00", "6240": "00"},
+		"6260", "6280", "6440")
+}
