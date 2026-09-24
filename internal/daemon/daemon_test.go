@@ -3410,16 +3410,27 @@ func TestDaemonRecoversQueuedCSLWhenLiveOwnerEnds(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 
+	// A dead radio loop fails the container health check, and Main leaves
+	// non-zero so a supervisor restarts the process.
 	var health struct {
+		OK              bool   `json:"ok"`
 		TXArmed         bool   `json:"txArmed"`
 		TransmitAllowed bool   `json:"transmitAllowed"`
 		RadioError      string `json:"radioError"`
 	}
-	if code := getJSON(t, url+"/api/health", &health); code != http.StatusOK {
+	if code := getJSON(t, url+"/api/health", &health); code != http.StatusServiceUnavailable {
 		t.Fatalf("health status=%d", code)
 	}
-	if health.TXArmed || health.TransmitAllowed || !strings.Contains(health.RadioError, boom.Error()) {
+	if health.OK || health.TXArmed || health.TransmitAllowed || !strings.Contains(health.RadioError, boom.Error()) {
 		t.Fatalf("health=%+v", health)
+	}
+	select {
+	case err := <-d.radioLost:
+		if !strings.Contains(err.Error(), boom.Error()) {
+			t.Fatalf("radio lost=%v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the engine did not report the ended radio loop to Main")
 	}
 }
 

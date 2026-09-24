@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -225,5 +226,64 @@ func TestHealthOmitsTheCalibrationOffLive(t *testing.T) {
 	}
 	if health.Calibrated != nil || health.Warning != "" {
 		t.Fatalf("calibrated=%v warning=%q, want both absent", health.Calibrated, health.Warning)
+	}
+}
+
+// endedRadio is a live radio whose frame channel is already closed, with the
+// error its loop ended on.
+type endedRadio struct {
+	*radio.Mock
+	err error
+}
+
+func (r *endedRadio) TXArmed() bool     { return false }
+func (r *endedRadio) RadioError() error { return r.err }
+
+// Only a live radio loop that ended on an error fails health and makes Main
+// leave. A finished replay, a mock or a live radio stopped on purpose do not.
+func TestHealthAndExitOnEndedRadio(t *testing.T) {
+	boom := errors.New("CSL queue poll: bridge gone")
+	tests := []struct {
+		name  string
+		radio radio.Radio
+		lost  bool
+	}{
+		{name: "finished mock", radio: radio.NewMock(nil)},
+		{name: "stopped live radio", radio: &endedRadio{Mock: radio.NewMock(nil)}},
+		{name: "live radio ended on an error", radio: &endedRadio{Mock: radio.NewMock(nil), err: boom}, lost: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			emu := tado.NewEmu(defaultInstall.EmuConfig(), tado.NewUnhandledLogger(io.Discard))
+			d := newDaemon(defaultInstall, emu, tt.radio, true, "live")
+			d.ulog = tado.NewUnhandledLogger(io.Discard)
+			ctx, cancel := context.WithCancel(context.Background())
+			go d.run(ctx)
+			srv := httptest.NewServer(d.mux())
+			t.Cleanup(func() {
+				srv.Close()
+				cancel()
+			})
+			var lost error
+			select {
+			case lost = <-d.radioLost:
+			case <-time.After(200 * time.Millisecond):
+			}
+			if tt.lost != (lost != nil) || (lost != nil && !errors.Is(lost, boom)) {
+				t.Fatalf("radio lost=%v, want lost=%t", lost, tt.lost)
+			}
+			var health healthResp
+			code := getBounded(t, srv.URL+"/api/health", &health)
+			wantCode := http.StatusOK
+			if tt.lost {
+				wantCode = http.StatusServiceUnavailable
+			}
+			if code != wantCode || health.OK == tt.lost {
+				t.Fatalf("status=%d ok=%t, want %d", code, health.OK, wantCode)
+			}
+			if tt.lost && health.RadioError != boom.Error() {
+				t.Fatalf("radioError=%q", health.RadioError)
+			}
+		})
 	}
 }

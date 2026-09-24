@@ -19,6 +19,8 @@ var (
 	errLiveBusy       = errors.New("live tx busy handling receive batch")
 	errLiveEnded      = errors.New("live radio owner ended")
 	errCSLPollStalled = errors.New("CSL queue poll stalled")
+	// errCSLCompletionLost fails a queued CSL job the bridge never completed.
+	errCSLCompletionLost = errors.New("CSL queue completion lost")
 )
 
 // Radio is the frame source and sink the engine drives.

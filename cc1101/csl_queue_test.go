@@ -290,3 +290,104 @@ func TestCSLQueuePollReadsInboundFreqEst(t *testing.T) {
 		t.Errorf("freqEst=%d,%t want -13", event.Inbound.FreqEst, event.Inbound.HasFreqEst)
 	}
 }
+
+type timedReply struct {
+	delay time.Duration
+	data  []byte
+}
+
+type pendingReply struct {
+	at   time.Time
+	data []byte
+}
+
+// scriptedPort answers each request with its scripted replies, each one after
+// its delay, and honors the read timeout like a real port.
+type scriptedPort struct {
+	fakePort
+	script  [][]timedReply
+	pending []pendingReply
+	timeout time.Duration
+}
+
+func (p *scriptedPort) Write(data []byte) (int, error) {
+	n, err := p.fakePort.Write(data)
+	if i := len(p.writes) - 1; i < len(p.script) {
+		for _, reply := range p.script[i] {
+			p.pending = append(p.pending, pendingReply{at: time.Now().Add(reply.delay), data: reply.data})
+		}
+	}
+	return n, err
+}
+
+func (p *scriptedPort) Read(dst []byte) (int, error) {
+	end := time.Now().Add(p.timeout)
+	for {
+		for len(p.pending) != 0 && !time.Now().Before(p.pending[0].at) {
+			p.read = append(p.read, p.pending[0].data...)
+			p.pending = p.pending[1:]
+		}
+		if len(p.read) != 0 {
+			return p.fakePort.Read(dst)
+		}
+		if !time.Now().Before(end) {
+			return 0, nil
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+func (p *scriptedPort) SetReadTimeout(timeout time.Duration) error {
+	p.timeout = timeout
+	return nil
+}
+
+func cslQueueNoAckReply(id uint16) []byte {
+	return autoAckResponse(cslTxNoAck, []byte{0, byte(id >> 8), byte(id), 0, cslTxMinSent})
+}
+
+func pollCompletionID(t *testing.T, b *Bridge) uint16 {
+	t.Helper()
+	event, err := b.PollCSLQueueWithin(time.Second)
+	if err != nil || event == nil || event.Completion == nil {
+		t.Fatalf("event=%+v err=%v", event, err)
+	}
+	return event.Completion.ID
+}
+
+// A reply carries no command echo. A reply that lands after the poll deadline
+// must not answer the next poll.
+func TestCSLQueuePollDropsLateReplyAfterDeadline(t *testing.T) {
+	p := &scriptedPort{timeout: 5 * time.Millisecond, script: [][]timedReply{
+		{{delay: 40 * time.Millisecond, data: cslQueueNoAckReply(7)}},
+		{{data: cslQueueNoAckReply(8)}},
+		{{data: autoAckResponse(0, nil)}},
+	}}
+	b := &Bridge{port: p, timeout: time.Second}
+	if _, err := b.PollCSLQueueWithin(20 * time.Millisecond); !errors.Is(err, ErrCSLPollTimeout) {
+		t.Fatalf("error=%v", err)
+	}
+	time.Sleep(50 * time.Millisecond)
+	if id := pollCompletionID(t, b); id != 8 {
+		t.Fatalf("poll read completion %d, the late reply of the previous poll", id)
+	}
+	if event, err := b.PollCSLQueueWithin(time.Second); err != nil || event != nil {
+		t.Fatalf("event=%+v err=%v, want the empty reply of this poll", event, err)
+	}
+}
+
+// A poll that reads the late reply of another request finds it malformed. The
+// reply to that poll is still in the input, so the next poll has to skip it.
+func TestCSLQueuePollResyncsAfterMalformedReply(t *testing.T) {
+	p := &scriptedPort{timeout: 5 * time.Millisecond, script: [][]timedReply{
+		{{data: autoAckResponse(0, []byte{1})}, {data: cslQueueNoAckReply(7)}},
+		{{data: cslQueueNoAckReply(8)}},
+	}}
+	b := &Bridge{port: p, timeout: time.Second}
+	if _, err := b.PollCSLQueueWithin(time.Second); err == nil || !strings.Contains(err.Error(), "malformed") {
+		t.Fatalf("error=%v", err)
+	}
+	if id := pollCompletionID(t, b); id != 8 {
+		t.Fatalf("poll read completion %d, the reply of the previous poll", id)
+	}
+}

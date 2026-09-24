@@ -14,6 +14,10 @@ import (
 
 var errSerialDeadline = errors.New("serial response deadline exceeded")
 
+// serialResyncQuiet is the silence that ends a resync drain. A reply carries no
+// command echo, so a late reply left in the input answers the next request.
+const serialResyncQuiet = 100 * time.Millisecond
+
 // Serial framing (matches tado_capture/cc1101_bridge/firmware/cc1101_bridge_v2/cc1101_bridge_v2.ino @ 921600 8N1):
 //
 //	request : 0xA5 cmd lenHi lenLo payload
@@ -73,8 +77,8 @@ func Open(portName string) (*Bridge, error) {
 // Close releases the serial port.
 func (b *Bridge) Close() error { return b.port.Close() }
 
-// drain discards all input until the port is quiet for `quiet`. Used at startup
-// to flush a leftover stream from a previous session.
+// drain discards all input until the port is quiet for `quiet`: a leftover
+// stream at startup, or a late reply after a response deadline.
 func (b *Bridge) drain(quiet time.Duration) {
 	b.port.SetReadTimeout(quiet)
 	buf := make([]byte, 512)
@@ -117,6 +121,14 @@ func (b *Bridge) req(cmd byte, payload []byte) (byte, []byte, error) {
 }
 
 func (b *Bridge) reqUntil(cmd byte, payload []byte, deadline time.Time) (byte, []byte, error) {
+	status, data, err := b.exchange(cmd, payload, deadline)
+	if errors.Is(err, errSerialDeadline) {
+		b.drain(serialResyncQuiet)
+	}
+	return status, data, err
+}
+
+func (b *Bridge) exchange(cmd byte, payload []byte, deadline time.Time) (byte, []byte, error) {
 	n := len(payload)
 	hdr := []byte{reqMagic, cmd, byte(n >> 8), byte(n)}
 	if _, err := b.port.Write(append(hdr, payload...)); err != nil {

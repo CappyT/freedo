@@ -21,6 +21,31 @@ const (
 	cslQueueNeighborFull = 0x1a
 )
 
+// Firmware CSL timing (cc1101_bridge_v2.ino): CSL_PERIOD_US, CSL_SAMPLE_GUARD_US,
+// CSL_BOOTSTRAP_US, CSL_FOLLOW_TMO_MS and CSL_GUARD_MARGIN_MS.
+const (
+	cslFirmwarePeriod      = time.Second
+	cslFirmwareSampleGuard = 40 * time.Millisecond
+	cslFirmwareBootstrap   = time.Second
+	cslFirmwareFollow      = 500 * time.Millisecond
+	cslFirmwareGuardMargin = 400 * time.Millisecond
+)
+
+// CSLQueueJobGuard is the longest time the firmware spends on one queued job
+// once it schedules it. cslStart ends every job at its guard: wake window, ACK
+// timeout, follow window and margin. An anchored job waits for the next sample
+// of the target, up to one CSL period. A bootstrap job also takes that path
+// when the target has an anchor with no miss, so the wake window is the longer
+// of the two for every job.
+func CSLQueueJobGuard(job CSLQueueRequest) time.Duration {
+	wake := max(cslFirmwarePeriod+cslFirmwareSampleGuard, cslFirmwareBootstrap)
+	guard := wake + job.AckTimeout + cslFirmwareGuardMargin
+	if job.WaitResponse {
+		guard += cslFirmwareFollow
+	}
+	return guard
+}
+
 // CSLQueueCompletion is one completed asynchronous CSL transaction.
 type CSLQueueCompletion struct {
 	ID     uint16
@@ -118,17 +143,22 @@ func (b *Bridge) pollCSLQueueUntil(deadline time.Time) (*CSLQueueEvent, error) {
 	if len(data) == 0 && status == 0 {
 		return nil, nil
 	}
+	// A malformed event is most likely the late reply of an earlier request, so
+	// the reply to this poll is still on the wire: drop it before the next one.
 	if len(data) < 1 {
+		b.drain(serialResyncQuiet)
 		return nil, fmt.Errorf("CSL queue event is malformed")
 	}
 	if data[0] == 1 {
 		frame := parseRxBlob(data[1:])
 		if frame == nil {
+			b.drain(serialResyncQuiet)
 			return nil, fmt.Errorf("CSL queue inbound frame is malformed")
 		}
 		return &CSLQueueEvent{Inbound: frame}, nil
 	}
 	if data[0] != 0 || len(data) < 5 {
+		b.drain(serialResyncQuiet)
 		return nil, fmt.Errorf("CSL queue completion is malformed")
 	}
 	completion := &CSLQueueCompletion{ID: binary.BigEndian.Uint16(data[1:3])}

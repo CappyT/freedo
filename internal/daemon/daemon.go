@@ -85,6 +85,7 @@ type daemon struct {
 	cmds             chan func()
 	dispatch         chan struct{}
 	done             chan struct{}
+	radioLost        chan error // the error of a live radio loop that ended on its own
 	beaconEvery      time.Duration
 	retryAfter       func(time.Duration) <-chan time.Time
 	retryNow         func() time.Time
@@ -204,6 +205,7 @@ func newDaemon(in *tado.Install, emu *tado.EmuState, radio radio.Radio, dryRun b
 		cmds:             make(chan func()),
 		dispatch:         make(chan struct{}, 1),
 		done:             make(chan struct{}),
+		radioLost:        make(chan error, 1),
 		retryAfter:       time.After,
 		retryNow:         time.Now,
 		retryRand:        randomRetryUint16,
@@ -386,8 +388,10 @@ func (d *daemon) run(ctx context.Context) {
 		case fr, ok := <-frames:
 			if !ok {
 				// A finished replay must not stop the engine: the API keeps
-				// serving the state the capture produced.
+				// serving the state the capture produced. A live radio that
+				// ended on an error stops the process, see Main.
 				frames = nil
+				d.noteRadioLost()
 				continue
 			}
 			d.handleFrame(fr, true)
@@ -400,6 +404,21 @@ func (d *daemon) run(ctx context.Context) {
 		case <-ctx.Done():
 			close(d.done)
 			return
+		}
+	}
+}
+
+// noteRadioLost hands the error of a live radio loop that ended on its own to
+// Main. A replay or a mock has no radio error, so its end changes nothing.
+func (d *daemon) noteRadioLost() {
+	radio, ok := d.radio.(liveRadioStatus)
+	if !ok {
+		return
+	}
+	if err := radio.RadioError(); err != nil {
+		select {
+		case d.radioLost <- err:
+		default:
 		}
 	}
 }
@@ -1607,7 +1626,8 @@ func targetName(dev *tado.Device) string {
 // getHealth answers with the liveness fields it can read on its own, plus the
 // engine counters when the engine answers within healthEngineBudget. A stuck
 // engine gives 503 and {"ok":false,"engine":"busy"} instead of hanging, so a
-// container HEALTHCHECK gets a verdict on every call.
+// container HEALTHCHECK gets a verdict on every call. A live radio loop that
+// ended on an error gives 503 and {"ok":false,"radioError":...}.
 func (d *daemon) getHealth(w http.ResponseWriter, r *http.Request) {
 	health, txArmed := d.healthBase()
 	v, err := d.doWithin(healthEngineBudget, func(e *tado.EmuState) (any, error) {
@@ -1625,6 +1645,11 @@ func (d *daemon) getHealth(w http.ResponseWriter, r *http.Request) {
 	}
 	for k, value := range v.(map[string]any) {
 		health[k] = value
+	}
+	if _, lost := health["radioError"]; lost {
+		health["ok"] = false
+		writeJSON(w, http.StatusServiceUnavailable, health)
+		return
 	}
 	writeJSON(w, http.StatusOK, health)
 }
@@ -3731,7 +3756,7 @@ flags:
 		defer t.Stop()
 		timeout = t.C
 	}
-	var httpErr error
+	var httpErr, radioErr error
 	select {
 	case s := <-sig:
 		fmt.Printf("interrupted by %s\n", s)
@@ -3742,6 +3767,10 @@ flags:
 		}()
 	case <-timeout:
 	case httpErr = <-srvErr:
+	case radioErr = <-d.radioLost:
+		// A supervisor (systemd, a container restart policy) starts a new
+		// process, which opens the bridge again.
+		fmt.Fprintf(os.Stderr, "radio loop ended: %v\n", radioErr)
 	}
 
 	backstop := time.AfterFunc(shutdownBudget, func() {
@@ -3766,6 +3795,9 @@ flags:
 	fmt.Println("daemon stopped")
 	if httpErr != nil {
 		die("http: %v", httpErr)
+	}
+	if radioErr != nil {
+		die("radio: %v", radioErr)
 	}
 }
 

@@ -57,6 +57,7 @@ type Live struct {
 	lastBootstrapAttempt time.Time
 	rxErrorLimit         int
 	cslPending           map[uint16]liveCSLPending
+	cslDeadline          time.Time // the bridge had the time to finish every pending job; zero: not armed
 	cslGroups            map[uint16]*liveCSLGroup
 	cslNextID            uint16
 	cslFlushed           bool
@@ -143,6 +144,10 @@ const liveCSLBootstrapGlobalCooldown = 2 * time.Second
 const liveCSLBootstrapRetryCooldown = 30 * time.Second
 const liveCSLBootstrapTargetCooldown = 10 * time.Minute
 
+// liveCSLCompletionSlack covers the serial round trips between the end of a job
+// on the bridge and the poll that reads its completion.
+const liveCSLCompletionSlack = 500 * time.Millisecond
+
 // SeededBridge is a live bridge with a frequency-offset register.
 type SeededBridge interface {
 	LiveBridge
@@ -215,7 +220,9 @@ func (r *Live) loop() {
 		}
 		r.drainFrames()
 		r.drainCSLCompletions()
+		immediateAt := r.now()
 		if r.takeImmediate() {
+			r.holdCSLDeadline(immediateAt)
 			continue
 		}
 		drained, err := r.drainCSL()
@@ -227,6 +234,9 @@ func (r *Live) loop() {
 			continue
 		}
 		if len(r.cslPending) != 0 {
+			if r.expireCSL() {
+				continue
+			}
 			select {
 			case <-time.After(2 * time.Millisecond):
 			case <-r.stop:
@@ -583,7 +593,23 @@ func (r *Live) drainCSL() (bool, error) {
 	return true, nil
 }
 
+// pollCSLQueue retries one failed poll. A late reply or a malformed event is a
+// one-off after the bridge resyncs its input; a second failure in a row is not.
 func (r *Live) pollCSLQueue(br queuedCSLBridge) (*cc1101.CSLQueueEvent, error) {
+	event, err := r.pollCSLQueueOnce(br)
+	if err == nil {
+		return event, nil
+	}
+	log.Printf("CSL queue poll: %v, retrying once", err)
+	select {
+	case <-r.stop:
+		return nil, err
+	default:
+	}
+	return r.pollCSLQueueOnce(br)
+}
+
+func (r *Live) pollCSLQueueOnce(br queuedCSLBridge) (*cc1101.CSLQueueEvent, error) {
 	timeout := r.cslPollTimeout
 	if timeout <= 0 {
 		timeout = liveCSLPollTimeout
@@ -596,6 +622,43 @@ func (r *Live) pollCSLQueue(br queuedCSLBridge) (*cc1101.CSLQueueEvent, error) {
 		return event, err
 	}
 	return br.PollCSLQueue()
+}
+
+// armCSLDeadline adds the firmware guard of each new job to the time the bridge
+// needs for the pending ones. The bridge runs one job at a time, so the sum
+// bounds the last completion. Call it before the jobs join cslPending.
+func (r *Live) armCSLDeadline(jobs []cc1101.CSLQueueRequest) {
+	deadline := r.cslDeadline
+	if len(r.cslPending) == 0 || deadline.IsZero() {
+		deadline = r.now()
+	}
+	for _, job := range jobs {
+		deadline = deadline.Add(cc1101.CSLQueueJobGuard(job))
+	}
+	r.cslDeadline = deadline
+}
+
+// holdCSLDeadline moves the deadline by the time an immediate batch held the
+// loop. A train or a burst holds the bridge scheduler for as long.
+func (r *Live) holdCSLDeadline(since time.Time) {
+	if len(r.cslPending) == 0 || r.cslDeadline.IsZero() {
+		return
+	}
+	r.cslDeadline = r.cslDeadline.Add(r.now().Sub(since))
+}
+
+// expireCSL fails every pending job once the bridge is past the time it needs
+// to finish them. A bridge that rebooted after an enqueue lost its jobs and
+// their completions, and a poll only ever answers empty. The flush brings the
+// bridge back to a known queue, and the error completions let the daemon retry.
+func (r *Live) expireCSL() bool {
+	if r.cslDeadline.IsZero() || !r.now().After(r.cslDeadline.Add(liveCSLCompletionSlack)) {
+		return false
+	}
+	log.Printf("CSL queue: %d jobs got no completion by their deadline", len(r.cslPending))
+	r.dropCSL(errCSLCompletionLost)
+	r.cslDeadline = time.Time{}
+	return true
 }
 
 func cslCompletionFrames(result *cc1101.CSLTxResult) [][]byte {
@@ -722,6 +785,7 @@ func (r *Live) sendActions(actions []tado.Action) (ImmediateResult, error) {
 				if err := br.EnqueueCSLBatch(jobs); err != nil {
 					return result, err
 				}
+				r.armCSLDeadline(jobs)
 				r.cslFlushed = false
 				for n, job := range jobs {
 					if pending[n].action.QueueAttempt {
