@@ -33,12 +33,13 @@ const (
 
 // CSLQueueJobGuard is the longest time the firmware spends on one queued job
 // once it schedules it. cslStart ends every job at its guard: wake window, ACK
-// timeout, follow window and margin. An anchored job waits for the next sample
-// of the target, up to one CSL period. A bootstrap job also takes that path
-// when the target has an anchor with no miss, so the wake window is the longer
-// of the two for every job.
+// timeout, follow window and margin. An anchored job waits for the first sample
+// of the target at least one sample guard away, up to one CSL period plus the
+// guard, and its wake window ends one guard after that sample. A bootstrap job
+// also takes that path when the target has an anchor with no miss, so the wake
+// window is the longer of the two for every job.
 func CSLQueueJobGuard(job CSLQueueRequest) time.Duration {
-	wake := max(cslFirmwarePeriod+cslFirmwareSampleGuard, cslFirmwareBootstrap)
+	wake := max(cslFirmwarePeriod+2*cslFirmwareSampleGuard, cslFirmwareBootstrap)
 	guard := wake + job.AckTimeout + cslFirmwareGuardMargin
 	if job.WaitResponse {
 		guard += cslFirmwareFollow
