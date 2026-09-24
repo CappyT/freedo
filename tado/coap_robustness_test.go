@@ -143,31 +143,18 @@ var illegalOptions = []CoAPOption{
 	{Num: 23, Val: []byte{0x00, 0x00, 0x00, 0x13}},
 }
 
-func illegalOptionsMessage(t *testing.T, extra ...CoAPOption) []byte {
+func illegalOptionsMessage(t *testing.T) []byte {
 	t.Helper()
 	msg, err := buildCoAPMessage(CoAPReq{
 		Type: "CON", Code: "0.03", MID: 0x7401, Token: []byte{0x74},
 		Path: []string{"z", "s"}, Query: []string{"lid=2"},
-		Options: append(append([]CoAPOption{}, illegalOptions...), extra...),
+		Options: append([]CoAPOption{}, illegalOptions...),
 		Payload: []byte{0x62, 0x40, 0x01, 0x00},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return msg
-}
-
-// TestStampSessionIDKeepsIllegalOptionLengths: the relay re-encode differs from
-// the original only by option 2048.
-func TestStampSessionIDKeepsIllegalOptionLengths(t *testing.T) {
-	id := []byte{1, 2, 3, 4, 5, 6, 7, 8}
-	got, err := StampSessionID(illegalOptionsMessage(t), id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := illegalOptionsMessage(t, CoAPOption{Num: coapSessionOption, Val: id}); !bytes.Equal(got, want) {
-		t.Errorf("stamped=%x\nwant   =%x", got, want)
-	}
 }
 
 // TestParseCoAPMessageKeepsIllegalOptionLengths: the parser keeps every option
@@ -257,7 +244,9 @@ func TestEnhAckForAnotherNodeConfirmsNothing(t *testing.T) {
 
 // TestZoneRelayRefusedBySize: a zone hop that cannot fit one Data frame is
 // refused when it is relayed, with its own reason, instead of being queued and
-// failing at send time.
+// failing at send time. The hop carries the source IID inline and the hop
+// limit where the uplink carries the destination IID, so a 127-byte uplink
+// relays as 128 bytes.
 func TestZoneRelayRefusedBySize(t *testing.T) {
 	dev := mustHex(NodeByAny("a304").WireLE)
 	peer := mustHex(NodeByAny("a70a").WireLE)
@@ -270,7 +259,7 @@ func TestZoneRelayRefusedBySize(t *testing.T) {
 			Path: []string{"z", "s"}, Query: []string{"lid=2"}, Options: []CoAPOption{optOctets},
 			Payload: bytes.Repeat([]byte{0x11}, n),
 		})
-		if len(raw) >= 120 {
+		if len(raw) >= 127 {
 			break
 		}
 	}

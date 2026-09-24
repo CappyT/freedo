@@ -180,7 +180,7 @@ func (e *EmuState) configBase(key string) cfgSnapshot {
 
 // patchConfigDocument merges updates into the document and keeps its ETag.
 func patchConfigDocument(previous cfgSnapshot, updates []TLV) cfgSnapshot {
-	merged := configDocument(mergeConfigTLVs(withoutConfigETag(parseTLVList(previous.body)), updates))
+	merged := configDocument(mergeConfigTLVs(withoutConfigETag(parseTLVList(previous.body)), updates), false)
 	etag := append([]byte(nil), previous.etag...)
 	document := append(merged, TLV{Tag: configEtagTag, Val: etag})
 	return cfgSnapshot{body: encodeTLVs(document), etag: etag}

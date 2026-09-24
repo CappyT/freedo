@@ -355,52 +355,6 @@ func TestBuildSetpointOffRejectsReturnToSchedule(t *testing.T) {
 	}
 }
 
-// TestStampSessionID: the relay path adds the option only where it is missing.
-// A message that already names its author goes on untouched, which is what keeps
-// a relayed device request byte-identical to the bridge's own second hop.
-func TestStampSessionID(t *testing.T) {
-	mine := mustHex("a1b2c3d4e5f60718")
-	theirs := mustHex("5e5500000000000a")
-	base := CoAPReq{
-		Type: "CON", Code: "0.03", MID: 0x790c, Token: []byte{0x20},
-		Path: []string{"z", "s"}, Query: []string{"lid=3"},
-		Options: []CoAPOption{{Num: 12, Val: []byte{42}}},
-		Payload: mustHex("6280020866"),
-	}
-	bare, err := buildCoAPMessage(base)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if got, err := StampSessionID(bare, nil); err != nil || !bytes.Equal(got, bare) {
-		t.Errorf("empty id rewrote the message: %x, %v", got, err)
-	}
-
-	stamped, err := StampSessionID(bare, mine)
-	if err != nil {
-		t.Fatal(err)
-	}
-	m, err := parseCoAPMessage(stamped)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if o, ok := m.Option(2048); !ok || !bytes.Equal(o.Val, mine) {
-		t.Errorf("option 2048 = %x, ok=%t, want %x", o.Val, ok, mine)
-	}
-	if m.MID != base.MID || !bytes.Equal(m.Token, base.Token) || m.URI() != "z/s?lid=3" ||
-		m.Code != base.Code || m.Type != base.Type || !bytes.Equal(m.Payload, base.Payload) {
-		t.Errorf("the stamp changed the message identity: %+v", m)
-	}
-
-	kept, err := StampSessionID(stamped, theirs)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(kept, stamped) {
-		t.Errorf("a message that already names its author was rewritten: %x", kept)
-	}
-}
-
 // capturedDHWSetpoint is the real bridge -> RU wall thermostat downlink the app
 // produced when it set the boiler hot-water setpoint to 53.00 C
 // (tado_capture/coap_sniff_1786609624.log, t=1786610002.738). The device echoed

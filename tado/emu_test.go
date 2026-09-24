@@ -2303,16 +2303,16 @@ func TestZoneUplinkRelayed(t *testing.T) {
 	}
 }
 
-// TestZoneRelayStampsAuthorSession: a relayed request names its author in option
-// 2048. A device that echoed a session id gets that value back on the wire; one
-// we have heard nothing from yet gets the 025e we serve it on auth/token.
-func TestZoneRelayStampsAuthorSession(t *testing.T) {
+// TestZoneRelayForwardsRequestVerbatim: a relayed request keeps the CoAP bytes
+// its author sent. The commercial bridge never adds option 2048 to a relayed
+// request (1444 relayed pairs in capture-app-20260907 and ota-watch-20260923/24,
+// every one identical on both hops), also for an author that echoes a session
+// id on its own uplinks.
+func TestZoneRelayForwardsRequestVerbatim(t *testing.T) {
 	sender := mustHex(NodeByAny("0a01").WireLE)
 	peer := mustHex(NodeByAny("a205").WireLE)
-	echoed := mustHex("5e55000000000001")
 
-	relayedSession := func(t *testing.T, echo []byte) []byte {
-		t.Helper()
+	for _, echo := range [][]byte{nil, mustHex("5e55000000000001")} {
 		e, log, _ := newTestEmu(t)
 		if echo != nil {
 			e.OnFrame(deviceUplink(t, sender, CoAPReq{
@@ -2322,11 +2322,17 @@ func TestZoneRelayStampsAuthorSession(t *testing.T) {
 				Payload: TLV{Tag: "0140", Val: []byte{0x00, 0x00}}.Encode(),
 			}))
 		}
-		e.OnFrame(zoneUplink(t, sender, peer, CoAPReq{
+		up := zoneUplink(t, sender, peer, CoAPReq{
 			Type: "CON", Code: "0.03", MID: 0x3101, Token: []byte{0x11},
 			Path: []string{"z", "s"}, Query: []string{"lid=10"}, Options: []CoAPOption{optOctets},
 			Payload: TLV{Tag: "40a0", Val: []byte{56}}.Encode(),
-		}))
+		})
+		uf, err := ParseData(NetworkKey, up)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sent := ParseApp(uf.Plaintext).CoAP
+		e.OnFrame(up)
 		out, err := e.ScheduleDownlink(hex.EncodeToString(peer))
 		if err != nil {
 			t.Fatalf("%v; unhandled:\n%s", err, log.Summary())
@@ -2335,19 +2341,15 @@ func TestZoneRelayStampsAuthorSession(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		return optionValue(ParseApp(f.Plaintext).CoAP, coapSessionOption)
-	}
-
-	if got := relayedSession(t, nil); !bytes.Equal(got, sessionID(sender)) {
-		t.Errorf("relayed option 2048 = %x, want the served id %x", got, sessionID(sender))
-	}
-	if got := relayedSession(t, echoed); !bytes.Equal(got, echoed) {
-		t.Errorf("relayed option 2048 = %x, want the echoed %x", got, echoed)
+		relayed := ParseApp(f.Plaintext).CoAP
+		if !bytes.Equal(relayed.Raw, sent.Raw) {
+			t.Errorf("echo=%x: relayed CoAP\n got =%x\n want=%x", echo, relayed.Raw, sent.Raw)
+		}
 	}
 }
 
 // TestZoneRelayAnswerCarriesNoSession: a relayed 2.xx keeps the shape the capture
-// recorded, which carries no session id. Only the author of a request is named.
+// recorded, which carries no session id.
 func TestZoneRelayAnswerCarriesNoSession(t *testing.T) {
 	sender := mustHex(NodeByAny("0a01").WireLE)
 	peer := mustHex(NodeByAny("a205").WireLE)

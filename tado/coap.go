@@ -464,25 +464,6 @@ func coapOptionExt(b []byte, i, v int) (int, int, error) {
 	return v, i, nil
 }
 
-// appendCoAPOptionHeader appends the RFC 7252 option header for a delta and a
-// value length.
-func appendCoAPOptionHeader(out []byte, delta, length int) []byte {
-	nibble := func(v int) (byte, []byte) {
-		switch {
-		case v < 13:
-			return byte(v), nil
-		case v < 269:
-			return 13, []byte{byte(v - 13)}
-		}
-		return 14, binary.BigEndian.AppendUint16(nil, uint16(v-269))
-	}
-	d, dx := nibble(delta)
-	l, lx := nibble(length)
-	out = append(out, d<<4|l)
-	out = append(out, dx...)
-	return append(out, lx...)
-}
-
 // --- context-0 (zone / "lid=") downlink builder ---
 //
 // The zone path uses a different IPHC encoding from the link-local one in

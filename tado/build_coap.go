@@ -118,6 +118,8 @@ func WrapAppPayload(coapPacket []byte, counter uint32, trailer []byte) []byte {
 // BuildCoAPAck builds an ACK response (2.04 Changed / 2.05 Content / 2.03 Valid)
 // to a device uplink, echoing its MID and token. The addressing arguments are
 // the response's own: the caller passes the uplink's src/dst and ports swapped.
+// It adds no Content-Format: no captured bridge answer to a direct request
+// carries one, the auth/token 2.05 and the d/lock 2.05 included.
 func BuildCoAPAck(code string, mid uint16, token []byte, payload []byte, srcEUI, dstEUI []byte, srcPort, dstPort uint16, extra ...CoAPOption) ([]byte, error) {
 	r := CoAPReq{
 		Type:    "ACK",
@@ -133,10 +135,7 @@ func BuildCoAPAck(code string, mid uint16, token []byte, payload []byte, srcEUI,
 	if token == nil {
 		r.Token = []byte{} // an ACK echoes the request token verbatim, empty included
 	}
-	if len(payload) > 0 {
-		r.Options = []CoAPOption{{Num: 12, Val: []byte{42}}} // application/octet-stream
-	}
-	r.Options = append(r.Options, extra...)
+	r.Options = extra
 	return BuildCoAP(r)
 }
 
@@ -190,53 +189,6 @@ func BuildZoneRelay(msg, srcIID, dstEUI []byte, srcPort, dstPort uint16) ([]byte
 	out = binary.BigEndian.AppendUint16(out, dp)
 	out = binary.BigEndian.AppendUint16(out, udpChecksumV6(src, contextAddr(dstEUI), sp, dp, msg))
 	return append(out, msg...), nil
-}
-
-// StampSessionID inserts option 2048 set to id into a CoAP message. It returns
-// msg untouched when id is empty or the message already carries the option,
-// which is the normal case on the relay path: a device stamps its own session
-// id and the bridge forwards those bytes verbatim. An empty message (code 0.00)
-// stays untouched too: RFC 7252 allows it no option.
-//
-// The insertion splices the serialized message and decodes no option value, so
-// every byte of the original stays, malformed options included. Only the header
-// of the option that follows 2048, if any, is re-encoded for its new delta.
-func StampSessionID(msg, id []byte) ([]byte, error) {
-	if len(id) == 0 {
-		return msg, nil
-	}
-	opts, end, err := walkCoAPOptions(msg)
-	if err != nil {
-		return nil, err
-	}
-	if msg[1] == 0 {
-		return msg, nil
-	}
-	prev, next := 0, len(opts)
-	for i, o := range opts {
-		if o.num == coapSessionOption {
-			return msg, nil
-		}
-		if o.num > coapSessionOption {
-			next = i
-			break
-		}
-		prev = o.num
-	}
-	at := end
-	if next < len(opts) {
-		at = opts[next].start
-	}
-	out := make([]byte, 0, len(msg)+len(id)+8)
-	out = append(out, msg[:at]...)
-	out = appendCoAPOptionHeader(out, coapSessionOption-prev, len(id))
-	out = append(out, id...)
-	if next < len(opts) {
-		o := opts[next]
-		out = appendCoAPOptionHeader(out, o.num-coapSessionOption, o.end-o.val)
-		at = o.val
-	}
-	return append(out, msg[at:]...), nil
 }
 
 // restampCoAP re-serializes a link-local datagram built by BuildCoAP with a

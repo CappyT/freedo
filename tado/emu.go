@@ -986,7 +986,7 @@ func (e *EmuState) handleCoAP(f *Frame, m *CoAPMessage, class FrameClass, srcLbl
 			payload := flowSetpointPayload(tempC)
 			if etag, present := m.Option(4); present && bytes.Equal(etag.Val, FlowSetpointETag(payload)) {
 				code = "2.03"
-				pkt, err = BuildCoAPAck(code, m.MID, m.Token, nil, e.selfEUI, dst, m.DstPort, m.SrcPort)
+				pkt, err = e.validAnswer(m, dst, etag.Val)
 			} else {
 				pkt, err = BuildFlowSetpointCoAP(cid, tempC, m.MID, m.Token, e.selfEUI, dst)
 			}
@@ -1006,6 +1006,10 @@ func (e *EmuState) handleCoAP(f *Frame, m *CoAPMessage, class FrameClass, srcLbl
 			break
 		}
 		if p, sc, handled, serveErr := e.servedDirectZoneState(m, dst); handled {
+			pkt, code, err = p, sc, serveErr
+			break
+		}
+		if p, sc, handled, serveErr := e.servedChildLock(m, dst); handled {
 			pkt, code, err = p, sc, serveErr
 			break
 		}
@@ -1159,15 +1163,29 @@ func (e *EmuState) coapReplyActions(pkt, dst []byte, code, uri string, mid uint1
 	return actions, nil
 }
 
+// servedChildLock answers GET d/lock with the captured 2.05: ETag, Block2
+// 0/0/128 and the 0290 record. The ETag follows the body, as the captured one
+// does: two valves with the same lock state read the same ETag. A conditional
+// GET that presents it gets 2.03.
+func (e *EmuState) servedChildLock(m *CoAPMessage, dst []byte) ([]byte, string, bool, error) {
+	if m.Code != "0.01" || normalizeResource(m.Path) != "d/lock" {
+		return nil, "", false, nil
+	}
+	body := TLV{Tag: "0290", Val: []byte{boolByte(e.childLock[hexEUI(dst)])}}.Encode()
+	etag := configEtag(body)
+	if et, ok := m.Option(4); ok && bytes.Equal(et.Val, etag) {
+		pkt, err := e.validAnswer(m, dst, etag)
+		return pkt, "2.03", true, err
+	}
+	pkt, code, err := e.contentAnswer(m, dst, body, etag)
+	return pkt, code, true, err
+}
+
 // servedGet returns the body the bridge serves on a link-local request and the
-// response code to use. It covers held local state, the join surface, and
-// z/legionella. dst is the requesting device's wire EUI.
+// response code to use. It covers held local state and z/legionella. dst is
+// the requesting device's wire EUI.
 func (e *EmuState) servedGet(m *CoAPMessage, srcLbl string, dst []byte) (code string, body []byte, ok bool) {
 	switch res := normalizeResource(m.Path); res {
-	case "d/lock":
-		if m.Code == "0.01" {
-			return "2.05", TLV{Tag: "0290", Val: []byte{boolByte(e.childLock[hexEUI(dst)])}}.Encode(), true
-		}
 	case "d/dispsettings":
 		if m.Code == "0.01" {
 			return "2.05", TLV{Tag: "013f", Val: []byte{boolByte(e.tempUnitF[hexEUI(dst)])}}.Encode(), true
@@ -1356,7 +1374,7 @@ func (e *EmuState) servedConfigGet(m *CoAPMessage, dst []byte, srcLbl string) ([
 		return pkt, configUnavailable, true, err
 	}
 	if et, ok := m.Option(4); ok && bytes.Equal(et.Val, snap.etag) {
-		pkt, err := BuildCoAPAck("2.03", m.MID, m.Token, nil, e.selfEUI, dst, m.DstPort, m.SrcPort)
+		pkt, err := e.validAnswer(m, dst, snap.etag)
 		return pkt, "2.03", true, err
 	}
 	body := encodeTLVs(withoutConfigETag(parseTLVList(snap.body)))
@@ -1421,28 +1439,8 @@ func (e *EmuState) servedDirectZoneState(m *CoAPMessage, dst []byte) ([]byte, st
 		pkt, err := BuildCoAPAck("2.05", m.MID, m.Token, nil, e.selfEUI, dst, m.DstPort, m.SrcPort)
 		return pkt, "2.05", true, err
 	}
-	offset, size, szx, err := requestedBlock2(m)
-	if err != nil {
-		return nil, "", true, err
-	}
-	if offset > 0 || len(body) > size {
-		pkt, code, err := e.buildBlock2Response(m, dst, body, configEtag(body))
-		return pkt, code, true, err
-	}
-	token := m.Token
-	if token == nil {
-		token = []byte{}
-	}
-	pkt, err := BuildCoAP(CoAPReq{
-		Type: "ACK", Code: "2.05", MID: m.MID, Token: token,
-		Options: []CoAPOption{
-			{Num: 4, Val: configEtag(body)},
-			{Num: 23, Val: encodeCoAPUint(uint32(szx))},
-		},
-		Payload: body, SrcEUI: e.selfEUI, DstEUI: dst,
-		SrcPort: m.DstPort, DstPort: m.SrcPort,
-	})
-	return pkt, "2.05", true, err
+	pkt, code, err := e.contentAnswer(m, dst, body, configEtag(body))
+	return pkt, code, true, err
 }
 
 // directZoneReadBody is the block a device reads with GET h/<home>/z/N/s. The
@@ -1513,14 +1511,17 @@ func (e *EmuState) servedZoneConfig(m *CoAPMessage, dst []byte) ([]byte, string,
 	if m.Code != "0.01" || !ok {
 		return nil, "", false, nil
 	}
+	if _, err := e.inst.ZoneByNumber(zone); err != nil {
+		// Captured: "4.04 blk2=0/0/128", with no ETag and no body.
+		pkt, err := BuildCoAPAck("4.04", m.MID, m.Token, nil, e.selfEUI, dst, m.DstPort, m.SrcPort, requestBlock2(m)...)
+		return pkt, "4.04", true, err
+	}
 	doc, err := BuildZoneConfigDocument(e.inst, zone)
 	if err != nil {
 		return nil, "", true, err
 	}
 	if etag, present := m.Option(4); present && bytes.Equal(etag.Val, doc.ETag) {
-		// The captured 2.03 Valid echoes the ETag it validates.
-		pkt, err := BuildCoAPAck("2.03", m.MID, m.Token, nil, e.selfEUI, dst, m.DstPort, m.SrcPort,
-			CoAPOption{Num: 4, Val: doc.ETag})
+		pkt, err := e.validAnswer(m, dst, doc.ETag)
 		return pkt, "2.03", true, err
 	}
 	pkt, code, err := e.buildBlock2Response(m, dst, doc.Body, doc.ETag)
@@ -1563,13 +1564,54 @@ func (e *EmuState) buildBlock2Response(m *CoAPMessage, dst, body, etag []byte) (
 		Type: "ACK", Code: "2.05", MID: m.MID, Token: token,
 		Options: []CoAPOption{
 			{Num: 4, Val: etag},
-			{Num: 12, Val: []byte{42}},
 			{Num: 23, Val: encodeCoAPUint(block)},
 		},
 		Payload: body[offset:end], SrcEUI: e.selfEUI, DstEUI: dst,
 		SrcPort: m.DstPort, DstPort: m.SrcPort,
 	})
 	return pkt, "2.05", err
+}
+
+// contentAnswer answers a GET of a document. A document that fits the first
+// block the device asks for goes out whole in one 2.05 and opens no Block2
+// transfer; a longer one goes through buildBlock2Response.
+func (e *EmuState) contentAnswer(m *CoAPMessage, dst, body, etag []byte) ([]byte, string, error) {
+	offset, size, szx, err := requestedBlock2(m)
+	if err != nil {
+		return nil, "", err
+	}
+	if offset > 0 || len(body) > size {
+		return e.buildBlock2Response(m, dst, body, etag)
+	}
+	token := m.Token
+	if token == nil {
+		token = []byte{}
+	}
+	pkt, err := BuildCoAP(CoAPReq{
+		Type: "ACK", Code: "2.05", MID: m.MID, Token: token,
+		Options: []CoAPOption{
+			{Num: 4, Val: etag},
+			{Num: 23, Val: encodeCoAPUint(uint32(szx))},
+		},
+		Payload: body, SrcEUI: e.selfEUI, DstEUI: dst,
+		SrcPort: m.DstPort, DstPort: m.SrcPort,
+	})
+	return pkt, "2.05", err
+}
+
+// validAnswer is the 2.03 Valid to a conditional GET. Every captured 2.03
+// (d/config, z/N/config) echoes the ETag it validates and the request's Block2.
+func (e *EmuState) validAnswer(m *CoAPMessage, dst, etag []byte) ([]byte, error) {
+	opts := append([]CoAPOption{{Num: 4, Val: etag}}, requestBlock2(m)...)
+	return BuildCoAPAck("2.03", m.MID, m.Token, nil, e.selfEUI, dst, m.DstPort, m.SrcPort, opts...)
+}
+
+// requestBlock2 is the request's Block2 option to echo, none when it has none.
+func requestBlock2(m *CoAPMessage) []CoAPOption {
+	if o, ok := m.Option(23); ok {
+		return []CoAPOption{{Num: 23, Val: o.Val}}
+	}
+	return nil
 }
 
 func zoneConfigPath(path string, in *Install) (int, bool) {
@@ -1634,8 +1676,7 @@ func encodeCoAPUint(v uint32) []byte {
 // servedTime answers a device's GET of "time" with the wall clock. The bridge
 // itself does not implement the resource - it relays it to the cloud - so the
 // answer reproduces the cloud's wire form: a 2.05 with no options and a 5-byte
-// nanopb body. It builds its own datagram because BuildCoAPAck would append a
-// Content-Format option to a non-empty payload.
+// nanopb body.
 //
 // The answer is emitted synchronously with the request on purpose: the device
 // discards a "time" response older than 5 s
@@ -2066,20 +2107,16 @@ func (e *EmuState) fanOutZone(f *Frame, m *CoAPMessage, class FrameClass, srcLbl
 }
 
 // buildZoneHop serializes one re-emission of m towards dst, keeping srcIID as
-// the IPv6 source. It refuses a datagram whose inline checksum we cannot
-// reproduce from the addresses and Raw, and a hop too large for one Data
-// frame: the relay path does not fragment.
+// the IPv6 source. Raw goes out unchanged: in the captures the commercial
+// bridge never adds option 2048 to a request it relays. It refuses a datagram
+// whose inline checksum we cannot reproduce from the addresses and Raw, and a
+// hop too large for one Data frame: the relay path does not fragment.
 func (e *EmuState) buildZoneHop(f *Frame, m *CoAPMessage, srcIID, dst []byte, class FrameClass, srcLbl, dstLbl string) ([]byte, bool) {
 	if ck, ok := m.RecomputeChecksum(f.SrcEUI(), f.DstEUI); !ok || ck != m.Checksum {
 		e.log.Log(class.String(), srcLbl, dstLbl, rsnZoneIncomplete+" uri="+m.URI(), f.Hex())
 		return nil, false
 	}
-	msg, err := StampSessionID(m.Raw, e.relaySessionID(m, srcIID))
-	if err != nil {
-		e.log.Log(class.String(), srcLbl, dstLbl, rsnBuildFail+" "+err.Error(), f.Hex())
-		return nil, false
-	}
-	pkt, err := BuildZoneRelay(msg, srcIID, dst, m.SrcPort, m.DstPort)
+	pkt, err := BuildZoneRelay(m.Raw, srcIID, dst, m.SrcPort, m.DstPort)
 	if err != nil {
 		e.log.Log(class.String(), srcLbl, dstLbl, rsnBuildFail+" "+err.Error(), f.Hex())
 		return nil, false
@@ -2089,26 +2126,6 @@ func (e *EmuState) buildZoneHop(f *Frame, m *CoAPMessage, srcIID, dst []byte, cl
 		return nil, false
 	}
 	return pkt, true
-}
-
-// relaySessionID names the author of a message we forward. A request carries the
-// originating device's session id: the one it echoes to us, or the 025e we
-// served it when it has echoed none yet. An answer carries no session id at all,
-// which is what the capture shows on every relayed 2.xx. Neither does an empty
-// ACK or RST: RFC 7252 allows it no option, and the capture relays it as the
-// same 4 bytes.
-func (e *EmuState) relaySessionID(m *CoAPMessage, srcIID []byte) []byte {
-	if !isRequestCode(m.Code) {
-		return nil
-	}
-	author := wireFromIID(srcIID)
-	if author == nil {
-		return nil
-	}
-	if ns, ok := e.nodes[hexEUI(author)]; ok && len(ns.Option2048) > 0 {
-		return ns.Option2048
-	}
-	return sessionID(author)
 }
 
 // queueZoneHop queues one re-emitted zone datagram against its target, keyed by
@@ -3834,8 +3851,9 @@ func configEtag(body []byte) []byte {
 // mergeConfigDocument merges a write into the device's last document and returns
 // the TLVs to put on the wire and the document to remember. They are the same
 // list: the bridge writes the whole document, never the changed tags alone.
-// etagInput joins the document in the ETag hash.
-func mergeConfigDocument(previous cfgSnapshot, w ConfigWrite, etagInput []byte) ([]TLV, cfgSnapshot, error) {
+// etagInput joins the document in the ETag hash. thermostat selects the wall
+// thermostat's document shape (configDocument).
+func mergeConfigDocument(previous cfgSnapshot, w ConfigWrite, etagInput []byte, thermostat bool) ([]TLV, cfgSnapshot, error) {
 	if err := w.Validate(); err != nil {
 		return nil, cfgSnapshot{}, err
 	}
@@ -3845,7 +3863,7 @@ func mergeConfigDocument(previous cfgSnapshot, w ConfigWrite, etagInput []byte) 
 	}
 
 	base := withoutConfigETag(parseTLVList(previous.body))
-	merged := configDocument(mergeConfigTLVs(base, updates))
+	merged := configDocument(mergeConfigTLVs(base, updates), thermostat)
 	etag := append([]byte(nil), w.Etag...)
 	switch {
 	case len(etag) > 0:
@@ -3934,10 +3952,11 @@ func (e *EmuState) mergeDeviceConfigOn(base cfgSnapshot, key string, w ConfigWri
 		w.OfflineScheduleEnabled = e.offlineSchedule(key, w.OfflineScheduleEnabled)
 	}
 	var etagInput []byte
-	if e.isThermostat(key) {
+	thermostat := e.isThermostat(key)
+	if thermostat {
 		etagInput = e.flowETagInput()
 	}
-	return mergeConfigDocument(base, w, etagInput)
+	return mergeConfigDocument(base, w, etagInput, thermostat)
 }
 
 func (e *EmuState) isThermostat(key string) bool {
@@ -5317,7 +5336,7 @@ var knownResources = map[string]bool{
 	"z/extui": true, "z/legionella": true, "z/sched": true,
 	"d/config": true, "d/lock": true, "d/sched": true, "d/calibrate": true, "d/currentlog": true,
 	"d/dispsettings": true, "d/fw": true, "d/fw/state": true, "d/fw/rq": true,
-	"d/err": true, "d/info": true, "d/identify": true, "d/reboot": true,
+	"d/err": true, "d/info": true, "d/identify": true, "d/reboot": true, "d/factoryreset": true,
 	"d/test/v1": true, "d/dbg/st": true, "d/dbg/m": true, "d/dbg2/tlvs": true,
 	"d/hvac/testinterface": true, "d/hvac/trigger": true,
 	"auth/key": true, "auth/token": true,

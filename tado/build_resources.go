@@ -205,11 +205,31 @@ func configDocDefaults() []TLV {
 	}
 }
 
+// thermostatConfigDocDefaults are the always-present tags of the wall
+// thermostat's document. Its captured document carries no 021a and no 0149,
+// and 0158 = 0000 (capture-app-20260907.log line 70943,
+// ota-watch-20260924-1410.log line 5199). The thermostat refuses every d/config
+// write, so no operator value replaces them.
+func thermostatConfigDocDefaults() []TLV {
+	return []TLV{
+		{Tag: "0143", Val: []byte{0x00}},
+		{Tag: "02b3", Val: []byte{0x00}},
+		{Tag: changeNotifyTag, Val: []byte{0x00, 0x00}},
+	}
+}
+
 // configDocument renders the merged store TLVs as the whole document the bridge
 // puts on the wire: every always-present tag filled from the captured defaults,
 // every tag in the captured order. A tag the order does not name keeps its
 // position after the named ones. The 015a ETag is the caller's to append.
-func configDocument(merged []TLV) []TLV {
+// thermostat selects the wall thermostat's document, which drops a 021a, 0149
+// or 0158 that merged holds.
+func configDocument(merged []TLV, thermostat bool) []TLV {
+	defaults := configDocDefaults()
+	if thermostat {
+		defaults = thermostatConfigDocDefaults()
+		merged = withoutTag(withoutTag(withoutTag(merged, configConst021a.Tag), orientationTag), changeNotifyTag)
+	}
 	byTag := map[string][]TLV{}
 	var extra []string
 	for _, tlv := range merged {
@@ -218,7 +238,7 @@ func configDocument(merged []TLV) []TLV {
 		}
 		byTag[tlv.Tag] = append(byTag[tlv.Tag], tlv)
 	}
-	for _, def := range configDocDefaults() {
+	for _, def := range defaults {
 		if _, seen := byTag[def.Tag]; !seen {
 			byTag[def.Tag] = []TLV{def}
 		}
@@ -527,7 +547,8 @@ func flowInRange(tempC float64) error {
 }
 
 // BuildFlowSetpointCoAP answers the thermostat circuit-config GET with tag 2040.
-// Captures contain this pull response and no coordinator push.
+// Captures contain this pull response and no coordinator push. The captured
+// 2.05 carries ETag and Block2 0/0/128 and no Content-Format.
 func BuildFlowSetpointCoAP(id int, tempC float64, mid uint16, token, srcEUI, dstEUI []byte) ([]byte, error) {
 	if err := flowInRange(tempC); err != nil {
 		return nil, err
@@ -544,7 +565,6 @@ func BuildFlowSetpointCoAP(id int, tempC float64, mid uint16, token, srcEUI, dst
 		Token: token,
 		Options: []CoAPOption{
 			{Num: 4, Val: FlowSetpointETag(payload)},
-			{Num: 12, Val: []byte{42}},
 			{Num: 23, Val: []byte{0x03}},
 		},
 		Payload: payload,

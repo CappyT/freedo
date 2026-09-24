@@ -83,16 +83,6 @@ func TestZoneRelayEmptyMessageVerbatim(t *testing.T) {
 	}
 }
 
-// TestStampSessionIDLeavesEmptyMessage: an empty message takes no option.
-func TestStampSessionIDLeavesEmptyMessage(t *testing.T) {
-	for _, msg := range [][]byte{{0x60, 0x00, 0x74, 0x2b}, {0x70, 0x00, 0x74, 0x2b}} {
-		got, err := StampSessionID(msg, mustHex("5e55000000000001"))
-		if err != nil || !bytes.Equal(got, msg) {
-			t.Errorf("StampSessionID(%x) = %x, %v; want it untouched", msg, got, err)
-		}
-	}
-}
-
 // TestBlock2ReasmIgnoresRetransmittedBlock: a block that arrives again, as the
 // device's MAC retransmission of it, leaves the transfer open. A block with the
 // same number and other bytes still ends the transfer.

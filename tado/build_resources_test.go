@@ -347,8 +347,8 @@ func TestBuildFlowSetpointCoAP(t *testing.T) {
 	if o, ok := m.Option(4); !ok || !bytes.Equal(o.Val, FlowSetpointETag(m.Payload)) {
 		t.Errorf("ETag = %v/%x, want 4/%x", ok, o.Val, FlowSetpointETag(m.Payload))
 	}
-	if o, ok := m.Option(12); !ok || !bytes.Equal(o.Val, []byte{42}) {
-		t.Errorf("content-format = %v/%x, want 12/2a", ok, o.Val)
+	if got, want := optionNums(m), optionNums(capApp.CoAP); fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("options %v, want the captured %v", got, want)
 	}
 	if o, ok := m.Option(23); !ok || !bytes.Equal(o.Val, []byte{0x03}) {
 		t.Errorf("Block2 = %v/%x, want 23/03", ok, o.Val)
@@ -731,7 +731,7 @@ func TestConfigDocumentMatchesCapture(t *testing.T) {
 		ChangeNotify:           cfgPtr(uint16(0x0200)),
 		Etag:                   mustHex(firstETag),
 	}
-	first, snap, err := mergeConfigDocument(cfgSnapshot{}, cached, nil)
+	first, snap, err := mergeConfigDocument(cfgSnapshot{}, cached, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -751,7 +751,7 @@ func TestConfigDocumentMatchesCapture(t *testing.T) {
 	// analysis prose reads ffb6, which is -74, and its own decoded line says -70.
 	second, _, err := mergeConfigDocument(snap, ConfigWrite{
 		CalibOffset: cfgPtr(-70), Etag: mustHex(nextETag),
-	}, nil)
+	}, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -765,7 +765,7 @@ func TestConfigDocumentMatchesCapture(t *testing.T) {
 	// no default: only the device kind decides it.
 	bare, _, err := mergeConfigDocument(cfgSnapshot{}, ConfigWrite{
 		CalibOffset: cfgPtr(-70), Etag: mustHex(nextETag),
-	}, nil)
+	}, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
