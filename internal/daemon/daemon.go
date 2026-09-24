@@ -1751,6 +1751,8 @@ func (d *daemon) mux() *http.ServeMux {
 	m.HandleFunc("POST /api/boiler/flow", d.postBoilerFlow)
 	m.HandleFunc("POST /api/outdoor", d.postOutdoor)
 	m.HandleFunc("POST /api/pair", d.postPair)
+	m.HandleFunc("GET /api/pair/window", d.getPairWindow)
+	m.HandleFunc("POST /api/pair/window", d.postPairWindow)
 	// Active-GET returns the correlated response, or {"queued":true}.
 	m.HandleFunc("GET /api/nodes/{id}/fw", d.getNodeFw)
 	m.HandleFunc("POST /api/nodes/{id}/fw", d.postNodeFw)
@@ -3714,6 +3716,9 @@ func (d *daemon) getHeatsourceCaps(w http.ResponseWriter, r *http.Request) {
 	write(w, v, err)
 }
 
+// postPair queues d/pair. An empty target names the one device the open pair
+// window heard under the pairing key; a target outside the installation may
+// name a device of that window by wire EUI or short address.
 func (d *daemon) postPair(w http.ResponseWriter, r *http.Request) {
 	var b struct {
 		Target        string `json:"target"`
@@ -3722,12 +3727,24 @@ func (d *daemon) postPair(w http.ResponseWriter, r *http.Request) {
 	if !decodeBody(w, r, &b) {
 		return
 	}
-	dev, err := d.resolve(b.Target)
-	if err != nil {
-		writeResolveErr(w, err)
-		return
+	target := ""
+	if b.Target != "" {
+		dev, err := d.resolve(b.Target)
+		if err == nil {
+			target = hex.EncodeToString(dev.WireEUI())
+		} else {
+			v, jerr := d.doReq(r, func(e *tado.EmuState) (any, error) {
+				t, _ := e.PairJoinerTarget(b.Target)
+				return t, nil
+			})
+			t, _ := v.(string)
+			if jerr != nil || t == "" {
+				writeResolveErr(w, err)
+				return
+			}
+			target = t
+		}
 	}
-	target := hex.EncodeToString(dev.WireEUI())
 	key := d.inst.Load().NetworkKey()
 	if b.NetworkKeyHex != "" {
 		k, err := hex.DecodeString(b.NetworkKeyHex)
@@ -3738,6 +3755,13 @@ func (d *daemon) postPair(w http.ResponseWriter, r *http.Request) {
 		key = k
 	}
 	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
+		if target == "" {
+			t, err := e.PairAutoTarget()
+			if err != nil {
+				return nil, err
+			}
+			target = t
+		}
 		if err := e.EnqueuePair(target, key); err != nil {
 			return nil, err
 		}
@@ -3745,8 +3769,34 @@ func (d *daemon) postPair(w http.ResponseWriter, r *http.Request) {
 		return e.Pending(target), nil
 	})
 	queued(w, v, d.persist(err), map[string]any{
-		"note": "press the valve button to open its commissioning window first; unvalidated on-air",
+		"target": target,
+		"note":   "press the valve button to open its commissioning window first; unvalidated on-air",
 	})
+}
+
+func (d *daemon) getPairWindow(w http.ResponseWriter, r *http.Request) {
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) { return e.PairWindow(), nil })
+	write(w, v, err)
+}
+
+// postPairWindow opens the pair window for "seconds"; 0 closes it.
+func (d *daemon) postPairWindow(w http.ResponseWriter, r *http.Request) {
+	var b struct {
+		Seconds int `json:"seconds"`
+	}
+	if !decodeBody(w, r, &b) {
+		return
+	}
+	window := time.Duration(b.Seconds) * time.Second
+	if b.Seconds < 0 || window > tado.MaxPairWindow {
+		writeErr(w, http.StatusBadRequest, fmt.Sprintf("seconds must be between 0 and %d", int(tado.MaxPairWindow/time.Second)))
+		return
+	}
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
+		e.OpenPairWindow(window)
+		return e.PairWindow(), nil
+	})
+	write(w, v, err)
 }
 
 // --- entry point ---

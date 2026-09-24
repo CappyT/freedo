@@ -323,6 +323,11 @@ type EmuStats struct {
 	// Fault-injection counters. Non-zero means the run was deliberately broken.
 	TimeSuppressed int
 	TimeDelayed    int
+	// ICMPv6Answers counts the Echo Replies and Neighbor Advertisements queued.
+	ICMPv6Answers int
+	// PairingKeyFrames counts the frames that failed the network key and
+	// verified under PairingKey while the pair window was open.
+	PairingKeyFrames int
 }
 
 // queuedDownlink is one pending command to a device. The CoAP datagram is built
@@ -627,6 +632,8 @@ type EmuState struct {
 
 	bridgeFrames int    // Data frames seen carrying our own source prefix
 	maxBridgeCtr uint32 // highest anti-replay counter seen on those frames
+
+	pair pairWindow
 }
 
 // NewEmu returns an emulator. A nil logger discards.
@@ -796,6 +803,9 @@ func (e *EmuState) onData(class FrameClass, raw []byte) []Action {
 	if err != nil {
 		reason := rsnMalformed
 		if errors.Is(err, ErrMICFail) {
+			if e.notePairingData(class, raw) {
+				return nil
+			}
 			reason = rsnMICFail
 			e.stats.MICFails++
 		}
@@ -823,6 +833,7 @@ func (e *EmuState) onData(class FrameClass, raw []byte) []Action {
 		return nil
 	}
 
+	e.noteNetworkKeyFrame(srcEUI)
 	ns := e.node(srcEUI)
 	ns.LastSeen = e.cfg.Now()
 	ns.LastSeq = f.Seq
@@ -888,7 +899,9 @@ func (e *EmuState) onData(class FrameClass, raw []byte) []Action {
 	}
 
 	if msg == nil {
-		if !icmp {
+		if icmp {
+			e.answerICMPv6(srcEUI, f.DstEUI, f.Plaintext[8:len(f.Plaintext)-2])
+		} else {
 			e.log.Log(class.String(), srcLbl, dstLbl, rsnNoCoAP, f.Hex())
 		}
 	} else if reply, ok := e.handleCoAP(f, msg, class, srcLbl, dstLbl); ok {
@@ -2676,6 +2689,9 @@ func (e *EmuState) onBroadcast(raw []byte) []Action {
 	if err != nil {
 		reason := rsnMalformed
 		if errors.Is(err, ErrMICFail) {
+			if !bridgeSource && e.notePairingBroadcast(raw) {
+				return nil
+			}
 			reason = rsnMICFail
 			e.stats.MICFails++
 		}
@@ -2697,6 +2713,19 @@ func (e *EmuState) onBroadcast(raw []byte) []Action {
 		e.stats.ICMPv6++
 		e.stats.NeighborSolicitations++
 		reason = rsnNeighborSolicit
+	}
+	if !bridgeSource {
+		e.noteNetworkKeyFrame(b.SrcEUI)
+	}
+	if b.ICMPType == icmpNeighborSolicit && !bridgeSource && !e.BridgeSeen() {
+		e.log.Log("Broadcast", src, "ffff", reason, hex.EncodeToString(raw))
+		// The advertisement is unicast Data: it goes out on the rendezvous the
+		// solicitation opened, ahead of the next uplink of the device.
+		if e.answerICMPv6(b.SrcEUI, nil, b.Plaintext[2:len(b.Plaintext)-2]) {
+			actions, _ := e.nextDownlink(b.SrcEUI, src)
+			return actions
+		}
+		return nil
 	}
 	if b.ICMPType != icmpRouterSolicit || bridgeSource || e.BridgeSeen() {
 		e.log.Log("Broadcast", src, "ffff", reason, hex.EncodeToString(raw))
@@ -3548,8 +3577,9 @@ func (e *EmuState) TakeOpenWindowReports() []OpenWindowReport {
 
 // EnqueuePair queues the d/pair commission write that hands networkKey (16 bytes,
 // plaintext) to a device. Its Data frame is encrypted under PairingKey, so the
-// device accepts it only while its commissioning window is open. The request
-// carries an empty token, so the terminal 2.04 echoes an empty token too.
+// device accepts it only while its commissioning window is open, unless the
+// open pair window heard the device under the network key (pairKeyFor). The
+// request carries an empty token, so the terminal 2.04 echoes an empty token too.
 func (e *EmuState) EnqueuePair(target string, networkKey []byte) error {
 	wire, _, err := e.resolve(target)
 	if err != nil {
@@ -3560,7 +3590,7 @@ func (e *EmuState) EnqueuePair(target string, networkKey []byte) error {
 	if err != nil {
 		return err
 	}
-	if err := e.enqueue(target, "pair", "pair", pkt, PairingKey, mid); err != nil {
+	if err := e.enqueue(target, "pair", "pair", pkt, e.pairKeyFor(wire), mid); err != nil {
 		return err
 	}
 	q := e.queue[hexEUI(wire)]
@@ -4925,7 +4955,7 @@ func (e *EmuState) DeferDownlinkAttempt(dstEUI []byte, seq byte, retryAt time.Ti
 func (e *EmuState) confirmByMID(srcEUI []byte, m *CoAPMessage) {
 	key := hexEUI(srcEUI)
 	q := e.queue[key]
-	if len(q) == 0 || !q[0].inFlight || q[0].mid != m.MID || q[0].kind == "zone" || q[0].kind == "auth" {
+	if len(q) == 0 || !q[0].inFlight || q[0].mid != m.MID || q[0].kind == "zone" || q[0].kind == "auth" || q[0].kind == icmpKind {
 		return
 	}
 	if q[0].kind == fwKind {
@@ -4948,7 +4978,10 @@ func (e *EmuState) confirmByMID(srcEUI []byte, m *CoAPMessage) {
 		// A retransmitted d/calibrate queues a second stroke, so any 2.xx closes
 		// it: the 2.05 comes from the firmware, not from a capture.
 		calibrated := d.kind == "calibrate" && strings.HasPrefix(m.Code, "2.")
-		if m.Code != code && !calibrated {
+		// A device that already holds the key answers d/pair 2.03
+		// (coap_sniff_1786619225).
+		paired := d.kind == "pair" && m.Code == "2.03"
+		if m.Code != code && !calibrated && !paired {
 			switch {
 			case strings.HasPrefix(m.Code, "4."):
 				if d.heating != nil {
@@ -5441,6 +5474,7 @@ const (
 	rsnRouterSolicit     = "icmpv6-router-solicitation"
 	rsnRouterAdvert      = "icmpv6-router-advertisement"
 	rsnNeighborSolicit   = "icmpv6-neighbor-solicitation"
+	rsnPairingKey        = "pairing-key-frame"
 	rsnUnknownEnhAck     = "enh-ack-from-unknown-node"
 	rsnDownlinkLost      = "downlink-undelivered"
 	rsnDownlinkReset     = "downlink-reset"

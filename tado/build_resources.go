@@ -453,11 +453,11 @@ const (
 )
 
 // BuildPairCoAP builds the d/pair commission write that hands the 16-byte
-// plaintext network key to a device, as tag8 0x12. The frame carrying it must be
-// encrypted under PairingKey, not under networkKey. The coordinator sends a CON
-// POST with an empty token, Content-Format 42 and option 2048, and with no
-// Uri-Port. The device answers 2.04 under the new network key. There is no id
-// query.
+// plaintext network key to a device, as tag8 0x12. A joining device reads it
+// under PairingKey only; EmuState.EnqueuePair picks the key. The coordinator
+// sends a CON POST with an empty token, Content-Format 42 and option 2048, and
+// with no Uri-Port. The device answers 2.04 under the new network key. There is
+// no id query.
 func BuildPairCoAP(networkKey []byte, mid uint16, srcEUI, dstEUI []byte) ([]byte, error) {
 	if len(networkKey) != 16 {
 		return nil, errors.New("tado: network key must be 16 bytes")
@@ -466,11 +466,14 @@ func BuildPairCoAP(networkKey []byte, mid uint16, srcEUI, dstEUI []byte) ([]byte
 	if err != nil {
 		return nil, err
 	}
-	return devicePost(deviceReq{
+	// Every captured d/pair goes from UDP 5683 to 5683, not from the bridge's
+	// request port 4005 (coap_sniff_1786619225, three requests).
+	return BuildCoAP(CoAPReq{
+		Type: "CON", Code: "0.02", MID: mid, Token: []byte{},
 		Path:    []string{"d", "pair"},
 		Options: []CoAPOption{optOctets, {Num: coapSessionOption, Val: session}},
 		Payload: encodeTLV8(pairPlainKeyTag, networkKey),
-		MID:     mid, Token: []byte{}, SrcEUI: srcEUI, DstEUI: dstEUI,
+		SrcEUI:  srcEUI, DstEUI: dstEUI, SrcPort: coapPort, DstPort: coapPort,
 	})
 }
 

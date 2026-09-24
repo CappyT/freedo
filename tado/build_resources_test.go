@@ -221,6 +221,12 @@ func TestBuildPairCoAP(t *testing.T) {
 	if len(m.Payload) != 18 {
 		t.Errorf("payload is %d bytes, want 18", len(m.Payload))
 	}
+	if m.SrcPort != 5683 || m.DstPort != 5683 {
+		t.Errorf("ports %d->%d, want 5683->5683 as captured", m.SrcPort, m.DstPort)
+	}
+	if err := checkInlineUDP(BridgeEUI, dst, pkt); err != nil {
+		t.Error(err)
+	}
 	if len(PairingKey) != 16 {
 		t.Errorf("PairingKey is %d bytes, want 16", len(PairingKey))
 	}

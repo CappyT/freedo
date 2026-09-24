@@ -400,8 +400,12 @@ func TestResourceDownlinks(t *testing.T) {
 					t.Errorf("query=%q, want it to contain %q", m.Query, q)
 				}
 			}
-			if m.SrcPort != 4005 || m.DstPort != 5683 {
-				t.Errorf("ports %d->%d, want 4005->5683", m.SrcPort, m.DstPort)
+			wantSrc := uint16(4005)
+			if c.name == "pair" {
+				wantSrc = 5683 // every captured d/pair leaves from 5683
+			}
+			if m.SrcPort != wantSrc || m.DstPort != 5683 {
+				t.Errorf("ports %d->%d, want %d->5683", m.SrcPort, m.DstPort, wantSrc)
 			}
 		})
 	}
