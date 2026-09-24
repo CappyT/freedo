@@ -115,9 +115,11 @@ func homePath(in *Install, rest ...string) []string {
 }
 
 // TestDirectZoneReadMatchesCapturedShape: away, the thermostat's GET
-// h/<home>/z/N/s gets the captured away block in the downlink order, whatever
-// the cache holds. Byte-exact against "capture-analysis-20260827.md", section
-// 2; the return to schedule matches the auto reads of the same capture.
+// h/<home>/z/N/s of a room zone gets the captured away block in the downlink
+// order, whatever the cache holds. Byte-exact against
+// "capture-analysis-20260827.md", section 2; the return to schedule matches the
+// auto reads of the same capture. The hot-water zone ignores away: see
+// TestHotWaterReadIgnoresAway.
 func TestDirectZoneReadMatchesCapturedShape(t *testing.T) {
 	in := synthInstall(t)
 	ru, err := in.Resolve("RU0000000001")
@@ -156,15 +158,6 @@ func TestDirectZoneReadMatchesCapturedShape(t *testing.T) {
 		},
 		want: "61600102" + "61800100" + "60200101" + "61e00100" +
 			"62400100" + "62e00100",
-	}, {
-		name: "hot water",
-		zone: 0,
-		cache: []TLV{
-			{Tag: "6280", Val: []byte{0x12, 0xc0}},
-			{Tag: "6240", Val: []byte{0x02}},
-		},
-		want: "61600102" + "61800100" + "60200102" + "61e00100" +
-			"62400102" + "62600101" + "62800212c0" + "62e00100",
 	}, {
 		// 6200 and 6440 never reach a read, on any plane.
 		name: "drops 6200 and 6440",
@@ -461,6 +454,64 @@ func TestHotWaterReadWithoutProgramKeepsHotWaterOn(t *testing.T) {
 	}
 	if enable, published := thermostatDHWEnable(state); !published || enable != 1 {
 		t.Errorf("restarted thermostat after the read: DHW enable=%d published=%v, want 1 published", enable, published)
+	}
+}
+
+// TestHotWaterReadIgnoresAway: away, the thermostat's read of the hot-water zone
+// keeps the home head and the program block, so zone_state_timer_cb keeps the
+// DHW enable on. The cloud reads zone 0 away with 6160=2 and 61e0=0, which on
+// the program (6240=0) turns hot water off; a cached manual overlay reads back
+// unchanged.
+func TestHotWaterReadIgnoresAway(t *testing.T) {
+	in := synthInstall(t)
+	ru, err := in.Resolve("RU0000000001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name  string
+		cache []TLV
+		want  string
+	}{{
+		name: "manual 48 C overlay",
+		cache: []TLV{
+			{Tag: "6160", Val: []byte{0x02}},
+			{Tag: "61e0", Val: []byte{0x00}},
+			{Tag: "6280", Val: []byte{0x12, 0xc0}},
+			{Tag: "6240", Val: []byte{0x02}},
+			{Tag: "6260", Val: []byte{0x01}},
+		},
+		want: "61600101" + "61800100" + "60200102" + "61e00101" + "62000212c0" +
+			"62400102" + "62600101" + "62800212c0" + "62e00100",
+	}, {
+		name: "program, nothing cached",
+		want: "61600101" + "61800100" + "60200102" + "61e00101" + "62000212c0" +
+			"62400100" + "62e00100",
+	}} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := NewEmu(in.EmuConfig(), nil)
+			e.SetHomeState(false, map[int]float64{0: 48, 4: 20})
+			if tc.cache != nil {
+				e.zoneState[zoneKey(0, "z/s")] = encodeTLVs(tc.cache)
+			}
+			raw := synthDeviceUplink(t, in, ru.WireEUI(), CoAPReq{
+				Type: "CON", Code: "0.01", MID: 0x7115, Token: []byte{0x07},
+				Path: homePath(in, "z", "0", "s"),
+			})
+			m := synthAnswer(t, in, e.OnFrame(raw), 0x7115)
+			if got := hex.EncodeToString(m.Payload); m.Code != "2.05" || got != tc.want {
+				t.Errorf("answer=%s body=%s, want 2.05 %s", m.Code, got, tc.want)
+			}
+			state := make(map[string]byte)
+			for _, tlv := range parseTLVList(m.Payload) {
+				if len(tlv.Val) == 1 {
+					state[tlv.Tag] = tlv.Val[0]
+				}
+			}
+			if enable, published := thermostatDHWEnable(state); !published || enable != 1 {
+				t.Errorf("away read: DHW enable=%d published=%v, want 1 published", enable, published)
+			}
+		})
 	}
 }
 

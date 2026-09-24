@@ -87,6 +87,40 @@ func nextZoneWrite(t *testing.T, d *daemon, target string) map[string]string {
 	return tags
 }
 
+// deliverAll takes every queued write of target in order, acknowledges each
+// one, and returns their TLVs keyed by tag.
+func deliverAll(t *testing.T, d *daemon, target string) []map[string]string {
+	t.Helper()
+	var out []map[string]string
+	for n := pending(t, d, target); n > 0; n-- {
+		v, err := d.do(func(e *tado.EmuState) (any, error) {
+			actions, ok, err := e.NextQueuedDownlink(target)
+			if err != nil || !ok || len(actions) == 0 {
+				return nil, errors.New("no queued downlink for " + target)
+			}
+			return actions[0].Bytes, nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		frame, err := tado.ParseData(defaultInstall.NetworkKey(), v.([]byte))
+		if err != nil {
+			t.Fatal(err)
+		}
+		m := tado.ParseApp(frame.Plaintext).CoAP
+		tags := map[string]string{}
+		for _, tlv := range tado.ParseTLVs(m.Payload) {
+			tags[tlv.Tag] = hex.EncodeToString(tlv.Val)
+		}
+		feed(t, d, defaultInstall, target, false, tado.CoAPReq{Type: "ACK", Code: "2.04", MID: m.MID, Token: m.Token})
+		out = append(out, tags)
+	}
+	if n := pending(t, d, target); n != 0 {
+		t.Fatalf("%s still holds %d queued writes after the ACKs", target, n)
+	}
+	return out
+}
+
 func dropQueue(t *testing.T, d *daemon, target string) {
 	t.Helper()
 	if _, err := d.do(func(e *tado.EmuState) (any, error) { return e.DropQueue(target), nil }); err != nil {
@@ -146,7 +180,8 @@ func TestSetpointDurationQueuesReturnToSchedule(t *testing.T) {
 
 // TestAwayToggleRewritesEveryZone: the switch to away queues one write per zone,
 // to its writer alone, keeping the overlay the zone already runs, so none
-// carries 6440. The other members take the block from the writer's echo.
+// carries 6440. The other members take the block from the writer's echo. The
+// hot-water zone ignores away and takes the home head.
 func TestAwayToggleRewritesEveryZone(t *testing.T) {
 	clock := newTestClock(time.Date(2026, 1, 5, 5, 0, 0, 0, time.UTC))
 	d, url := newHomeDaemon(t, clock)
@@ -177,20 +212,26 @@ func TestAwayToggleRewritesEveryZone(t *testing.T) {
 	if !res.Away || res.Queued != len(defaultInstall.Zones) {
 		t.Fatalf("away response=%+v, want one write per zone (%d)", res, len(defaultInstall.Zones))
 	}
+	hotWater := 0
 	for target, want := range writes {
-		v, err := d.do(func(e *tado.EmuState) (any, error) { return e.Pending(target), nil })
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got := v.(int); got != want {
+		if got := pending(t, d, target); got != want {
 			t.Errorf("%s holds %d queued writes, want %d", target, got, want)
 		}
-		if want == 0 {
-			continue
+		for _, tags := range deliverAll(t, d, target) {
+			if tags["6020"] == "02" {
+				hotWater++
+				wantTags(t, "the hot-water write of the away burst", tags, map[string]string{
+					"6160": "01", "61e0": "01",
+				}, "6440")
+				continue
+			}
+			wantTags(t, "the away burst on "+target, tags, map[string]string{
+				"6160": "02", "61e0": "00",
+			}, "6200", "6440")
 		}
-		wantTags(t, "the away burst on "+target, nextZoneWrite(t, d, target), map[string]string{
-			"6160": "02", "61e0": "00",
-		}, "6200", "6440")
+	}
+	if hotWater != 1 {
+		t.Errorf("the away burst holds %d hot-water writes, want 1", hotWater)
 	}
 
 	var state struct {

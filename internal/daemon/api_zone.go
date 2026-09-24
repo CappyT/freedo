@@ -365,8 +365,9 @@ func overlayKind(overlay byte) string {
 // zoneTargetView is what zone z targets now, from the z/s block the daemon
 // holds, its program, its window and the home state. targetC is null when the
 // device falls back to a value of its own: an open window, the away state, an
-// off overlay or a program block that is off. On air a timer is an until_next
-// overlay; endsAt is the deadline the coordinator keeps.
+// off overlay or a program block that is off. The hot-water zone ignores away.
+// On air a timer is an until_next overlay; endsAt is the deadline the
+// coordinator keeps.
 func (d *daemon) zoneTargetView(e *tado.EmuState, z *tado.Zone) map[string]any {
 	hotWater := z.Kind == tado.ZoneHotWater
 	view := map[string]any{
@@ -408,7 +409,7 @@ func (d *daemon) zoneTargetView(e *tado.EmuState, z *tado.Zone) map[string]any {
 			view["source"] = "boost"
 		}
 		view["targetC"] = view["overlay"].(map[string]any)["setpointC"]
-	case d.away:
+	case d.away && !hotWater:
 		view["source"] = "away"
 	case known:
 		view["source"] = "program"
