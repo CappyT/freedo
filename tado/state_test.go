@@ -703,6 +703,88 @@ func TestModeCarries6440OpenWindowDoesNot(t *testing.T) {
 	}
 }
 
+// TestZoneWriteLeavesUnknownSchedOut: at home, a write to a zone with no
+// program pushed and no 6200 in the zone cache leaves 6200 out, so the device
+// keeps its own. It never takes the node's last 6200: the wall thermostat sits
+// in the hot-water zone and in a heating zone, so that value may be the other
+// zone's.
+func TestZoneWriteLeavesUnknownSchedOut(t *testing.T) {
+	queuedTags := func(t *testing.T, e *EmuState, wire []byte) map[string]string {
+		t.Helper()
+		q := e.queue[hexEUI(wire)]
+		if len(q) == 0 {
+			t.Fatal("no queued write")
+		}
+		tags := make(map[string]string)
+		for _, tlv := range parseTLVList(parseBuilt(t, q[len(q)-1].coap).Payload) {
+			tags[tlv.Tag] = hex.EncodeToString(tlv.Val)
+		}
+		return tags
+	}
+	const ru = "RU1000000001" // hot water in zone 0, the writer of heating zone 1
+	for _, tc := range []struct {
+		name    string
+		zone    int
+		enqueue func(*EmuState) error
+	}{
+		{"setpoint", 1, func(e *EmuState) error {
+			return e.EnqueueSetpoint(ru, SetpointParams{ID: 1, Setpoint: 21, Sched: 21, Overlay: 2})
+		}},
+		{"off", 1, func(e *EmuState) error {
+			return e.EnqueueSetpoint(ru, SetpointParams{ID: 1, Overlay: 2, Off: true})
+		}},
+		{"return to schedule", 1, func(e *EmuState) error { return e.EnqueueSchedule(ru, 1) }},
+		{"boost", 1, func(e *EmuState) error { return e.EnqueueBoost(ru, 1, true) }},
+		{"rewrite", 1, func(e *EmuState) error { return e.EnqueueZoneRewrite(ru, 1) }},
+		{"hot water overlay", 0, func(e *EmuState) error { return e.EnqueueDHWOverlay(ru, 0, 48, true, 0) }},
+		{"hot water off", 0, func(e *EmuState) error { return e.EnqueueDHWOverlay(ru, 0, 0, false, 0) }},
+		{"hot water return to schedule", 0, func(e *EmuState) error { return e.EnqueueDHWSchedule(ru, 0) }},
+		{"hot water rewrite", 0, func(e *EmuState) error { return e.EnqueueZoneRewrite(ru, 0) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e, in := fixtureEmu(t)
+			dev, err := in.Resolve(ru)
+			if err != nil {
+				t.Fatal(err)
+			}
+			other := 1 - tc.zone
+			e.SetHomeState(true, map[int]float64{other: 55})
+			e.node(dev.WireEUI()).LastSchedC = 55
+			if err := tc.enqueue(e); err != nil {
+				t.Fatal(err)
+			}
+			tags := queuedTags(t, e, dev.WireEUI())
+			if tags["6160"] != "01" || tags["61e0"] != "01" {
+				t.Errorf("head 6160=%s 61e0=%s, want the home state", tags["6160"], tags["61e0"])
+			}
+			if v, ok := tags["6200"]; ok {
+				t.Errorf("6200=%s, want no 6200", v)
+			}
+		})
+	}
+
+	t.Run("window", func(t *testing.T) {
+		e, in := fixtureEmu(t)
+		dev, err := in.Resolve(ru)
+		if err != nil {
+			t.Fatal(err)
+		}
+		e.SetHomeState(true, map[int]float64{0: 55})
+		e.node(dev.WireEUI()).LastSchedC = 55
+		if err := e.EnqueueOpenWindow(ru, 1, true); !errors.Is(err, ErrHeatingBlockUnavailable) {
+			t.Fatalf("window with no 6200 known: err=%v, want ErrHeatingBlockUnavailable", err)
+		}
+		// A member report caches the zone's own 6200: the writes restate it.
+		e.zoneState[zoneKey(1, "z/s")] = encodeTLVs([]TLV{{Tag: "6200", Val: []byte{0x08, 0x02}}, {Tag: "6240", Val: []byte{0x00}}})
+		if err := e.EnqueueOpenWindow(ru, 1, true); err != nil {
+			t.Fatal(err)
+		}
+		if tags := queuedTags(t, e, dev.WireEUI()); tags["6200"] != "0802" || tags["62e0"] != "01" {
+			t.Errorf("window write 6200=%s 62e0=%s, want the zone cache 0802 and 01", tags["6200"], tags["62e0"])
+		}
+	})
+}
+
 func TestModeAndOpenWindowNeedCompleteHeatingBlock(t *testing.T) {
 	e, _, _ := newTestEmu(t)
 	// Home with no program: the open window write has no 6200 to restate.

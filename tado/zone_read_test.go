@@ -314,9 +314,11 @@ func TestDirectZoneReadAtHome(t *testing.T) {
 }
 
 // TestDirectZoneReadWithoutCache: a zone with no cached block reads the home
-// state and the program block in force, with no overlay tags, so the device
-// keeps its own overlay and setpoint. With no home state pushed the read stays
-// an empty 2.05, which the device applies as no change.
+// state and the program block in force, then 6240=0 and 62e0=0, as every cloud
+// read of capture-app-20260907 carries both: a thermostat that restarted holds
+// no 6240 and skips the zone until one arrives. 6200 stays out when no program
+// block is known. With no home state pushed the read stays an empty 2.05, which
+// the device applies as no change.
 func TestDirectZoneReadWithoutCache(t *testing.T) {
 	in := synthInstall(t)
 	for _, tc := range []struct {
@@ -336,13 +338,13 @@ func TestDirectZoneReadWithoutCache(t *testing.T) {
 		dev:   "VA0000000001",
 		zone:  4,
 		setup: func(e *EmuState) { e.SetHomeState(true, map[int]float64{4: 20.5}) },
-		want:  "61600101" + "61800100" + "60200101" + "61e00101" + "6200020802",
+		want:  "61600101" + "61800100" + "60200101" + "61e00101" + "6200020802" + "62400100" + "62e00100",
 	}, {
 		name:  "home with no program block known",
 		dev:   "VA0000000001",
 		zone:  4,
 		setup: func(e *EmuState) { e.SetHomeState(true, nil) },
-		want:  "61600101" + "61800100" + "60200101" + "61e00101",
+		want:  "61600101" + "61800100" + "60200101" + "61e00101" + "62400100" + "62e00100",
 	}, {
 		name: "home with the program block off",
 		dev:  "VA0000000001",
@@ -351,13 +353,13 @@ func TestDirectZoneReadWithoutCache(t *testing.T) {
 			e.SetHomeState(true, map[int]float64{4: 5})
 			e.SetScheduleOff(map[int]bool{4: true})
 		},
-		want: "61600101" + "61800100" + "60200101" + "61e00100",
+		want: "61600101" + "61800100" + "60200101" + "61e00100" + "62400100" + "62e00100",
 	}, {
 		name:  "away",
 		dev:   "VA0000000001",
 		zone:  4,
 		setup: func(e *EmuState) { e.SetHomeState(false, map[int]float64{4: 20.5}) },
-		want:  "61600102" + "61800100" + "60200101" + "61e00100",
+		want:  "61600102" + "61800100" + "60200101" + "61e00100" + "62400100" + "62e00100",
 	}, {
 		name: "window held open",
 		dev:  "VA0000000001",
@@ -366,10 +368,9 @@ func TestDirectZoneReadWithoutCache(t *testing.T) {
 			e.SetHomeState(true, map[int]float64{4: 20.5})
 			e.SetOpenWindows(map[int]bool{4: true})
 		},
-		want: "61600101" + "61800100" + "60200101" + "61e00101" + "6200020802" + "62e00101",
+		want: "61600101" + "61800100" + "60200101" + "61e00101" + "6200020802" + "62400100" + "62e00101",
 	}, {
-		// Hot water always restates 6240 and 62e0, as every cloud read of zone
-		// 0 does: see TestHotWaterReadWithoutProgramKeepsHotWaterOn.
+		// See TestHotWaterReadWithoutProgramKeepsHotWaterOn.
 		name:  "hot water",
 		dev:   "RU0000000001",
 		zone:  0,
@@ -612,7 +613,9 @@ func TestDirectZoneReadValveRebuilt(t *testing.T) {
 
 // TestDirectZoneReadWithoutCacheThermostat: the thermostat sits in two zones,
 // so its own last 6200 may be the other zone's. An uncached read takes 6200
-// from the program pushed for the zone read, and leaves it out otherwise.
+// from the program pushed for the zone read, and leaves it out otherwise. It
+// carries 6240=0 and 62e0=0 either way, so the restarted thermostat does not
+// skip the zone.
 func TestDirectZoneReadWithoutCacheThermostat(t *testing.T) {
 	in := synthInstall(t)
 	ru, err := in.Resolve("RU0000000001")
@@ -626,11 +629,11 @@ func TestDirectZoneReadWithoutCacheThermostat(t *testing.T) {
 	}{{
 		name:   "program pushed",
 		schedC: map[int]float64{0: 55, 4: 20.5},
-		want:   "61600101" + "61800100" + "60200101" + "61e00101" + "6200020802",
+		want:   "61600101" + "61800100" + "60200101" + "61e00101" + "6200020802" + "62400100" + "62e00100",
 	}, {
 		name:   "no program pushed",
 		schedC: map[int]float64{0: 55},
-		want:   "61600101" + "61800100" + "60200101" + "61e00101",
+		want:   "61600101" + "61800100" + "60200101" + "61e00101" + "62400100" + "62e00100",
 	}} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := NewEmu(in.EmuConfig(), nil)
@@ -643,6 +646,16 @@ func TestDirectZoneReadWithoutCacheThermostat(t *testing.T) {
 			m := synthAnswer(t, in, e.OnFrame(raw), 0x7113)
 			if got := hex.EncodeToString(m.Payload); m.Code != "2.05" || got != tc.want {
 				t.Errorf("answer=%s body=%s, want 2.05 %s", m.Code, got, tc.want)
+			}
+			// zone_state_timer_cb runs the same 6240 test on every zone.
+			state := make(map[string]byte)
+			for _, tlv := range parseTLVList(m.Payload) {
+				if len(tlv.Val) == 1 {
+					state[tlv.Tag] = tlv.Val[0]
+				}
+			}
+			if enable, published := thermostatDHWEnable(state); !published || enable != 1 {
+				t.Errorf("restarted thermostat after the read: enable=%d published=%v, want 1 published", enable, published)
 			}
 		})
 	}

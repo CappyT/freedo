@@ -201,6 +201,26 @@ func TestAwayToggleRewritesEveryZone(t *testing.T) {
 	}
 }
 
+// TestReturnHomeWithoutProgramLeavesSchedOut: on a fresh daemon no zone has a
+// program or a cached 6200, so the return home writes the home head with no
+// 6200 and the device keeps its own, instead of a 6200 of 0 C.
+func TestReturnHomeWithoutProgramLeavesSchedOut(t *testing.T) {
+	clock := newTestClock(time.Date(2026, 1, 5, 5, 0, 0, 0, time.UTC))
+	d, url := newHomeDaemon(t, clock)
+	target := hex.EncodeToString(mustResolve(t, "VA1000000005").WireEUI())
+	var res map[string]any
+	if code := postJSON(t, http.MethodPatch, url+"/api/home", map[string]any{"away": true}, &res); code != http.StatusOK {
+		t.Fatalf("away: code=%d %v", code, res)
+	}
+	dropQueue(t, d, target)
+	if code := postJSON(t, http.MethodPatch, url+"/api/home", map[string]any{"away": false}, &res); code != http.StatusOK {
+		t.Fatalf("home: code=%d %v", code, res)
+	}
+	wantTags(t, "the return home with no program", nextZoneWrite(t, d, target), map[string]string{
+		"6160": "01", "61e0": "01", "6240": "00", "62e0": "00",
+	}, "6200", "6440")
+}
+
 // TestScheduleBlockChangePushesSetpoint: when the weekly program moves to its
 // next entry the daemon pushes the new 6200 to the zone members, with no 6440.
 func TestScheduleBlockChangePushesSetpoint(t *testing.T) {

@@ -1300,14 +1300,15 @@ func (e *EmuState) servedDirectZoneState(m *CoAPMessage, dst []byte) ([]byte, st
 // change leaves stale. 6260 and 6280 follow an overlay only. The cache holds
 // the zone-plane order.
 //
-// A hot-water zone with no cached block still reads 6240=0 and 62e0=0, as
-// every cloud read of zone 0 carries them. The thermostat enables DHW from
-// zone_state_timer_cb (0x2d70c), which skips a zone whose 6240 is unset, as
-// after a restart: without the tag the DHW enable never goes out.
+// A zone with no cached block still reads 6240=0 and 62e0=0, as every cloud
+// read carries them. zone_state_timer_cb (thermostat 0x2d70c) skips a zone
+// whose 6240 is unset, as after a restart: without the tag the thermostat
+// publishes no target and no enable for the zone until its next write. With no
+// home state pushed such a read stays empty.
 func (e *EmuState) directZoneReadBody(zone int) []byte {
 	body := e.zoneState[zoneKey(zone, "z/s")]
-	if len(body) == 0 && !(e.homeSet && e.zoneKind(zone) == dhwZoneKind) {
-		return e.uncachedZoneReadBody(zone)
+	if len(body) == 0 && !e.homeSet {
+		return nil
 	}
 	values := make(map[string][]byte)
 	for _, tlv := range parseTLVList(body) {
@@ -1319,7 +1320,7 @@ func (e *EmuState) directZoneReadBody(zone int) []byte {
 		}
 		return []byte{absent}
 	}
-	read := e.zoneReadHead(zone, values["6200"])
+	read := e.zoneReadHead(zone)
 	overlay := cached("6240", overlayAuto)
 	read = append(read, TLV{Tag: "6240", Val: overlay})
 	if overlay[0] != overlayAuto {
@@ -1337,44 +1338,18 @@ func (e *EmuState) directZoneReadBody(zone int) []byte {
 	return encodeTLVs(append(read, TLV{Tag: "62e0", Val: window}))
 }
 
-// zoneReadHead is the zone rewrite head of a read. 6200 comes from the program
-// the owner pushed, else from the zone cache, never from the requester: the
-// wall thermostat sits in two zones, so its own last 6200 may belong to the
-// other one. With no home state pushed the head leaves out 6160, 61e0 and 6200,
-// and the device keeps its own.
-func (e *EmuState) zoneReadHead(zone int, cachedSchedC []byte) []TLV {
-	schedC, known := e.schedC[zone]
-	head := zoneWriteHead(zoneWrite{home: e.home, programOff: e.schedOff[zone], schedC: schedC, kind: e.zoneKind(zone)})
-	switch {
-	case !e.homeSet:
-		return withoutTag(withoutTag(withoutTag(head, "6160"), "61e0"), "6200")
-	case known:
-		return head
-	case len(cachedSchedC) > 0:
-		for i := range head {
-			if head[i].Tag == "6200" {
-				head[i].Val = cachedSchedC
-			}
-		}
-		return head
-	}
-	return withoutTag(head, "6200")
-}
-
-// uncachedZoneReadBody is the read of a heating zone with no cached block: the
-// home state and the program block a zone rewrite would carry. The overlay tags
-// stay out, and so does a 6200 or a 62e0 the owner does not hold, because the
-// device keeps a tag the read omits. With no home state pushed the read stays
-// empty.
-func (e *EmuState) uncachedZoneReadBody(zone int) []byte {
+// zoneReadHead is the zone rewrite head of a read, with the 6200 of homeBlock.
+// With no home state pushed the head leaves out 6160, 61e0 and 6200, and the
+// device keeps its own.
+func (e *EmuState) zoneReadHead(zone int) []TLV {
+	home, schedC, known := e.homeBlock(zone)
+	head := zoneWriteHead(zoneWrite{
+		home: home, programOff: e.schedOff[zone], schedC: schedC, noSchedC: !known, kind: e.zoneKind(zone),
+	})
 	if !e.homeSet {
-		return nil
+		return withoutTag(withoutTag(withoutTag(head, "6160"), "61e0"), "6200")
 	}
-	read := e.zoneReadHead(zone, nil)
-	if open, driven := e.windowOpen[zone]; driven {
-		read = append(read, TLV{Tag: "62e0", Val: []byte{boolByte(open)}})
-	}
-	return encodeTLVs(read)
+	return head
 }
 
 func (e *EmuState) servedZoneConfig(m *CoAPMessage, dst []byte) ([]byte, string, bool, error) {
@@ -2476,7 +2451,7 @@ func (e *EmuState) EnqueueSetpoint(target string, sp SetpointParams) error {
 	if err != nil {
 		return err
 	}
-	home, schedC := e.homeBlock(sp.ID, wire, sp.Sched)
+	home, schedC, known := e.homeBlock(sp.ID)
 	openWindow := sp.OpenWindow
 	if open, ok := e.windowOpen[sp.ID]; ok {
 		openWindow = boolByte(open)
@@ -2488,6 +2463,7 @@ func (e *EmuState) EnqueueSetpoint(target string, sp SetpointParams) error {
 		OpenWindow: openWindow,
 		Home:       home,
 		SchedC:     schedC,
+		NoSchedC:   !known,
 		ProgramOff: e.schedOff[sp.ID],
 		ZoneFlags:  sp.ZoneFlags,
 		Circuit:    sp.Circuit,
@@ -2590,7 +2566,7 @@ func (e *EmuState) EnqueueZoneRewrite(target string, id int) error {
 // coordinator can restate without inventing one.
 func buildDHWRewrite(c SetpointCoAP, block *dhwBlock) ([]byte, error) {
 	w := DHWSetpointCoAP{
-		ID: c.ID, Overlay: block.overlay, Home: c.Home, SchedC: c.SchedC, ProgramOff: c.ProgramOff,
+		ID: c.ID, Overlay: block.overlay, Home: c.Home, SchedC: c.SchedC, NoSchedC: c.NoSchedC, ProgramOff: c.ProgramOff,
 		MID: c.MID, Token: c.Token, SrcEUI: c.SrcEUI, DstEUI: c.DstEUI,
 	}
 	if block.overlay != overlayAuto {
@@ -2668,7 +2644,7 @@ func (e *EmuState) EnqueueDHWOverlay(target string, id int, temperatureC float64
 	if d > 0 {
 		overlay = 3
 	}
-	home, schedC := e.homeBlock(id, wire, 0)
+	home, schedC, known := e.homeBlock(id)
 	pkt, err := BuildDHWSetpointCoAP(DHWSetpointCoAP{
 		ID:         id,
 		Setpoint:   setpoint,
@@ -2676,6 +2652,7 @@ func (e *EmuState) EnqueueDHWOverlay(target string, id int, temperatureC float64
 		Overlay:    overlay,
 		Home:       home,
 		SchedC:     schedC,
+		NoSchedC:   !known,
 		ProgramOff: e.schedOff[id],
 		NewOverlay: true,
 		MID:        mid,
@@ -2718,12 +2695,13 @@ func (e *EmuState) EnqueueDHWSchedule(target string, id int) error {
 	if err != nil {
 		return err
 	}
-	home, schedC := e.homeBlock(id, wire, 0)
+	home, schedC, known := e.homeBlock(id)
 	pkt, err := BuildDHWSetpointCoAP(DHWSetpointCoAP{
 		ID:         id,
 		Overlay:    overlayAuto,
 		Home:       home,
 		SchedC:     schedC,
+		NoSchedC:   !known,
 		ProgramOff: e.schedOff[id],
 		NewOverlay: true,
 		MID:        mid,
@@ -2871,9 +2849,9 @@ func (e *EmuState) enqueueBoostBlock(target string, id int, on, newOverlay bool,
 	if err != nil {
 		return err
 	}
-	home, schedC := e.homeBlock(id, wire, 0)
+	home, schedC, known := e.homeBlock(id)
 	c := BoostCoAP{
-		ID: id, Enabled: on, Home: home, SchedC: schedC, ProgramOff: e.schedOff[id],
+		ID: id, Enabled: on, Home: home, SchedC: schedC, NoSchedC: !known, ProgramOff: e.schedOff[id],
 		OpenWindow: e.zoneOpenWindow(id, wire), NewOverlay: newOverlay,
 		MID: mid, Token: token, SrcEUI: e.selfEUI, DstEUI: wire,
 	}
@@ -3077,14 +3055,14 @@ func (e *EmuState) EnqueueMode(target string, id int, overlay byte) error {
 //
 // A node whose block is unknown, as after a restart, takes the block a zone
 // rewrite restates. In the home state that block carries 6200, so it needs the
-// program of the zone or the value the node was last given.
+// program of the zone or the 6200 the zone cache holds.
 func (e *EmuState) EnqueueOpenWindow(target string, id int, open bool) error {
 	wire, _, err := e.resolve(target)
 	if err != nil {
 		return err
 	}
 	cached := e.hasLastSetpointBlock(wire)
-	if !cached && !e.knowsSchedC(id, wire) {
+	if _, _, known := e.homeBlock(id); !cached && !known {
 		return ErrHeatingBlockUnavailable
 	}
 	if e.hasPendingHeatingBlock(wire) {
@@ -3811,34 +3789,23 @@ func (e *EmuState) ZoneSchedC(zone int) (float64, bool) {
 	return 0, false
 }
 
-// homeBlock returns the home flag and the 6200 value of a write to zone on
-// node wire. A home write always carries 6200, so a zone the daemon holds no
-// program for falls back to the last value the node was given, then to what the
-// caller records for it.
-func (e *EmuState) homeBlock(zone int, wire []byte, fallback float64) (bool, float64) {
+// homeBlock returns the home flag and the 6200 of a write or a read of zone.
+// 6200 comes from the program the owner pushed, else from the zone cache, never
+// from a node: the wall thermostat sits in two zones, so its own last 6200 may
+// belong to the other one. known is false at home when neither holds one; the
+// block then leaves 6200 out and the device keeps its own. Away no block
+// carries 6200.
+func (e *EmuState) homeBlock(zone int) (home bool, schedC float64, known bool) {
 	if !e.home {
-		return false, 0
+		return false, 0, true
 	}
 	if c, ok := e.schedC[zone]; ok {
-		return true, c
+		return true, c, true
 	}
-	if ns, ok := e.nodes[hexEUI(wire)]; ok && ns.LastSchedC != 0 {
-		return true, ns.LastSchedC
+	if c, ok := e.ZoneSchedC(zone); ok {
+		return true, c, true
 	}
-	return true, fallback
-}
-
-// knowsSchedC reports whether a write to zone on node wire can restate its
-// 6200 without a fallback: away the write carries none.
-func (e *EmuState) knowsSchedC(zone int, wire []byte) bool {
-	if !e.home {
-		return true
-	}
-	if _, ok := e.schedC[zone]; ok {
-		return true
-	}
-	ns, ok := e.nodes[hexEUI(wire)]
-	return ok && ns.LastSchedC != 0
+	return true, 0, false
 }
 
 // zoneKind is the 6020 value of a zone: hot water reads 2, a room 1.
@@ -3865,7 +3832,9 @@ func (e *EmuState) lastSetpointBlock(wire []byte, id int, mid uint16, token []by
 		}
 		sched = ns.LastSchedC
 	}
-	c.Home, c.SchedC = e.homeBlock(id, wire, sched)
+	var known bool
+	c.Home, c.SchedC, known = e.homeBlock(id)
+	c.NoSchedC = !known
 	overlay, setpoint, off, ok := e.cachedZoneOverlay(id)
 	switch {
 	case !e.hasLastSetpointBlock(wire):

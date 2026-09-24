@@ -446,10 +446,11 @@ const BoostTemperatureC = 25.0
 type BoostCoAP struct {
 	ID      int
 	Enabled bool
-	// Home, SchedC, ProgramOff and NewOverlay carry the state of the whole
-	// home, the program block and the overlay marker, as in SetpointCoAP.
+	// Home, SchedC, NoSchedC, ProgramOff and NewOverlay carry the state of the
+	// whole home, the program block and the overlay marker, as in SetpointCoAP.
 	Home       bool
 	SchedC     float64
+	NoSchedC   bool
 	ProgramOff bool
 	NewOverlay bool
 	OpenWindow byte // 62e0
@@ -474,7 +475,7 @@ func BuildBoostCoAP(c BoostCoAP) ([]byte, error) {
 
 func boostHeatingBody(c BoostCoAP) []byte {
 	z := zoneWrite{
-		home: c.Home, programOff: c.ProgramOff, schedC: c.SchedC, kind: roomZoneKind,
+		home: c.Home, programOff: c.ProgramOff, schedC: c.SchedC, noSchedC: c.NoSchedC, kind: roomZoneKind,
 		overlay: overlayAuto, openWindow: c.OpenWindow, newOverlay: c.NewOverlay,
 	}
 	if c.Enabled {

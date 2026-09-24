@@ -269,6 +269,7 @@ type zoneWrite struct {
 	home       bool
 	programOff bool    // 61e0=0 in the home state: the program block is off
 	schedC     float64 // 6200, home state only, and never on a room block that is off
+	noSchedC   bool    // leaves 6200 out: the zone's program block is unknown
 	kind       byte    // 6020
 	overlay    byte    // 6240
 	enabled    *byte   // 6260
@@ -297,7 +298,7 @@ func zoneWriteHead(z zoneWrite) []TLV {
 		{Tag: "61e0", Val: []byte{presence}},
 	}
 	// Only the room capture shows a block that is off, so hot water keeps 6200.
-	if z.home && !(z.programOff && z.kind == roomZoneKind) {
+	if z.home && !z.noSchedC && !(z.programOff && z.kind == roomZoneKind) {
 		head = append(head, TLV{Tag: "6200", Val: tempC(z.schedC)})
 	}
 	return head
@@ -360,6 +361,9 @@ type SetpointCoAP struct {
 	// 6200, against 6160=2 and 61e0=0 with no 6200 when away.
 	Home   bool
 	SchedC float64 // 6200, the setpoint the weekly program holds now
+	// NoSchedC leaves 6200 out of a home write: the program block of the zone
+	// is unknown, so the device keeps its own.
+	NoSchedC bool
 	// ProgramOff writes 61e0=0 and no 6200 in the home state: the program
 	// block in force is disabled (entry field 3 false), so the device targets
 	// its fallback.
@@ -430,7 +434,7 @@ func setpointBody(c SetpointCoAP) ([]byte, error) {
 		return nil, errors.New("tado: a room off write needs an overlay")
 	}
 	z := zoneWrite{
-		home: c.Home, programOff: c.ProgramOff, schedC: c.SchedC, kind: roomZoneKind,
+		home: c.Home, programOff: c.ProgramOff, schedC: c.SchedC, noSchedC: c.NoSchedC, kind: roomZoneKind,
 		overlay: c.Overlay, openWindow: c.OpenWindow,
 		circuit: c.Circuit, zoneFlags: c.ZoneFlags, ctrlEnable: c.CtrlEnable,
 		newOverlay: c.NewOverlay,
@@ -474,10 +478,12 @@ type DHWSetpointCoAP struct {
 	Setpoint *float64 // 6280, degrees C; nil for a disabled write and for overlay 0
 	Enabled  *bool    // 6260, nil => enabled
 	Overlay  byte     // 6240: 0 auto, 2 manual, 3 until_next
-	// Home, SchedC and ProgramOff carry the state of the whole home and of
-	// the program block, as in SetpointCoAP, except that ProgramOff keeps 6200.
+	// Home, SchedC, NoSchedC and ProgramOff carry the state of the whole home
+	// and of the program block, as in SetpointCoAP, except that ProgramOff keeps
+	// 6200.
 	Home       bool
 	SchedC     float64
+	NoSchedC   bool
 	ProgramOff bool
 	NewOverlay bool   // 6440
 	MID        uint16 // 0 => generated
@@ -511,7 +517,7 @@ func BuildDHWSetpointCoAP(c DHWSetpointCoAP) ([]byte, error) {
 			strconv.FormatFloat(DHWMaxC, 'f', -1, 64) + " C")
 	}
 	z := zoneWrite{
-		home: c.Home, programOff: c.ProgramOff, schedC: c.SchedC, kind: dhwZoneKind,
+		home: c.Home, programOff: c.ProgramOff, schedC: c.SchedC, noSchedC: c.NoSchedC, kind: dhwZoneKind,
 		overlay: c.Overlay, newOverlay: c.NewOverlay,
 	}
 	if c.Overlay != overlayAuto {
