@@ -297,11 +297,31 @@ func zoneWriteHead(z zoneWrite) []TLV {
 		{Tag: "6020", Val: []byte{z.kind}},
 		{Tag: "61e0", Val: []byte{presence}},
 	}
-	// Only the room capture shows a block that is off, so hot water keeps 6200.
-	if z.home && !z.noSchedC && !(z.programOff && z.kind == roomZoneKind) {
-		head = append(head, TLV{Tag: "6200", Val: tempC(z.schedC)})
+	if sched := z.sentSchedC(); sched != nil {
+		head = append(head, TLV{Tag: "6200", Val: sched})
 	}
 	return head
+}
+
+// sentSchedC returns the 6200 the write carries, nil when it leaves 6200 out.
+// Only the room capture shows a block that is off, so hot water keeps 6200.
+func (z zoneWrite) sentSchedC() []byte {
+	if !z.home || z.noSchedC || z.programOff && z.kind == roomZoneKind {
+		return nil
+	}
+	return tempC(z.schedC)
+}
+
+// sentSchedC returns the 6200 the room write carries, nil when it leaves 6200
+// out.
+func (c SetpointCoAP) sentSchedC() []byte {
+	return zoneWrite{home: c.Home, programOff: c.ProgramOff, schedC: c.SchedC, noSchedC: c.NoSchedC, kind: roomZoneKind}.sentSchedC()
+}
+
+// sentSchedC returns the 6200 the hot-water write carries, nil when it leaves
+// 6200 out.
+func (c DHWSetpointCoAP) sentSchedC() []byte {
+	return zoneWrite{home: c.Home, programOff: c.ProgramOff, schedC: c.SchedC, noSchedC: c.NoSchedC, kind: dhwZoneKind}.sentSchedC()
 }
 
 // encodeZoneWrite renders the block in the captured tag order.

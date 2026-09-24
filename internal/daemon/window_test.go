@@ -964,22 +964,20 @@ func TestWindowCloseAfterCrashKeepsDeliveredOverlay(t *testing.T) {
 }
 
 // TestWindowCloseAfterRestartWithoutProgram: at home a zone with no program
-// has no 6200 to restate once a restart drops the valve's block, and the
-// delivered open already took the reported 6200 out of the zone cache. The
-// close waits for the valve to report its block, then goes out on the next
-// retry.
+// restates the 6200 of the zone cache. The delivered open carried the reported
+// 6200, so the cache keeps it through a restart that drops the valve's block,
+// and the close goes out at once with it.
 func TestWindowCloseAfterRestartWithoutProgram(t *testing.T) {
-	d, url, in, store, clock := restartAfterOpen(t, nil, nil)
+	d, url, in, store, _ := restartAfterOpen(t, nil, nil)
 	ufficio := wireOf(t, in, "VA1000000002")
 
 	if _, code := postWindow(t, url, 3, false); code != http.StatusOK {
 		t.Fatalf("close: code=%d", code)
 	}
-	wantNoWrites(t, "the close with no 6200", d, ufficio)
-	seedBlock(t, d, in, "VA1000000002", 3, openBlock(0x01)...)
-	clock.advance(windowRetryEvery)
-	tick(t, d)
-	wantWindowWrites(t, "the close after the report", d, in, "00", ufficio)
+	if n := pending(t, d, ufficio); n != 1 {
+		t.Fatalf("the close: %s holds %d queued writes, want 1", ufficio, n)
+	}
+	wantTags(t, "the close", deliver(t, d, in, ufficio), map[string]string{"6200": "07d0", "62e0": "00"}, "6440")
 	tick(t, d)
 	wantNothingOwed(t, store)
 }

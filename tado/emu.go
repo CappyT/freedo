@@ -188,8 +188,9 @@ type NodeState struct {
 type SetpointParams struct {
 	ID       int // CoAP query id=N (device logical id)
 	Setpoint float64
-	// Sched is the coordinator's own record of the scheduled setpoint. No
-	// plane carries it, so it never leaves the daemon.
+	// Sched is the caller's scheduled setpoint. The emulator does not use it:
+	// the 6200 of the write, and the one its delivery records, come from
+	// homeBlock.
 	Sched      float64
 	Overlay    byte // 0 auto, 2 manual, 3 until_next
 	OpenWindow byte
@@ -360,8 +361,10 @@ type activeGet struct {
 }
 
 type heatingBlock struct {
-	zone       int
-	setpoint   []byte
+	zone     int
+	setpoint []byte
+	// sched is the 6200 the write carries, nil when it leaves 6200 out: the
+	// node and the zone cache then keep the 6200 they held.
 	sched      []byte
 	overlay    byte
 	openWindow byte
@@ -385,24 +388,21 @@ type dhwBlock struct {
 	setpoint []byte
 	overlay  byte
 	enabled  byte
+	sched    []byte // 6200, as in heatingBlock
 }
 
-func heatingBlockFor(zone int, setpoint, sched float64, overlay, openWindow byte) *heatingBlock {
-	return &heatingBlock{
-		zone: zone, setpoint: tempC(setpoint), sched: tempC(sched), overlay: overlay, openWindow: openWindow,
-	}
-}
-
-// setpointHeatingBlock is the block a delivered room write confirms. The off
-// overlay confirms its own body: the zone holds no 6280 and the node keeps the
-// setpoint it last had.
-func setpointHeatingBlock(c SetpointCoAP, sched float64) *heatingBlock {
+// setpointHeatingBlock is the block a delivered room write confirms, with the
+// 6200 the write carries. The off overlay confirms its own body: the zone holds
+// no 6280 and the node keeps the setpoint it last had.
+func setpointHeatingBlock(c SetpointCoAP) *heatingBlock {
 	if c.Off {
 		if body, err := setpointBody(c); err == nil {
 			return &heatingBlock{zone: c.ID, body: body}
 		}
 	}
-	return heatingBlockFor(c.ID, c.Setpoint, sched, c.Overlay, c.OpenWindow)
+	return &heatingBlock{
+		zone: c.ID, setpoint: tempC(c.Setpoint), sched: c.sentSchedC(), overlay: c.Overlay, openWindow: c.OpenWindow,
+	}
 }
 
 type QueueEntry struct {
@@ -2487,7 +2487,7 @@ func (e *EmuState) EnqueueSetpoint(target string, sp SetpointParams) error {
 		return err
 	}
 	q := e.queue[hexEUI(wire)]
-	q[len(q)-1].heating = setpointHeatingBlock(c, sp.Sched)
+	q[len(q)-1].heating = setpointHeatingBlock(c)
 	q[len(q)-1].requireCoAP = true
 	q[len(q)-1].responseToken = append([]byte(nil), token...)
 	q[len(q)-1].responseCode = "2.04"
@@ -2519,7 +2519,7 @@ func (e *EmuState) EnqueueZoneRewrite(target string, id int) error {
 	if err != nil {
 		return err
 	}
-	c, sched := e.lastSetpointBlock(wire, id, mid, token)
+	c := e.lastSetpointBlock(wire, id, mid, token)
 	c.NewOverlay = false
 	hotWater := e.zoneKind(id) == dhwZoneKind
 	var pkt []byte
@@ -2551,7 +2551,7 @@ func (e *EmuState) EnqueueZoneRewrite(target string, id int) error {
 	case hotWater:
 		q[len(q)-1].dhw = dhw
 	case e.hasLastSetpointBlock(wire):
-		q[len(q)-1].heating = setpointHeatingBlock(c, sched)
+		q[len(q)-1].heating = setpointHeatingBlock(c)
 	}
 	q[len(q)-1].requireCoAP = true
 	q[len(q)-1].responseToken = append([]byte(nil), token...)
@@ -2585,6 +2585,7 @@ func buildDHWRewrite(c SetpointCoAP, block *dhwBlock) ([]byte, error) {
 	if w.Overlay == overlayAuto {
 		*block = dhwBlock{zone: block.zone, overlay: overlayAuto}
 	}
+	block.sched = w.sentSchedC()
 	return BuildDHWSetpointCoAP(w)
 }
 
@@ -2645,7 +2646,7 @@ func (e *EmuState) EnqueueDHWOverlay(target string, id int, temperatureC float64
 		overlay = 3
 	}
 	home, schedC, known := e.homeBlock(id)
-	pkt, err := BuildDHWSetpointCoAP(DHWSetpointCoAP{
+	w := DHWSetpointCoAP{
 		ID:         id,
 		Setpoint:   setpoint,
 		Enabled:    &enabled,
@@ -2659,7 +2660,8 @@ func (e *EmuState) EnqueueDHWOverlay(target string, id int, temperatureC float64
 		Token:      token,
 		SrcEUI:     e.selfEUI,
 		DstEUI:     wire,
-	})
+	}
+	pkt, err := BuildDHWSetpointCoAP(w)
 	if err != nil {
 		return err
 	}
@@ -2671,7 +2673,7 @@ func (e *EmuState) EnqueueDHWOverlay(target string, id int, temperatureC float64
 		return err
 	}
 	q := e.queue[hexEUI(wire)]
-	dhw := &dhwBlock{zone: id, overlay: overlay}
+	dhw := &dhwBlock{zone: id, overlay: overlay, sched: w.sentSchedC()}
 	if enabled {
 		dhw.enabled = 1
 		dhw.setpoint = tempC(temperatureC)
@@ -2696,7 +2698,7 @@ func (e *EmuState) EnqueueDHWSchedule(target string, id int) error {
 		return err
 	}
 	home, schedC, known := e.homeBlock(id)
-	pkt, err := BuildDHWSetpointCoAP(DHWSetpointCoAP{
+	w := DHWSetpointCoAP{
 		ID:         id,
 		Overlay:    overlayAuto,
 		Home:       home,
@@ -2708,7 +2710,8 @@ func (e *EmuState) EnqueueDHWSchedule(target string, id int) error {
 		Token:      token,
 		SrcEUI:     e.selfEUI,
 		DstEUI:     wire,
-	})
+	}
+	pkt, err := BuildDHWSetpointCoAP(w)
 	if err != nil {
 		return err
 	}
@@ -2716,7 +2719,7 @@ func (e *EmuState) EnqueueDHWSchedule(target string, id int) error {
 		return err
 	}
 	q := e.queue[hexEUI(wire)]
-	q[len(q)-1].dhw = &dhwBlock{zone: id, overlay: overlayAuto}
+	q[len(q)-1].dhw = &dhwBlock{zone: id, overlay: overlayAuto, sched: w.sentSchedC()}
 	q[len(q)-1].requireCoAP = true
 	q[len(q)-1].responseToken = append([]byte(nil), token...)
 	q[len(q)-1].responseCode = "2.04"
@@ -3021,7 +3024,7 @@ func (e *EmuState) EnqueueMode(target string, id int, overlay byte) error {
 	if err != nil {
 		return err
 	}
-	c, sched := e.lastSetpointBlock(wire, id, mid, token)
+	c := e.lastSetpointBlock(wire, id, mid, token)
 	c.Overlay = overlay
 	if overlay == overlayAuto {
 		// The return to schedule ends the overlay, so its deadline goes with it.
@@ -3036,7 +3039,7 @@ func (e *EmuState) EnqueueMode(target string, id int, overlay byte) error {
 		return err
 	}
 	q := e.queue[hexEUI(wire)]
-	q[len(q)-1].heating = setpointHeatingBlock(c, sched)
+	q[len(q)-1].heating = setpointHeatingBlock(c)
 	q[len(q)-1].requireCoAP = true
 	q[len(q)-1].responseToken = append([]byte(nil), token...)
 	q[len(q)-1].responseCode = "2.04"
@@ -3072,7 +3075,7 @@ func (e *EmuState) EnqueueOpenWindow(target string, id int, open bool) error {
 	if err != nil {
 		return err
 	}
-	c, sched := e.lastSetpointBlock(wire, id, mid, token)
+	c := e.lastSetpointBlock(wire, id, mid, token)
 	c.NewOverlay = false
 	c.OpenWindow = 0
 	if open {
@@ -3088,7 +3091,7 @@ func (e *EmuState) EnqueueOpenWindow(target string, id int, open bool) error {
 	q := e.queue[hexEUI(wire)]
 	block := &heatingBlock{zone: id, openWindow: c.OpenWindow, windowOnly: true}
 	if cached {
-		block = setpointHeatingBlock(c, sched)
+		block = setpointHeatingBlock(c)
 	}
 	q[len(q)-1].heating = block
 	q[len(q)-1].requireCoAP = true
@@ -3818,19 +3821,17 @@ func (e *EmuState) zoneKind(id int) byte {
 	return roomZoneKind
 }
 
-// lastSetpointBlock rebuilds the downlink from the node's last-known values. It
-// also returns the scheduled setpoint (6200) the node last reported or took.
-func (e *EmuState) lastSetpointBlock(wire []byte, id int, mid uint16, token []byte) (SetpointCoAP, float64) {
+// lastSetpointBlock rebuilds the downlink from the node's last-known values.
+// Its 6200 comes from homeBlock, never from the node.
+func (e *EmuState) lastSetpointBlock(wire []byte, id int, mid uint16, token []byte) SetpointCoAP {
 	c := SetpointCoAP{ID: id, ProgramOff: e.schedOff[id], NewOverlay: true, MID: mid, Token: token, SrcEUI: e.selfEUI, DstEUI: wire}
 	open, driven := e.windowOpen[id]
 	c.OpenWindow = boolByte(open)
-	var sched float64
 	if ns, ok := e.nodes[hexEUI(wire)]; ok {
 		c.Setpoint, c.Overlay = ns.LastSetpointC, ns.LastOverlay
 		if !driven && ns.LastOpenWindow {
 			c.OpenWindow = 1
 		}
-		sched = ns.LastSchedC
 	}
 	var known bool
 	c.Home, c.SchedC, known = e.homeBlock(id)
@@ -3846,7 +3847,7 @@ func (e *EmuState) lastSetpointBlock(wire []byte, id int, mid uint16, token []by
 		// alone says whether the room runs the off overlay.
 		c.Off = off
 	}
-	return c, sched
+	return c
 }
 
 // cachedZoneOverlay returns the overlay of the zone cache, with its setpoint
@@ -3881,10 +3882,12 @@ func (e *EmuState) cachedZoneOverlay(zone int) (overlay byte, setpoint float64, 
 	return mode[0], float64(be(sp)) / 100, false, true
 }
 
+// hasLastSetpointBlock reports whether the node holds the block
+// lastSetpointBlock restates. The node's 6200 is not part of it: that block
+// takes 6200 from homeBlock, and a write that leaves 6200 out records none.
 func (e *EmuState) hasLastSetpointBlock(wire []byte) bool {
 	ns, ok := e.nodes[hexEUI(wire)]
-	return ok && len(ns.raw["6280"]) == 2 && len(ns.raw["6200"]) == 2 &&
-		len(ns.raw["6240"]) == 1 && len(ns.raw["62e0"]) == 1
+	return ok && len(ns.raw["6280"]) == 2 && len(ns.raw["6240"]) == 1 && len(ns.raw["62e0"]) == 1
 }
 
 func (e *EmuState) hasPendingHeatingBlock(wire []byte) bool {
@@ -3912,18 +3915,21 @@ func (e *EmuState) promoteHeatingBlock(wire []byte, block *heatingBlock) {
 	}
 	defer e.noteZoneWrite(block.zone, e.zoneHeating(block.zone))
 	if block.body != nil {
-		for _, tlv := range parseTLVList(block.body) {
+		written := parseTLVList(block.body)
+		for _, tlv := range written {
 			switch tlv.Tag {
 			case "6200", "6240", "6280", "62e0":
 				ns.raw[tlv.Tag] = append([]byte(nil), tlv.Val...)
 			}
 		}
 		ns.refreshLastKnown()
-		e.storeZoneState(block.zone, "z/s", append([]byte(nil), block.body...))
+		e.storeZoneState(block.zone, "z/s", encodeTLVs(e.keepZoneSchedC(block.zone, written)))
 		return
 	}
 	ns.raw["6280"] = append([]byte(nil), block.setpoint...)
-	ns.raw["6200"] = append([]byte(nil), block.sched...)
+	if block.sched != nil {
+		ns.raw["6200"] = append([]byte(nil), block.sched...)
+	}
 	ns.raw["6240"] = []byte{block.overlay}
 	ns.raw["62e0"] = []byte{block.openWindow}
 	ns.refreshLastKnown()
@@ -3940,11 +3946,36 @@ func (e *EmuState) promoteHeatingBlock(wire []byte, block *heatingBlock) {
 		{Tag: "6280", Val: append([]byte(nil), block.setpoint...)},
 		{Tag: "62e0", Val: []byte{block.openWindow}},
 	}
-	e.storeZoneState(block.zone, "z/s", encodeTLVs(mergeConfigTLVs(withoutTag(parseTLVList(e.zoneState[key]), "6200"), updates)))
+	if block.sched != nil {
+		updates = append(updates, TLV{Tag: "6200", Val: append([]byte(nil), block.sched...)})
+	}
+	e.storeZoneState(block.zone, "z/s", encodeTLVs(mergeConfigTLVs(parseTLVList(e.zoneState[key]), updates)))
 }
 
-// withoutTag drops one tag from a cached block. A dropped 6200 comes back with
-// the next member report z/s?lid=N, which carries the scheduled setpoint.
+// keepZoneSchedC returns the block a delivered write leaves in the zone cache.
+// A write that leaves 6200 out keeps the 6200 the cache held, after 61e0 as on
+// air: the device keeps its own.
+func (e *EmuState) keepZoneSchedC(zone int, written []TLV) []TLV {
+	var held []byte
+	for _, tlv := range parseTLVList(e.zoneState[zoneKey(zone, "z/s")]) {
+		if tlv.Tag == "6200" {
+			held = tlv.Val
+		}
+	}
+	if held == nil || slices.ContainsFunc(written, func(tlv TLV) bool { return tlv.Tag == "6200" }) {
+		return written
+	}
+	out := make([]TLV, 0, len(written)+1)
+	for _, tlv := range written {
+		out = append(out, tlv)
+		if tlv.Tag == "61e0" {
+			out = append(out, TLV{Tag: "6200", Val: held})
+		}
+	}
+	return out
+}
+
+// withoutTag drops one tag from a cached block.
 func withoutTag(list []TLV, tag string) []TLV {
 	out := make([]TLV, 0, len(list))
 	for _, tlv := range list {
@@ -3964,14 +3995,16 @@ func (e *EmuState) promoteDHWBlock(block *dhwBlock) {
 		{Tag: "6180", Val: []byte{0x00}},
 		{Tag: "6020", Val: []byte{0x02}},
 		{Tag: "61e0", Val: []byte{0x00}},
-		{Tag: "6240", Val: []byte{block.overlay}},
-		{Tag: "6260", Val: []byte{block.enabled}},
 	}
+	if block.sched != nil {
+		updates = append(updates, TLV{Tag: "6200", Val: append([]byte(nil), block.sched...)})
+	}
+	updates = append(updates, TLV{Tag: "6240", Val: []byte{block.overlay}}, TLV{Tag: "6260", Val: []byte{block.enabled}})
 	if len(block.setpoint) > 0 {
 		updates = append(updates, TLV{Tag: "6280", Val: append([]byte(nil), block.setpoint...)})
 	}
 	updates = append(updates, TLV{Tag: "62e0", Val: []byte{0x00}})
-	e.storeZoneState(block.zone, "z/s", encodeTLVs(updates))
+	e.storeZoneState(block.zone, "z/s", encodeTLVs(e.keepZoneSchedC(block.zone, updates)))
 }
 
 func (e *EmuState) invalidateHeatingBlock(wire []byte) {
