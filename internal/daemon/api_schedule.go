@@ -36,9 +36,32 @@ type scheduledBlock struct {
 	off bool
 }
 
-// scheduledBlockAt returns the block the weekly programs hold at t, and whether
-// one is in force. The entry in force is the last one whose minute has passed.
-func scheduledBlockAt(programs []tado.ScheduleProgram, t time.Time) (scheduledBlock, bool) {
+// programLocation is the wall clock the weekly programs run on: the device
+// clock, UTC plus the 02b2 the coordinator serves. options.utc_offset_min fixes
+// it, else options.timezone, else the host's zone. The device offline engine
+// runs the same program on that clock, so the two agree on every block.
+func programLocation(o tado.Options) *time.Location {
+	if o.UTCOffsetMin != nil {
+		return time.FixedZone("", *o.UTCOffsetMin*60)
+	}
+	loc, _ := o.Location()
+	return loc
+}
+
+// programClock is programLocation of inst, resolved once per installation: the
+// engine evaluates the programs every tick. It belongs to the engine goroutine.
+func (d *daemon) programClock(inst *tado.Install) *time.Location {
+	if d.progLocOf != inst {
+		d.progLocOf, d.progLoc = inst, programLocation(inst.Options)
+	}
+	return d.progLoc
+}
+
+// scheduledBlockAt returns the block the weekly programs hold at t on the wall
+// clock of loc, and whether one is in force. The entry in force is the last one
+// whose minute has passed.
+func scheduledBlockAt(programs []tado.ScheduleProgram, t time.Time, loc *time.Location) (scheduledBlock, bool) {
+	t = t.In(loc)
 	bit := dayMaskBit(t)
 	minute := t.Hour()*60 + t.Minute()
 	for _, program := range programs {
@@ -62,21 +85,23 @@ func scheduledBlockAt(programs []tado.ScheduleProgram, t time.Time) (scheduledBl
 }
 
 // nextScheduleChange returns the instant the weekly programs move to their next
-// entry. A day whose entries are all in the past changes at the next midnight.
-func nextScheduleChange(programs []tado.ScheduleProgram, t time.Time) (time.Time, bool) {
+// entry on the wall clock of loc. A day whose entries are all in the past
+// changes at the next midnight. An entry minute is a wall-clock time, not an
+// offset from midnight: on a DST day the two differ by an hour.
+func nextScheduleChange(programs []tado.ScheduleProgram, t time.Time, loc *time.Location) (time.Time, bool) {
+	t = t.In(loc)
 	bit := dayMaskBit(t)
 	minute := t.Hour()*60 + t.Minute()
-	midnight := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
 	for _, program := range programs {
 		if program.DayMask&bit == 0 {
 			continue
 		}
 		for _, e := range program.Entries {
 			if e.Minute > minute {
-				return midnight.Add(time.Duration(e.Minute) * time.Minute), true
+				return time.Date(t.Year(), t.Month(), t.Day(), e.Minute/60, e.Minute%60, 0, 0, loc), true
 			}
 		}
-		return midnight.AddDate(0, 0, 1), true
+		return time.Date(t.Year(), t.Month(), t.Day()+1, 0, 0, 0, 0, loc), true
 	}
 	return time.Time{}, false
 }
@@ -206,16 +231,17 @@ func (d *daemon) putHotWaterSchedule(w http.ResponseWriter, zone int, members []
 	}
 	v, err := d.do(func(e *tado.EmuState) (any, error) {
 		d.dhwProgram = programs
+		// Stored on the engine goroutine: racing requests reach the database in
+		// the order the engine took them.
+		if d.state != nil {
+			if err := d.state.SetHotWaterProgram(context.Background(), programs); err != nil {
+				return nil, &stateSaveError{err: err}
+			}
+		}
 		return newScheduleView(zone, members, programs), nil
 	})
 	if writeHandlerErr(w, err) {
 		return
-	}
-	if d.state != nil {
-		if err := d.state.SetHotWaterProgram(context.Background(), programs); err != nil {
-			writeHandlerErr(w, &stateSaveError{err: err})
-			return
-		}
 	}
 	writeJSON(w, http.StatusOK, v)
 }

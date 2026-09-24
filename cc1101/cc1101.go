@@ -575,6 +575,16 @@ func (b *Bridge) RecvFW(timeout time.Duration) (*RxFrame, error) {
 // stream lifecycle behind (the desync that used to wedge rx). The per-frame XOR
 // check keeps the reader self-resynchronizing.
 func (b *Bridge) Stream(dur time.Duration, cb func(*RxFrame)) error {
+	return b.StreamUntil(dur, func(f *RxFrame) bool { cb(f); return false })
+}
+
+// StreamUntil is Stream that cb can end early by returning true. The host then
+// aborts the firmware stream and reads up to its STREAM_END, so the port is back
+// at the command loop and the next request reads its own response. A request
+// sent inside the stream instead aborts it with its first byte and reads the
+// STREAM_END as its response. A frame that arrives before STREAM_END still
+// reaches cb.
+func (b *Bridge) StreamUntil(dur time.Duration, cb func(*RxFrame) bool) error {
 	ms := durMS(dur)
 	if _, err := b.port.Write([]byte{reqMagic, cmdStream, 0x00, 0x02, byte(ms >> 8), byte(ms)}); err != nil {
 		return err
@@ -592,9 +602,11 @@ func durMS(d time.Duration) int64 {
 }
 
 // readStream consumes the firmware frame stream (5A F1/F2/F3) of an already-sent
-// STREAM or RESPOND request, invoking cb per frame. Shared by Stream and Respond.
-func (b *Bridge) readStream(dur time.Duration, cb func(*RxFrame)) error {
+// STREAM request, invoking cb per frame. The first true from cb aborts the
+// stream: any host byte ends the firmware window, which then sends STREAM_END.
+func (b *Bridge) readStream(dur time.Duration, cb func(*RxFrame) bool) error {
 	deadline := time.Now().Add(dur + 3*time.Second)
+	stopping := false
 	for time.Now().Before(deadline) {
 		m, err := b.readExact(1)
 		if err != nil {
@@ -639,7 +651,12 @@ func (b *Bridge) readStream(dur time.Duration, cb func(*RxFrame)) error {
 			}
 			if f := parseRxBlob(data); f != nil {
 				f.FreqEst, f.HasFreqEst = s8(fe[0]), true
-				cb(f)
+				if cb(f) && !stopping {
+					stopping = true
+					if _, err := b.port.Write([]byte{0x00}); err != nil {
+						return b.resyncStream(err)
+					}
+				}
 			}
 		default:
 			// not a stream marker; keep scanning
@@ -658,116 +675,4 @@ func (b *Bridge) resyncStream(cause error) error {
 	b.port.Write([]byte{0x00})
 	b.drain(300 * time.Millisecond)
 	return cause
-}
-
-// Respond streams RX like Stream, but the ESP32 answers on its own (CMD_RESPOND):
-// a received frame whose payload matches `match` at matchOff triggers the resp
-// frames back-to-back with no host in the loop, so the answer lands inside the
-// peer's turnaround window. matchOff counts from the first payload byte, the same
-// bytes RxFrame.Payload holds. An empty match responds to every CRC-OK frame. Every
-// frame received during dur still reaches cb, matched or not.
-//
-// Request payload: durHi durLo matchOff matchLen match[matchLen] respCount
-// then respCount [len][bytes] sub-frames.
-func (b *Bridge) Respond(matchOff int, match []byte, resp [][]byte, dur time.Duration, cb func(*RxFrame)) error {
-	if matchOff < 0 || matchOff > 255 {
-		return fmt.Errorf("matchOff %d out of range", matchOff)
-	}
-	if len(match) > maxMatch {
-		return fmt.Errorf("match too long: %d bytes", len(match))
-	}
-	if len(resp) > maxTrainFrames {
-		return fmt.Errorf("too many response frames: %d", len(resp))
-	}
-	ms := durMS(dur)
-	pkt := []byte{byte(ms >> 8), byte(ms), byte(matchOff), byte(len(match))}
-	pkt = append(pkt, match...)
-	pkt = append(pkt, byte(len(resp)))
-	pkt, err := packTrain(pkt, resp)
-	if err != nil {
-		return err
-	}
-	if len(pkt) > maxReqPayload {
-		return fmt.Errorf("request too large: %d bytes", len(pkt))
-	}
-	hdr := []byte{reqMagic, cmdRespond, byte(len(pkt) >> 8), byte(len(pkt))}
-	if _, err := b.port.Write(append(hdr, pkt...)); err != nil {
-		return err
-	}
-	return b.readStream(dur, cb)
-}
-
-func (b *Bridge) armRX() {
-	b.Strobe(SIDLE)
-	b.Strobe(SFRX)
-	b.Strobe(SRX)
-}
-
-// Recv listens for one CRC-checked frame, draining the FIFO during reception.
-// Returns nil if nothing arrives within timeout.
-func (b *Bridge) Recv(timeout time.Duration) (*RxFrame, error) {
-	b.armRX()
-	var buf []byte
-	length := -1
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		rxb, err := b.ReadStatus(RXBYTES)
-		if err != nil {
-			return nil, err
-		}
-		if rxb&0x80 != 0 { // RX FIFO overflow -> re-arm
-			b.armRX()
-			buf, length = nil, -1
-			continue
-		}
-		n := int(rxb & 0x7F)
-		gdo0, _, err := b.GDO() // GDO0 = CRC-OK complete
-		if err != nil {
-			return nil, err
-		}
-		if n == 0 && len(buf) == 0 {
-			continue
-		}
-		need := -1
-		if length >= 0 {
-			need = 1 + length + 2 - len(buf)
-		}
-		switch {
-		case gdo0 || (need >= 0 && n >= need):
-			if n > 0 {
-				d, err := b.ReadBurst(RXFIFO, n)
-				if err != nil {
-					return nil, err
-				}
-				buf = append(buf, d...)
-			}
-		case n > 1: // still receiving: leave 1 byte (RX FIFO errata)
-			d, err := b.ReadBurst(RXFIFO, n-1)
-			if err != nil {
-				return nil, err
-			}
-			buf = append(buf, d...)
-		default:
-			continue
-		}
-		if length < 0 && len(buf) > 0 {
-			length = int(buf[0])
-		}
-		if length >= 0 && len(buf) >= 1+length+2 {
-			payload := append([]byte{}, buf[1:1+length]...)
-			rssiRaw := buf[1+length]
-			lqiCRC := buf[1+length+1]
-			rssi := float64(rssiRaw)/2 - 74
-			if rssiRaw >= 128 {
-				rssi = (float64(rssiRaw)-256)/2 - 74
-			}
-			return &RxFrame{
-				Payload: payload,
-				RSSIdBm: rssi,
-				LQI:     lqiCRC & 0x7F,
-				CRCOK:   lqiCRC&0x80 != 0,
-			}, nil
-		}
-	}
-	return nil, nil
 }

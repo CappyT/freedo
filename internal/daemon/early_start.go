@@ -193,6 +193,37 @@ func (d *daemon) observeHeatUps(e *tado.EmuState) {
 	}
 }
 
+// forgetRemovedZones drops what the engine keeps about each zone before
+// declares and in does not: the heat-up model, the episodes running, the early
+// start, the stored plant episodes and the program block. A zone later declared
+// under the same number starts from nothing. It runs on the engine goroutine,
+// which is the one that stores a model or an episode, so no late save brings
+// one back.
+func (d *daemon) forgetRemovedZones(before, in *tado.Install) {
+	for i := range before.Zones {
+		zone := before.Zones[i].Number
+		if _, err := in.ZoneByNumber(zone); err == nil {
+			continue
+		}
+		delete(d.thermal, zone)
+		delete(d.heating, zone)
+		delete(d.thermalTarget, zone)
+		delete(d.early, zone)
+		delete(d.plant, zone)
+		delete(d.zoneSched, zone)
+		if _, ok := d.schedPushed[zone]; ok {
+			delete(d.schedPushed, zone)
+			d.schedUnsaved = true
+		}
+		if d.state != nil {
+			if err := d.state.DeleteZoneLearning(context.Background(), zone); err != nil {
+				log.Printf("zone %d removed, its heat-up model and plant episodes stay stored: %v", zone, err)
+			}
+		}
+	}
+	d.saveProgramBlocks()
+}
+
 func (d *daemon) observeHeatUp(e *tado.EmuState, inst *tado.Install, zone int, now time.Time, overlays map[string]bool) {
 	blocker := d.heatUpBlocker(inst, zone, overlays)
 	target := d.zoneSched[zone].c
@@ -301,15 +332,16 @@ func (d *daemon) earlyPlan(e *tado.EmuState, inst *tado.Install, zone int, now t
 	if !ok {
 		return earlyStart{}, false
 	}
-	cur, ok := scheduledBlockAt(programs, now)
+	loc := d.programClock(inst)
+	cur, ok := scheduledBlockAt(programs, now, loc)
 	if !ok {
 		return earlyStart{}, false
 	}
-	boundary, ok := nextScheduleChange(programs, now)
+	boundary, ok := nextScheduleChange(programs, now, loc)
 	if !ok {
 		return earlyStart{}, false
 	}
-	next, ok := scheduledBlockAt(programs, boundary)
+	next, ok := scheduledBlockAt(programs, boundary, loc)
 	if !ok || next.off || (!cur.off && next.c <= cur.c) {
 		return earlyStart{}, false
 	}
@@ -368,11 +400,12 @@ func (d *daemon) stillPlanned(e *tado.EmuState, inst *tado.Install, zone int, es
 	if !ok {
 		return false
 	}
-	boundary, ok := nextScheduleChange(programs, now)
+	loc := d.programClock(inst)
+	boundary, ok := nextScheduleChange(programs, now, loc)
 	if !ok || !boundary.Equal(es.boundary) {
 		return false
 	}
-	next, ok := scheduledBlockAt(programs, boundary)
+	next, ok := scheduledBlockAt(programs, boundary, loc)
 	return ok && next == es.block
 }
 
@@ -504,16 +537,17 @@ func (d *daemon) deleteEarlyStartModel(w http.ResponseWriter, r *http.Request) {
 	v, err := d.do(func(e *tado.EmuState) (any, error) {
 		delete(d.thermal, zone)
 		delete(d.heating, zone)
+		// Deleted on the engine goroutine, where finishHeatUp stores a model: a
+		// model learned after this request stays stored.
+		if d.state != nil {
+			if err := d.state.DeleteThermalModel(context.Background(), zone); err != nil {
+				return nil, &stateSaveError{err: err}
+			}
+		}
 		return d.earlyStartView(e, inst, zone, nodeOverlays(e)), nil
 	})
 	if writeHandlerErr(w, err) {
 		return
-	}
-	if d.state != nil {
-		if err := d.state.DeleteThermalModel(r.Context(), zone); err != nil {
-			writeHandlerErr(w, &stateSaveError{err: err})
-			return
-		}
 	}
 	writeJSON(w, http.StatusOK, v)
 }

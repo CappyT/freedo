@@ -184,12 +184,3 @@ func (b *Bridge) Xfer(data []byte) ([]byte, error) {
 	_, d, err := b.req(cmdXfer, data)
 	return d, err
 }
-
-// GDO reads the GDO0/GDO2 pin state.
-func (b *Bridge) GDO() (gdo0, gdo2 bool, err error) {
-	_, d, err := b.req(cmdGDO, nil)
-	if err != nil {
-		return false, false, err
-	}
-	return d[0]&1 != 0, d[0]&2 != 0, nil
-}

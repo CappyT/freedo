@@ -311,6 +311,22 @@ func (s *stateStore) DeleteThermalModel(ctx context.Context, zone int) error {
 	return err
 }
 
+// DeleteZoneLearning drops the heat-up model and the plant episodes of zone.
+func (s *stateStore) DeleteZoneLearning(ctx context.Context, zone int) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM meta WHERE key = ?`, thermalModelPrefix+strconv.Itoa(zone)); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM plant_episode WHERE zone = ?`, zone); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 // AddPlantEpisode stores one recorded episode of zone and drops the oldest of
 // its kind past plantEpisodesKept, so the table stays bounded.
 func (s *stateStore) AddPlantEpisode(ctx context.Context, zone int, ep *plantEpisode) error {

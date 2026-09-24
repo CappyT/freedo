@@ -4,12 +4,19 @@ package daemon
 // evaluates on its own clock, and the overlay timers it keeps.
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -275,6 +282,69 @@ func TestHomeStateSurvivesStoreReload(t *testing.T) {
 	defer reopened.Close()
 	if away, err := reopened.Away(context.Background()); err != nil || !away {
 		t.Fatalf("reloaded away=%t err=%v, want away", away, err)
+	}
+}
+
+const daemonAwayHelper = "FREEDO_TEST_DAEMON_AWAY_HELPER"
+
+// TestDaemonRestoresAwayCLI: Main restores the stored away flag before the
+// engine starts, so the first answer of the API already reads away.
+func TestDaemonRestoresAwayCLI(t *testing.T) {
+	if os.Getenv(daemonAwayHelper) == "1" {
+		Main(daemonHelperArgs())
+		return
+	}
+
+	dir := t.TempDir()
+	config, state := seedInstall(t, dir, defaultInstall)
+	store, err := openStateStore(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetAway(context.Background(), true); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := listener.Addr().String()
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	args := []string{
+		"--config", config, "--state", state, "--unhandled", filepath.Join(dir, "unhandled.log"),
+		"--addr", addr, "--duration", "1s",
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=^TestDaemonRestoresAwayCLI$")
+	cmd.Env = append(os.Environ(), daemonAwayHelper+"=1", "FREEDO_TEST_DAEMON_ARGS="+strings.Join(args, "\n"))
+	var output bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &output, &output
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+
+	var home map[string]any
+	deadline := time.Now().Add(3 * time.Second)
+	client := &http.Client{Timeout: 100 * time.Millisecond}
+	for home == nil && time.Now().Before(deadline) {
+		if resp, err := client.Get("http://" + addr + "/api/home"); err == nil {
+			if resp.StatusCode == http.StatusOK {
+				_ = json.NewDecoder(resp.Body).Decode(&home)
+			}
+			resp.Body.Close()
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if err := cmd.Wait(); err != nil {
+		t.Fatalf("daemon helper: %v\n%s", err, output.String())
+	}
+	if home["away"] != true {
+		t.Fatalf("GET /api/home %v, want the stored away=true\n%s", home, output.String())
 	}
 }
 

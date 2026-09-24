@@ -73,5 +73,7 @@ zones:
 circuits:
   - {id: 1, name: casa, heat_source: RU1000000001}
 options:
-  utc_offset_min: 60
+  # The programs run on the clock 02b2 gives the devices. 0 keeps that clock on
+  # the UTC test clocks, so a test hour is a program hour.
+  utc_offset_min: 0
 `

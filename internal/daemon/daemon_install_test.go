@@ -421,7 +421,7 @@ func TestDaemonConfigUTCOffsetInherited(t *testing.T) {
 		Error  string `json:"error"`
 	}
 
-	// The fixture install declares utc_offset_min: 60, so a body that sets no
+	// The fixture install declares utc_offset_min: 0, so a body that sets no
 	// field of its own still has one to write.
 	url := newTestDaemon(t)
 	if code := postJSON(t, http.MethodPost, url+"/api/nodes/"+short+"/config",
@@ -430,7 +430,7 @@ func TestDaemonConfigUTCOffsetInherited(t *testing.T) {
 	}
 
 	// The body's own value is the one validated and sent: a value the config
-	// would have replaced with a valid 60 is still refused.
+	// would have replaced with a valid 0 is still refused.
 	set.Queued, set.Error = false, ""
 	if code := postJSON(t, http.MethodPost, url+"/api/nodes/"+short+"/config",
 		map[string]any{"utcOffsetMin": 1441, "id": 10}, &set); code != http.StatusBadRequest || set.Error == "" {
@@ -439,7 +439,7 @@ func TestDaemonConfigUTCOffsetInherited(t *testing.T) {
 
 	// With no fixed offset the body inherits the offset of options.timezone.
 	in, err := tado.Parse([]byte(strings.Replace(fixtureInstallYAML,
-		"utc_offset_min: 60\n", "timezone: UTC\n", 1)))
+		"utc_offset_min: 0\n", "timezone: UTC\n", 1)))
 	if err != nil {
 		t.Fatal(err)
 	}

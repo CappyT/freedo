@@ -282,21 +282,7 @@ loop:
 		if window <= 0 {
 			break
 		}
-		// Same 15s streaming window as rx: the radio stays armed inside it so no
-		// frame is lost between calls. A CRC-bad frame is garbage, never decoded.
-		cb := func(f *cc1101.RxFrame) {
-			line := dis.Dissect(f.Payload)
-			printRxLine(f, line)
-			if !f.CRCOK {
-				return
-			}
-			logDecode(flog, f.Payload, line)
-			for _, a := range emu.OnFrame(f.Payload) {
-				emitLive(br, a, doTx)
-			}
-			completeDryRunBeacon(emu, doTx)
-		}
-		if err := br.Stream(window, cb); err != nil {
+		if err := emulateWindow(br, window, emu, dis, flog, doTx); err != nil {
 			errs++
 			fmt.Fprintf(os.Stderr, "emulate: %v\n", err)
 			if errs > 10 {
@@ -314,16 +300,52 @@ loop:
 	printEmuReport(emu, ulog)
 }
 
+// liveLink is the bridge the live emulator streams on and transmits through.
+type liveLink interface {
+	StreamUntil(d time.Duration, cb func(*cc1101.RxFrame) bool) error
+	Send(payload []byte, timeout time.Duration) (bool, error)
+}
+
+// emulateWindow runs one capture window: the same 15s streaming window as rx,
+// so the radio stays armed inside it and no frame is lost between calls. A
+// CRC-bad frame is garbage, never decoded. An armed TX never sends inside the
+// stream: the first byte of a request would end the firmware stream and read
+// its STREAM_END as the response. The frame that decides an action ends the
+// window, and the actions go out once the port is back at the command loop.
+func emulateWindow(br liveLink, window time.Duration, emu *tado.EmuState, dis *tado.Dissector, flog *bufio.Writer, doTx bool) error {
+	var owed []tado.Action
+	err := br.StreamUntil(window, func(f *cc1101.RxFrame) bool {
+		line := dis.Dissect(f.Payload)
+		printRxLine(f, line)
+		if !f.CRCOK {
+			return false
+		}
+		logDecode(flog, f.Payload, line)
+		for _, a := range emu.OnFrame(f.Payload) {
+			if doTx {
+				owed = append(owed, a)
+			} else {
+				emitLive(br, a, false)
+			}
+		}
+		completeDryRunBeacon(emu, doTx)
+		return len(owed) > 0
+	})
+	for _, a := range owed {
+		emitLive(br, a, doTx)
+	}
+	return err
+}
+
 func completeDryRunBeacon(emu *tado.EmuState, doTx bool) {
 	if !doTx {
 		emu.CompleteBeacon(false)
 	}
 }
 
-// emitLive transmits one decided action, or prints it in dry-run. A TX byte
-// aborts the firmware RX stream, so the window ends early and the outer loop
-// resyncs and re-arms.
-func emitLive(br *cc1101.Bridge, a tado.Action, doTx bool) {
+// emitLive transmits one decided action, or prints it in dry-run. It runs only
+// outside a firmware stream; see emulateWindow.
+func emitLive(br liveLink, a tado.Action, doTx bool) {
 	if !doTx {
 		fmt.Printf("       (dry-run) would send [%s] node=%s reason=%s tx=%s\n",
 			a.Kind, a.Node, a.Reason, hex.EncodeToString(a.Bytes))

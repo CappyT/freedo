@@ -115,6 +115,10 @@ type daemon struct {
 	schedSeeded  bool
 	schedUnsaved bool
 	dhwProgram   []tado.ScheduleProgram
+	// progLoc is the wall clock of the programs of progLocOf, see programClock.
+	// Both belong to the engine goroutine.
+	progLoc   *time.Location
+	progLocOf *tado.Install
 	// windows holds the open window state of each heating zone and windowOwed
 	// the valve writes still owed. Both belong to the engine goroutine; see
 	// window.go.
@@ -253,6 +257,7 @@ func (d *daemon) setInstall(in *tado.Install) (added, removed []string, err erro
 	d.reconcile(added, removed)
 	if before != nil {
 		d.restateShiftedZones(d.emu, before, in)
+		d.forgetRemovedZones(before, in)
 	}
 	return added, removed, nil
 }
@@ -2057,7 +2062,7 @@ func (d *daemon) deleteQueue(w http.ResponseWriter, r *http.Request) {
 // the last 6200 the zone cache holds. program reports the first two cases.
 func (d *daemon) zoneScheduledBlock(e *tado.EmuState, inst *tado.Install, zone int, now time.Time) (block scheduledBlock, program, ok bool) {
 	if programs, ok := d.zonePrograms(e, inst, zone); ok {
-		block, ok := scheduledBlockAt(programs, now)
+		block, ok := scheduledBlockAt(programs, now, d.programClock(inst))
 		return block, true, ok
 	}
 	c, ok := e.ZoneSchedC(zone)
@@ -2091,7 +2096,7 @@ func (d *daemon) nextZoneBlock(e *tado.EmuState, inst *tado.Install, zone int, n
 	if !ok {
 		return time.Time{}, false
 	}
-	return nextScheduleChange(programs, now)
+	return nextScheduleChange(programs, now, d.programClock(inst))
 }
 
 // runningOverlay reports whether the node already runs an overlay. A write that
@@ -2334,28 +2339,20 @@ func (d *daemon) patchHome(w http.ResponseWriter, r *http.Request) {
 		if changed {
 			queued = d.rewriteZones(e, d.allZones(), func(target string) { d.dispatchQueued(e, target) })
 		}
+		// Stored on the engine goroutine: racing requests reach the database in
+		// the order the engine took them.
+		if d.state != nil {
+			if err := d.state.SetAway(context.Background(), d.away); err != nil {
+				return nil, &stateSaveError{err: err}
+			}
+		}
 		scheduled, off := d.scheduledView()
 		return map[string]any{"away": d.away, "queued": queued, "scheduled": scheduled, "scheduledOff": off}, nil
 	})
-	if writeHandlerErr(w, err) {
-		return
-	}
-	if err := d.saveHomeState(); err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
+	if writeHandlerErr(w, d.persist(err)) {
 		return
 	}
 	writeJSON(w, http.StatusOK, v)
-}
-
-// saveHomeState writes the home state and the desired state to the database.
-func (d *daemon) saveHomeState() error {
-	if d.state == nil {
-		return nil
-	}
-	if err := d.state.SetAway(context.Background(), d.away); err != nil {
-		return &stateSaveError{err: err}
-	}
-	return d.persist(nil)
 }
 
 // scheduledView renders the per-zone scheduled setpoint the writes carry, and

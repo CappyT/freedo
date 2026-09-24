@@ -525,12 +525,18 @@ func newImmediateDaemon(t *testing.T, cfg tado.EmuConfig, radio radio.Radio, dry
 	return newImmediateDaemonWithRetry(t, cfg, radio, dryRun, nil)
 }
 
-func newImmediateDaemonWithRetry(t *testing.T, cfg tado.EmuConfig, radio radio.Radio, dryRun bool, retryAfter func(time.Duration) <-chan time.Time) (*daemon, string) {
+// newImmediateDaemonWithRetry starts a daemon on a test radio. setup runs
+// before the engine starts: the engine reads the clock fields from its own
+// goroutine, so a test must not set them afterwards.
+func newImmediateDaemonWithRetry(t *testing.T, cfg tado.EmuConfig, radio radio.Radio, dryRun bool, retryAfter func(time.Duration) <-chan time.Time, setup ...func(*daemon)) (*daemon, string) {
 	t.Helper()
 	emu := tado.NewEmu(cfg, tado.NewUnhandledLogger(io.Discard))
 	d := newDaemon(defaultInstall, emu, radio, dryRun, "live")
 	if retryAfter != nil {
 		d.retryAfter = retryAfter
+	}
+	for _, fn := range setup {
+		fn(d)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	go d.run(ctx)
@@ -541,6 +547,15 @@ func newImmediateDaemonWithRetry(t *testing.T, cfg tado.EmuConfig, radio radio.R
 		_ = radio.Close()
 	})
 	return d, srv.URL
+}
+
+// fixedRetryClock makes the daemon read its retry clock from *now and draw no
+// retry jitter. The test moves *now only before it hands the engine a tick.
+func fixedRetryClock(now *time.Time) func(*daemon) {
+	return func(d *daemon) {
+		d.retryNow = func() time.Time { return *now }
+		d.retryRand = func() uint16 { return 0 }
+	}
 }
 
 func waitForQueuedAttempts(t *testing.T, radio *immediateTestRadio, want int) []tado.Action {
@@ -1576,9 +1591,7 @@ func TestDaemonH11ConfigCompletesOnlyAfterCoAP204(t *testing.T) {
 	now := time.Unix(100, 0)
 	d, url := newImmediateDaemonWithRetry(t, tado.EmuConfig{
 		TxCounter: 100000, NoAutoQueue: true, Now: func() time.Time { return now },
-	}, radio, false, clock.after)
-	d.retryNow = func() time.Time { return now }
-	d.retryRand = func() uint16 { return 0 }
+	}, radio, false, clock.after, fixedRetryClock(&now))
 
 	var queued struct {
 		Queued  bool `json:"queued"`
@@ -1746,9 +1759,7 @@ func TestDaemonIdentifyCoAPRetransmitParity(t *testing.T) {
 	clock := newManualRetryClock()
 	radio := newImmediateTestRadio(true, nil)
 	now := time.Unix(100, 0)
-	d, url := newImmediateDaemonWithRetry(t, tado.EmuConfig{TxCounter: 100000, Now: func() time.Time { return now }}, radio, false, clock.after)
-	d.retryNow = func() time.Time { return now }
-	d.retryRand = func() uint16 { return 0 }
+	d, url := newImmediateDaemonWithRetry(t, tado.EmuConfig{TxCounter: 100000, Now: func() time.Time { return now }}, radio, false, clock.after, fixedRetryClock(&now))
 
 	var response struct {
 		Queued bool `json:"queued"`
@@ -1970,9 +1981,7 @@ func TestDaemonRebootUsesGenericCoAPRetransmit(t *testing.T) {
 	clock := newManualRetryClock()
 	radio := newImmediateTestRadio(true, nil)
 	now := time.Unix(100, 0)
-	d, url := newImmediateDaemonWithRetry(t, tado.EmuConfig{TxCounter: 100000, Now: func() time.Time { return now }}, radio, false, clock.after)
-	d.retryNow = func() time.Time { return now }
-	d.retryRand = func() uint16 { return 0 }
+	d, url := newImmediateDaemonWithRetry(t, tado.EmuConfig{TxCounter: 100000, Now: func() time.Time { return now }}, radio, false, clock.after, fixedRetryClock(&now))
 
 	var response struct {
 		Queued bool `json:"queued"`
@@ -2042,9 +2051,7 @@ func TestDaemonIdentifyCoAPAckCancelsRetry(t *testing.T) {
 	clock := newManualRetryClock()
 	radio := newImmediateTestRadio(true, nil)
 	now := time.Unix(100, 0)
-	d, url := newImmediateDaemonWithRetry(t, tado.EmuConfig{TxCounter: 100000, Now: func() time.Time { return now }}, radio, false, clock.after)
-	d.retryNow = func() time.Time { return now }
-	d.retryRand = func() uint16 { return 0 }
+	d, url := newImmediateDaemonWithRetry(t, tado.EmuConfig{TxCounter: 100000, Now: func() time.Time { return now }}, radio, false, clock.after, fixedRetryClock(&now))
 
 	var response struct {
 		Queued bool `json:"queued"`
@@ -2105,9 +2112,7 @@ func TestDaemonIdentifyNewTransactionReplacesStaleRetryTimer(t *testing.T) {
 	radio := newImmediateTestRadio(true, nil)
 	started := time.Unix(100, 0)
 	now := started
-	d, url := newImmediateDaemonWithRetry(t, tado.EmuConfig{TxCounter: 100000, Now: func() time.Time { return now }}, radio, false, clock.after)
-	d.retryNow = func() time.Time { return now }
-	d.retryRand = func() uint16 { return 0 }
+	d, url := newImmediateDaemonWithRetry(t, tado.EmuConfig{TxCounter: 100000, Now: func() time.Time { return now }}, radio, false, clock.after, fixedRetryClock(&now))
 
 	var response struct {
 		Queued bool `json:"queued"`
@@ -2182,9 +2187,7 @@ func TestDaemonIdentifyKeepsCONTimerWhenFIFOCommandIsQueued(t *testing.T) {
 	clock := newManualRetryClock()
 	radio := newImmediateTestRadio(true, nil)
 	now := time.Unix(100, 0)
-	d, url := newImmediateDaemonWithRetry(t, tado.EmuConfig{TxCounter: 100000, Now: func() time.Time { return now }}, radio, false, clock.after)
-	d.retryNow = func() time.Time { return now }
-	d.retryRand = func() uint16 { return 0 }
+	d, url := newImmediateDaemonWithRetry(t, tado.EmuConfig{TxCounter: 100000, Now: func() time.Time { return now }}, radio, false, clock.after, fixedRetryClock(&now))
 
 	var response struct {
 		Queued bool `json:"queued"`
@@ -2997,9 +3000,7 @@ func TestDaemonDHWUsesCoAPTerminalDelivery(t *testing.T) {
 	now := time.Unix(100, 0)
 	d, url := newImmediateDaemonWithRetry(t, tado.EmuConfig{
 		TxCounter: 100000, NoAutoQueue: true, Now: func() time.Time { return now },
-	}, radio, false, clock.after)
-	d.retryNow = func() time.Time { return now }
-	d.retryRand = func() uint16 { return 0 }
+	}, radio, false, clock.after, fixedRetryClock(&now))
 
 	var response struct {
 		Queued  bool `json:"queued"`
