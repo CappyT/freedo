@@ -308,7 +308,9 @@ func TestCSLCompletionAfterRemovalSurvives(t *testing.T) {
 
 // TestSetInstallConcurrentWithAPIReaders: the API reads the installation off
 // the HTTP goroutines while the engine swaps it. Every answer must be one whole
-// installation, never half of each.
+// installation, never half of each. The readers run without pause across all
+// the reloads, and each reload waits until every reader has done a whole round
+// since the previous one, so the overlap does not depend on the host speed.
 func TestSetInstallConcurrentWithAPIReaders(t *testing.T) {
 	first := reloadInstall(t)
 	renamer := strings.NewReplacer("sala", "salotto", "studio", "mansarda")
@@ -326,10 +328,28 @@ func TestSetInstallConcurrentWithAPIReaders(t *testing.T) {
 		cancel()
 	})
 
+	const readers, reloads = 4, 64
+	// phase is 2k after k reloads and 2k+1 while reload k+1 runs. Reload i
+	// serves first when i is even, second when it is odd.
+	var phase atomic.Int64
+	servedAt := func(p int64) int {
+		if p == 0 {
+			return 0
+		}
+		return int((p/2 - 1) % 2)
+	}
+
 	stop := make(chan struct{})
-	var reads atomic.Int64
+	failed := make(chan struct{})
+	var failOnce sync.Once
+	progress := make(chan struct{}, 1)
+	rounds := make([]atomic.Int64, readers)
+	// quiet[r][g] counts the rounds of reader r that ran entirely between two
+	// reloads while installation g was served.
+	quiet := make([][2]atomic.Int64, readers)
+	var straddled atomic.Int64
 	var wg sync.WaitGroup
-	for range 4 {
+	for r := range readers {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -339,42 +359,104 @@ func TestSetInstallConcurrentWithAPIReaders(t *testing.T) {
 					return
 				default:
 				}
-				if err := checkZonesView(srv.URL); err != nil {
+				if err := readRound(srv.URL, &phase, servedAt, &quiet[r], &straddled); err != nil {
 					t.Error(err)
+					failOnce.Do(func() { close(failed) })
 					return
 				}
-				if err := checkNodesView(srv.URL); err != nil {
-					t.Error(err)
-					return
+				rounds[r].Add(1)
+				select {
+				case progress <- struct{}{}:
+				default:
 				}
-				// This one resolves the reference on the HTTP goroutine, which
-				// is the read the atomic pointer is there for.
-				if err := checkNodeView(srv.URL, "VA9000000002"); err != nil {
-					t.Error(err)
-					return
-				}
-				reads.Add(1)
 			}
 		}()
 	}
+	var stopOnce sync.Once
+	stopReaders := func() {
+		stopOnce.Do(func() {
+			close(stop)
+			wg.Wait()
+		})
+	}
+	defer stopReaders()
 
-	for i := range 64 {
+	// awaitFreshRound returns once every reader has completed a round that
+	// started after the call: the round in flight at the call may predate it.
+	awaitFreshRound := func() {
+		want := make([]int64, readers)
+		for r := range rounds {
+			want[r] = rounds[r].Load() + 2
+		}
+		for r := range rounds {
+			for rounds[r].Load() < want[r] {
+				select {
+				case <-progress:
+				case <-failed:
+					t.FailNow()
+				}
+			}
+		}
+	}
+
+	awaitFreshRound()
+	for i := range reloads {
 		next := first
 		if i%2 == 1 {
 			next = second
 		}
-		if _, err := d.do(func(*tado.EmuState) (any, error) {
+		phase.Add(1)
+		_, err := d.do(func(*tado.EmuState) (any, error) {
 			_, _, err := d.setInstall(next)
 			return nil, err
-		}); err != nil {
+		})
+		phase.Add(1)
+		if err != nil {
 			t.Fatalf("reload %d: %v", i, err)
 		}
+		awaitFreshRound()
 	}
-	close(stop)
-	wg.Wait()
-	if got := reads.Load(); got < 32 {
-		t.Fatalf("the readers completed %d rounds, too few to have overlapped the reloads", got)
+	stopReaders()
+
+	for r := range readers {
+		if quiet[r][0].Load() == 0 || quiet[r][1].Load() == 0 {
+			t.Errorf("reader %d read the first installation in %d quiet rounds and the second in %d, want both",
+				r, quiet[r][0].Load(), quiet[r][1].Load())
+		}
 	}
+	t.Logf("%d reader rounds overlapped a reload", straddled.Load())
+}
+
+// readRound reads the three API views once. Each view must be one whole
+// installation. A round that ran entirely between two reloads must also show
+// exactly the installation the last reload served, in every view.
+func readRound(base string, phase *atomic.Int64, servedAt func(int64) int, quiet *[2]atomic.Int64, straddled *atomic.Int64) error {
+	start := phase.Load()
+	zones, err := checkZonesView(base)
+	if err != nil {
+		return err
+	}
+	nodes, err := checkNodesView(base)
+	if err != nil {
+		return err
+	}
+	// This one resolves the reference on the HTTP goroutine, which is the read
+	// the atomic pointer is there for.
+	node, err := checkNodeView(base, "VA9000000002")
+	if err != nil {
+		return err
+	}
+	if end := phase.Load(); end != start || start%2 == 1 {
+		straddled.Add(1)
+		return nil
+	}
+	want := servedAt(start)
+	if zones != want || nodes != want || node != want {
+		return fmt.Errorf("after %d reloads the views show installation %d, %d, %d, want %d",
+			start/2, zones, nodes, node, want)
+	}
+	quiet[want].Add(1)
+	return nil
 }
 
 // The two names each renamed object carries, first installation then second.
@@ -384,7 +466,10 @@ var (
 	errMixedInstalls = "mixes the two installations"
 )
 
-func checkZonesView(base string) error {
+// The check*View helpers return the installation the view shows: 0 for the
+// first, 1 for the second.
+
+func checkZonesView(base string) (int, error) {
 	var body struct {
 		Declared []struct {
 			Number int    `json:"number"`
@@ -392,16 +477,16 @@ func checkZonesView(base string) error {
 		} `json:"declared"`
 	}
 	if err := getInto(base+"/api/zones", &body); err != nil {
-		return err
+		return -1, err
 	}
 	if len(body.Declared) != len(reloadZoneNames) {
-		return fmt.Errorf("GET /api/zones returned %d zones, want %d", len(body.Declared), len(reloadZoneNames))
+		return -1, fmt.Errorf("GET /api/zones returned %d zones, want %d", len(body.Declared), len(reloadZoneNames))
 	}
 	generation := -1
 	for _, zone := range body.Declared {
 		names, ok := reloadZoneNames[zone.Number]
 		if !ok {
-			return fmt.Errorf("GET /api/zones returned unknown zone %d", zone.Number)
+			return -1, fmt.Errorf("GET /api/zones returned unknown zone %d", zone.Number)
 		}
 		seen := -1
 		for i, name := range names {
@@ -410,23 +495,23 @@ func checkZonesView(base string) error {
 			}
 		}
 		if seen < 0 {
-			return fmt.Errorf("zone %d is named %q, which is neither installation", zone.Number, zone.Name)
+			return -1, fmt.Errorf("zone %d is named %q, which is neither installation", zone.Number, zone.Name)
 		}
 		if generation >= 0 && seen != generation {
-			return fmt.Errorf("GET /api/zones %s: %+v", errMixedInstalls, body.Declared)
+			return -1, fmt.Errorf("GET /api/zones %s: %+v", errMixedInstalls, body.Declared)
 		}
 		generation = seen
 	}
-	return nil
+	return generation, nil
 }
 
-func checkNodesView(base string) error {
+func checkNodesView(base string) (int, error) {
 	var nodes []struct {
 		Serial string
 		Room   string
 	}
 	if err := getInto(base+"/api/nodes", &nodes); err != nil {
-		return err
+		return -1, err
 	}
 	generation := -1
 	for _, node := range nodes {
@@ -441,32 +526,34 @@ func checkNodesView(base string) error {
 			}
 		}
 		if seen < 0 {
-			return fmt.Errorf("node %s is in room %q, which is neither installation", node.Serial, node.Room)
+			return -1, fmt.Errorf("node %s is in room %q, which is neither installation", node.Serial, node.Room)
 		}
 		if generation >= 0 && seen != generation {
-			return fmt.Errorf("GET /api/nodes %s: %+v", errMixedInstalls, nodes)
+			return -1, fmt.Errorf("GET /api/nodes %s: %+v", errMixedInstalls, nodes)
 		}
 		generation = seen
 	}
 	if generation < 0 {
-		return fmt.Errorf("GET /api/nodes returned no declared device: %+v", nodes)
+		return -1, fmt.Errorf("GET /api/nodes returned no declared device: %+v", nodes)
 	}
-	return nil
+	return generation, nil
 }
 
-func checkNodeView(base, serial string) error {
+func checkNodeView(base, serial string) (int, error) {
 	var node struct {
 		Serial string
 		Room   string
 	}
 	if err := getInto(base+"/api/nodes/"+serial, &node); err != nil {
-		return err
+		return -1, err
 	}
 	rooms := reloadNodeRooms[serial]
-	if node.Room != rooms[0] && node.Room != rooms[1] {
-		return fmt.Errorf("node %s is in room %q, which is neither installation", serial, node.Room)
+	for i, room := range rooms {
+		if node.Room == room {
+			return i, nil
+		}
 	}
-	return nil
+	return -1, fmt.Errorf("node %s is in room %q, which is neither installation", serial, node.Room)
 }
 
 func getInto(url string, v any) error {
