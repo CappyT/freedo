@@ -135,25 +135,32 @@ func TestJSONBodiesAreStrict(t *testing.T) {
 	}
 	wantNoWrites(t, "a refused body", d, wireOf(t, in, "VA1000000002"))
 
-	// The bodies homeassistant/custom_components/freedo/api.py sends.
+	// The requests homeassistant/custom_components/freedo/api.py sends, with
+	// the path its entities build: a display entity names the valve by its
+	// short address. Each one succeeds.
+	short := wireShort(t, in, "VA1000000002")
 	for _, tc := range []struct {
 		method, path, body string
 	}{
+		{http.MethodPatch, "/api/home", `{"away": true}`},
 		{http.MethodPatch, "/api/home", `{"away": false}`},
-		{http.MethodPut, "/api/nodes/VA1000000002/display", `{"orientation": "vertical"}`},
-		{http.MethodPut, "/api/nodes/VA1000000002/display", `{"notification": false}`},
+		{http.MethodPut, "/api/nodes/" + short + "/display", `{"orientation": "vertical"}`},
+		{http.MethodPut, "/api/nodes/" + short + "/display", `{"notification": false}`},
 		{http.MethodPost, "/api/outdoor", `{"tempC": 4.5}`},
 		{http.MethodPost, "/api/zones/3/window", `{"open": true}`},
+		{http.MethodPost, "/api/zones/3/window", `{"open": false}`},
 		{http.MethodPost, "/api/zones/3/setpoint", `{"setpointC": 21.5, "mode": "manual"}`},
 		{http.MethodPost, "/api/zones/3/setpoint", `{"setpointC": 19, "mode": "timer", "durationSec": 1800}`},
 		{http.MethodPost, "/api/zones/3/auto", ``},
 		{http.MethodPost, "/api/zones/3/off", `{"mode": "manual"}`},
-		{http.MethodPost, "/api/zones/0/off", `{"mode": "timer", "durationSec": 3600}`},
 		{http.MethodPost, "/api/zones/3/boost", `{"on": true}`},
+		{http.MethodPost, "/api/zones/3/boost", `{"on": false}`},
 		{http.MethodPost, "/api/zones/0/setpoint", `{"setpointC": 50, "mode": "manual"}`},
+		{http.MethodPost, "/api/zones/0/off", `{"mode": "manual"}`},
+		{http.MethodPost, "/api/zones/0/auto", ``},
 	} {
-		if code, msg := postRaw(t, tc.method, url+tc.path, tc.body); code >= 400 && strings.Contains(msg, "bad body") {
-			t.Errorf("%s %s %s: code=%d error=%q", tc.method, tc.path, tc.body, code, msg)
+		if code, msg := postRaw(t, tc.method, url+tc.path, tc.body); code != http.StatusOK {
+			t.Errorf("%s %s %s: code=%d error=%q, want 200", tc.method, tc.path, tc.body, code, msg)
 		}
 	}
 }

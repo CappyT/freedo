@@ -183,6 +183,9 @@ func TestZonePIDRejects(t *testing.T) {
 		{"negative gain", "3", map[string]any{"ki": -1}},
 		{"hot water zone", "0", map[string]any{"kp": 1200}},
 		{"not an object", "3", 1000},
+		{"unknown field", "3", map[string]any{"kp": 1200, "gain": 7}},
+		{"case-mismatched key", "3", map[string]any{"kP": 1200}},
+		{"upper-case key", "3", map[string]any{"KD": 1200}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			code, res := a.call(http.MethodPatch, "/api/install/zones/"+tc.zone, map[string]any{"pid": tc.pid})

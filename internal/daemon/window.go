@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"time"
@@ -91,29 +92,46 @@ func (d *daemon) windowZone(number int) (*tado.Zone, error) {
 // that already holds the zone keeps its hold: a repeated open restarts
 // nothing. It reports whether the stored state changed.
 func (d *daemon) setWindow(e *tado.EmuState, zone int, src windowSource, open bool, hold time.Duration, dispatch func(string)) bool {
-	w := d.windows[zone]
-	was := w.open()
-	_, held := w[src]
-	switch {
-	case open && held, !open && !held:
+	next, changed := d.nextWindow(zone, src, open, hold)
+	if !changed {
 		return false
-	case open:
-		if w == nil {
-			w = make(zoneWindow)
-			d.windows[zone] = w
-		}
-		now := d.retryNow().UTC()
-		w[src] = windowHold{since: now, deadline: now.Add(hold)}
-	default:
-		delete(w, src)
-		if len(w) == 0 {
-			delete(d.windows, zone)
-		}
 	}
-	if w.open() != was {
+	d.putWindow(e, zone, next, dispatch)
+	return true
+}
+
+// nextWindow returns, as a new map, the sources that hold zone once src opens
+// or closes, and whether they differ from the current ones. It changes nothing.
+func (d *daemon) nextWindow(zone int, src windowSource, open bool, hold time.Duration) (zoneWindow, bool) {
+	w := d.windows[zone]
+	if _, held := w[src]; open == held {
+		return w, false
+	}
+	next := make(zoneWindow, len(w)+1)
+	for s, h := range w {
+		next[s] = h
+	}
+	if open {
+		now := d.retryNow().UTC()
+		next[src] = windowHold{since: now, deadline: now.Add(hold)}
+	} else {
+		delete(next, src)
+	}
+	return next, true
+}
+
+// putWindow makes next the sources that hold zone. When the zone itself opens
+// or closes, its zoneWriteTargets owe the new 62e0.
+func (d *daemon) putWindow(e *tado.EmuState, zone int, next zoneWindow, dispatch func(string)) {
+	was := d.windows[zone].open()
+	if len(next) == 0 {
+		delete(d.windows, zone)
+	} else {
+		d.windows[zone] = next
+	}
+	if next.open() != was {
 		d.oweZone(e, zone, dispatch)
 	}
-	return true
 }
 
 // oweZone makes the zoneWriteTargets of zone owe its current 62e0 and writes
@@ -315,17 +333,62 @@ func (d *daemon) restoreWindows(e *tado.EmuState) error {
 
 // saveWindows writes the zone window state to the database.
 func (d *daemon) saveWindows() error {
+	return d.saveWindowState(d.windows, d.owedWrites(nil))
+}
+
+func (d *daemon) saveWindowState(windows map[int]zoneWindow, owed []windowWrite) error {
 	if d.state == nil {
 		return nil
 	}
-	owed := make([]windowWrite, 0, len(d.windowOwed))
-	for w := range d.windowOwed {
-		owed = append(owed, w)
-	}
-	if err := d.state.SetZoneWindows(context.Background(), d.windows, owed); err != nil {
+	if err := d.state.SetZoneWindows(context.Background(), windows, owed); err != nil {
 		return &stateSaveError{err: err}
 	}
 	return nil
+}
+
+// owedWrites lists the owed window writes plus extra, sorted and without
+// repeats.
+func (d *daemon) owedWrites(extra []windowWrite) []windowWrite {
+	set := make(map[windowWrite]bool, len(d.windowOwed)+len(extra))
+	for w := range d.windowOwed {
+		set[w] = true
+	}
+	for _, w := range extra {
+		set[w] = true
+	}
+	out := make([]windowWrite, 0, len(set))
+	for w := range set {
+		out = append(out, w)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].zone != out[j].zone {
+			return out[i].zone < out[j].zone
+		}
+		return out[i].target < out[j].target
+	})
+	return out
+}
+
+// saveNextWindow stores the zone window state putWindow is about to reach:
+// next as the holds of zone and, when the zone opens or closes, a write owed to
+// each of its zoneWriteTargets. It returns the owed writes it stored.
+func (d *daemon) saveNextWindow(e *tado.EmuState, zone int, next zoneWindow) ([]windowWrite, error) {
+	windows := make(map[int]zoneWindow, len(d.windows)+1)
+	for z, w := range d.windows {
+		windows[z] = w
+	}
+	delete(windows, zone)
+	if len(next) > 0 {
+		windows[zone] = next
+	}
+	var extra []windowWrite
+	if next.open() != d.windows[zone].open() {
+		for _, target := range d.zoneWriteTargets(e, zone) {
+			extra = append(extra, windowWrite{zone: zone, target: target})
+		}
+	}
+	owed := d.owedWrites(extra)
+	return owed, d.saveWindowState(windows, owed)
 }
 
 // windowView renders the window state of one zone. since is when the zone
@@ -403,12 +466,25 @@ func (d *daemon) postZoneWindow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hold := d.inst.Load().Options.ExternalWindowMax()
-	v, err := d.do(func(e *tado.EmuState) (any, error) {
-		var err error
-		if d.setWindow(e, z.Number, windowExternal, *b.Open, hold, func(target string) { d.dispatchQueued(e, target) }) {
-			err = d.saveWindows()
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
+		next, changed := d.nextWindow(z.Number, windowExternal, *b.Open, hold)
+		if !changed {
+			return d.windowView(z.Number), nil
 		}
-		return d.windowView(z.Number), err
+		// Saved before the engine moves, so a failed save changes nothing.
+		saved, err := d.saveNextWindow(e, z.Number, next)
+		if err != nil {
+			return nil, err
+		}
+		d.putWindow(e, z.Number, next, func(target string) { d.dispatchQueued(e, target) })
+		// The writes the members already confirm are settled by now: store the
+		// smaller set too. The window itself is stored, so this save only trims.
+		if !slices.Equal(saved, d.owedWrites(nil)) {
+			if err := d.saveWindows(); err != nil {
+				log.Printf("persist zone %d window: %v", z.Number, err)
+			}
+		}
+		return d.windowView(z.Number), nil
 	})
 	if writeHandlerErr(w, err) {
 		return

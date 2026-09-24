@@ -5,7 +5,10 @@
   memory only and drops a curve back to its default after outdoor_max_age_sec,
   so the periodic push also covers a daemon restart.
 - The window sensors of a zone go to POST /api/zones/{n}/window on each
-  change of the zone state, one push per zone at a time.
+  change of the zone state, one push per zone at a time. A push the daemon
+  did not take (no answer or a 5xx) is sent again, with the state the
+  sensors have then, every WINDOW_RETRY_INTERVAL until it succeeds. A 4xx is
+  not retried.
 
 Unavailable or unknown states are never pushed.
 """
@@ -23,12 +26,23 @@ from homeassistant.helpers.event import (
     async_track_time_interval,
 )
 
-from .api import FreedoClient, FreedoError
-from .const import CONF_OUTDOOR_ENTITY, CONF_WINDOWS, OUTDOOR_PUSH_INTERVAL
+from .api import FreedoApiError, FreedoClient, FreedoError
+from .const import (
+    CONF_OUTDOOR_ENTITY,
+    CONF_WINDOWS,
+    OUTDOOR_PUSH_INTERVAL,
+    WINDOW_RETRY_INTERVAL,
+)
 from .coordinator import FreedoConfigEntry
 from .model import outdoor_payload, window_payload, window_zones
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _transient(err: FreedoError) -> bool:
+    """A push that may pass later: the daemon did not answer or failed itself.
+    A 4xx refuses the request, and the same push would fail again."""
+    return not isinstance(err, FreedoApiError) or err.status >= 500
 
 
 @callback
@@ -76,6 +90,8 @@ def async_setup_environment(
 
     if zones:
         last: dict[int, bool] = {}
+        # Zones whose last push failed on a transient error.
+        failed: set[int] = set()
         # One push per zone at a time. A push reads the sensor states once it
         # holds the lock, so a later change never lands before an earlier one.
         locks = {zone: asyncio.Lock() for zone in zones}
@@ -94,9 +110,28 @@ def async_setup_environment(
                 try:
                     await client.push_window(zone, payload["open"])
                 except FreedoError as err:
-                    _LOGGER.warning("Window push for zone %s failed: %s", zone, err)
+                    if _transient(err):
+                        if zone not in failed:
+                            _LOGGER.warning(
+                                "Window push for zone %s failed, retrying every %s: %s",
+                                zone, WINDOW_RETRY_INTERVAL, err,
+                            )
+                        failed.add(zone)
+                    else:
+                        failed.discard(zone)
+                        _LOGGER.warning("Window push for zone %s refused: %s", zone, err)
                     return
+                failed.discard(zone)
                 last[zone] = payload["open"]
+
+        @callback
+        def window_retry_tick(_: datetime) -> None:
+            for zone in sorted(failed):
+                hass.async_create_task(push_window(zone, force=True))
+
+        entry.async_on_unload(
+            async_track_time_interval(hass, window_retry_tick, WINDOW_RETRY_INTERVAL)
+        )
 
         entity_zone = {e: z for z, entities in zones.items() for e in entities}
 

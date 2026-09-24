@@ -265,8 +265,9 @@ func (d *daemon) setInstall(in *tado.Install) (added, removed []string, err erro
 // reconcile enrols the devices a reload added and drops the per-device
 // bookkeeping of the ones it removed. The link-maintenance maps are keyed by
 // wire EUI hex; the retry, dispatch and CSL-admission maps are keyed by the
-// target string a handler addressed the device with, which is that same hex or,
-// on the zone path, the short address. A CSL job still in flight carries its own
+// target string a handler addressed the device with, which is that same hex.
+// The short address goes too: queueTarget falls back to the action's node
+// name, which can be the short address. A CSL job still in flight carries its own
 // copy of the target, so its completion finds no entry left and does nothing.
 func (d *daemon) reconcile(added, removed []string) {
 	for _, eui := range added {
@@ -1089,13 +1090,28 @@ func (d *daemon) txNow(a tado.Action) {
 	}
 }
 
-// do runs fn on the engine goroutine and returns its result.
+// do runs fn on the engine goroutine and returns its result. It waits for the
+// engine as long as it needs: an API handler uses doReq instead.
 func (d *daemon) do(fn func(*tado.EmuState) (any, error)) (any, error) {
-	return d.doWithin(0, fn)
+	return d.doCtx(context.Background(), 0, fn)
+}
+
+// doReq is do for an API handler: it gives up with errEngineBusy when the
+// request context ends, so a wedged engine does not hold one goroutine per
+// request.
+func (d *daemon) doReq(r *http.Request, fn func(*tado.EmuState) (any, error)) (any, error) {
+	return d.doCtx(r.Context(), 0, fn)
 }
 
 // doWithin is do with a deadline. A zero timeout waits for the engine forever.
 func (d *daemon) doWithin(timeout time.Duration, fn func(*tado.EmuState) (any, error)) (any, error) {
+	return d.doCtx(context.Background(), timeout, fn)
+}
+
+// doCtx gives up when ctx ends or timeout passes, whichever is first. A
+// command the engine already took still runs to its end: its reply channel
+// has room for the one answer nobody reads.
+func (d *daemon) doCtx(ctx context.Context, timeout time.Duration, fn func(*tado.EmuState) (any, error)) (any, error) {
 	type res struct {
 		v   any
 		err error
@@ -1113,6 +1129,8 @@ func (d *daemon) doWithin(timeout time.Duration, fn func(*tado.EmuState) (any, e
 		return nil, errStopped
 	case <-give:
 		return nil, errEngineBusy
+	case <-ctx.Done():
+		return nil, fmt.Errorf("%w: %w", errEngineBusy, context.Cause(ctx))
 	}
 	select {
 	case r := <-reply:
@@ -1121,6 +1139,13 @@ func (d *daemon) doWithin(timeout time.Duration, fn func(*tado.EmuState) (any, e
 		return nil, errStopped
 	case <-give:
 		return nil, errEngineBusy
+	case <-ctx.Done():
+		select {
+		case r := <-reply:
+			return r.v, r.err
+		default:
+		}
+		return nil, fmt.Errorf("%w: %w", errEngineBusy, context.Cause(ctx))
 	}
 }
 
@@ -1384,13 +1409,13 @@ func write(w http.ResponseWriter, v any, err error) {
 	writeJSON(w, http.StatusOK, v)
 }
 
-// writeHandlerErr maps a handler error to its status: a stopped engine is
-// unavailable, a failed save is internal, a rejected request is a bad request.
-// It reports whether it wrote an answer.
+// writeHandlerErr maps a handler error to its status: a stopped or busy engine
+// is unavailable, a failed save is internal, a rejected request is a bad
+// request. It reports whether it wrote an answer.
 func writeHandlerErr(w http.ResponseWriter, err error) bool {
 	var stateErr *stateSaveError
 	switch {
-	case errors.Is(err, errStopped):
+	case errors.Is(err, errStopped), errors.Is(err, errEngineBusy):
 		writeErr(w, http.StatusServiceUnavailable, err.Error())
 	case errors.As(err, &stateErr):
 		writeErr(w, http.StatusInternalServerError, stateErr.Error())
@@ -1914,7 +1939,7 @@ func (d *daemon) getNodes(w http.ResponseWriter, r *http.Request) {
 		writeResolveErr(w, errNoInstall)
 		return
 	}
-	v, err := d.do(func(e *tado.EmuState) (any, error) { return d.nodeViews(e), nil })
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) { return d.nodeViews(e), nil })
 	write(w, v, err)
 }
 
@@ -1963,7 +1988,7 @@ func (d *daemon) getNode(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	v, err := d.do(func(e *tado.EmuState) (any, error) {
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		for _, vv := range d.nodeViews(e) {
 			if vv.Short == n.Short() {
 				return vv, nil
@@ -1980,7 +2005,7 @@ func (d *daemon) getNode(w http.ResponseWriter, r *http.Request) {
 
 // getBoiler adds the flow limit state to the boiler view.
 func (d *daemon) getBoiler(w http.ResponseWriter, r *http.Request) {
-	v, err := d.do(func(e *tado.EmuState) (any, error) {
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		return struct {
 			tado.BoilerView
 			FlowLimit map[string]any `json:"flowLimit"`
@@ -1990,12 +2015,12 @@ func (d *daemon) getBoiler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (d *daemon) getCircuits(w http.ResponseWriter, r *http.Request) {
-	v, err := d.do(func(e *tado.EmuState) (any, error) { return e.Snapshot().Circuits, nil })
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) { return e.Snapshot().Circuits, nil })
 	write(w, v, err)
 }
 
 func (d *daemon) getStats(w http.ResponseWriter, r *http.Request) {
-	v, err := d.do(func(e *tado.EmuState) (any, error) {
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		return map[string]any{
 			"stats":     e.Stats(),
 			"nodes":     len(e.Nodes()),
@@ -2010,7 +2035,7 @@ func (d *daemon) getStats(w http.ResponseWriter, r *http.Request) {
 // traffic, so it is also the way to check what the emulator has picked up. The
 // "demand" block is the observed heat-demand chain, one entry per zone.
 func (d *daemon) getZones(w http.ResponseWriter, r *http.Request) {
-	v, err := d.do(func(e *tado.EmuState) (any, error) {
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		return map[string]any{
 			"zones":    e.ZoneDirectory(),
 			"declared": d.declaredZones(e),
@@ -2062,7 +2087,7 @@ func (d *daemon) declaredZones(e *tado.EmuState) []map[string]any {
 }
 
 func (d *daemon) getUnhandled(w http.ResponseWriter, r *http.Request) {
-	v, err := d.do(func(e *tado.EmuState) (any, error) {
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		return map[string]any{"counts": e.Snapshot().Unhandled}, nil
 	})
 	write(w, v, err)
@@ -2073,7 +2098,7 @@ func (d *daemon) getQueue(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	v, err := d.do(func(e *tado.EmuState) (any, error) {
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		queue := e.Queue(target)
 		return map[string]any{"pending": len(queue), "queue": queue, "history": e.QueueHistory(target)}, nil
 	})
@@ -2085,7 +2110,7 @@ func (d *daemon) deleteQueue(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	v, err := d.do(func(e *tado.EmuState) (any, error) {
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		return map[string]any{"dropped": e.DropQueue(target)}, nil
 	})
 	write(w, v, err)
@@ -2347,7 +2372,7 @@ func (d *daemon) allZones() []int {
 
 // getHome returns the state of the whole home.
 func (d *daemon) getHome(w http.ResponseWriter, r *http.Request) {
-	v, err := d.do(func(e *tado.EmuState) (any, error) {
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		scheduled, off := d.scheduledView()
 		return map[string]any{"away": d.away, "scheduled": scheduled, "scheduledOff": off}, nil
 	})
@@ -2367,20 +2392,21 @@ func (d *daemon) patchHome(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "away is required")
 		return
 	}
-	v, err := d.do(func(e *tado.EmuState) (any, error) {
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
+		// Stored on the engine goroutine, so racing requests reach the database
+		// in the order the engine took them, and before the engine moves, so a
+		// failed save changes nothing.
+		if d.state != nil {
+			if err := d.state.SetAway(context.Background(), *b.Away); err != nil {
+				return nil, &stateSaveError{err: err}
+			}
+		}
 		changed := d.away != *b.Away
 		d.away = *b.Away
 		d.applyHomeState(e)
 		queued := 0
 		if changed {
 			queued = d.rewriteZones(e, d.allZones(), func(target string) { d.dispatchQueued(e, target) })
-		}
-		// Stored on the engine goroutine: racing requests reach the database in
-		// the order the engine took them.
-		if d.state != nil {
-			if err := d.state.SetAway(context.Background(), d.away); err != nil {
-				return nil, &stateSaveError{err: err}
-			}
 		}
 		scheduled, off := d.scheduledView()
 		return map[string]any{"away": d.away, "queued": queued, "scheduled": scheduled, "scheduledOff": off}, nil
@@ -2461,7 +2487,7 @@ func (d *daemon) postSetpoint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	inst := d.inst.Load()
-	v, err := d.do(func(e *tado.EmuState) (any, error) {
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		id, err := resolveID(e, inst, n.Short(), b.ID)
 		if err != nil {
 			return nil, err
@@ -2596,7 +2622,7 @@ func (d *daemon) postBoilerDHW(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	target := hex.EncodeToString(dev.WireEUI())
-	v, err := d.do(func(e *tado.EmuState) (any, error) {
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		d.applyHomeState(e)
 		if err := e.EnqueueDHWOverlay(target, id, tempC, on, duration); err != nil {
 			return nil, err
@@ -2644,7 +2670,7 @@ func (d *daemon) postBoilerFlow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	target := hex.EncodeToString(dev.WireEUI())
-	v, err := d.do(func(e *tado.EmuState) (any, error) {
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		if err := e.EnqueueFlowSetpoint(target, id, b.TempC); err != nil {
 			return nil, err
 		}
@@ -2702,7 +2728,7 @@ func (d *daemon) postMode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	inst := d.inst.Load()
-	v, err := d.do(func(e *tado.EmuState) (any, error) {
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		id, err := resolveID(e, inst, n.Short(), b.ID)
 		if err != nil {
 			return nil, err
@@ -2730,7 +2756,7 @@ func (d *daemon) postOpenWindow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	inst := d.inst.Load()
-	v, err := d.do(func(e *tado.EmuState) (any, error) {
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		id, err := resolveID(e, inst, n.Short(), b.ID)
 		if err != nil {
 			return nil, err
@@ -2758,7 +2784,7 @@ func (d *daemon) postBoost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	inst := d.inst.Load()
-	v, err := d.do(func(e *tado.EmuState) (any, error) {
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		id, err := resolveID(e, inst, n.Short(), b.ID)
 		if err != nil {
 			return nil, err
@@ -2793,7 +2819,7 @@ func (d *daemon) postChildLock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	inst := d.inst.Load()
-	v, err := d.do(func(e *tado.EmuState) (any, error) {
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		id, err := resolveID(e, inst, n.Short(), b.ID)
 		if err != nil {
 			return nil, err
@@ -2813,7 +2839,7 @@ func (d *daemon) getDisplay(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	v, err := d.do(func(e *tado.EmuState) (any, error) { return e.DisplaySettings(target) })
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) { return e.DisplaySettings(target) })
 	if writeHandlerErr(w, err) {
 		return
 	}
@@ -2838,7 +2864,7 @@ func (d *daemon) putDisplay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	inst := d.inst.Load()
-	v, err := d.do(func(e *tado.EmuState) (any, error) {
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		id, err := resolveID(e, inst, n.Short(), b.ID)
 		if err != nil {
 			return nil, err
@@ -2870,7 +2896,7 @@ func (d *daemon) postIdentify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	inst := d.inst.Load()
-	v, err := d.do(func(e *tado.EmuState) (any, error) {
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		id, err := resolveID(e, inst, n.Short(), b.ID)
 		if err != nil {
 			return nil, err
@@ -2895,7 +2921,7 @@ func (d *daemon) postCalibrate(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, fmt.Sprintf("%s is a %s: only a valve calibrates", n.Ref(), n.Kind))
 		return
 	}
-	v, err := d.do(func(e *tado.EmuState) (any, error) {
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		if err := e.EnqueueCalibrate(target); err != nil {
 			return nil, err
 		}
@@ -2915,7 +2941,7 @@ func (d *daemon) postReboot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	inst := d.inst.Load()
-	v, err := d.do(func(e *tado.EmuState) (any, error) {
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		id, err := resolveID(e, inst, n.Short(), b.ID)
 		if err != nil {
 			return nil, err
@@ -2941,7 +2967,7 @@ func (d *daemon) postExtui(w http.ResponseWriter, r *http.Request) {
 	if !decodeBody(w, r, &b) {
 		return
 	}
-	v, err := d.do(func(e *tado.EmuState) (any, error) {
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		if err := e.EnqueueExtuiPZH(target, b.StateEndpoint, b.MeasEndpoint); err != nil {
 			return nil, err
 		}
@@ -2983,7 +3009,7 @@ func (d *daemon) postNetcmd(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "netcmd t is not a non-destructive command")
 		return
 	}
-	v, err := d.do(func(e *tado.EmuState) (any, error) {
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		if err := e.EnqueueNetcmd(target, t); err != nil {
 			return nil, err
 		}
@@ -3016,7 +3042,7 @@ func (d *daemon) putSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	inst := d.inst.Load()
-	v, err := d.do(func(e *tado.EmuState) (any, error) {
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		if _, err := resolveID(e, inst, n.Short(), b.ID); err != nil {
 			return nil, err
 		}
@@ -3144,7 +3170,7 @@ func (d *daemon) postConfig(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	v, err := d.do(func(e *tado.EmuState) (any, error) {
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		id, err := resolveID(e, inst, n.Short(), b.ID)
 		if err != nil {
 			return nil, err
@@ -3168,7 +3194,7 @@ func (d *daemon) deleteOfflineSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	inst := d.inst.Load()
-	v, err := d.do(func(e *tado.EmuState) (any, error) {
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		// The wall thermostat takes no write, so the id of its two zones matters
 		// to nobody.
 		id, err := resolveID(e, inst, n.Short(), nil)
@@ -3245,8 +3271,8 @@ func (d *daemon) postZoneOffset(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	target := targetDevice.Short()
-	v, err := d.do(func(e *tado.EmuState) (any, error) {
+	target := hex.EncodeToString(targetDevice.WireEUI())
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		var err error
 		if mode == tado.OffsetModeDbg2 {
 			err = e.EnqueueCalibOffsetDbg2(target, zoneNumber, offset)
@@ -3282,7 +3308,7 @@ func (d *daemon) postFactoryReset(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, `factory reset needs {"confirm":true}`)
 		return
 	}
-	v, err := d.do(func(e *tado.EmuState) (any, error) {
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		if err := e.EnqueueNetcmd(target, 1007); err != nil {
 			return nil, err
 		}
@@ -3306,7 +3332,7 @@ func (d *daemon) activeNodeGetDecoded(w http.ResponseWriter, r *http.Request, re
 		return
 	}
 	inst := d.inst.Load()
-	v, err := d.do(func(e *tado.EmuState) (any, error) {
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		query := append([]string(nil), extraQuery...)
 		if idScoped {
 			if id, err := resolveID(e, inst, n.Short(), nil); err == nil {
@@ -3466,7 +3492,7 @@ func (d *daemon) getHeatsourceCaps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	target := hex.EncodeToString(dev.WireEUI())
-	v, err := d.do(func(e *tado.EmuState) (any, error) {
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		if code, body, ok := e.ActiveGetResponse(target, resource); ok {
 			return map[string]any{"resource": resource, "code": code, "result": hex.EncodeToString(body)}, nil
 		}
@@ -3504,7 +3530,7 @@ func (d *daemon) postPair(w http.ResponseWriter, r *http.Request) {
 		}
 		key = k
 	}
-	v, err := d.do(func(e *tado.EmuState) (any, error) {
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		if err := e.EnqueuePair(target, key); err != nil {
 			return nil, err
 		}

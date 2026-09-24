@@ -255,7 +255,7 @@ func (d *daemon) postZoneSetpoint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	target := hex.EncodeToString(dev.WireEUI())
-	v, err := d.do(func(e *tado.EmuState) (any, error) {
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		d.applyHomeState(e)
 		duration, err := d.overlayDuration(e, z, b.Mode, duration)
 		if err != nil {
@@ -285,7 +285,7 @@ func (d *daemon) postZoneAuto(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	target := hex.EncodeToString(dev.WireEUI())
-	v, err := d.do(func(e *tado.EmuState) (any, error) {
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		d.applyHomeState(e)
 		var err error
 		if z.Kind == tado.ZoneHotWater {
@@ -320,7 +320,7 @@ func (d *daemon) postZoneOff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	target := hex.EncodeToString(dev.WireEUI())
-	v, err := d.do(func(e *tado.EmuState) (any, error) {
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		d.applyHomeState(e)
 		duration, err := d.overlayDuration(e, z, b.Mode, duration)
 		if err != nil {
@@ -364,7 +364,7 @@ func (d *daemon) postZoneBoost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	target := hex.EncodeToString(dev.WireEUI())
-	v, err := d.do(func(e *tado.EmuState) (any, error) {
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		d.applyHomeState(e)
 		if err := e.EnqueueBoost(target, z.Number, *b.On); err != nil {
 			return nil, err

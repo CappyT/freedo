@@ -6,6 +6,7 @@ They run only with pytest-homeassistant-custom-component installed.
 
 import asyncio
 import copy
+from datetime import timedelta
 from unittest.mock import patch
 
 import pytest
@@ -31,9 +32,14 @@ from homeassistant.const import (  # noqa: E402
     CONF_PORT,
 )
 from homeassistant.helpers import device_registry as dr  # noqa: E402
-from pytest_homeassistant_custom_component.common import MockConfigEntry  # noqa: E402
+from homeassistant.util import dt as dt_util  # noqa: E402
+from pytest_homeassistant_custom_component.common import (  # noqa: E402
+    MockConfigEntry,
+    async_fire_time_changed,
+)
 
 import custom_components.freedo  # noqa: E402,F401  # the target of the client patch
+from custom_components.freedo.api import FreedoApiError, FreedoConnectionError  # noqa: E402
 from test_model import BOILER, HEALTH, HOME, INSTALL_ZONES, NODES, ZONES  # noqa: E402
 
 DOMAIN = "freedo"
@@ -55,6 +61,8 @@ class FakeClient:
         # Window pushes as the daemon receives them, in arrival order.
         self.windows: list[tuple[int, bool]] = []
         self.window_gate: asyncio.Event | None = None
+        # Errors the next window pushes raise, one per push.
+        self.window_errors: list[Exception] = []
 
     async def health(self):
         return copy.deepcopy(self.health_json)
@@ -91,6 +99,8 @@ class FakeClient:
         return {"queued": True}
 
     async def push_window(self, zone, is_open):
+        if self.window_errors:
+            raise self.window_errors.pop(0)
         # An open push that waits on the gate reaches the daemon late.
         if is_open and self.window_gate is not None:
             await self.window_gate.wait()
@@ -273,3 +283,39 @@ async def test_window_pushes_keep_order(hass, client):
     # The daemon ends on the state the sensor has now.
     assert client.windows[-1] == (1, False)
     assert client.windows == [(1, False), (1, True), (1, False)]
+
+
+async def test_failed_window_push_is_retried(hass, client):
+    sensor = "binary_sensor.living_window"
+    hass.states.async_set(sensor, "off")
+    await setup_entry(hass, client, options={"windows": {sensor: 1}})
+    assert client.windows == [(1, False)]
+
+    # The daemon is down: the open does not reach it on the change.
+    client.window_errors = [FreedoConnectionError("daemon down")]
+    hass.states.async_set(sensor, "on")
+    await hass.async_block_till_done()
+    assert client.windows == [(1, False)]
+
+    # It reaches it on the retry, and a delivered zone is not pushed again.
+    now = dt_util.utcnow()
+    async_fire_time_changed(hass, now + timedelta(minutes=1))
+    await hass.async_block_till_done()
+    assert client.windows == [(1, False), (1, True)]
+    async_fire_time_changed(hass, now + timedelta(minutes=2))
+    await hass.async_block_till_done()
+    assert client.windows == [(1, False), (1, True)]
+
+
+async def test_refused_window_push_is_not_retried(hass, client):
+    sensor = "binary_sensor.living_window"
+    hass.states.async_set(sensor, "off")
+    await setup_entry(hass, client, options={"windows": {sensor: 1}})
+
+    # A 4xx refuses the request itself: the same push would fail again.
+    client.window_errors = [FreedoApiError(400, "zone 1: the zone has no open window")]
+    hass.states.async_set(sensor, "on")
+    await hass.async_block_till_done()
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(minutes=1))
+    await hass.async_block_till_done()
+    assert client.windows == [(1, False)]

@@ -122,7 +122,7 @@ func (d *daemon) postNodeFw(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusConflict, "transmit is not armed: a dry-run sends nothing")
 		return
 	}
-	st, err := d.do(func(e *tado.EmuState) (any, error) {
+	st, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		if e.BridgeSeen() {
 			return nil, errTXBlocked
 		}

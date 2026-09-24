@@ -158,14 +158,14 @@ func (d *daemon) putZoneSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if d.isHotWaterZone(zone) {
-		d.putHotWaterSchedule(w, zone, members, programs)
+		d.putHotWaterSchedule(w, r, zone, members, programs)
 		return
 	}
 	if err := validateScheduleRange(programs, zoneMinC, zoneMaxC, ""); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	v, err := d.do(func(e *tado.EmuState) (any, error) {
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		for _, member := range members {
 			if err := e.SetSchedule(hex.EncodeToString(member.WireEUI()), programs); err != nil {
 				return nil, err
@@ -187,7 +187,7 @@ func (d *daemon) getZoneSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hotWater := d.isHotWaterZone(zone)
-	v, err := d.do(func(e *tado.EmuState) (any, error) {
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		if hotWater {
 			if d.dhwProgram == nil {
 				return nil, nil
@@ -228,20 +228,21 @@ func (d *daemon) isHotWaterZone(zone int) bool {
 // putHotWaterSchedule stores the hot-water program daemon-side. The engine
 // evaluates it and writes each block change to the thermostat on the hot-water
 // zone; nothing reaches a sched resource.
-func (d *daemon) putHotWaterSchedule(w http.ResponseWriter, zone int, members []*tado.Device, programs []tado.ScheduleProgram) {
+func (d *daemon) putHotWaterSchedule(w http.ResponseWriter, r *http.Request, zone int, members []*tado.Device, programs []tado.ScheduleProgram) {
 	if err := validateHotWaterSchedule(programs); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	v, err := d.do(func(e *tado.EmuState) (any, error) {
-		d.dhwProgram = programs
-		// Stored on the engine goroutine: racing requests reach the database in
-		// the order the engine took them.
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
+		// Stored on the engine goroutine, so racing requests reach the database
+		// in the order the engine took them, and before the engine runs it, so a
+		// failed save changes nothing.
 		if d.state != nil {
 			if err := d.state.SetHotWaterProgram(context.Background(), programs); err != nil {
 				return nil, &stateSaveError{err: err}
 			}
 		}
+		d.dhwProgram = programs
 		return newScheduleView(zone, members, programs), nil
 	})
 	if writeHandlerErr(w, err) {

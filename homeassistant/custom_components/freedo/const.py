@@ -7,6 +7,7 @@ DOMAIN = "freedo"
 DEFAULT_PORT = 8080
 SCAN_INTERVAL = timedelta(seconds=30)
 OUTDOOR_PUSH_INTERVAL = timedelta(minutes=15)
+WINDOW_RETRY_INTERVAL = timedelta(seconds=30)
 
 CONF_TOKEN = "token"
 CONF_OUTDOOR_ENTITY = "outdoor_entity"

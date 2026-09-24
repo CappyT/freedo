@@ -576,3 +576,108 @@ func mustDecodeEUI(t *testing.T, euiHex string) []byte {
 	}
 	return wire
 }
+
+// TestZoneOffsetKeysTheWireEUI: POST /api/zones/{n}/offset addresses the
+// measuring device by its wire EUI hex, the key every other path gives the
+// per-target retry and dispatch maps, so the device never holds two entries.
+func TestZoneOffsetKeysTheWireEUI(t *testing.T) {
+	d, _ := reloadDaemon(t, reloadInstall(t))
+	stop := make(chan struct{})
+	t.Cleanup(func() { close(stop) })
+	go func() {
+		for {
+			select {
+			case cmd := <-d.cmds:
+				cmd()
+			case <-stop:
+				return
+			}
+		}
+	}()
+	req := httptest.NewRequest(http.MethodPost, "/api/zones/1/offset", strings.NewReader(`{"offsetC": 0.5}`))
+	req.SetPathValue("number", "1")
+	rec := httptest.NewRecorder()
+	d.postZoneOffset(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST /api/zones/1/offset: %d %s", rec.Code, rec.Body)
+	}
+	v, err := d.do(func(*tado.EmuState) (any, error) {
+		short := tado.ShortFromWire(mustDecodeEUI(t, reloadValveEUI))
+		return [2][]string{targetStateMaps(d, short), targetStateMaps(d, reloadValveEUI)}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	held := v.([2][]string)
+	if held[0] != nil {
+		t.Errorf("the short address keys %v", held[0])
+	}
+	if len(held[1]) < 2 {
+		t.Errorf("the wire EUI keys only %v, want the dispatch state of the offset write", held[1])
+	}
+}
+
+// reloadWeek is a one-entry weekly program at c degrees.
+func reloadWeek(c float64) []tado.ScheduleProgram {
+	return []tado.ScheduleProgram{{DayMask: 0x7f, Entries: []tado.ScheduleEntry{
+		{Minute: 0, SetpointCenti: int(c * 100), Enabled: true},
+	}}}
+}
+
+// TestSetInstallMovedMemberTakesNewZoneProgram: the sched document is keyed by
+// device, so a member a reload moves to another zone must not bring the weekly
+// program of the zone it left. It takes the program of its new zone when a
+// member that stayed holds one, and no document otherwise.
+func TestSetInstallMovedMemberTakesNewZoneProgram(t *testing.T) {
+	const (
+		salaZone   = "  - {number: 1, name: sala, kind: heating, circuit: 1, members: [RU9000000001, VA9000000001], reporter: VA9000000001}\n"
+		studioZone = "  - {number: 4, name: studio, kind: heating, circuit: 1, members: [VA9000000002], reporter: VA9000000002}\n"
+		salaLeft   = "  - {number: 1, name: sala, kind: heating, circuit: 1, members: [RU9000000001], reporter: RU9000000001}\n"
+		studioIn   = "  - {number: 4, name: studio, kind: heating, circuit: 1, members: [VA9000000001, VA9000000002], reporter: VA9000000002}\n"
+	)
+	moved := reloadInstall(t, [2]string{salaZone, salaLeft}, [2]string{studioZone, studioIn})
+	sala, studio := reloadWeek(21), reloadWeek(18)
+
+	for _, tc := range []struct {
+		name   string
+		studio []tado.ScheduleProgram
+	}{
+		{name: "new zone without a program"},
+		{name: "new zone with a program", studio: studio},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d, _ := reloadDaemon(t, reloadInstall(t))
+			e := d.emu
+			for _, eui := range []string{"03046a3107c51b00", reloadValveEUI} {
+				if err := e.SetSchedule(eui, sala); err != nil {
+					t.Fatalf("SetSchedule sala: %v", err)
+				}
+			}
+			if tc.studio != nil {
+				if err := e.SetSchedule(reloadStudioEUI, tc.studio); err != nil {
+					t.Fatalf("SetSchedule studio: %v", err)
+				}
+			}
+			if _, _, err := d.setInstall(moved); err != nil {
+				t.Fatalf("setInstall: %v", err)
+			}
+			got, set, err := e.Schedule(reloadValveEUI)
+			if err != nil {
+				t.Fatalf("Schedule: %v", err)
+			}
+			if tc.studio == nil && set {
+				t.Errorf("the moved valve still holds %v, want no document", got)
+			}
+			if tc.studio != nil && !reflect.DeepEqual(got, tc.studio) {
+				t.Errorf("the moved valve holds %v (set=%t), want %v", got, set, tc.studio)
+			}
+			programs, ok := d.zonePrograms(e, moved, 4)
+			if ok != (tc.studio != nil) || (ok && !reflect.DeepEqual(programs, tc.studio)) {
+				t.Errorf("zone 4 program = %v (%t), want %v", programs, ok, tc.studio)
+			}
+			if programs, ok := d.zonePrograms(e, moved, 1); !ok || !reflect.DeepEqual(programs, sala) {
+				t.Errorf("zone 1 program = %v (%t), want the one it kept", programs, ok)
+			}
+		})
+	}
+}

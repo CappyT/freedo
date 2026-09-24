@@ -454,7 +454,7 @@ func (d *daemon) getEarlyStarts(w http.ResponseWriter, r *http.Request) {
 		writeResolveErr(w, errNoInstall)
 		return
 	}
-	v, err := d.do(func(e *tado.EmuState) (any, error) {
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		overlays := nodeOverlays(e)
 		out := []map[string]any{}
 		for i := range inst.Zones {
@@ -495,7 +495,7 @@ func (d *daemon) getEarlyStart(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	v, err := d.do(func(e *tado.EmuState) (any, error) {
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		return d.earlyStartView(e, inst, zone, nodeOverlays(e)), nil
 	})
 	write(w, v, err)
@@ -534,7 +534,7 @@ func (d *daemon) deleteEarlyStartModel(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	v, err := d.do(func(e *tado.EmuState) (any, error) {
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		delete(d.thermal, zone)
 		delete(d.heating, zone)
 		// Deleted on the engine goroutine, where finishHeatUp stores a model: a

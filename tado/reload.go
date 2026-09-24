@@ -3,6 +3,7 @@ package tado
 import (
 	"encoding/hex"
 	"errors"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -75,6 +76,7 @@ func (e *EmuState) SetInstall(in *Install) (added, removed []string, err error) 
 	for _, key := range removed {
 		e.dropDevice(key)
 	}
+	e.rehomeScheduleDocuments(e.inst, in)
 
 	oldFlow := e.defaultFlowC()
 	e.inst = in
@@ -242,6 +244,81 @@ func (e *EmuState) dropDevice(key string) {
 			delete(e.getCode, k)
 		}
 	}
+}
+
+// rehomeScheduleDocuments gives each device whose heating zones the reload
+// changed the sched document of its new zone. The document is keyed by device,
+// so without this a moved member keeps serving the program of the zone it left,
+// and the new zone reads that program back from it. The new program is the one
+// the first member that stayed in the zone holds; a zone with none leaves the
+// device without a document. With no earlier installation there is no move to
+// see, and the documents a restore brought back stay.
+func (e *EmuState) rehomeScheduleDocuments(before, after *Install) {
+	if before == nil {
+		return
+	}
+	oldZones, newZones := heatingZonesByDevice(before), heatingZonesByDevice(after)
+	changed := map[string]bool{}
+	for key, zones := range newZones {
+		if !slices.Equal(zones, oldZones[key]) {
+			changed[key] = true
+		}
+	}
+	for key := range oldZones {
+		if _, ok := newZones[key]; !ok {
+			changed[key] = true
+		}
+	}
+	next := make(map[string]cfgSnapshot, len(changed))
+	for key := range changed {
+		zones := newZones[key]
+		if len(zones) == 0 {
+			continue
+		}
+		members, err := after.ZoneMembers(zones[0])
+		if err != nil {
+			continue
+		}
+		for _, m := range members {
+			if changed[m.wireHex()] {
+				continue
+			}
+			if snap, ok := e.schedDoc[m.wireHex()]; ok {
+				next[key] = snap
+				break
+			}
+		}
+	}
+	for key := range changed {
+		if snap, ok := next[key]; ok {
+			e.schedDoc[key] = snap
+		} else {
+			delete(e.schedDoc, key)
+		}
+	}
+}
+
+// heatingZonesByDevice maps the wire EUI hex of each member of a heating zone
+// to the heating zones that list it, in declaration order.
+func heatingZonesByDevice(in *Install) map[string][]int {
+	out := map[string][]int{}
+	if in == nil {
+		return out
+	}
+	for i := range in.Zones {
+		z := &in.Zones[i]
+		if z.Kind != ZoneHeating {
+			continue
+		}
+		for _, ref := range z.Members {
+			d, err := in.Resolve(ref)
+			if err != nil {
+				continue
+			}
+			out[d.wireHex()] = append(out[d.wireHex()], z.Number)
+		}
+	}
+	return out
 }
 
 // refreshConfigDocuments merges the installation-derived part of d/config into

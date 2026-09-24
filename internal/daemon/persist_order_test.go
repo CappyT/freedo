@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"sync"
 	"testing"
+	"time"
 
 	"freedo/tado"
 )
@@ -142,4 +143,88 @@ func TestConcurrentHotWaterPutStoresEngineProgram(t *testing.T) {
 			t.Fatalf("round %d: stored program %+v, engine program %+v", round, stored, v)
 		}
 	}
+}
+
+// failWrites makes every insert into table fail, or only the insert of the
+// meta row key when key is set.
+func failWrites(t *testing.T, store *stateStore, table, key string) {
+	t.Helper()
+	when := ""
+	if key != "" {
+		when = "WHEN NEW.key = '" + key + "'"
+	}
+	if _, err := store.db.Exec(`CREATE TRIGGER fail_` + table + key + ` BEFORE INSERT ON ` + table + ` ` + when +
+		` BEGIN SELECT RAISE(ABORT, 'injected write failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// engineValue reads one value on the engine goroutine.
+func engineValue[V any](t *testing.T, d *daemon, read func() V) V {
+	t.Helper()
+	v, err := d.do(func(*tado.EmuState) (any, error) { return read(), nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	return v.(V)
+}
+
+// TestFailedSaveLeavesEngineUnchanged: a handler whose save fails answers 500
+// and leaves the engine where it was, so a restart does not revert a change
+// the caller was told failed, and the running daemon does not keep one either.
+func TestFailedSaveLeavesEngineUnchanged(t *testing.T) {
+	t.Run("home", func(t *testing.T) {
+		store := openTestStore(t)
+		d, url := newWindowDaemon(t, windowInstall(t, nil), newTestClock(windowStart), store)
+		failWrites(t, store, "meta", "away")
+		var out map[string]any
+		if code := postJSON(t, http.MethodPatch, url+"/api/home", map[string]any{"away": true}, &out); code != http.StatusInternalServerError {
+			t.Errorf("PATCH /api/home: code=%d %v, want 500", code, out)
+		}
+		if engineValue(t, d, func() bool { return d.away }) {
+			t.Error("the engine switched to away although the save failed")
+		}
+	})
+	t.Run("hot water schedule", func(t *testing.T) {
+		store := openTestStore(t)
+		d, url := newWindowDaemon(t, windowInstall(t, nil), newTestClock(windowStart), store)
+		failWrites(t, store, "meta", "hot_water_program")
+		var out map[string]any
+		if code := postJSON(t, http.MethodPut, url+"/api/zones/0/schedule", hotWaterWeek(), &out); code != http.StatusInternalServerError {
+			t.Errorf("PUT /api/zones/0/schedule: code=%d %v, want 500", code, out)
+		}
+		if p := engineValue(t, d, func() []tado.ScheduleProgram { return d.dhwProgram }); p != nil {
+			t.Errorf("the engine runs %+v although the save failed", p)
+		}
+	})
+	t.Run("zone window", func(t *testing.T) {
+		store := openTestStore(t)
+		d, url := newWindowDaemon(t, windowInstall(t, nil), newTestClock(windowStart), store)
+		failWrites(t, store, "zone_window", "")
+		var out map[string]any
+		if code := postJSON(t, http.MethodPost, url+"/api/zones/3/window", map[string]any{"open": true}, &out); code != http.StatusInternalServerError {
+			t.Errorf("POST /api/zones/3/window: code=%d %v, want 500", code, out)
+		}
+		if open := engineValue(t, d, func() bool { return d.windows[3].open() }); open {
+			t.Error("the engine opened zone 3 although the save failed")
+		}
+		if owed := engineValue(t, d, func() int { return len(d.windowOwed) }); owed != 0 {
+			t.Errorf("the engine owes %d window writes although the save failed", owed)
+		}
+	})
+	t.Run("outdoor", func(t *testing.T) {
+		store := openTestStore(t)
+		in := windowInstall(t, func(in *tado.Install) {
+			in.Options.FlowCurves = map[int]tado.FlowCurve{1: testCurve}
+		})
+		clock := newTestClock(windowStart)
+		_, url := newWindowDaemon(t, in, clock, store)
+		pushOutdoor(t, url, 0)
+		clock.advance(30 * time.Minute)
+		failWrites(t, store, "meta", "save_seq")
+		var out map[string]any
+		if code := postJSON(t, http.MethodPost, url+"/api/outdoor", map[string]any{"tempC": 0}, &out); code != http.StatusInternalServerError {
+			t.Errorf("POST /api/outdoor: code=%d %v, want 500", code, out)
+		}
+	})
 }

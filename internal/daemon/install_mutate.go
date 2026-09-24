@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -94,15 +95,34 @@ type pidPatch struct {
 	Kd *int `json:"kd"`
 }
 
-// UnmarshalJSON implements json.Unmarshaler.
+// UnmarshalJSON implements json.Unmarshaler. The body decoder's strictness
+// does not reach a custom unmarshaler, and encoding/json matches field names
+// without regard to case, so the keys are checked here against their exact
+// spelling before the strict decode.
 func (o *optPID) UnmarshalJSON(b []byte) error {
 	o.set = true
 	if string(bytes.TrimSpace(b)) == "null" {
 		o.value = nil
 		return nil
 	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(b, &fields); err != nil {
+		return err
+	}
+	var unknown []string
+	for key := range fields {
+		if key != "kp" && key != "ki" && key != "kd" {
+			unknown = append(unknown, strconv.Quote(key))
+		}
+	}
+	if len(unknown) > 0 {
+		sort.Strings(unknown)
+		return fmt.Errorf("pid: unknown field %s, want kp, ki or kd", strings.Join(unknown, ", "))
+	}
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.DisallowUnknownFields()
 	o.value = &pidPatch{}
-	return json.Unmarshal(b, o.value)
+	return dec.Decode(o.value)
 }
 
 // optString is optInt for a string field.

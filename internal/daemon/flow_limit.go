@@ -109,7 +109,7 @@ func (d *daemon) postOutdoor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var changed bool
-	v, err := d.do(func(e *tado.EmuState) (any, error) {
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		d.outdoor = &outdoorReading{tempC: *b.TempC, at: d.retryNow()}
 		changed = d.tickFlowLimits(e)
 		return d.flowLimitView(e), nil
@@ -117,7 +117,10 @@ func (d *daemon) postOutdoor(w http.ResponseWriter, r *http.Request) {
 	if err == nil && changed {
 		err = d.persist(nil)
 	}
-	write(w, v, err)
+	if writeHandlerErr(w, err) {
+		return
+	}
+	writeJSON(w, http.StatusOK, v)
 }
 
 // flowLimitView renders the outdoor reading and, per circuit, the flow limit
