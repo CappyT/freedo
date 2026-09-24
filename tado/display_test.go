@@ -78,8 +78,8 @@ func TestDisplayDefaultsServeCapturedValues(t *testing.T) {
 }
 
 // TestDisplayWriteServesAndPushesDocument: each change queues one whole d/config
-// write, the served document carries the new values under a new ETag, and a
-// write that changes nothing queues nothing.
+// write, which replaces the one still queued, the served document carries the
+// new values under a new ETag, and a write that changes nothing queues nothing.
 func TestDisplayWriteServesAndPushesDocument(t *testing.T) {
 	e := displayEmu(t)
 	steps := []struct {
@@ -98,12 +98,27 @@ func TestDisplayWriteServesAndPushesDocument(t *testing.T) {
 	}
 	_, etag := servedConfigETag(t, e, cameraEUIHex, 0xd500)
 	for i, s := range steps {
-		before := len(e.queue[cameraEUIHex])
+		last := func() *queuedDownlink {
+			if q := e.queue[cameraEUIHex]; len(q) > 0 {
+				return q[len(q)-1]
+			}
+			return nil
+		}
+		before := last()
 		if err := e.EnqueueDisplaySettings(cameraEUIHex, 10, s.w); err != nil {
 			t.Fatalf("%s: %v", s.name, err)
 		}
-		if queued := len(e.queue[cameraEUIHex]) > before; queued != s.queued {
+		if queued := last() != before; queued != s.queued {
 			t.Fatalf("%s: queued = %v, want %v", s.name, queued, s.queued)
+		}
+		waiting := 0
+		for _, d := range e.queue[cameraEUIHex] {
+			if !d.inFlight {
+				waiting++
+			}
+		}
+		if waiting > 1 {
+			t.Fatalf("%s: %d writes wait, want the newest document alone", s.name, waiting)
 		}
 		doc, next := servedConfigETag(t, e, cameraEUIHex, uint16(0xd510+i))
 		if v := tlvVal(t, doc, "0149"); !bytes.Equal(v, s.d0149) {
@@ -196,8 +211,8 @@ func TestDisplaySettingsSurviveRestart(t *testing.T) {
 
 // TestDisplayDbg2KeepsTheConfigETag: each display write via dbg2 queues one PUT
 // d/dbg2/tlvs with the changed 0149 and 0158 records only and never a d/config
-// write. The served document carries the new values under the ETag the valve
-// holds, so its conditional GET earns 2.03.
+// write. Once the valve answers 2.04, the served document carries the new
+// values under the ETag the valve holds, so its conditional GET earns 2.03.
 func TestDisplayDbg2KeepsTheConfigETag(t *testing.T) {
 	e := displayEmu(t)
 	etag := append([]byte(nil), e.cfgDoc[cameraEUIHex].etag...)
@@ -239,6 +254,9 @@ func TestDisplayDbg2KeepsTheConfigETag(t *testing.T) {
 			t.Errorf("%s: queued %v, want nothing", s.name, payloads)
 		case s.payload != "" && (len(payloads) != 1 || payloads[0] != s.payload):
 			t.Errorf("%s: queued %v, want the one write %s", s.name, payloads, s.payload)
+		}
+		if len(payloads) > 0 {
+			answerQueued(t, e, mustHex(cameraEUIHex), "2.04")
 		}
 
 		after := e.cfgDoc[cameraEUIHex]

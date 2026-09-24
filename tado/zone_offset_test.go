@@ -31,10 +31,11 @@ func tlvValue(list []TLV, tag string) string {
 }
 
 // TestCalibOffsetDbg2KeepsTheConfigETag: the dbg2 write is one PUT
-// d/dbg2/tlvs carrying the single record 0140 and no d/config write. The
-// served document takes the new 0140 under the ETag the valve holds: its
-// conditional GET earns 2.03, a full read gets the new value with the same
-// ETag, and neither a reload nor a restart mints a new ETag or queues a write.
+// d/dbg2/tlvs carrying the single record 0140 and no d/config write. On the
+// valve's 2.04 the served document takes the new 0140 under the ETag the valve
+// holds: its conditional GET earns 2.03, a full read gets the new value with
+// the same ETag, and neither a reload nor a restart mints a new ETag or queues
+// a write.
 func TestCalibOffsetDbg2KeepsTheConfigETag(t *testing.T) {
 	e, in := fixtureEmu(t)
 	before, ok := e.cfgDoc[cameraEUIHex]
@@ -64,6 +65,7 @@ func TestCalibOffsetDbg2KeepsTheConfigETag(t *testing.T) {
 	if got := hex.EncodeToString(app.CoAP.Payload); got != "014002ffba" {
 		t.Errorf("dbg2 payload = %s, want the single record 014002ffba", got)
 	}
+	e.confirmByMID(mustHex(cameraEUIHex), &CoAPMessage{Type: "ACK", Code: "2.04", MID: app.CoAP.MID, Token: app.CoAP.Token})
 
 	after := e.cfgDoc[cameraEUIHex]
 	body := parseTLVList(after.body)

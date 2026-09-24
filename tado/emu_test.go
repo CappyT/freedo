@@ -1048,6 +1048,16 @@ func TestServedVolatileSettings(t *testing.T) {
 	if err := e.EnqueueChildLock("camera", 10, true); err != nil {
 		t.Fatal(err)
 	}
+	// The served lock is the one the valve took.
+	actions, ok, err := e.NextQueuedDownlink("camera")
+	if err != nil || !ok {
+		t.Fatalf("no queued child lock: ok=%v err=%v", ok, err)
+	}
+	df, err := ParseData(NetworkKey, actions[0].Bytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.OnFrame(BuildEnhAck(df.Seq, BridgeEUI, dev, 0))
 	unitF := true
 	if err := e.EnqueueConfig("camera", 10, ConfigWrite{TempUnitF: &unitF}); err != nil {
 		t.Fatal(err)
@@ -2924,15 +2934,16 @@ func TestZoneProxyTimeoutAnswersRequester(t *testing.T) {
 		Now:              func() time.Time { return now },
 		Zones:            map[int][]string{8: {"a205", "a70a"}},
 	}, nil)
-	// The member publishes the zone state, so the fallback has a body to serve.
+	// The member publishes the zone measures, so the fallback has a body to
+	// serve. A z/s block is rebuilt instead, see TestZoneReadsRestateTheHomeState.
 	e.OnFrame(zoneUplink(t, member, BridgeEUI, CoAPReq{
 		Type: "CON", Code: "0.03", MID: 0x7d00, Token: []byte{1},
-		Path: []string{"z", "s"}, Query: []string{"lid=8"},
+		Path: []string{"z", "p"}, Query: []string{"lid=8"},
 		Options: []CoAPOption{optOctets}, Payload: body,
 	}))
 	if got := e.OnFrame(zoneUplink(t, ru, BridgeEUI, CoAPReq{
 		Type: "CON", Code: "0.01", MID: 0x7d01, Token: []byte{0x42},
-		Path: []string{"z", "s"}, Query: []string{"lid=8"},
+		Path: []string{"z", "p"}, Query: []string{"lid=8"},
 	})); len(got) == 0 {
 		t.Fatal("the proxied GET produced no action at all")
 	}

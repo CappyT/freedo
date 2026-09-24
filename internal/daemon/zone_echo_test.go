@@ -114,7 +114,9 @@ func TestZoneEchoWithoutProgramQueuesNoRewrite(t *testing.T) {
 }
 
 // TestRewriteBehindSetpointRestatesIt: a rewrite queued behind a setpoint the
-// valve has not taken yet restates that setpoint, not the older block.
+// valve has not taken yet restates that setpoint, not the older block. The
+// setpoint changes a running overlay and carries no 6440, so the rewrite
+// replaces it in the queue.
 func TestRewriteBehindSetpointRestatesIt(t *testing.T) {
 	in := windowInstall(t, nil)
 	d, url := newWindowDaemon(t, in, newTestClock(windowStart), nil)
@@ -126,9 +128,9 @@ func TestRewriteBehindSetpointRestatesIt(t *testing.T) {
 	if _, err := d.do(func(e *tado.EmuState) (any, error) { return nil, e.EnqueueZoneRewrite(writer, 10) }); err != nil {
 		t.Fatal(err)
 	}
-	wantTags(t, "the setpoint", deliverAck(t, d, in, writer), map[string]string{"6280": "09c4", "6240": "02"})
 	wantTags(t, "the rewrite", deliverAck(t, d, in, writer), map[string]string{"6280": "09c4", "6240": "02"}, "6440")
-	wantZoneTarget(t, "after both", url, 10, 25)
+	wantNoWrites(t, "the replaced setpoint", d, writer)
+	wantZoneTarget(t, "after the rewrite", url, 10, 25)
 }
 
 // TestRewriteBehindReturnFromOffReachesZone: the room runs the off overlay

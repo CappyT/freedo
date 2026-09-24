@@ -161,6 +161,10 @@ func (d *daemon) putZoneSchedule(w http.ResponseWriter, r *http.Request) {
 		d.putHotWaterSchedule(w, zone, members, programs)
 		return
 	}
+	if err := validateScheduleRange(programs, zoneMinC, zoneMaxC, ""); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	v, err := d.do(func(e *tado.EmuState) (any, error) {
 		for _, member := range members {
 			if err := e.SetSchedule(hex.EncodeToString(member.WireEUI()), programs); err != nil {
@@ -265,18 +269,22 @@ func (d *daemon) purgeHotWaterSchedules(e *tado.EmuState) error {
 }
 
 // validateHotWaterSchedule applies the week rules of a served document and the
-// setpoint range the thermostat clamps hot water to. A disabled entry carries
-// its setpoint in 6200 too, so it keeps to the same range.
+// setpoint range the thermostat clamps hot water to.
 func validateHotWaterSchedule(programs []tado.ScheduleProgram) error {
 	if err := tado.ValidateSchedule(programs); err != nil {
 		return err
 	}
+	return validateScheduleRange(programs, tado.DHWMinC, tado.DHWMaxC, " for hot water")
+}
+
+// validateScheduleRange keeps every entry within lo..hi C. A disabled entry
+// carries its setpoint on the wire too, so it keeps to the same range.
+func validateScheduleRange(programs []tado.ScheduleProgram, lo, hi float64, what string) error {
 	for i, program := range programs {
 		for j, entry := range program.Entries {
 			c := float64(entry.SetpointCenti) / 100
-			if c < tado.DHWMinC || c > tado.DHWMaxC {
-				return fmt.Errorf("programs[%d].entries[%d].setpoint_c must be within %g..%g C for hot water",
-					i, j, tado.DHWMinC, tado.DHWMaxC)
+			if c < lo || c > hi {
+				return fmt.Errorf("programs[%d].entries[%d].setpoint_c must be within %g..%g C%s", i, j, lo, hi, what)
 			}
 		}
 	}

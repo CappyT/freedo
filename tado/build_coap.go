@@ -235,6 +235,36 @@ func StampSessionID(msg, id []byte) ([]byte, error) {
 	return append(out, msg[at:]...), nil
 }
 
+// restampCoAP re-serializes a link-local datagram built by BuildCoAP with a
+// new Message-ID and token, and recomputes its UDP checksum from srcEUI and
+// dstEUI. Every other field of the message stays as it was.
+func restampCoAP(pkt []byte, mid uint16, token, srcEUI, dstEUI []byte) ([]byte, error) {
+	const header = 9 // IPHC (2), UDP-NHC (1), ports (4), checksum (2)
+	if len(pkt) < header || pkt[0] != iphcLinkLocal0 || pkt[1] != iphcLinkLocal1 || pkt[2] != nhcUDPPortsIn {
+		return nil, errors.New("tado: not a link-local datagram with an inline checksum")
+	}
+	if len(token) > 8 {
+		return nil, errors.New("tado: CoAP token must be at most 8 bytes")
+	}
+	old := pkt[header:]
+	if len(old) < 4 || old[0]>>6 != 1 {
+		return nil, errors.New("tado: not a CoAP version 1 message")
+	}
+	tkl := int(old[0] & 0x0f)
+	if tkl > 8 || len(old) < 4+tkl {
+		return nil, errors.New("tado: bad CoAP token length")
+	}
+	msg := make([]byte, 0, len(old)-tkl+len(token))
+	msg = append(msg, old[0]&0xf0|byte(len(token)), old[1])
+	msg = binary.BigEndian.AppendUint16(msg, mid)
+	msg = append(msg, token...)
+	msg = append(msg, old[4+tkl:]...)
+	sp, dp := binary.BigEndian.Uint16(pkt[3:5]), binary.BigEndian.Uint16(pkt[5:7])
+	out := append([]byte(nil), pkt[:7]...)
+	out = binary.BigEndian.AppendUint16(out, udpChecksumV6(linkLocalFromWire(srcEUI), linkLocalFromWire(dstEUI), sp, dp, msg))
+	return append(out, msg...), nil
+}
+
 // BuildContextAckBody is BuildContextAck carrying a body: the answer to a zone
 // GET the bridge serves from its own cache. The extra options follow the
 // Content-Format one, so the caller passes them in ascending option order.

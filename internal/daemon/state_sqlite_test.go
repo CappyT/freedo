@@ -46,9 +46,6 @@ func populatedDesiredState(t *testing.T) tado.DesiredState {
 		t.Fatal(err)
 	}
 	cameraKey := hex.EncodeToString(camera.WireEUI())
-	if err := emu.EnqueueChildLock(cameraKey, 10, true); err != nil {
-		t.Fatal(err)
-	}
 	fahrenheit := true
 	if err := emu.EnqueueConfig(cameraKey, 10, tado.ConfigWrite{TempUnitF: &fahrenheit}); err != nil {
 		t.Fatal(err)
@@ -70,8 +67,9 @@ func populatedDesiredState(t *testing.T) tado.DesiredState {
 		t.Fatal(err)
 	}
 	state := emu.ExportDesiredState()
-	// The emulator fills these two from received traffic, which no test frame
-	// here carries.
+	// The emulator fills these from received traffic, which no test frame here
+	// carries: the child lock is recorded on the valve's answer.
+	state.ChildLock[cameraKey] = true
 	state.ZoneState["10|z/s"] = []byte{1, 2, 3}
 	state.UTCSettled[cameraKey] = 60
 	state.InterfaceModule[hex.EncodeToString(boiler.WireEUI())] = 71

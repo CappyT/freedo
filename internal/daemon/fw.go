@@ -100,14 +100,13 @@ func (d *daemon) postNodeFw(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, fwUploadMaxBody)
 	var b struct {
 		Confirm   bool   `json:"confirm"`
 		Version   string `json:"version"`
 		ImageKind string `json:"imageKind"`
 		Image     []byte `json:"image"`
 	}
-	if !decodeBody(w, r, &b) {
+	if !decodeBodyLimit(w, r, &b, fwUploadMaxBody) {
 		return
 	}
 	if !b.Confirm {

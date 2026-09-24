@@ -2527,6 +2527,8 @@ func TestDaemonPersistsDesiredState(t *testing.T) {
 		map[string]any{"on": true, "id": 10}, &response); code != http.StatusOK || !response.Queued {
 		t.Fatalf("child lock: got %d %+v", code, response)
 	}
+	// The child lock is desired state once the valve takes it.
+	deliver(t, d, in, "VA1000000005")
 	if code := postJSON(t, http.MethodPost, srv.URL+"/api/nodes/VA1000000005/config",
 		map[string]any{"tempUnitF": true, "id": 10}, &response); code != http.StatusOK || !response.Queued {
 		t.Fatalf("config: got %d %+v", code, response)
@@ -2604,9 +2606,19 @@ func TestDaemonDisplayEndpoint(t *testing.T) {
 	if code := postJSON(t, http.MethodPut, url, map[string]any{"orientation": "upside", "id": 10}, &put); code != http.StatusBadRequest {
 		t.Fatalf("PUT bad orientation: got %d %+v", code, put)
 	}
+	// A d/dbg2 write reaches the served document on the valve's 2.04 only.
 	if code := postJSON(t, http.MethodPut, url, map[string]any{"notification": false, "via": "dbg2", "id": 10}, &put); code != http.StatusOK ||
-		!put.Queued || put.Display != (tado.DisplaySettings{Orientation: "vertical", Notification: false}) {
+		!put.Queued || put.Display != (tado.DisplaySettings{Orientation: "vertical", Notification: true}) {
 		t.Fatalf("PUT via dbg2: got %d %+v", code, put)
+	}
+	for _, want := range []string{"d/config", "d/dbg2/tlvs"} {
+		if uri, _ := deliverRequest(t, d, defaultInstall, "VA1000000005"); uri != want {
+			t.Fatalf("delivered %s, want %s", uri, want)
+		}
+	}
+	if code := getJSON(t, url, &display); code != http.StatusOK ||
+		display != (tado.DisplaySettings{Orientation: "vertical", Notification: false}) {
+		t.Fatalf("GET after the valve took both writes: got %d %+v", code, display)
 	}
 	if code := postJSON(t, http.MethodPut, url, map[string]any{"notification": true, "via": "cloud", "id": 10}, &put); code != http.StatusBadRequest {
 		t.Fatalf("PUT bad via: got %d %+v", code, put)
@@ -4612,7 +4624,7 @@ func TestDaemonConfigAndActiveGet(t *testing.T) {
 	}
 	fr.Error = ""
 	if code := postJSON(t, http.MethodPost, srv.URL+"/api/nodes/"+short+"/factoryreset",
-		map[string]any{"confirm": true, "id": 10}, &fr); code != http.StatusOK || !fr.Queued {
+		map[string]any{"confirm": true}, &fr); code != http.StatusOK || !fr.Queued {
 		t.Fatalf("confirmed factory reset: got %d %+v", code, fr)
 	}
 
@@ -4974,9 +4986,9 @@ func TestDaemonShutdownSavePersistsAcrossTheCLI(t *testing.T) {
 		if resp, err := client.Get("http://" + addr + "/api/stats"); err == nil {
 			resp.Body.Close()
 			serving = time.Now()
-			if code := postJSON(t, http.MethodPost, "http://"+addr+"/api/nodes/VA1000000005/childlock",
-				map[string]any{"on": true, "id": 10}, &response); code != http.StatusOK || !response.Queued {
-				t.Fatalf("child lock: got %d %+v", code, response)
+			if code := postJSON(t, http.MethodPost, "http://"+addr+"/api/nodes/VA1000000005/config",
+				map[string]any{"tempUnitF": true, "id": 10}, &response); code != http.StatusOK || !response.Queued {
+				t.Fatalf("config: got %d %+v", code, response)
 			}
 			mutated = true
 			break
@@ -5036,8 +5048,8 @@ func TestDaemonShutdownSavePersistsAcrossTheCLI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if key := hex.EncodeToString(camera.WireEUI()); !saved.ChildLock[key] {
-		t.Errorf("the shutdown save lost the child lock: %+v\n%s", saved.ChildLock, output.String())
+	if key := hex.EncodeToString(camera.WireEUI()); !saved.TempUnitF[key] {
+		t.Errorf("the shutdown save lost the temperature unit: %+v\n%s", saved.TempUnitF, output.String())
 	}
 	// The handler save took sequence 1, so a second one proves the shutdown save
 	// ran before the engine and the store were closed.

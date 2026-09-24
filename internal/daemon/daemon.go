@@ -1249,10 +1249,15 @@ func (d *daemon) saveDesiredStateSnapshot(ctx context.Context, state tado.Desire
 // thermostat may be served, and the session id lets a restart recognise a
 // device that echoes it. A changed z/s block is saved too, at most once per
 // zoneStateSaveEvery: after a restart the window engine and the zone rewrites
-// restate the overlay from it. The tick saves what the bound held back.
+// restate the overlay from it. So is a delivered child lock or d/dbg2 record,
+// which moves the desired state on the device's answer. The tick saves what
+// the bound held back.
 func (d *daemon) saveLearned(e *tado.EmuState) {
 	learned, issued := e.TakeInterfaceModuleLearned(), e.TakeSessionIssued()
 	if e.TakeZoneStateChanged() {
+		d.unsaved = true
+	}
+	if e.TakeDeliveredChanged() {
 		d.unsaved = true
 	}
 	if learned || issued {
@@ -1447,14 +1452,36 @@ func writeResolveErr(w http.ResponseWriter, err error) {
 	}
 }
 
+// apiMaxBody bounds the JSON body of an API request. The debug and firmware
+// endpoints take larger ones and pass their own cap to decodeBodyLimit.
+const apiMaxBody = 64 << 10
+
+// decodeBody decodes the JSON body of r into v, within apiMaxBody. An empty
+// body leaves v as it is.
 func decodeBody(w http.ResponseWriter, r *http.Request, v any) bool {
-	err := json.NewDecoder(r.Body).Decode(v)
-	if err == nil || errors.Is(err, io.EOF) {
+	return decodeBodyLimit(w, r, v, apiMaxBody)
+}
+
+// decodeBodyLimit decodes one JSON value of at most limit bytes into v. A field
+// v does not declare and anything after the value but white space are errors:
+// a misspelt field would otherwise be dropped in silence and the request run
+// with its default.
+func decodeBodyLimit(w http.ResponseWriter, r *http.Request, v any, limit int64) bool {
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit))
+	dec.DisallowUnknownFields()
+	err := dec.Decode(v)
+	if errors.Is(err, io.EOF) {
 		return true
 	}
-	// A body past the MaxBytesReader cap of the debug endpoints is too large,
-	// not malformed.
 	var tooLarge *http.MaxBytesError
+	if err == nil {
+		if err = dec.Decode(&json.RawMessage{}); errors.Is(err, io.EOF) {
+			return true
+		}
+		if !errors.As(err, &tooLarge) {
+			err = errors.New("the body must hold one JSON value")
+		}
+	}
 	if errors.As(err, &tooLarge) {
 		writeErr(w, http.StatusRequestEntityTooLarge,
 			"body is longer than "+strconv.FormatInt(tooLarge.Limit, 10)+" bytes")
@@ -1462,6 +1489,15 @@ func decodeBody(w http.ResponseWriter, r *http.Request, v any) bool {
 	}
 	writeErr(w, http.StatusBadRequest, "bad body: "+err.Error())
 	return false
+}
+
+// apiReadHeaderTimeout bounds how long a client may take to send its request
+// headers, so an idle or slow client cannot hold a connection open.
+const apiReadHeaderTimeout = 10 * time.Second
+
+// newAPIServer is the HTTP server of the API.
+func newAPIServer(addr string, h http.Handler) *http.Server {
+	return &http.Server{Addr: addr, Handler: h, ReadHeaderTimeout: apiReadHeaderTimeout}
 }
 
 // overlayOf maps an API mode name to the on-air overlay byte.
@@ -2374,7 +2410,7 @@ func (d *daemon) postSetpoint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var b struct {
-		TempC       float64   `json:"tempC"`
+		TempC       *float64  `json:"tempC"`
 		Mode        string    `json:"mode"`
 		Sched       *float64  `json:"sched"`
 		OpenWindow  bool      `json:"openWindow"`
@@ -2390,26 +2426,35 @@ func (d *daemon) postSetpoint(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "bad mode "+b.Mode)
 		return
 	}
-	if b.DurationSec != nil && *b.DurationSec <= 0 {
-		writeErr(w, http.StatusBadRequest, "durationSec must be positive")
+	if b.TempC == nil {
+		writeErr(w, http.StatusBadRequest, "tempC is required")
 		return
 	}
-	sched := b.TempC
+	sched := *b.TempC
 	if b.Sched != nil {
 		sched = *b.Sched
+	}
+	if err := errors.Join(roomSetpointErr("tempC", *b.TempC), roomSetpointErr("sched", sched)); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
 	}
 	var ow byte
 	if b.OpenWindow {
 		ow = 1
 	}
 	sp := tado.SetpointParams{
-		Setpoint:   b.TempC,
+		Setpoint:   *b.TempC,
 		Sched:      sched,
 		Overlay:    overlay,
 		OpenWindow: ow,
 	}
 	if b.DurationSec != nil {
-		sp.Duration = time.Duration(*b.DurationSec) * time.Second
+		d, err := overlaySeconds(*b.DurationSec)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		sp.Duration = d
 	}
 	if err := b.Zone.apply(&sp); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
@@ -2543,13 +2588,12 @@ func (d *daemon) postBoilerDHW(w http.ResponseWriter, r *http.Request) {
 	if b.TempC != nil {
 		tempC = *b.TempC
 	}
-	if b.DurationSec != nil && *b.DurationSec <= 0 {
-		writeErr(w, http.StatusBadRequest, "durationSec must be positive")
-		return
-	}
 	duration := time.Duration(0)
 	if b.DurationSec != nil {
-		duration = time.Duration(*b.DurationSec) * time.Second
+		if duration, err = overlaySeconds(*b.DurationSec); err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
 	}
 	target := hex.EncodeToString(dev.WireEUI())
 	v, err := d.do(func(e *tado.EmuState) (any, error) {
@@ -2613,14 +2657,18 @@ func (d *daemon) postBoilerFlow(w http.ResponseWriter, r *http.Request) {
 }
 
 // flowCircuit picks the heating circuit of a CH flow setpoint: the body value,
-// else the single circuit this thermostat is the heat source of.
+// which the installation must declare, else the single circuit this thermostat
+// is the heat source of.
 func (d *daemon) flowCircuit(dev *tado.Device, want *int) (int, error) {
-	if want != nil {
-		return *want, nil
-	}
 	inst := d.inst.Load()
 	if inst == nil {
 		return 0, errNoInstall
+	}
+	if want != nil {
+		if _, err := inst.CircuitByID(*want); err != nil {
+			return 0, fmt.Errorf("the installation declares no circuit %d", *want)
+		}
+		return *want, nil
 	}
 	cs := inst.CircuitsFor(dev)
 	switch len(cs) {
@@ -2999,6 +3047,9 @@ func decodeScheduleEntries(in []scheduleEntryBody) ([]tado.ScheduleEntry, error)
 		enabled := true
 		if entry.Enabled != nil {
 			enabled = *entry.Enabled
+		}
+		if err := roomSetpointErr(fmt.Sprintf("entries[%d].tempC", i), entry.TempC); err != nil {
+			return nil, err
 		}
 		out[i] = tado.ScheduleEntry{Minute: entry.StartMin, SetpointCenti: centi, Enabled: enabled}
 	}
@@ -3716,7 +3767,7 @@ flags:
 	ctx, cancel := context.WithCancel(context.Background())
 	go d.run(ctx)
 
-	srv := &http.Server{Addr: *addr, Handler: requireToken(token, *healthPublic, d.mux())}
+	srv := newAPIServer(*addr, requireToken(token, *healthPublic, d.mux()))
 	// An open rx tap would otherwise hold the whole HTTP drain budget.
 	srv.RegisterOnShutdown(d.closeTaps)
 	srvErr := make(chan error, 1)

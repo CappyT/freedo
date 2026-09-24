@@ -26,6 +26,16 @@ const (
 	zoneMaxDuration = tado.OverlayMaxDuration
 )
 
+// roomSetpointErr refuses a room setpoint outside zoneMinC..zoneMaxC. The wire
+// carries centi-degrees in a u16, so a value past the range wraps: 700 C
+// reads 44.64 C.
+func roomSetpointErr(name string, c float64) error {
+	if c < zoneMinC || c > zoneMaxC {
+		return fmt.Errorf("%s must be within %g..%g C", name, zoneMinC, zoneMaxC)
+	}
+	return nil
+}
+
 // zoneWriter returns the member the coordinator writes a zone command to: the
 // wall thermostat of the hot-water zone, else the demand reporter, else the
 // only member of the zone.
@@ -140,13 +150,27 @@ func (b zoneOverlayBody) overlay() (byte, time.Duration, error) {
 		if b.DurationSec == nil || *b.DurationSec <= 0 {
 			return 0, 0, errors.New("mode timer needs a positive durationSec")
 		}
-		d := time.Duration(*b.DurationSec) * time.Second
-		if d > zoneMaxDuration {
-			return 0, 0, fmt.Errorf("durationSec exceeds %d", int(zoneMaxDuration.Seconds()))
+		d, err := overlaySeconds(*b.DurationSec)
+		if err != nil {
+			return 0, 0, err
 		}
 		return 3, d, nil
 	}
 	return 0, 0, errors.New("bad mode " + b.Mode + ": want manual, until_next or timer")
+}
+
+// overlaySeconds is the timer a durationSec arms, within zoneMaxDuration. The
+// bound is checked in seconds: past it the product with time.Second overflows
+// and wraps to a tiny or negative timer, which leaves the overlay on for good.
+func overlaySeconds(sec int) (time.Duration, error) {
+	maxSec := int(zoneMaxDuration / time.Second)
+	switch {
+	case sec <= 0:
+		return 0, errors.New("durationSec must be positive")
+	case sec > maxSec:
+		return 0, fmt.Errorf("durationSec exceeds %d", maxSec)
+	}
+	return time.Duration(sec) * time.Second, nil
 }
 
 // untilNext returns how long an until_next overlay on zone lasts: up to the

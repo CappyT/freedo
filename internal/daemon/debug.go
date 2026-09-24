@@ -126,9 +126,8 @@ func (d *daemon) postDebugDissect(w http.ResponseWriter, r *http.Request) {
 		writeResolveErr(w, errNoInstall)
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, debugMaxBody)
 	var b debugFramesBody
-	if !decodeBody(w, r, &b) {
+	if !decodeBodyLimit(w, r, &b, debugMaxBody) {
 		return
 	}
 	items := make([]string, 0, len(b.Frames)+1)
@@ -167,9 +166,8 @@ func (d *daemon) postDebugDecrypt(w http.ResponseWriter, r *http.Request) {
 		writeResolveErr(w, errNoInstall)
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, debugMaxBody)
 	var b debugFramesBody
-	if !decodeBody(w, r, &b) {
+	if !decodeBodyLimit(w, r, &b, debugMaxBody) {
 		return
 	}
 	if b.Hex == "" {

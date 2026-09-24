@@ -348,6 +348,12 @@ type queuedDownlink struct {
 	deferred      bool
 	heating       *heatingBlock
 	dhw           *dhwBlock
+	// zoneBlock marks a z/s?id=zone write that restates the whole block of the
+	// zone, so a newer one replaces it while it waits (supersedeZoneWrites).
+	zoneBlock bool
+	zone      int
+	dbg2      []TLV // d/dbg2/tlvs records, patched into the served d/config on delivery
+	childLock *bool // the d/lock state the write sets, recorded on delivery
 }
 
 type activeGet struct {
@@ -368,7 +374,9 @@ type heatingBlock struct {
 	sched      []byte
 	overlay    byte
 	openWindow byte
-	body       []byte
+	// home and programOff are the 6160 and 61e0 the write carries.
+	home, programOff bool
+	body             []byte
 	// windowOnly marks a write built without the node's block: its delivery
 	// confirms the 62e0 it carries and nothing else.
 	windowOnly bool
@@ -384,11 +392,12 @@ type boostTimer struct {
 }
 
 type dhwBlock struct {
-	zone     int
-	setpoint []byte
-	overlay  byte
-	enabled  byte
-	sched    []byte // 6200, as in heatingBlock
+	zone             int
+	setpoint         []byte
+	overlay          byte
+	enabled          byte
+	sched            []byte // 6200, as in heatingBlock
+	home, programOff bool   // 6160 and 61e0, as in heatingBlock
 }
 
 // setpointHeatingBlock is the block a delivered room write confirms, with the
@@ -402,6 +411,7 @@ func setpointHeatingBlock(c SetpointCoAP) *heatingBlock {
 	}
 	return &heatingBlock{
 		zone: c.ID, setpoint: tempC(c.Setpoint), sched: c.sentSchedC(), overlay: c.Overlay, openWindow: c.OpenWindow,
+		home: c.Home, programOff: c.ProgramOff,
 	}
 }
 
@@ -508,6 +518,9 @@ type EmuState struct {
 	zones            map[int]map[string]bool
 	zoneState        map[string][]byte
 	zoneStateChanged bool
+	// deliveredChanged marks a desired state a delivered write moved (the child
+	// lock, a d/dbg2 record) that the owner has not persisted yet.
+	deliveredChanged bool
 	// zoneProxyPend holds the zone GETs we forwarded to a member on a
 	// requester's behalf, keyed by the requester and the MID the member echoes
 	// back. An entry that outlives its deadline is answered by us instead: see
@@ -2054,6 +2067,60 @@ func (e *EmuState) trimZoneHops(key string, q []*queuedDownlink) []*queuedDownli
 	return q
 }
 
+// supersedeZoneWrites marks the last write queued to wire as a z/s?id=zone
+// write and drops the zone writes to the same zone it replaces. Each one
+// restates the whole block, so a device that is off the air needs the newest
+// state only, as the route of a zone hop does. A write on the air stays, and so
+// does one carrying a 6440 or a zone configuration tag the newer write lacks:
+// those mark an event, not a state.
+func (e *EmuState) supersedeZoneWrites(wire []byte, zone int) {
+	key := hexEUI(wire)
+	q := e.queue[key]
+	newest := q[len(q)-1]
+	newest.zoneBlock, newest.zone = true, zone
+	events := zoneWriteEvents(newest.coap)
+	kept := make([]*queuedDownlink, 0, len(q))
+	for _, d := range q[:len(q)-1] {
+		if d.zoneBlock && d.zone == zone && !d.inFlight && zoneWriteEvents(d.coap).subsetOf(events) {
+			e.recordDownlinkOutcome(key, d, "superseded", "newer-zone-write")
+			continue
+		}
+		kept = append(kept, d)
+	}
+	e.queue[key] = append(kept, newest)
+}
+
+// zoneEventTags are the z/s tags that mark an event rather than a state: the
+// start or end of an overlay and the zone configuration of a commissioning
+// write.
+var zoneEventTags = []string{"6440", "6060", "6340", "6400"}
+
+type tagSet map[string]bool
+
+func (s tagSet) subsetOf(o tagSet) bool {
+	for tag := range s {
+		if !o[tag] {
+			return false
+		}
+	}
+	return true
+}
+
+// zoneWriteEvents returns the event tags a queued z/s write carries.
+func zoneWriteEvents(coap []byte) tagSet {
+	out := tagSet{}
+	m, err := parseCoAPCore(coap)
+	if err != nil {
+		return out
+	}
+	for _, tlv := range parseTLVList(m.Payload) {
+		if slices.Contains(zoneEventTags, tlv.Tag) {
+			out[tlv.Tag] = true
+		}
+	}
+	return out
+}
+
 // cacheZoneState merges a zone PUT into the held resource state. Zone reports
 // carry changed attributes, so replacing the body would discard older fields.
 func (e *EmuState) cacheZoneState(m *CoAPMessage, src []byte) {
@@ -2093,6 +2160,15 @@ func (e *EmuState) storeZoneState(zone int, res string, body []byte) {
 func (e *EmuState) TakeZoneStateChanged() bool {
 	changed := e.zoneStateChanged
 	e.zoneStateChanged = false
+	return changed
+}
+
+// TakeDeliveredChanged reports whether a delivered write changed the persisted
+// state since the last call: the child lock, or the d/config document a
+// d/dbg2 write patches. Both move on the device's answer, not at enqueue.
+func (e *EmuState) TakeDeliveredChanged() bool {
+	changed := e.deliveredChanged
+	e.deliveredChanged = false
 	return changed
 }
 
@@ -2252,7 +2328,7 @@ func (e *EmuState) ExpireZoneProxies() []Action {
 func (e *EmuState) answerExpiredProxy(w *zoneProxyWait) (Action, bool) {
 	var pkt []byte
 	var err error
-	if body, ok := e.zoneState[zoneKey(w.zone, w.resource)]; ok && len(body) > 0 {
+	if body, ok := e.cachedZoneRead(w.zone, w.resource); ok {
 		pkt, err = BuildContextAckBody("2.05", w.mid, w.token, body, e.selfEUI, w.requester, w.dstPort, w.srcPort,
 			zoneReadOptions(w.resource)...)
 	} else {
@@ -2291,11 +2367,26 @@ func (e *EmuState) servedZoneGet(m *CoAPMessage) ([]byte, []CoAPOption, bool) {
 		return nil, nil, false
 	}
 	resource := normalizeResource(m.Path)
-	body, ok := e.zoneState[zoneKey(zone, resource)]
-	if !ok || len(body) == 0 {
+	body, ok := e.cachedZoneRead(zone, resource)
+	if !ok {
 		return nil, nil, false
 	}
 	return body, zoneReadOptions(resource), true
+}
+
+// cachedZoneRead is the body a zone read is answered with from the cache, and
+// whether the cache holds one. A z/s block is rebuilt as directZoneReadBody
+// does: the cache keeps the head of the last write or report, which a later
+// home state or program change leaves stale.
+func (e *EmuState) cachedZoneRead(zone int, resource string) ([]byte, bool) {
+	body := e.zoneState[zoneKey(zone, resource)]
+	if len(body) == 0 {
+		return nil, false
+	}
+	if resource == "z/s" {
+		body = e.directZoneReadBody(zone)
+	}
+	return body, true
 }
 
 // zoneReadOptions are the options beyond Content-Format that the captured answer
@@ -2534,6 +2625,7 @@ func (e *EmuState) EnqueueSetpoint(target string, sp SetpointParams) error {
 	q[len(q)-1].requireCoAP = true
 	q[len(q)-1].responseToken = append([]byte(nil), token...)
 	q[len(q)-1].responseCode = "2.04"
+	e.supersedeZoneWrites(wire, sp.ID)
 	e.armOverlayTimer(wire, sp.ID, sp.Duration, false, false)
 	return nil
 }
@@ -2610,6 +2702,7 @@ func (e *EmuState) EnqueueZoneRewrite(target string, id int) error {
 	q[len(q)-1].requireCoAP = true
 	q[len(q)-1].responseToken = append([]byte(nil), token...)
 	q[len(q)-1].responseCode = "2.04"
+	e.supersedeZoneWrites(wire, id)
 	return nil
 }
 
@@ -2639,7 +2732,7 @@ func buildDHWRewrite(c SetpointCoAP, block *dhwBlock) ([]byte, error) {
 	if w.Overlay == overlayAuto {
 		*block = dhwBlock{zone: block.zone, overlay: overlayAuto}
 	}
-	block.sched = w.sentSchedC()
+	block.sched, block.home, block.programOff = w.sentSchedC(), w.Home, w.ProgramOff
 	return BuildDHWSetpointCoAP(w)
 }
 
@@ -2727,7 +2820,7 @@ func (e *EmuState) EnqueueDHWOverlay(target string, id int, temperatureC float64
 		return err
 	}
 	q := e.queue[hexEUI(wire)]
-	dhw := &dhwBlock{zone: id, overlay: overlay, sched: w.sentSchedC()}
+	dhw := &dhwBlock{zone: id, overlay: overlay, sched: w.sentSchedC(), home: w.Home, programOff: w.ProgramOff}
 	if enabled {
 		dhw.enabled = 1
 		dhw.setpoint = tempC(temperatureC)
@@ -2736,6 +2829,7 @@ func (e *EmuState) EnqueueDHWOverlay(target string, id int, temperatureC float64
 	q[len(q)-1].requireCoAP = true
 	q[len(q)-1].responseToken = append([]byte(nil), token...)
 	q[len(q)-1].responseCode = "2.04"
+	e.supersedeZoneWrites(wire, id)
 	e.armOverlayTimer(wire, id, d, true, false)
 	return nil
 }
@@ -2773,10 +2867,11 @@ func (e *EmuState) EnqueueDHWSchedule(target string, id int) error {
 		return err
 	}
 	q := e.queue[hexEUI(wire)]
-	q[len(q)-1].dhw = &dhwBlock{zone: id, overlay: overlayAuto, sched: w.sentSchedC()}
+	q[len(q)-1].dhw = &dhwBlock{zone: id, overlay: overlayAuto, sched: w.sentSchedC(), home: w.Home, programOff: w.ProgramOff}
 	q[len(q)-1].requireCoAP = true
 	q[len(q)-1].responseToken = append([]byte(nil), token...)
 	q[len(q)-1].responseCode = "2.04"
+	e.supersedeZoneWrites(wire, id)
 	delete(e.boostTimers, overlayTimerKey(hexEUI(wire), id))
 	return nil
 }
@@ -2882,8 +2977,20 @@ func (e *EmuState) EnqueueChildLock(target string, id int, on bool) error {
 	if err := e.enqueue(target, "childlock", fmt.Sprintf("childlock id=%d on=%t", id, on), pkt, e.key, mid); err != nil {
 		return err
 	}
-	e.childLock[hexEUI(wire)] = on
+	q := e.queue[hexEUI(wire)]
+	q[len(q)-1].childLock = &on
 	return nil
+}
+
+// noteDelivered records what a delivered downlink d to key sets on the device.
+func (e *EmuState) noteDelivered(key string, d *queuedDownlink) {
+	if d.childLock != nil {
+		e.childLock[key] = *d.childLock
+		e.deliveredChanged = true
+	}
+	if d.dbg2 != nil {
+		e.applyDbg2(key, d)
+	}
 }
 
 func (e *EmuState) EnqueueBoost(target string, id int, on bool) error {
@@ -2924,6 +3031,7 @@ func (e *EmuState) enqueueBoostBlock(target string, id int, on, newOverlay bool,
 	q[len(q)-1].requireCoAP = true
 	q[len(q)-1].responseToken = append([]byte(nil), token...)
 	q[len(q)-1].responseCode = "2.04"
+	e.supersedeZoneWrites(wire, id)
 	d := time.Duration(0)
 	if on {
 		d = BoostDuration
@@ -3102,6 +3210,7 @@ func (e *EmuState) EnqueueMode(target string, id int, overlay byte) error {
 	q[len(q)-1].requireCoAP = true
 	q[len(q)-1].responseToken = append([]byte(nil), token...)
 	q[len(q)-1].responseCode = "2.04"
+	e.supersedeZoneWrites(wire, id)
 	return nil
 }
 
@@ -3569,6 +3678,11 @@ func (e *EmuState) offlineSchedule(key string, explicit *bool) *bool {
 // resolved, so every document freedo serves or writes carries it. A write with
 // no field stays empty, so mergeConfigDocument still refuses it.
 func (e *EmuState) mergeDeviceConfig(key string, w ConfigWrite) ([]TLV, cfgSnapshot, error) {
+	return e.mergeDeviceConfigOn(e.cfgDoc[key], key, w)
+}
+
+// mergeDeviceConfigOn is mergeDeviceConfig on the document base.
+func (e *EmuState) mergeDeviceConfigOn(base cfgSnapshot, key string, w ConfigWrite) ([]TLV, cfgSnapshot, error) {
 	if len(w.TLVs()) > 0 || w.Resend {
 		w.OfflineScheduleEnabled = e.offlineSchedule(key, w.OfflineScheduleEnabled)
 	}
@@ -3576,7 +3690,7 @@ func (e *EmuState) mergeDeviceConfig(key string, w ConfigWrite) ([]TLV, cfgSnaps
 	if e.isThermostat(key) {
 		etagInput = e.flowETagInput()
 	}
-	return mergeConfigDocument(e.cfgDoc[key], w, etagInput)
+	return mergeConfigDocument(base, w, etagInput)
 }
 
 func (e *EmuState) isThermostat(key string) bool {
@@ -3650,6 +3764,9 @@ func initialNodeTable(in *Install, dev *Device) []NodeTableRec {
 // conditional GET can be validated. On-air acceptance requires the
 // matching final 2.04 response from the device.
 //
+// The write merges on the document with every queued d/dbg2 record applied, and
+// it replaces the d/config writes queued to the device and not on the air yet.
+//
 // The id names the write in the log and in the queue: the path carries no query.
 func (e *EmuState) EnqueueConfig(target string, id int, w ConfigWrite) error {
 	wire, _, err := e.resolve(target)
@@ -3665,12 +3782,12 @@ func (e *EmuState) EnqueueConfig(target string, id int, w ConfigWrite) error {
 	fields := len(w.TLVs())
 	key := hexEUI(wire)
 	explicit := w.OfflineScheduleEnabled
-	tlvs, snap, err := e.mergeDeviceConfig(key, w)
+	base := e.configBase(key)
+	tlvs, snap, err := e.mergeDeviceConfigOn(base, key, w)
 	if err != nil {
 		return err
 	}
-	if previous := e.cfgDoc[key]; !w.Resend &&
-		bytes.Equal(previous.body, snap.body) && bytes.Equal(previous.etag, snap.etag) {
+	if !w.Resend && bytes.Equal(base.body, snap.body) && bytes.Equal(base.etag, snap.etag) {
 		if explicit != nil {
 			e.offlineSched[key] = *explicit
 		}
@@ -3695,6 +3812,7 @@ func (e *EmuState) EnqueueConfig(target string, id int, w ConfigWrite) error {
 	q[len(q)-1].requireCoAP = true
 	q[len(q)-1].responseToken = append([]byte{}, token...)
 	q[len(q)-1].responseCode = "2.04"
+	e.coalesceConfigWrites(key)
 	e.cfgDoc[key] = snap
 	if explicit != nil {
 		e.offlineSched[key] = *explicit
@@ -3709,6 +3827,24 @@ func (e *EmuState) EnqueueConfig(target string, id int, w ConfigWrite) error {
 		e.utcSettled[hexEUI(wire)] = *e.utcOffset
 	}
 	return nil
+}
+
+// coalesceConfigWrites drops the d/config writes queued to key ahead of the
+// newest one and not on the air yet. Each carries the whole document and homes
+// the valve's motor, and the newest merges on the document the earlier ones
+// wrote, so it alone brings the device to the same state.
+func (e *EmuState) coalesceConfigWrites(key string) {
+	q := e.queue[key]
+	newest := q[len(q)-1]
+	kept := make([]*queuedDownlink, 0, len(q))
+	for _, d := range q[:len(q)-1] {
+		if d.kind == "config" && !d.inFlight {
+			e.recordDownlinkOutcome(key, d, "superseded", "newer-config-document")
+			continue
+		}
+		kept = append(kept, d)
+	}
+	e.queue[key] = append(kept, newest)
 }
 
 // ClearOfflineSchedule drops the tag 02b3 an operator wrote to target, so the
@@ -3990,20 +4126,36 @@ func (e *EmuState) promoteHeatingBlock(wire []byte, block *heatingBlock) {
 	key := zoneKey(block.zone, "z/s")
 	// The served block keeps 6280 even under overlay auto: the capture shows the
 	// device still reports the last setpoint after a return to schedule.
-	updates := []TLV{
-		{Tag: "6160", Val: []byte{zoneCtlAway}},
-		{Tag: "6180", Val: []byte{0x00}},
-		{Tag: "6020", Val: []byte{roomZoneKind}},
-		{Tag: "61e0", Val: []byte{0x00}},
-		{Tag: "6240", Val: []byte{block.overlay}},
-		{Tag: "6260", Val: []byte{0x01}},
-		{Tag: "6280", Val: append([]byte(nil), block.setpoint...)},
-		{Tag: "62e0", Val: []byte{block.openWindow}},
+	updates := append(writtenHead(block.home, block.programOff, roomZoneKind, block.sched),
+		TLV{Tag: "6240", Val: []byte{block.overlay}},
+		TLV{Tag: "6260", Val: []byte{0x01}},
+		TLV{Tag: "6280", Val: append([]byte(nil), block.setpoint...)},
+		TLV{Tag: "62e0", Val: []byte{block.openWindow}},
+	)
+	e.storeZoneState(block.zone, "z/s", encodeTLVs(schedCAfterPresence(mergeConfigTLVs(parseTLVList(e.zoneState[key]), updates))))
+}
+
+// writtenHead is the 6160 6180 6020 61e0 [6200] head a zone write carried.
+func writtenHead(home, programOff bool, kind byte, sched []byte) []TLV {
+	head := zoneWriteHead(zoneWrite{home: home, programOff: programOff, kind: kind, noSchedC: true})
+	if sched != nil {
+		head = append(head, TLV{Tag: "6200", Val: append([]byte(nil), sched...)})
 	}
-	if block.sched != nil {
-		updates = append(updates, TLV{Tag: "6200", Val: append([]byte(nil), block.sched...)})
+	return head
+}
+
+// schedCAfterPresence puts 6200 right after 61e0, where every zone write
+// carries it. A merge appends a tag the cached block lacked at its end.
+func schedCAfterPresence(list []TLV) []TLV {
+	at := slices.IndexFunc(list, func(tlv TLV) bool { return tlv.Tag == "6200" })
+	presence := slices.IndexFunc(list, func(tlv TLV) bool { return tlv.Tag == "61e0" })
+	if at < 0 || presence < 0 || at == presence+1 {
+		return list
 	}
-	e.storeZoneState(block.zone, "z/s", encodeTLVs(mergeConfigTLVs(parseTLVList(e.zoneState[key]), updates)))
+	sched := list[at]
+	out := slices.Delete(slices.Clone(list), at, at+1)
+	presence = slices.IndexFunc(out, func(tlv TLV) bool { return tlv.Tag == "61e0" })
+	return slices.Insert(out, presence+1, sched)
 }
 
 // keepZoneSchedC returns the block a delivered write leaves in the zone cache.
@@ -4044,15 +4196,7 @@ func (e *EmuState) promoteDHWBlock(block *dhwBlock) {
 	if block == nil {
 		return
 	}
-	updates := []TLV{
-		{Tag: "6160", Val: []byte{0x02}},
-		{Tag: "6180", Val: []byte{0x00}},
-		{Tag: "6020", Val: []byte{0x02}},
-		{Tag: "61e0", Val: []byte{0x00}},
-	}
-	if block.sched != nil {
-		updates = append(updates, TLV{Tag: "6200", Val: append([]byte(nil), block.sched...)})
-	}
+	updates := writtenHead(block.home, block.programOff, dhwZoneKind, block.sched)
 	updates = append(updates, TLV{Tag: "6240", Val: []byte{block.overlay}}, TLV{Tag: "6260", Val: []byte{block.enabled}})
 	if len(block.setpoint) > 0 {
 		updates = append(updates, TLV{Tag: "6280", Val: append([]byte(nil), block.setpoint...)})
@@ -4350,6 +4494,7 @@ func (e *EmuState) confirmBySeq(dstEUI []byte, seq byte) {
 	}
 	e.promoteHeatingBlock(dstEUI, q[0].heating)
 	e.queue[key] = q[1:]
+	e.noteDelivered(key, q[0])
 	e.stats.DownlinksDelivered++
 	e.recordDownlinkOutcome(key, q[0], "delivered", "enhanced-ack")
 }
@@ -4412,13 +4557,18 @@ func (e *EmuState) confirmByMID(srcEUI []byte, m *CoAPMessage) {
 		// it: the 2.05 comes from the firmware, not from a capture.
 		calibrated := d.kind == "calibrate" && strings.HasPrefix(m.Code, "2.")
 		if m.Code != code && !calibrated {
-			if strings.HasPrefix(m.Code, "4.") {
+			switch {
+			case strings.HasPrefix(m.Code, "4."):
 				if d.heating != nil {
 					e.invalidateHeatingBlock(srcEUI)
 				}
 				e.queue[key] = q[1:]
 				e.stats.DownlinksDropped++
 				e.recordDownlinkOutcome(key, d, "dropped", "coap-"+m.Code)
+			case strings.HasPrefix(m.Code, "5."):
+				if err := e.remintDownlink(d, srcEUI); err != nil {
+					e.log.Log("Data", "self", e.name(srcEUI), rsnBuildFail+" "+err.Error(), "")
+				}
 			}
 			return
 		}
@@ -4441,12 +4591,36 @@ func (e *EmuState) confirmByMID(srcEUI []byte, m *CoAPMessage) {
 		e.promoteDHWBlock(q[0].dhw)
 	}
 	e.queue[key] = q[1:]
+	if strings.HasPrefix(m.Code, "2.") {
+		e.noteDelivered(key, q[0])
+	}
 	e.stats.DownlinksDelivered++
 	reason := "coap-ack"
 	if q[0].kind == "calibrate" {
 		reason = "coap-" + m.Code
 	}
 	e.recordDownlinkOutcome(key, q[0], "delivered", reason)
+}
+
+// remintDownlink gives the write d a new MID and token for its retry after a
+// 5.xx answer. The 5.xx closed the exchange, and a device answers a resend
+// under the same MID from its deduplication state (RFC 7252, 4.5), so the
+// retry would read the same 5.xx back without the request running again. A
+// write that carries an empty token, as d/pair does, keeps it empty.
+func (e *EmuState) remintDownlink(d *queuedDownlink, dst []byte) error {
+	mid, token, err := downlinkIDs()
+	if err != nil {
+		return err
+	}
+	if len(d.responseToken) == 0 {
+		token = []byte{}
+	}
+	pkt, err := restampCoAP(d.coap, mid, token, e.selfEUI, dst)
+	if err != nil {
+		return err
+	}
+	d.coap, d.mid, d.responseToken = pkt, mid, token
+	return nil
 }
 
 // ScheduleDownlink returns the cold-start action list for target: a CSL wake-up

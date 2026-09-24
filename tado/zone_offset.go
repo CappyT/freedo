@@ -117,12 +117,15 @@ func (e *EmuState) EnqueueCalibOffsetDbg2(target string, id, centi int) error {
 	return e.enqueueDbg2(target, desc, w.TLVs())
 }
 
-// enqueueDbg2 queues tlvs as one PUT d/dbg2/tlvs and puts them in the d/config
-// document the device is served under the ETag it already holds. The valve
-// presents that ETag on its hourly conditional GET (config_request_build@0x1fd08)
-// and takes 2.03, so the store write alone reaches it. A new ETag would earn a
-// 2.05 and the full config apply, which homes the motor. A later full read, with
-// no ETag or an invalid one, finds the new values and not the old ones.
+// enqueueDbg2 queues tlvs as one PUT d/dbg2/tlvs. Its 2.04 puts them in the
+// d/config document the device is served, under the ETag it already holds
+// (applyDbg2). The valve presents that ETag on its hourly conditional GET
+// (config_request_build@0x1fd08) and takes 2.03, so the store write alone
+// reaches it. A new ETag would earn a 2.05 and the full config apply, which
+// homes the motor. A later full read, with no ETag or an invalid one, finds the
+// new values and not the old ones. A write the valve refuses or never takes
+// leaves the document as it was: patched at enqueue, the document would claim
+// a value the valve lacks, and the conditional GET would never bring it.
 func (e *EmuState) enqueueDbg2(target, desc string, tlvs []TLV) error {
 	wire, _, err := e.resolve(target)
 	if err != nil {
@@ -142,15 +145,37 @@ func (e *EmuState) enqueueDbg2(target, desc string, tlvs []TLV) error {
 	if err := e.enqueue(target, "dbg2", desc, pkt, e.key, mid); err != nil {
 		return err
 	}
-	key := hexEUI(wire)
-	q := e.queue[key]
+	q := e.queue[hexEUI(wire)]
 	q[len(q)-1].requireCoAP = true
 	q[len(q)-1].responseToken = append([]byte(nil), token...)
 	q[len(q)-1].responseCode = "2.04"
-	if previous, ok := e.cfgDoc[key]; ok {
-		e.cfgDoc[key] = patchConfigDocument(previous, tlvs)
-	}
+	q[len(q)-1].dbg2 = slices.Clone(tlvs)
 	return nil
+}
+
+// applyDbg2 patches the records of a delivered d/dbg2 write d into the served
+// document. A d/config write queued after it already carries them
+// (configBase), and a patch would put back a value that write replaces.
+func (e *EmuState) applyDbg2(key string, d *queuedDownlink) {
+	previous, ok := e.cfgDoc[key]
+	if !ok || slices.ContainsFunc(e.queue[key], func(q *queuedDownlink) bool { return q.kind == "config" }) {
+		return
+	}
+	e.cfgDoc[key] = patchConfigDocument(previous, d.dbg2)
+	e.deliveredChanged = true
+}
+
+// configBase is the d/config document of key with the records of every queued
+// d/dbg2 write patched in: the state the device reaches once they land. A new
+// d/config write merges on it, so the whole document it carries keeps them.
+func (e *EmuState) configBase(key string) cfgSnapshot {
+	base := e.cfgDoc[key]
+	for _, d := range e.queue[key] {
+		if d.dbg2 != nil && base.body != nil {
+			base = patchConfigDocument(base, d.dbg2)
+		}
+	}
+	return base
 }
 
 // patchConfigDocument merges updates into the document and keeps its ETag.

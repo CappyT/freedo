@@ -86,7 +86,7 @@ func (e *EmuState) EnqueueDisplaySettings(target string, id int, w DisplaySettin
 	if err != nil {
 		return err
 	}
-	orientation, notify := displayValues(parseTLVList(e.cfgDoc[key].body))
+	orientation, notify := displayValues(parseTLVList(e.configBase(key).body))
 	var cw ConfigWrite
 	if w.Orientation != nil {
 		v, err := parseOrientation(*w.Orientation)
