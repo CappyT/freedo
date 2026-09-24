@@ -3711,7 +3711,7 @@
     (effects (font (size 1.27 1.27)) (justify left bottom))
     (uuid "669504c4-bbef-48dc-bd16-6e7b16539fa0")
   )
-  (text "LEDs: D203 PWR, D204 TX, D205 RX, D206 STATUS (active high)"
+  (text "LEDs: D203 PWR on +3V3; D204 TX, D205 RX, D206 STATUS active high"
     (at 105.1 176.45 0)
     (effects (font (size 1.524 1.524) (bold yes)) (justify left bottom))
     (uuid "79f35a29-6deb-4956-9099-88455b959a83")
@@ -5769,7 +5769,7 @@
 				)
 			)
 		)
-		(property "Asm" "none"
+		(property "Asm" "hand"
 			(at 340.36 91.44 0)
 			(hide yes)
 			(effects

@@ -2591,6 +2591,16 @@
 		(diameter 0)
 		(uuid "050fb527-fd14-4d94-9b67-87e80923c87a")
 	)
+	(junction
+		(at 83.82 66.04)
+		(diameter 0)
+		(uuid "a259aa08-f2c1-4dec-8082-7e4e24eb774e")
+	)
+	(junction
+		(at 87.63 66.04)
+		(diameter 0)
+		(uuid "0d46f3ae-feee-4d96-8589-c5f303c09793")
+	)
 	(no_connect
 		(at 53.34 101.6)
 		(uuid "8b828b3f-4aec-48e5-98a1-d366faeeccdd")
@@ -2886,6 +2896,43 @@
 		)
 		(uuid "84f92493-ca96-4d8c-8090-8ae412bebf04")
 	)
+	(wire
+		(pts
+			(xy 83.82 66.04)
+			(xy 93.98 66.04)
+		)
+		(uuid "656a4894-2285-417e-be63-6cfccaa7d8b2")
+	)
+	(text "U202 at the connector"
+		(at 87.63 104.14 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "da8d418f-b458-4bbb-8d98-51a155d0f15f")
+	)
+	(text "U203: tab on >= 2 cm2 copper + >= 6 vias (spec 4.4)\nC202, C203 at VIN; C204, C205 at VOUT (LDL1117 DS 6.2)"
+		(at 140.97 78.74 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "c56585ed-0409-4127-8776-8b4f741a7a94")
+	)
+	(text "J201: A6-B6 and A7-B7 tied at the connector\nD+/D-: 90 ohm differential, GND on both sides (spec 6.3)"
+		(at 25.4 130.81 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "7abce3dc-f359-4333-8c15-38cb25ed4e29")
+	)
 	(label "USB_DN"
 		(at 60.96 86.36 0)
 		(effects
@@ -2989,21 +3036,6 @@
 		)
 		(uuid "e37730ec-0ee2-487a-94ac-9655eca869db")
 	)
-  (text "U202 at the connector"
-    (at 87.63 104.14 0)
-    (effects (font (size 1.27 1.27)) (justify left bottom))
-    (uuid "da8d418f-b458-4bbb-8d98-51a155d0f15f")
-  )
-  (text "U203: tab on >= 2 cm2 copper + >= 6 vias (spec 4.4)\nC202, C203 at VIN; C204, C205 at VOUT (LDL1117 DS 6.2)"
-    (at 140.97 78.74 0)
-    (effects (font (size 1.27 1.27)) (justify left bottom))
-    (uuid "c56585ed-0409-4127-8776-8b4f741a7a94")
-  )
-  (text "J201: A6-B6 and A7-B7 tied at the connector\nD+/D-: 90 ohm differential, GND on both sides (spec 6.3)"
-    (at 25.4 130.81 0)
-    (effects (font (size 1.27 1.27)) (justify left bottom))
-    (uuid "7abce3dc-f359-4333-8c15-38cb25ed4e29")
-  )
 	(symbol
 		(lib_id "freedo-radio:TYPE-C-31-M-12")
 		(at 38.1 88.9 0)
@@ -5112,6 +5144,304 @@
 			(project "freedo-radio"
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/2dddeba1-e87b-4573-8b05-60b009060731"
 					(reference "#PWR0212")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:R")
+		(at 87.63 69.85 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "77cbed9e-ef97-4040-a5b9-eda2d418359e")
+		(property "Reference" "R215"
+			(at 89.662 69.85 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "10k"
+			(at 87.63 69.85 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "freedo-radio:R_0603_1608Metric"
+			(at 87.63 69.85 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 87.63 69.85 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Resistor"
+			(at 87.63 69.85 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "0603WAF1002T5E"
+			(at 87.63 69.85 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C25804"
+			(at 87.63 69.85 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "JLC"
+			(at 87.63 69.85 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/2dddeba1-e87b-4573-8b05-60b009060731"
+					(reference "R215")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:C")
+		(at 93.98 69.85 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "03b84f38-d201-497b-86ad-1dfb999c2fe2")
+		(property "Reference" "C208"
+			(at 94.615 67.31 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "100nF"
+			(at 94.615 72.39 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "freedo-radio:C_0603_1608Metric"
+			(at 93.98 69.85 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 93.98 69.85 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Unpolarized capacitor"
+			(at 93.98 69.85 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CC0603KRX7R9BB104"
+			(at 93.98 69.85 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C14663"
+			(at 93.98 69.85 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "JLC"
+			(at 93.98 69.85 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/2dddeba1-e87b-4573-8b05-60b009060731"
+					(reference "C208")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:GND")
+		(at 87.63 73.66 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "b809d1a7-9327-4050-b267-e1840e2ad21e")
+		(property "Reference" "#PWR0213"
+			(at 87.63 80.01 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 87.63 77.47 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 87.63 73.66 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 87.63 73.66 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 87.63 73.66 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/2dddeba1-e87b-4573-8b05-60b009060731"
+					(reference "#PWR0213")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:GND")
+		(at 93.98 73.66 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "99b6c685-69dc-4f73-8fea-5a9b2d612ec0")
+		(property "Reference" "#PWR0214"
+			(at 93.98 80.01 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 93.98 77.47 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 93.98 73.66 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 93.98 73.66 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 93.98 73.66 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/2dddeba1-e87b-4573-8b05-60b009060731"
+					(reference "#PWR0214")
 					(unit 1)
 				)
 			)

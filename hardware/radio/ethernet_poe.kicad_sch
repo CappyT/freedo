@@ -4584,6 +4584,11 @@
 		(diameter 0)
 		(uuid "854a4d04-bce0-47cd-890b-3efcb580b5e3")
 	)
+	(junction
+		(at 193.04 213.36)
+		(diameter 0)
+		(uuid "5417868e-7968-4ec2-adbf-ab34fe1f24cd")
+	)
 	(no_connect
 		(at 143.51 76.2)
 		(uuid "7bdbcde1-edcd-46a1-a2a8-d9d05abc523e")
@@ -5728,6 +5733,100 @@
 		)
 		(uuid "5065e763-7b76-4bbc-9e29-da1662ce0742")
 	)
+	(text "LINE SIDE (PoE, isolated)"
+		(at 134.62 24.13 0)
+		(effects
+			(font
+				(size 2 2)
+				(thickness 0.4)
+				(bold yes)
+			)
+			(justify right bottom)
+		)
+		(uuid "e7f17658-74ba-4ccb-a796-5e898e1cd023")
+	)
+	(text "SYSTEM SIDE"
+		(at 144.78 24.13 0)
+		(effects
+			(font
+				(size 2 2)
+				(thickness 0.4)
+				(bold yes)
+			)
+			(justify left bottom)
+		)
+		(uuid "54182115-7373-498f-b7bc-d120ddaf5f50")
+	)
+	(text "ISOLATION BARRIER (dashed line)\nisolation >= 2 mm on every layer, 3 mm target (spec 6.2)\nOnly T301, U401, C322 and C323 cross it.\nLine side: J301, T301 pins 9-16, Bob Smith, BR401, BR402,\nD401, U401 pins 5-8. System side: everything else."
+		(at 144.78 116.84 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left top)
+		)
+		(uuid "2568d74b-6c7a-4aa6-a382-db47f6aa0796")
+	)
+	(text "no plane under T301"
+		(at 144.78 81.28 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "33af60a2-0545-4d59-a79b-e8ac0c9d8d37")
+	)
+	(text "hand-soldered, optional: PoE boards only"
+		(at 139.7 233.68 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify bottom)
+		)
+		(uuid "60f768b7-6134-46d8-b1f4-91c2c73d3c6b")
+	)
+	(text "R401: 0R = 5.66 V so PoE wins the diode-OR (spec 4.3)"
+		(at 152.4 238.76 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "0549fb2d-863f-4a44-bc95-b10752bceada")
+	)
+	(text "Bob Smith, PoE-aware (spec 5.3): 75R + 10 nF 100 V per power line.\nC322, C323: 1 nF 2 kV 1808, they cross the barrier.\nNo DC path from SHIELD to GND."
+		(at 22.86 165.1 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left top)
+		)
+		(uuid "1a00ecd7-2a32-4d60-b93c-de7c74fa8b15")
+	)
+	(text "C305-C310: one 100 nF at each AVDD pin (4, 8, 11, 15, 17, 21).\nC312, C313 at VDD (28)."
+		(at 236.22 113.03 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left top)
+		)
+		(uuid "058125a1-db5c-49ec-bf3e-7d299f12362b")
+	)
+	(text "MDI: 100 ohm differential pairs, equal length (spec 6.3).\nR309-R312: 0R damping (WIZnet note a: 33R gave the best EMI)."
+		(at 167.64 110.49 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left top)
+		)
+		(uuid "fa410d8c-bea0-4495-95fa-14e3f029d8e9")
+	)
 	(label "MDI_1"
 		(at 40.64 54.61 0)
 		(effects
@@ -6275,50 +6374,10 @@
 		)
 		(uuid "ec18e866-9642-4106-ae4e-9da1fa8a0ef1")
 	)
-  (text "LINE SIDE (PoE, isolated)"
-    (at 134.62 24.13 0)
-    (effects (font (size 2 2) (thickness 0.4) (bold yes)) (justify right bottom))
-    (uuid "e7f17658-74ba-4ccb-a796-5e898e1cd023")
-  )
-  (text "SYSTEM SIDE"
-    (at 144.78 24.13 0)
-    (effects (font (size 2 2) (thickness 0.4) (bold yes)) (justify left bottom))
-    (uuid "54182115-7373-498f-b7bc-d120ddaf5f50")
-  )
-  (text "ISOLATION BARRIER (dashed line)\nisolation >= 2 mm on every layer, 3 mm target (spec 6.2)\nOnly T301, U401, C322 and C323 cross it.\nLine side: J301, T301 pins 9-16, Bob Smith, BR401, BR402,\nD401, U401 pins 5-8. System side: everything else."
-    (at 144.78 116.84 0)
-    (effects (font (size 1.27 1.27)) (justify left top))
-    (uuid "2568d74b-6c7a-4aa6-a382-db47f6aa0796")
-  )
-  (text "no plane under T301"
-    (at 144.78 81.28 0)
+  (text "R402 DNP: fit if the PSE drops power at low load (DP9900 needs >= 100 mA)"
+    (at 152.4 241.3 0)
     (effects (font (size 1.27 1.27)) (justify left bottom))
-    (uuid "33af60a2-0545-4d59-a79b-e8ac0c9d8d37")
-  )
-  (text "hand-soldered, optional: PoE boards only"
-    (at 139.7 233.68 0)
-    (effects (font (size 1.27 1.27)) (justify bottom))
-    (uuid "60f768b7-6134-46d8-b1f4-91c2c73d3c6b")
-  )
-  (text "R401: 0R = 5.66 V so PoE wins the diode-OR (spec 4.3)"
-    (at 152.4 238.76 0)
-    (effects (font (size 1.27 1.27)) (justify left bottom))
-    (uuid "0549fb2d-863f-4a44-bc95-b10752bceada")
-  )
-  (text "Bob Smith, PoE-aware (spec 5.3): 75R + 10 nF 100 V per power line.\nC322, C323: 1 nF 2 kV 1808, they cross the barrier.\nNo DC path from SHIELD to GND."
-    (at 22.86 165.1 0)
-    (effects (font (size 1.27 1.27)) (justify left top))
-    (uuid "1a00ecd7-2a32-4d60-b93c-de7c74fa8b15")
-  )
-  (text "C305-C310: one 100 nF at each AVDD pin (4, 8, 11, 15, 17, 21).\nC312, C313 at VDD (28)."
-    (at 236.22 113.03 0)
-    (effects (font (size 1.27 1.27)) (justify left top))
-    (uuid "058125a1-db5c-49ec-bf3e-7d299f12362b")
-  )
-  (text "MDI: 100 ohm differential pairs, equal length (spec 6.3).\nR309-R312: 0R damping (WIZnet note a: 33R gave the best EMI)."
-    (at 167.64 110.49 0)
-    (effects (font (size 1.27 1.27)) (justify left top))
-    (uuid "fa410d8c-bea0-4495-95fa-14e3f029d8e9")
+    (uuid "759e32c6-7fd2-4030-9481-59d2113c0af2")
   )
 	(symbol
 		(lib_id "freedo-radio:DS1128-S80BP")
@@ -6602,7 +6661,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "10nF"
+		(property "Value" "10nF/100V"
 			(at 31.115 127 0)
 			(effects
 				(font
@@ -6780,7 +6839,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "10nF"
+		(property "Value" "10nF/100V"
 			(at 46.355 127 0)
 			(effects
 				(font
@@ -6958,7 +7017,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "10nF"
+		(property "Value" "10nF/100V"
 			(at 61.595 127 0)
 			(effects
 				(font
@@ -7136,7 +7195,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "10nF"
+		(property "Value" "10nF/100V"
 			(at 76.835 127 0)
 			(effects
 				(font
@@ -7225,7 +7284,7 @@
 				(justify right)
 			)
 		)
-		(property "Value" "1nF"
+		(property "Value" "1nF/2kV"
 			(at 93.98 140.97 0)
 			(effects
 				(font
@@ -7314,7 +7373,7 @@
 				(justify right)
 			)
 		)
-		(property "Value" "1nF"
+		(property "Value" "1nF/2kV"
 			(at 93.98 153.67 0)
 			(effects
 				(font
@@ -13526,9 +13585,160 @@
 			)
 		)
 	)
+	(symbol
+		(lib_id "freedo-radio:R")
+		(at 193.04 217.17 0)
+		(unit 1)
+		(in_bom no)
+		(on_board yes)
+		(dnp yes)
+		(uuid "4bcdfc65-9061-4cae-9d88-8242d92e69ec")
+		(property "Reference" "R402"
+			(at 195.58 219.71 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "56R"
+			(at 195.58 222.25 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "freedo-radio:R_2512_6332Metric"
+			(at 193.04 217.17 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 193.04 217.17 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Resistor"
+			(at 193.04 217.17 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "MCR100JZHJ560"
+			(at 193.04 217.17 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C308356"
+			(at 193.04 217.17 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "none"
+			(at 193.04 217.17 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
+					(reference "R402")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "freedo-radio:GND")
+		(at 193.04 220.98 0)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "61204246-4c95-4e69-929a-bb36777fe77b")
+		(property "Reference" "#PWR0331"
+			(at 193.04 227.33 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 193.04 224.79 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 193.04 220.98 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 193.04 220.98 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 193.04 220.98 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
+					(reference "#PWR0331")
+					(unit 1)
+				)
+			)
+		)
+	)
 	(polyline
 		(pts
-			(xy 139.7 20.32) (xy 139.7 45.72)
+			(xy 139.7 20.32)
+			(xy 139.7 45.72)
 		)
 		(stroke
 			(width 0.3)
@@ -13542,7 +13752,8 @@
 	)
 	(polyline
 		(pts
-			(xy 139.7 83.82) (xy 139.7 204.47)
+			(xy 139.7 83.82)
+			(xy 139.7 204.47)
 		)
 		(stroke
 			(width 0.3)
@@ -13556,7 +13767,8 @@
 	)
 	(polyline
 		(pts
-			(xy 139.7 236.22) (xy 139.7 276.86)
+			(xy 139.7 236.22)
+			(xy 139.7 276.86)
 		)
 		(stroke
 			(width 0.3)
