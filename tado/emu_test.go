@@ -1490,7 +1490,7 @@ func TestAuthReplyRetriesAsSameAnswer(t *testing.T) {
 		t.Fatalf("pending = %d, want the auth answer", n)
 	}
 
-	second, secondFrame, secondMsg := authAttempt(t, e.OnFrame(raw), 0x0311)
+	second, secondFrame, secondMsg := authAttempt(t, e.OnFrame(reframe(t, raw, 0x22, 701)), 0x0311)
 	if !second.QueueAttempt || second.QueueTry != 2 {
 		t.Fatalf("retransmission attempt = %+v, want try 2 of the same entry", second)
 	}
@@ -1508,7 +1508,7 @@ func TestAuthReplyRetriesAsSameAnswer(t *testing.T) {
 	if n := e.Pending(target); n != 0 {
 		t.Fatalf("pending = %d after the Enhanced ACK, want 0", n)
 	}
-	_, _, thirdMsg := authAttempt(t, e.OnFrame(raw), 0x0311)
+	_, _, thirdMsg := authAttempt(t, e.OnFrame(reframe(t, raw, 0x23, 702)), 0x0311)
 	if !bytes.Equal(thirdMsg.Raw, firstMsg.Raw) {
 		t.Errorf("answer after delivery %x differs from %x", thirdMsg.Raw, firstMsg.Raw)
 	}
@@ -1965,15 +1965,16 @@ func TestZoneRelayCollapsesRetransmissions(t *testing.T) {
 		Type: "CON", Code: "0.01", MID: 0x5501, Token: []byte{0x55},
 		Path: []string{"z", "p"}, Query: []string{"lid=5"}, Options: []CoAPOption{optOctets},
 	}
-	e.OnFrame(zoneUplink(t, sender, peer, get))
-	e.OnFrame(zoneUplink(t, sender, peer, get))
+	raw := zoneUplink(t, sender, peer, get)
+	e.OnFrame(raw)
+	e.OnFrame(reframe(t, raw, 0x23, 801))
 	if n := e.Pending(target); n != 1 {
 		t.Fatalf("pending=%d, want 1:\n%s", n, log.Summary())
 	}
 	if _, ok, err := e.NextQueuedDownlink(target); err != nil || !ok {
 		t.Fatalf("dispatch ok=%t err=%v", ok, err)
 	}
-	e.OnFrame(zoneUplink(t, sender, peer, get))
+	e.OnFrame(reframe(t, raw, 0x24, 802))
 	queue := e.Queue(target)
 	if len(queue) != 1 || !queue[0].InFlight {
 		t.Fatalf("queue=%+v, want the one copy in flight", queue)

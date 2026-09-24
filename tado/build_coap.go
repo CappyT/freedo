@@ -195,7 +195,8 @@ func BuildZoneRelay(msg, srcIID, dstEUI []byte, srcPort, dstPort uint16) ([]byte
 // StampSessionID inserts option 2048 set to id into a CoAP message. It returns
 // msg untouched when id is empty or the message already carries the option,
 // which is the normal case on the relay path: a device stamps its own session
-// id and the bridge forwards those bytes verbatim.
+// id and the bridge forwards those bytes verbatim. An empty message (code 0.00)
+// stays untouched too: RFC 7252 allows it no option.
 //
 // The insertion splices the serialized message and decodes no option value, so
 // every byte of the original stays, malformed options included. Only the header
@@ -207,6 +208,9 @@ func StampSessionID(msg, id []byte) ([]byte, error) {
 	opts, end, err := walkCoAPOptions(msg)
 	if err != nil {
 		return nil, err
+	}
+	if msg[1] == 0 {
+		return msg, nil
 	}
 	prev, next := 0, len(opts)
 	for i, o := range opts {

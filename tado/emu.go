@@ -550,6 +550,9 @@ type EmuState struct {
 	// Block2 transfers in progress. See coap_exchange.go.
 	answered map[midKey]*answeredCON
 	block2Tx map[string]block2Transfer
+	// macRx holds the last Data frame taken from each source. See
+	// mac_duplicate.go.
+	macRx map[string]macRxMark
 	// zoneRep and circuitRep hold the merged heat-demand chain, keyed by zone
 	// number and by heating-circuit id. obsRoles holds the 015e role records a
 	// device published about itself. See demand.go.
@@ -823,6 +826,9 @@ func (e *EmuState) onData(class FrameClass, raw []byte) []Action {
 	ns := e.node(srcEUI)
 	ns.LastSeen = e.cfg.Now()
 	ns.LastSeq = f.Seq
+	if e.macDuplicate(srcEUI, f) {
+		return e.macDuplicateActions(f, srcEUI, srcLbl)
+	}
 
 	frag := IsFragment(f.Plaintext)
 	app := ParseApp(f.Plaintext)
@@ -848,16 +854,7 @@ func (e *EmuState) onData(class FrameClass, raw []byte) []Action {
 		return nil
 	}
 
-	var actions []Action
-	if !e.cfg.NoEnhAck {
-		e.stats.EnhAcks++
-		actions = append(actions, Action{
-			Kind:   ActEnhAck,
-			Bytes:  BuildEnhAck(f.Seq, srcEUI, e.selfEUI, e.cfg.CSLPhase),
-			Reason: fmt.Sprintf("enh-ack seq=%02x", f.Seq),
-			Node:   srcLbl,
-		})
-	}
+	actions := e.enhAckAction(f, srcEUI, srcLbl)
 
 	msg := app.coapOrNil()
 	if frag {
@@ -908,6 +905,20 @@ func (e *EmuState) onData(class FrameClass, raw []byte) []Action {
 	return actions
 }
 
+// enhAckAction is the MAC Enhanced ACK of a Data frame addressed to us.
+func (e *EmuState) enhAckAction(f *Frame, srcEUI []byte, srcLbl string) []Action {
+	if e.cfg.NoEnhAck {
+		return nil
+	}
+	e.stats.EnhAcks++
+	return []Action{{
+		Kind:   ActEnhAck,
+		Bytes:  BuildEnhAck(f.Seq, srcEUI, e.selfEUI, e.cfg.CSLPhase),
+		Reason: fmt.Sprintf("enh-ack seq=%02x", f.Seq),
+		Node:   srcLbl,
+	}}
+}
+
 // handleCoAP answers a CoAP uplink and logs whatever it cannot fully handle.
 func (e *EmuState) handleCoAP(f *Frame, m *CoAPMessage, class FrameClass, srcLbl, dstLbl string) ([]Action, bool) {
 	// A zone write teaches us the zone whether we answer it, forward it or only
@@ -919,7 +930,7 @@ func (e *EmuState) handleCoAP(f *Frame, m *CoAPMessage, class FrameClass, srcLbl
 	// construct a relay reply for that device. This precedes the ACK handling because a
 	// relayed 2.05 is exactly how a zone GET gets answered.
 	if m.Contexted() && !e.addressedToSelf(m, f) {
-		e.confirmByMID(f.SrcEUI(), m) // the device answered a request we forwarded
+		e.confirmRelayByMID(f.SrcEUI(), m) // the device answered a request we forwarded
 		// A member answering a GET we proxied on someone's behalf: its 2.05 goes
 		// to the requester through the relay below, so we must not also answer.
 		e.resolveZoneProxy(m)
@@ -931,6 +942,9 @@ func (e *EmuState) handleCoAP(f *Frame, m *CoAPMessage, class FrameClass, srcLbl
 	if m.Type == "ACK" {
 		e.confirmByMID(f.SrcEUI(), m)
 		return nil, false
+	}
+	if m.Type == "CON" && m.Code == "0.00" {
+		return e.answerPing(f, m, class, srcLbl, dstLbl)
 	}
 	if m.Type != "CON" || !isRequestCode(m.Code) {
 		e.confirmByMID(f.SrcEUI(), m) // a NON 2.xx response to a queued GET, if any
@@ -1051,6 +1065,39 @@ func (e *EmuState) handleCoAP(f *Frame, m *CoAPMessage, class FrameClass, srcLbl
 	} else if normalizeResource(m.Path) != "time" {
 		// A retransmitted time GET gets the clock again, not a stale answer.
 		e.rememberAnswer(dst, m, pkt, code)
+	}
+	return actions, true
+}
+
+// answerPing answers a CON empty message, a CoAP ping, with the RST of its MID
+// (RFC 7252, 4.3). A ping to another node is not ours to answer.
+func (e *EmuState) answerPing(f *Frame, m *CoAPMessage, class FrameClass, srcLbl, dstLbl string) ([]Action, bool) {
+	if e.cfg.NoCoAPAck || !e.addressedToSelf(m, f) {
+		return nil, false
+	}
+	dst := f.SrcEUI()
+	r := CoAPReq{
+		Type: "RST", Code: "0.00", MID: m.MID, Token: []byte{},
+		SrcEUI: e.selfEUI, DstEUI: dst, SrcPort: m.DstPort, DstPort: m.SrcPort,
+	}
+	var pkt []byte
+	var err error
+	switch {
+	case isDirectPath(m):
+		pkt, err = BuildCoAP(r)
+	case m.Contexted():
+		pkt, err = BuildContextCoAP(r)
+	default:
+		e.log.Log(class.String(), srcLbl, dstLbl, rsnUnknownAddrMode+" ping", f.Hex())
+		return nil, false
+	}
+	var actions []Action
+	if err == nil {
+		actions, err = e.coapReplyActions(pkt, dst, "RST", "ping", m.MID, srcLbl)
+	}
+	if err != nil {
+		e.log.Log(class.String(), srcLbl, dstLbl, rsnBuildFail+" "+err.Error(), f.Hex())
+		return nil, false
 	}
 	return actions, true
 }
@@ -1346,13 +1393,42 @@ func schedulePath(path string, in *Install) bool {
 // into its zone config and keeps every tag the body leaves out, so an empty
 // 2.05 and a 2.03 change nothing. A 4.xx or 5.xx is dropped. The GET carries
 // no ETag (app_node_notify_build, valve 0x118e4), so there is none to validate.
+//
+// Every captured answer (21 in capture-app-20260907) carries an ETag and Block2
+// 0/0/128, and no Content-Format. Its ETag follows the body alone: one body
+// reads under one ETag on every zone and device. The body is far shorter than
+// the 128 bytes the device asks for, so the one block is the last.
 func (e *EmuState) servedDirectZoneState(m *CoAPMessage, dst []byte) ([]byte, string, bool, error) {
 	zone, ok := zoneResourcePath(m.Path, e.inst, "s")
 	if m.Code != "0.01" || !ok {
 		return nil, "", false, nil
 	}
 	body := e.directZoneReadBody(zone)
-	pkt, err := BuildCoAPAck("2.05", m.MID, m.Token, body, e.selfEUI, dst, m.DstPort, m.SrcPort)
+	if len(body) == 0 {
+		pkt, err := BuildCoAPAck("2.05", m.MID, m.Token, nil, e.selfEUI, dst, m.DstPort, m.SrcPort)
+		return pkt, "2.05", true, err
+	}
+	offset, size, szx, err := requestedBlock2(m)
+	if err != nil {
+		return nil, "", true, err
+	}
+	if offset > 0 || len(body) > size {
+		pkt, code, err := e.buildBlock2Response(m, dst, body, configEtag(body))
+		return pkt, code, true, err
+	}
+	token := m.Token
+	if token == nil {
+		token = []byte{}
+	}
+	pkt, err := BuildCoAP(CoAPReq{
+		Type: "ACK", Code: "2.05", MID: m.MID, Token: token,
+		Options: []CoAPOption{
+			{Num: 4, Val: configEtag(body)},
+			{Num: 23, Val: encodeCoAPUint(uint32(szx))},
+		},
+		Payload: body, SrcEUI: e.selfEUI, DstEUI: dst,
+		SrcPort: m.DstPort, DstPort: m.SrcPort,
+	})
 	return pkt, "2.05", true, err
 }
 
@@ -2005,9 +2081,11 @@ func (e *EmuState) buildZoneHop(f *Frame, m *CoAPMessage, srcIID, dst []byte, cl
 // relaySessionID names the author of a message we forward. A request carries the
 // originating device's session id: the one it echoes to us, or the 025e we
 // served it when it has echoed none yet. An answer carries no session id at all,
-// which is what the capture shows on every relayed 2.xx.
+// which is what the capture shows on every relayed 2.xx. Neither does an empty
+// ACK or RST: RFC 7252 allows it no option, and the capture relays it as the
+// same 4 bytes.
 func (e *EmuState) relaySessionID(m *CoAPMessage, srcIID []byte) []byte {
-	if isResponseCode(m.Code) {
+	if !isRequestCode(m.Code) {
 		return nil
 	}
 	author := wireFromIID(srcIID)
@@ -2506,16 +2584,21 @@ func (e *EmuState) onEnhAck(raw []byte) {
 	if bytes.Equal(a.SrcEUI, e.selfEUI) {
 		return // our own ACK looped back
 	}
+	// The FCS is no authentication: anyone can build a valid Enhanced ACK. Node
+	// state comes from the installation or from an authenticated Data frame.
 	key := hexEUI(a.SrcEUI)
-	ns, known := e.nodes[key]
-	if !known {
-		if !e.known(key) {
-			e.log.Log("EnhACK", e.name(a.SrcEUI), e.name(a.DstEUI), rsnUnknownEnhAck, hex.EncodeToString(raw))
-		}
+	ns, seen := e.nodes[key]
+	switch {
+	case seen:
+	case e.known(key):
 		ns = e.node(a.SrcEUI)
+	default:
+		e.log.Log("EnhACK", e.name(a.SrcEUI), e.name(a.DstEUI), rsnUnknownEnhAck, hex.EncodeToString(raw))
 	}
-	ns.CSLPhase, ns.CSLPeriod = a.CSLPhase, a.CSLPeriod
-	ns.LastSeen = e.cfg.Now()
+	if ns != nil {
+		ns.CSLPhase, ns.CSLPeriod = a.CSLPhase, a.CSLPeriod
+		ns.LastSeen = e.cfg.Now()
+	}
 	// An overheard ACK of another node's frame carries a sequence number from
 	// that node's space: it confirms none of ours.
 	if bytes.Equal(a.DstEUI, e.selfEUI) {
@@ -4704,15 +4787,21 @@ func (e *EmuState) DeferDownlinkAttempt(dstEUI []byte, seq byte, retryAt time.Ti
 	return true
 }
 
-// confirmByMID closes an in-flight downlink after its CoAP response.
+// confirmByMID closes an in-flight downlink after the CoAP response a device
+// addresses to us. That MID comes from our own counter, so it never matches a
+// queued zone relay or auth answer: those carry a MID the device chose.
 func (e *EmuState) confirmByMID(srcEUI []byte, m *CoAPMessage) {
 	key := hexEUI(srcEUI)
 	q := e.queue[key]
-	if len(q) == 0 || !q[0].inFlight || q[0].mid != m.MID {
+	if len(q) == 0 || !q[0].inFlight || q[0].mid != m.MID || q[0].kind == "zone" || q[0].kind == "auth" {
 		return
 	}
 	if q[0].kind == fwKind {
 		e.confirmFw(key, q[0], m)
+		return
+	}
+	if m.Type == "RST" {
+		e.resetDownlink(srcEUI, m)
 		return
 	}
 	if q[0].requireCoAP {
@@ -4777,6 +4866,40 @@ func (e *EmuState) confirmByMID(srcEUI []byte, m *CoAPMessage) {
 		reason = "coap-" + m.Code
 	}
 	e.recordDownlinkOutcome(key, q[0], "delivered", reason)
+}
+
+// resetDownlink ends the in-flight downlink an RST names. The device rejected
+// the message without processing it (RFC 7252, 4.2) and answers a retry under
+// the same MID from its deduplication state, so the exchange is dropped. An RST
+// that is not empty is a format error and is ignored.
+func (e *EmuState) resetDownlink(srcEUI []byte, m *CoAPMessage) {
+	if m.Code != "0.00" {
+		return
+	}
+	key := hexEUI(srcEUI)
+	d := e.queue[key][0]
+	if d.heating != nil {
+		e.invalidateHeatingBlock(srcEUI)
+	}
+	e.queue[key] = e.queue[key][1:]
+	e.clearPendingGet(key, d)
+	e.stats.DownlinksDropped++
+	e.recordDownlinkOutcome(key, d, "dropped", "coap-rst")
+	e.log.Log("Data", "self", e.name(srcEUI), fmt.Sprintf("%s %s mid=%04x", rsnDownlinkReset, d.desc, d.mid), "")
+}
+
+// confirmRelayByMID closes an in-flight zone relay after the target's ACK or
+// RST, which travels to the originator on the relay path. Its MID comes from
+// the originator's counter, so it never matches a downlink we authored.
+func (e *EmuState) confirmRelayByMID(srcEUI []byte, m *CoAPMessage) {
+	key := hexEUI(srcEUI)
+	q := e.queue[key]
+	if len(q) == 0 || !q[0].inFlight || q[0].mid != m.MID || q[0].kind != "zone" || (m.Type != "ACK" && m.Type != "RST") {
+		return
+	}
+	e.queue[key] = q[1:]
+	e.stats.DownlinksDelivered++
+	e.recordDownlinkOutcome(key, q[0], "delivered", "coap-"+strings.ToLower(m.Type))
 }
 
 // remintDownlink gives the write d a new MID and token for its retry after a
@@ -5188,6 +5311,7 @@ const (
 	rsnNeighborSolicit   = "icmpv6-neighbor-solicitation"
 	rsnUnknownEnhAck     = "enh-ack-from-unknown-node"
 	rsnDownlinkLost      = "downlink-undelivered"
+	rsnDownlinkReset     = "downlink-reset"
 	rsnBuildFail         = "build-fail"
 	rsnAuthAccepted      = "auth-accepted"
 	rsnSessionMismatch   = "session-id-mismatch"

@@ -49,17 +49,6 @@
 			)
 		)
 	)
-	(property "LCSC Part" "C2488"
-		(at 0 0 0)
-		(layer "F.Fab")
-		(hide yes)
-		(uuid "9230a4ac-7064-49c2-91d8-ee0ff317c480")
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-		)
-	)
 	(attr smd)
 	(duplicate_pad_numbers_are_jumpers no)
 	(fp_line

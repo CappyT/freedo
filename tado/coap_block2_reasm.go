@@ -1,6 +1,7 @@
 package tado
 
 import (
+	"bytes"
 	"encoding/hex"
 	"errors"
 	"strconv"
@@ -28,10 +29,11 @@ var (
 )
 
 type block2Buf struct {
-	next    uint32 // block number the transfer expects next
-	szx     byte
-	body    []byte
-	started time.Time
+	next uint32 // block number the transfer expects next
+	szx  byte
+	body []byte
+	last int       // length of the latest block, the tail of body
+	seen time.Time // arrival of the latest block
 }
 
 // block2Reasm collects block-wise response bodies. It is single-goroutine state.
@@ -61,8 +63,15 @@ func block2Key(srcEUI []byte, m *CoAPMessage) string {
 // Add takes one block of a response and returns the reassembled body once the
 // last block lands. It returns ok=false and a nil error while the transfer stays
 // open, and an error for a block that joins no transfer.
+//
+// A block equal to the latest one, which the device's MAC retransmission of a
+// frame delivers, is ignored and leaves the transfer open.
 func (r *block2Reasm) Add(key string, num uint32, more bool, szx byte, payload []byte) ([]byte, bool, error) {
 	r.expire()
+	if b, ok := r.m[key]; ok && b.repeats(num, more, szx, payload) {
+		b.seen = r.now()
+		return nil, false, nil
+	}
 	if num == 0 {
 		delete(r.m, key)
 		if !more {
@@ -72,7 +81,7 @@ func (r *block2Reasm) Add(key string, num uint32, more bool, szx byte, payload [
 			return nil, false, errBlock2TooLarge
 		}
 		r.makeRoom()
-		r.m[key] = &block2Buf{next: 1, szx: szx, body: append([]byte(nil), payload...), started: r.now()}
+		r.m[key] = &block2Buf{next: 1, szx: szx, body: append([]byte(nil), payload...), last: len(payload), seen: r.now()}
 		return nil, false, nil
 	}
 	b, ok := r.m[key]
@@ -94,6 +103,7 @@ func (r *block2Reasm) Add(key string, num uint32, more bool, szx byte, payload [
 	b.body = append(b.body, payload...)
 	if more {
 		b.next = num + 1
+		b.last, b.seen = len(payload), r.now()
 		return nil, false, nil
 	}
 	delete(r.m, key)
@@ -103,10 +113,16 @@ func (r *block2Reasm) Add(key string, num uint32, more bool, szx byte, payload [
 // Open reports how many transfers are buffered.
 func (r *block2Reasm) Open() int { return len(r.m) }
 
+// repeats reports whether a block is the latest block of the transfer again.
+// Every block the transfer holds was sent with the more flag set.
+func (b *block2Buf) repeats(num uint32, more bool, szx byte, payload []byte) bool {
+	return more && num+1 == b.next && szx == b.szx && bytes.Equal(payload, b.body[len(b.body)-b.last:])
+}
+
 func (r *block2Reasm) expire() {
 	deadline := r.now().Add(-block2Timeout)
 	for k, b := range r.m {
-		if b.started.Before(deadline) {
+		if b.seen.Before(deadline) {
 			delete(r.m, k)
 		}
 	}
@@ -117,7 +133,7 @@ func (r *block2Reasm) makeRoom() {
 	for len(r.m) >= block2MaxOpen {
 		oldest := ""
 		for k, b := range r.m {
-			if oldest == "" || b.started.Before(r.m[oldest].started) {
+			if oldest == "" || b.seen.Before(r.m[oldest].seen) {
 				oldest = k
 			}
 		}
