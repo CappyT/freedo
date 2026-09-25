@@ -7,6 +7,11 @@
 	(condition "A.Net != B.Net && !(A.memberOfFootprint('J201') && B.memberOfFootprint('J201'))")
 	(constraint hole_clearance (min 0.25mm)))
 
+# No via in an SMD pad or its mask opening (0.05 mm expansion, 0.071 mm at a square corner), any net: an open via drains the paste.
+(rule "via_not_in_smd_pad"
+	(condition "A.Type == 'Via' && B.Type == 'Pad' && B.Pad_Type == 'SMD'")
+	(constraint physical_clearance (min 0.075mm)))
+
 # JLC: 0.45 mm between the holes of two pads. Via holes use the board minimum of 0.2 mm.
 (rule "pad_hole_to_hole"
 	(condition "A.Type == 'Pad' && B.Type == 'Pad'")
@@ -47,9 +52,9 @@
 	(condition "A.NetClass == 'ETH_100' || A.NetName == '/ethernet_poe/MDI_*'")
 	(constraint track_width (min 0.21mm) (opt 0.23mm) (max 0.25mm)))
 
-# The gap applies to the coupled runs. The rule areas ETH_FANOUT cover the J301 pin field, the T301 pins and the series/termination ladders, where the pair lines split around parts.
+# The gap applies to the coupled runs: MDI, TXP/TXN and RXP/RXN. The rule areas ETH_FANOUT cover only J301 pins 3/6 with the RX_P length bump, the T301 pins, the R309-R312 pads, the TX vias and the U301 pins 1-6, where each pair splits to its pads. TD, RD and RX_TERM join series parts that sit 1.9-5.7 mm apart, so they cannot couple and the rule skips them.
 (rule "eth_100_gap"
-	(condition "(A.NetClass == 'ETH_100' || A.NetName == '/ethernet_poe/MDI_*') && !A.intersectsArea('ETH_FANOUT')")
+	(condition "(A.NetClass == 'ETH_100' || A.NetName == '/ethernet_poe/MDI_*') && A.NetName != '/ethernet_poe/TD_*' && A.NetName != '/ethernet_poe/RD_*' && A.NetName != '/ethernet_poe/RX_TERM_*' && !A.intersectsArea('ETH_FANOUT')")
 	(constraint diff_pair_gap (min 0.18mm) (opt 0.20mm) (max 0.22mm)))
 
 # RF feed C125 -> R191 -> J1 (README 6.3): 50 ohm grounded coplanar on F.Cu over In1.Cu, 0.30 mm track, 0.20 mm gap (net class clearance).
