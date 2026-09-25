@@ -6,6 +6,10 @@ Usage: make_fab.py   (KICAD_CLI overrides the kicad-cli command line)
 Outputs: freedo-radio-gerbers.zip, jlc-bom.csv, jlc-cpl.csv, hand-solder.csv.
 The BOM and CPL hold only Asm=JLC parts that are not DNP. Rotation and
 position corrections come from jlc_rotations.csv next to this script.
+Its rows are checked against the EasyEDA land of each LCSC number:
+curl -A curl/8 'https://easyeda.com/api/products/<LCSC>/components?version=6.4.19.5'
+gives result.packageDetail.dataStr, PAD shapes in 10 mil units around head.x/head.y
+(a browser user agent gets HTTP 403). JLC rotation is counter-clockwise positive.
 """
 import csv
 import math
@@ -105,19 +109,26 @@ def bom(jlc):
     return len(rows)
 
 
+def read_csv(path):
+    with open(path, newline="", encoding="utf-8") as f:
+        return list(csv.DictReader(f))
+
+
 def cpl(jlc):
-    with open(ROTATIONS, newline="", encoding="utf-8") as f:
-        corr = {r["footprint"]: r for r in csv.DictReader(f)}
-    with open(WORK / "pos.csv", newline="", encoding="utf-8") as f:
-        pos = {r["Ref"]: r for r in csv.DictReader(f)}
+    # One footprint can map to several EasyEDA lands (and rotations), so the key is the LCSC number too.
+    corr = {(r["footprint"], lcsc): r for r in read_csv(ROTATIONS) for lcsc in r["lcsc"].split()}
+    pos = {r["Ref"]: r for r in read_csv(WORK / "pos.csv")}
+    errors = [f"{p['ref']}: no checked JLC rotation for {p['footprint']} with {p['lcsc']} in {ROTATIONS.name}"
+              for p in jlc if (p["footprint"], p["lcsc"]) not in corr]
+    errors += [f"{p['ref']}: not in the board position file" for p in jlc if p["ref"] not in pos]
+    errors += [f"{p['ref']}: on {pos[p['ref']]['Side']}; the corrections are checked for the top side only"
+               for p in jlc if p["ref"] in pos and pos[p["ref"]]["Side"] != "top"]
+    if errors:
+        sys.exit("\n".join(errors))
     rows = []
     for p in sorted(jlc, key=lambda p: natural(p["ref"])):
-        c = corr.get(p["footprint"])
-        if c is None or p["lcsc"] not in c["lcsc"].split():
-            sys.exit(f"{p['ref']}: no checked JLC rotation for {p['footprint']} with {p['lcsc']} in {ROTATIONS.name}")
+        c = corr[(p["footprint"], p["lcsc"])]
         r = pos[p["ref"]]
-        if r["Side"] != "top":
-            sys.exit(f"{p['ref']}: on {r['Side']}; the corrections are checked for the top side only")
         rot = float(r["Rot"])
         a = math.radians(rot)
         dx, dy = float(c["dx"]), float(c["dy"])
@@ -126,7 +137,20 @@ def cpl(jlc):
         y = float(r["PosY"]) + dx * math.sin(a) - dy * math.cos(a)
         rows.append([p["ref"], f"{x:.4f}mm", f"{y:.4f}mm", "Top", f"{(rot + float(c['rotation'])) % 360:g}"])
     write_csv(OUT / "jlc-cpl.csv", ["Designator", "Mid X", "Mid Y", "Layer", "Rotation"], rows)
-    return {r[0] for r in rows}
+    return len(rows)
+
+
+def check_designators(jlc):
+    want = {p["ref"] for p in jlc}
+    written = {
+        "jlc-bom.csv": [d for r in read_csv(OUT / "jlc-bom.csv") for d in r["Designator"].split(",")],
+        "jlc-cpl.csv": [r["Designator"] for r in read_csv(OUT / "jlc-cpl.csv")],
+    }
+    for name, refs in written.items():
+        if len(refs) != len(set(refs)) or set(refs) != want:
+            sys.exit(f"{name} designators differ from the schematic Asm=JLC set: "
+                     f"missing {sorted(want - set(refs))}, extra {sorted(set(refs) - want)}, "
+                     f"{len(refs) - len(set(refs))} duplicates")
 
 
 def hand_list(all_parts):
@@ -156,10 +180,9 @@ def main():
         sys.exit(f"Asm=JLC parts without LCSC or excluded from the BOM: {bad}")
     lines = bom(jlc)
     placed = cpl(jlc)
-    if placed != {p["ref"] for p in jlc}:
-        sys.exit("CPL and BOM designators differ")
+    check_designators(jlc)
     hand = hand_list(all_parts)
-    print(f"OK: {len(jlc)} JLC parts on {lines} BOM lines, {len(placed)} CPL rows, {hand} hand-solder lines, "
+    print(f"OK: {len(jlc)} JLC parts on {lines} BOM lines, {placed} CPL rows, {hand} hand-solder lines, "
           f"{len(list(GERBERS.iterdir()))} files in freedo-radio-gerbers.zip, output in {OUT}")
 
 
