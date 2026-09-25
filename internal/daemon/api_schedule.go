@@ -167,9 +167,11 @@ func (d *daemon) putZoneSchedule(w http.ResponseWriter, r *http.Request) {
 	}
 	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		for _, member := range members {
-			if err := e.SetSchedule(hex.EncodeToString(member.WireEUI()), programs); err != nil {
+			target := hex.EncodeToString(member.WireEUI())
+			if err := e.SetSchedule(target, programs); err != nil {
 				return nil, err
 			}
+			d.dispatchQueued(e, target)
 		}
 		return newScheduleView(zone, members, programs), nil
 	})

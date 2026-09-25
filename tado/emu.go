@@ -3599,6 +3599,11 @@ func (e *EmuState) EnqueuePair(target string, networkKey []byte) error {
 // SetSchedule stores the weekly document served at the valve's next schedule
 // GET. The programs cover the week together: the firmware enables its schedule
 // only after all seven days.
+//
+// When the served ETag moves and the device's 02b3 is 1, it queues the fetch
+// trigger (BuildSchedFetchCoAP), so the device takes the document at its next
+// report cycle, not up to 24 h later. A trigger that waits in the queue covers
+// later documents: the GET after it reads the newest one.
 func (e *EmuState) SetSchedule(target string, programs []ScheduleProgram) error {
 	wire, _, err := e.resolve(target)
 	if err != nil {
@@ -3611,8 +3616,42 @@ func (e *EmuState) SetSchedule(target string, programs []ScheduleProgram) error 
 	if len(body) > 0x719 {
 		return errors.New("tado: schedule document exceeds valve buffer")
 	}
-	e.schedDoc[hexEUI(wire)] = cfgSnapshot{body: body, etag: configEtag(body)}
+	key := hexEUI(wire)
+	snap := cfgSnapshot{body: body, etag: configEtag(body)}
+	prev, held := e.schedDoc[key]
+	moved := !held || !bytes.Equal(prev.etag, snap.etag)
+	if !moved || !*e.offlineSchedule(key, nil) || e.scheduleFetchQueued(key) {
+		e.schedDoc[key] = snap
+		return nil
+	}
+	mid, token, err := downlinkIDs()
+	if err != nil {
+		return err
+	}
+	pkt, err := BuildSchedFetchCoAP(mid, token, e.selfEUI, wire)
+	if err != nil {
+		return err
+	}
+	if err := e.enqueue(key, schedFetchKind, "sched fetch", pkt, e.key, mid); err != nil {
+		return err
+	}
+	e.schedDoc[key] = snap
+	q := e.queue[key]
+	q[len(q)-1].requireCoAP = true
+	q[len(q)-1].responseToken = append([]byte(nil), token...)
+	q[len(q)-1].responseCode = "2.05"
 	return nil
+}
+
+// schedFetchKind names the offline schedule fetch trigger in the queue.
+const schedFetchKind = "schedfetch"
+
+// scheduleFetchQueued reports whether a fetch trigger waits in the queue of the
+// device key, not on the air yet.
+func (e *EmuState) scheduleFetchQueued(key string) bool {
+	return slices.ContainsFunc(e.queue[key], func(d *queuedDownlink) bool {
+		return d.kind == schedFetchKind && !d.inFlight
+	})
 }
 
 // DropHotWaterScheduleLeftovers removes the sched document of each wall

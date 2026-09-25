@@ -63,6 +63,9 @@ class FreedoData:
     fallback: dict[int, dict[str, Any]] = field(default_factory=dict)
     boiler: dict[str, Any] = field(default_factory=dict)
     away: bool = False
+    # GET /api/install offline_schedule: d/config tag 02b3 of every device
+    # without a per-device value. None when the daemon holds no installation.
+    offline_schedule: bool | None = None
 
     @property
     def hot_water_zone(self) -> Zone | None:
@@ -85,10 +88,14 @@ def parse(
     boiler: Mapping[str, Any],
     home: Mapping[str, Any],
     install: Mapping[str, Any] | None = None,
+    settings: Mapping[str, Any] | None = None,
 ) -> FreedoData:
     """Build the model from the read endpoints. install is the body of
-    GET /api/install/zones."""
+    GET /api/install/zones, settings the body of GET /api/install."""
     data = FreedoData(boiler=dict(boiler or {}), away=bool((home or {}).get("away")))
+    offline = (settings or {}).get("offline_schedule")
+    if isinstance(offline, bool):
+        data.offline_schedule = offline
     shifts = {
         int(z["number"]): float(z.get("setpoint_offset_c") or 0)
         for z in (install or {}).get("zones") or []

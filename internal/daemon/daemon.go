@@ -3253,6 +3253,7 @@ func (d *daemon) putSchedule(w http.ResponseWriter, r *http.Request) {
 		if err := e.SetSchedule(target, []tado.ScheduleProgram{{DayMask: byte(b.DayMask), Entries: entries}}); err != nil {
 			return nil, err
 		}
+		d.dispatchQueued(e, target)
 		return true, nil
 	})
 	queued(w, v, d.persist(err), map[string]any{"note": "served on the valve's next zone schedule GET"})

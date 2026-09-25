@@ -99,6 +99,10 @@ INSTALL_ZONES = {
     ],
 }
 
+# GET /api/install: the installation options the integration reads.
+INSTALL = {"rev": 7, "home_id": 1234567, "offline_schedule": True,
+           "utc_offset_min": None, "timezone": ""}
+
 
 def data():
     return parse(HEALTH, ZONES, NODES, BOILER, HOME)
@@ -127,6 +131,17 @@ def test_parse():
     assert d.nodes["dddd"]["Mode"] == "auto"
     assert list(d.fallback) == [2]
     assert d.away is True
+    assert d.offline_schedule is None
+
+
+def test_offline_schedule():
+    for value in (True, False):
+        settings = dict(INSTALL, offline_schedule=value)
+        d = parse(HEALTH, ZONES, NODES, BOILER, HOME, INSTALL_ZONES, settings)
+        assert d.offline_schedule is value
+    # No installation (503 read as {}) or a field of another type: unknown.
+    assert parse(HEALTH, ZONES, NODES, BOILER, HOME, INSTALL_ZONES, {}).offline_schedule is None
+    assert parse(HEALTH, ZONES, NODES, BOILER, HOME, None, {"offline_schedule": 1}).offline_schedule is None
 
 
 def test_zone_values():

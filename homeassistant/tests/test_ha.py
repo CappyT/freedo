@@ -40,11 +40,12 @@ from pytest_homeassistant_custom_component.common import (  # noqa: E402
 
 import custom_components.freedo  # noqa: E402,F401  # the target of the client patch
 from custom_components.freedo.api import FreedoApiError, FreedoConnectionError  # noqa: E402
-from test_model import BOILER, HEALTH, HOME, INSTALL_ZONES, NODES, ZONES  # noqa: E402
+from test_model import BOILER, HEALTH, HOME, INSTALL, INSTALL_ZONES, NODES, ZONES  # noqa: E402
 
 DOMAIN = "freedo"
 LIVING = "climate.living"
 BEDROOM = "climate.bedroom"
+OFFLINE_SCHEDULE = "switch.freedo_offline_schedule"
 
 
 class FakeClient:
@@ -57,6 +58,9 @@ class FakeClient:
         self.boiler_json = copy.deepcopy(BOILER)
         self.home_json = copy.deepcopy(HOME)
         self.install_json = copy.deepcopy(INSTALL_ZONES)
+        self.settings_json = copy.deepcopy(INSTALL)
+        # The error GET /api/install raises, None to answer settings_json.
+        self.settings_error: Exception | None = None
         self.calls: list[tuple] = []
         # Window pushes as the daemon receives them, in arrival order.
         self.windows: list[tuple[int, bool]] = []
@@ -81,6 +85,16 @@ class FakeClient:
 
     async def install_zones(self):
         return copy.deepcopy(self.install_json)
+
+    async def install(self):
+        if self.settings_error is not None:
+            raise self.settings_error
+        return copy.deepcopy(self.settings_json)
+
+    async def set_offline_schedule(self, enabled):
+        self.calls.append(("offline_schedule", enabled))
+        self.settings_json["offline_schedule"] = enabled
+        return copy.deepcopy(self.settings_json)
 
     async def zone_setpoint(self, zone, temp_c, mode="manual", duration_sec=None):
         self.calls.append(("setpoint", zone, temp_c))
@@ -319,3 +333,32 @@ async def test_refused_window_push_is_not_retried(hass, client):
     async_fire_time_changed(hass, dt_util.utcnow() + timedelta(minutes=1))
     await hass.async_block_till_done()
     assert client.windows == [(1, False)]
+
+
+# --- offline schedule switch ---
+
+
+async def test_offline_schedule_switch(hass, client):
+    await setup_entry(hass, client)
+    assert hass.states.get(OFFLINE_SCHEDULE).state == "on"
+
+    await hass.services.async_call(
+        "switch", "turn_off", {ATTR_ENTITY_ID: OFFLINE_SCHEDULE}, blocking=True
+    )
+    await hass.async_block_till_done()
+    assert client.calls == [("offline_schedule", False)]
+    assert hass.states.get(OFFLINE_SCHEDULE).state == "off"
+
+    await hass.services.async_call(
+        "switch", "turn_on", {ATTR_ENTITY_ID: OFFLINE_SCHEDULE}, blocking=True
+    )
+    await hass.async_block_till_done()
+    assert client.calls[-1] == ("offline_schedule", True)
+    assert hass.states.get(OFFLINE_SCHEDULE).state == "on"
+
+
+async def test_offline_schedule_unknown_without_install(hass, client):
+    # 503: the daemon holds no installation.
+    client.settings_error = FreedoApiError(503, "no installation")
+    await setup_entry(hass, client)
+    assert hass.states.get(OFFLINE_SCHEDULE).state == "unknown"

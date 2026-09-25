@@ -72,6 +72,23 @@ func BuildCalibrateCoAP(mid uint16, token, srcEUI, dstEUI []byte) ([]byte, error
 	})
 }
 
+// BuildSchedFetchCoAP builds an empty POST d/sched, the offline schedule fetch
+// trigger. The resource takes POST only: its dispatch node (init image at
+// valve 0x3ad8c, thermostat 0x5caa4) holds no other method. Its handler
+// (valve 0x2a1e8, thermostat 0x291f0) ignores the payload and runs the fetch
+// timer callback (valve 0x2a1c4, thermostat 0x291cc): it arms the fetch,
+// resets the Block2 state and keeps the held ETag, so the device sends a
+// conditional GET h/<home>/z/<N>/sched at its next report cycle. The build (valve 0x2a1f0) sends that GET only when 02b3 is 1.
+// The handler sets no response code, so the device answers the server default
+// 2.05.
+func BuildSchedFetchCoAP(mid uint16, token, srcEUI, dstEUI []byte) ([]byte, error) {
+	return devicePost(deviceReq{
+		Path:    []string{"d", "sched"},
+		Options: []CoAPOption{optUriPort},
+		MID:     mid, Token: token, SrcEUI: srcEUI, DstEUI: dstEUI,
+	})
+}
+
 // BuildRebootCoAP builds the d/reboot?id=N request (no payload).
 func BuildRebootCoAP(id int, mid uint16, token, srcEUI, dstEUI []byte) ([]byte, error) {
 	return devicePost(deviceReq{

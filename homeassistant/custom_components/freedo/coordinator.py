@@ -30,8 +30,8 @@ type FreedoConfigEntry = ConfigEntry[FreedoRuntime]
 
 
 class FreedoCoordinator(DataUpdateCoordinator[FreedoData]):
-    """Reads health, zones, nodes, boiler, home state and the zone
-    installation in one poll."""
+    """Reads health, zones, nodes, boiler, home state, the installation
+    options and the zone installation in one poll."""
 
     config_entry: FreedoConfigEntry
 
@@ -49,26 +49,36 @@ class FreedoCoordinator(DataUpdateCoordinator[FreedoData]):
 
     async def _async_update_data(self) -> FreedoData:
         try:
-            health, zones, nodes, boiler, home, install = await asyncio.gather(
+            health, zones, nodes, boiler, home, install, settings = await asyncio.gather(
                 self.client.health(),
                 self.client.zones(),
                 self.client.nodes(),
                 self.client.boiler(),
                 self.client.home(),
                 self._install_zones(),
+                self._install(),
             )
         except FreedoAuthError as err:
             raise ConfigEntryAuthFailed(str(err)) from err
         except FreedoError as err:
             raise UpdateFailed(str(err)) from err
-        return parse(health, zones, nodes, boiler, home, install)
+        return parse(health, zones, nodes, boiler, home, install, settings)
 
     async def _install_zones(self) -> dict:
         """GET /api/install/zones, for the setpoint offset of each zone."""
-        try:
-            return await self.client.install_zones()
-        except FreedoApiError as err:
-            # 503: the daemon holds no installation, so it declares no zone.
-            if err.status == 503:
-                return {}
-            raise
+        return await _without_install(self.client.install_zones())
+
+    async def _install(self) -> dict:
+        """GET /api/install, for options.offline_schedule."""
+        return await _without_install(self.client.install())
+
+
+async def _without_install(request) -> dict:
+    """The body of an installation read, empty on a 503: the daemon holds no
+    installation."""
+    try:
+        return await request
+    except FreedoApiError as err:
+        if err.status == 503:
+            return {}
+        raise

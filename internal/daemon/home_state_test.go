@@ -129,6 +129,8 @@ func TestSetpointDurationQueuesReturnToSchedule(t *testing.T) {
 		allDayProgram(map[string]any{"minute": 0, "setpoint_c": 20.0}), &view); code != http.StatusOK {
 		t.Fatalf("schedule: code=%d %v", code, view)
 	}
+	// The schedule queued its d/sched fetch trigger ahead of the zone write.
+	dropQueue(t, d, target)
 	if code := postJSON(t, http.MethodPost, url+"/api/nodes/VA1000000005/setpoint",
 		map[string]any{"tempC": 21.0, "mode": "manual", "durationSec": 1800, "id": 10}, &view); code != http.StatusOK {
 		t.Fatalf("setpoint: code=%d %v", code, view)

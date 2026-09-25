@@ -97,6 +97,9 @@ class FreedoClient:
     async def home(self) -> dict[str, Any]:
         return await self._request("GET", "/api/home")
 
+    async def install(self) -> dict[str, Any]:
+        return await self._request("GET", "/api/install")
+
     async def install_zones(self) -> dict[str, Any]:
         return await self._request("GET", "/api/install/zones")
 
@@ -104,6 +107,11 @@ class FreedoClient:
 
     async def set_away(self, away: bool) -> dict[str, Any]:
         return await self._request("PATCH", "/api/home", {"away": away})
+
+    async def set_offline_schedule(self, enabled: bool) -> dict[str, Any]:
+        return await self._request(
+            "PATCH", "/api/install", {"offline_schedule": enabled}
+        )
 
     async def set_display(
         self,

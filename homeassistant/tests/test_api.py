@@ -111,17 +111,27 @@ def test_write_payloads():
             ("POST", "/api/outdoor"): (200, {"outdoor": {"tempC": 4.5}}),
             ("POST", "/api/zones/3/window"): (200, {"open": True}),
             ("PATCH", "/api/home"): (200, {"away": True}),
+            ("PATCH", "/api/install"): (200, {"rev": 8, "offline_schedule": False}),
         }
     )
     client = FreedoClient(session, "h", 8080)
     run(client.push_outdoor(4.5))
     run(client.push_window(3, True))
     run(client.set_away(True))
-    assert [(c["method"], c["json"]) for c in session.calls] == [
-        ("POST", {"tempC": 4.5}),
-        ("POST", {"open": True}),
-        ("PATCH", {"away": True}),
+    assert run(client.set_offline_schedule(False)) == {"rev": 8, "offline_schedule": False}
+    assert [(c["method"], c["url"].split(":8080", 1)[-1], c["json"]) for c in session.calls] == [
+        ("POST", "/api/outdoor", {"tempC": 4.5}),
+        ("POST", "/api/zones/3/window", {"open": True}),
+        ("PATCH", "/api/home", {"away": True}),
+        ("PATCH", "/api/install", {"offline_schedule": False}),
     ]
+
+
+def test_install_read():
+    body = {"rev": 7, "offline_schedule": True}
+    session = FakeSession({("GET", "/api/install"): (200, body)})
+    assert run(FreedoClient(session, "h", 8080).install()) == body
+    assert session.calls[0]["url"] == "http://h:8080/api/install"
 
 
 def test_zone_command_payloads():

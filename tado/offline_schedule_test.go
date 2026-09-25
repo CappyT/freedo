@@ -166,3 +166,107 @@ func TestDropHotWaterScheduleLeftovers(t *testing.T) {
 		})
 	}
 }
+
+// schedFetchTriggers counts the d/sched fetch triggers queued for dev.
+func schedFetchTriggers(e *EmuState, dev []byte) int {
+	n := 0
+	for _, d := range e.queue[hexEUI(dev)] {
+		if d.kind == schedFetchKind {
+			n++
+		}
+	}
+	return n
+}
+
+// synthWeek is a one-program week whose night block holds c.
+func synthWeek(c int) []ScheduleProgram {
+	return []ScheduleProgram{{DayMask: 0x7f, Entries: []ScheduleEntry{
+		{Minute: 0, SetpointCenti: c * 100, Enabled: true},
+		{Minute: 420, SetpointCenti: 2100, Enabled: true},
+	}}}
+}
+
+// TestScheduleEditQueuesOfflineFetch: with 02b3 on, a new schedule document
+// queues one empty POST d/sched, the trigger that makes the device fetch it at
+// once. A trigger that waits covers later documents, an unchanged document
+// queues none, the device's 2.05 closes it, and a document that moves while it
+// is on the air queues another.
+func TestScheduleEditQueuesOfflineFetch(t *testing.T) {
+	in := synthInstall(t)
+	_, va := synthDevices(t, in)
+	key := hexEUI(va)
+	e := NewEmu(in.EmuConfig(), nil)
+
+	if err := e.SetSchedule(key, synthWeek(17)); err != nil {
+		t.Fatal(err)
+	}
+	if n := e.Pending(key); n != 1 || schedFetchTriggers(e, va) != 1 {
+		t.Fatalf("pending=%d triggers=%d after the first document, want the one trigger", n, schedFetchTriggers(e, va))
+	}
+	trigger := headRequest(t, e, va)
+	if trigger.Code != "0.02" || trigger.URI() != "d/sched" || len(trigger.Payload) != 0 {
+		t.Errorf("trigger = %s %s %x, want an empty POST d/sched", trigger.Code, trigger.URI(), trigger.Payload)
+	}
+
+	for _, c := range []int{16, 18, 18} {
+		if err := e.SetSchedule(key, synthWeek(c)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n := e.Pending(key); n != 1 {
+		t.Errorf("pending=%d after three more documents, want the one waiting trigger", n)
+	}
+	answerQueued(t, e, va, "2.05")
+	if n := e.Pending(key); n != 0 {
+		t.Fatalf("pending=%d after the 2.05, want none", n)
+	}
+
+	if err := e.SetSchedule(key, synthWeek(18)); err != nil {
+		t.Fatal(err)
+	}
+	if n := e.Pending(key); n != 0 {
+		t.Errorf("pending=%d after the same document, want none: the served ETag did not move", n)
+	}
+
+	if err := e.SetSchedule(key, synthWeek(15)); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := e.NextQueuedDownlink(key); err != nil || !ok {
+		t.Fatalf("trigger not sent: ok=%v err=%v", ok, err)
+	}
+	if err := e.SetSchedule(key, synthWeek(14)); err != nil {
+		t.Fatal(err)
+	}
+	if n := schedFetchTriggers(e, va); n != 2 {
+		t.Errorf("triggers=%d after a document that moved while one was on the air, want 2", n)
+	}
+}
+
+// TestScheduleEditFollowsOfflineScheduleFlag: with options.offline_schedule
+// off a schedule document queues nothing; a per-device 02b3 on outranks it.
+func TestScheduleEditFollowsOfflineScheduleFlag(t *testing.T) {
+	in, err := Parse([]byte(synthInstallYAML + "options:\n  offline_schedule: false\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, va := synthDevices(t, in)
+	key := hexEUI(va)
+	e := NewEmu(in.EmuConfig(), nil)
+	if err := e.SetSchedule(key, synthWeek(17)); err != nil {
+		t.Fatal(err)
+	}
+	if n := e.Pending(key); n != 0 {
+		t.Fatalf("pending=%d with 02b3 off, want none", n)
+	}
+
+	on := true
+	if err := e.EnqueueConfig(key, 4, ConfigWrite{OfflineScheduleEnabled: &on}); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.SetSchedule(key, synthWeek(16)); err != nil {
+		t.Fatal(err)
+	}
+	if n := schedFetchTriggers(e, va); n != 1 {
+		t.Errorf("triggers=%d with the per-device 02b3 on, want 1", n)
+	}
+}

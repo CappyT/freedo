@@ -1,4 +1,5 @@
-"""Away switch: the home state of GET and PATCH /api/home. Notification
+"""Away switch: the home state of GET and PATCH /api/home. Offline schedule
+switch: options.offline_schedule of GET and PATCH /api/install. Notification
 switch of each valve: the change notification of d/config tag 0158."""
 
 from __future__ import annotations
@@ -21,7 +22,10 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     coordinator = entry.runtime_data.coordinator
-    entities: list[SwitchEntity] = [AwaySwitch(coordinator)]
+    entities: list[SwitchEntity] = [
+        AwaySwitch(coordinator),
+        OfflineScheduleSwitch(coordinator),
+    ]
     for short, dev in sorted(coordinator.data.devices.items()):
         if dev.get("kind") == KIND_VALVE:
             entities.append(NotificationSwitch(coordinator, short))
@@ -42,6 +46,33 @@ class AwaySwitch(FreedoEntity, SwitchEntity):
     async def _set(self, away: bool) -> None:
         await call_api(self.coordinator.client.set_away(away))
         self.coordinator.data.away = away
+        self.async_write_ha_state()
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self._set(True)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self._set(False)
+
+
+class OfflineScheduleSwitch(FreedoEntity, SwitchEntity):
+    """d/config tag 02b3 of every device without a per-device value: on, each
+    device fetches its weekly program and runs it without the coordinator."""
+
+    _attr_translation_key = "offline_schedule"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, coordinator: FreedoCoordinator) -> None:
+        super().__init__(coordinator, "offline_schedule")
+        self._attr_device_info = self.hub_device()
+
+    @property
+    def is_on(self) -> bool | None:
+        return self.coordinator.data.offline_schedule
+
+    async def _set(self, enabled: bool) -> None:
+        await call_api(self.coordinator.client.set_offline_schedule(enabled))
+        self.coordinator.data.offline_schedule = enabled
         self.async_write_ha_state()
 
     async def async_turn_on(self, **kwargs: Any) -> None:

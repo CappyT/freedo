@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"encoding/hex"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -220,4 +221,71 @@ func deviceScheduleGET(t *testing.T, d *daemon, dev *tado.Device, mid uint16, et
 	}
 	t.Fatalf("no answer with mid=%04x", mid)
 	return nil
+}
+
+// takeQueue returns how many downlinks wait for ref and the CoAP request of
+// the head one, and empties the queue.
+func takeQueue(t *testing.T, d *daemon, ref string) (int, *tado.CoAPMessage) {
+	t.Helper()
+	target := hex.EncodeToString(mustResolve(t, ref).WireEUI())
+	var pending int
+	v, err := d.do(func(e *tado.EmuState) (any, error) {
+		pending = e.Pending(target)
+		actions, ok, err := e.NextQueuedDownlink(target)
+		e.DropQueue(target)
+		if err != nil || !ok || len(actions) == 0 {
+			return nil, err
+		}
+		return actions[0].Bytes, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v == nil {
+		return pending, nil
+	}
+	frame, err := tado.ParseData(defaultInstall.NetworkKey(), v.([]byte))
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := tado.ParseApp(frame.Plaintext)
+	if app == nil || app.CoAP == nil {
+		t.Fatalf("queued downlink for %s does not parse as CoAP", ref)
+	}
+	return pending, app.CoAP
+}
+
+// TestAPIScheduleEditQueuesFetchTrigger: a zone schedule PUT queues one empty
+// POST d/sched to every member, the wall thermostat of a heating zone
+// included, and so does the node schedule route. The hot-water program stays
+// with the daemon and queues nothing.
+func TestAPIScheduleEditQueuesFetchTrigger(t *testing.T) {
+	d, url := scheduleDaemon(t)
+	oneTrigger := func(ref, step string) {
+		t.Helper()
+		n, head := takeQueue(t, d, ref)
+		if n != 1 || head == nil || head.Code != "0.02" || head.URI() != "d/sched" || len(head.Payload) != 0 {
+			t.Errorf("%s after the %s: pending=%d head=%v, want one empty POST d/sched", ref, step, n, head)
+		}
+	}
+	var view map[string]any
+	if code := postJSON(t, http.MethodPut, url+"/api/zones/1/schedule", weekPlan(), &view); code != http.StatusOK {
+		t.Fatalf("put zone 1 schedule: code=%d %v", code, view)
+	}
+	for _, ref := range []string{"RU1000000001", "VA1000000003"} {
+		oneTrigger(ref, "zone PUT")
+	}
+
+	if code := postJSON(t, http.MethodPut, url+"/api/zones/0/schedule", hotWaterWeek(), &view); code != http.StatusOK {
+		t.Fatalf("put hot-water schedule: code=%d %v", code, view)
+	}
+	if n, head := takeQueue(t, d, "RU1000000001"); n != 0 {
+		t.Errorf("thermostat after the hot-water PUT: pending=%d head=%v, want nothing", n, head)
+	}
+
+	body := map[string]any{"dayMask": 127, "entries": []map[string]any{{"startMin": 0, "tempC": 19.0}}}
+	if code := postJSON(t, http.MethodPut, url+"/api/nodes/VA1000000007/schedule", body, &view); code != http.StatusOK {
+		t.Fatalf("put node schedule: code=%d %v", code, view)
+	}
+	oneTrigger("VA1000000007", "node PUT")
 }

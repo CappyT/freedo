@@ -86,6 +86,7 @@
     },
     "switch": {
       "away": { "name": "Away" },
+      "offline_schedule": { "name": "Offline schedule" },
       "notification": { "name": "Change notification" }
     }
   },
