@@ -2919,7 +2919,7 @@
 		(uuid "48031c5c-75d2-4573-a1cc-0004af2e24fb")
 	)
 	(no_connect
-		(at 226.06 142.24)
+		(at 226.06 147.32)
 		(uuid "3e84c6cb-bfac-4f99-aff9-659c2eaac572")
 	)
 	(no_connect
@@ -2988,22 +2988,22 @@
 	)
 	(wire
 		(pts
-			(xy 195.58 152.4)
-			(xy 172.72 152.4)
+			(xy 195.58 154.94)
+			(xy 172.72 154.94)
 		)
 		(uuid "dd696db2-935c-46fc-8cce-ef86f98315d9")
 	)
 	(wire
 		(pts
-			(xy 165.1 152.4)
-			(xy 160.02 152.4)
+			(xy 165.1 154.94)
+			(xy 160.02 154.94)
 		)
 		(uuid "d9a50ed8-18e4-40df-b816-17a344f1198e")
 	)
 	(wire
 		(pts
-			(xy 195.58 154.94)
-			(xy 190.5 154.94)
+			(xy 195.58 152.4)
+			(xy 190.5 152.4)
 		)
 		(uuid "e2e47775-0728-4648-bdb4-511ade29a2ad")
 	)
@@ -3051,8 +3051,8 @@
 	)
 	(wire
 		(pts
-			(xy 226.06 147.32)
-			(xy 231.14 147.32)
+			(xy 226.06 142.24)
+			(xy 231.14 142.24)
 		)
 		(uuid "2a2677b9-4c17-41ac-9bfb-1c989c23696d")
 	)
@@ -3581,7 +3581,7 @@
 	)
 	(hierarchical_label "ETH_CS"
 		(shape output)
-		(at 190.5 147.32 180)
+		(at 190.5 157.48 180)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -3603,7 +3603,7 @@
 	)
 	(hierarchical_label "ETH_SCK"
 		(shape output)
-		(at 160.02 152.4 180)
+		(at 160.02 154.94 180)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -3614,7 +3614,7 @@
 	)
 	(hierarchical_label "ETH_MISO"
 		(shape input)
-		(at 190.5 154.94 180)
+		(at 190.5 152.4 180)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -3625,7 +3625,7 @@
 	)
 	(hierarchical_label "ETH_INT"
 		(shape input)
-		(at 190.5 157.48 180)
+		(at 190.5 147.32 180)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -3636,7 +3636,7 @@
 	)
 	(hierarchical_label "CC_MISO"
 		(shape input)
-		(at 231.14 144.78 0)
+		(at 231.14 157.48 0)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -3647,7 +3647,7 @@
 	)
 	(hierarchical_label "CC_MOSI"
 		(shape output)
-		(at 231.14 147.32 0)
+		(at 231.14 154.94 0)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -3680,7 +3680,7 @@
 	)
 	(hierarchical_label "CC_GDO0"
 		(shape input)
-		(at 231.14 154.94 0)
+		(at 231.14 144.78 0)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -3691,7 +3691,7 @@
 	)
 	(hierarchical_label "CC_GDO2"
 		(shape input)
-		(at 231.14 157.48 0)
+		(at 231.14 142.24 0)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -5194,14 +5194,14 @@
 	)
 	(symbol
 		(lib_id "freedo-radio:R")
-		(at 168.91 152.4 90)
+		(at 168.91 154.94 90)
 		(unit 1)
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
 		(uuid "701ac27d-a891-4a0e-8c0d-ded1e22fe7d1")
 		(property "Reference" "R208"
-			(at 168.91 150.368 90)
+			(at 168.91 152.908 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5209,7 +5209,7 @@
 			)
 		)
 		(property "Value" "33R"
-			(at 168.91 152.4 90)
+			(at 168.91 154.94 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5217,7 +5217,7 @@
 			)
 		)
 		(property "Footprint" "freedo-radio:R_0603_1608Metric"
-			(at 168.91 152.4 0)
+			(at 168.91 154.94 0)
 			(hide yes)
 			(effects
 				(font
@@ -5226,7 +5226,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 168.91 152.4 0)
+			(at 168.91 154.94 0)
 			(hide yes)
 			(effects
 				(font
@@ -5235,7 +5235,7 @@
 			)
 		)
 		(property "Description" "Resistor"
-			(at 168.91 152.4 0)
+			(at 168.91 154.94 0)
 			(hide yes)
 			(effects
 				(font
@@ -5244,7 +5244,7 @@
 			)
 		)
 		(property "MPN" "0603WAF330JT5E"
-			(at 168.91 152.4 0)
+			(at 168.91 154.94 0)
 			(hide yes)
 			(effects
 				(font
@@ -5253,7 +5253,7 @@
 			)
 		)
 		(property "LCSC" "C23140"
-			(at 168.91 152.4 0)
+			(at 168.91 154.94 0)
 			(hide yes)
 			(effects
 				(font
@@ -5262,7 +5262,7 @@
 			)
 		)
 		(property "Asm" "JLC"
-			(at 168.91 152.4 0)
+			(at 168.91 154.94 0)
 			(hide yes)
 			(effects
 				(font
