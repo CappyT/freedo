@@ -3,7 +3,7 @@
 	(generator "pcbnew")
 	(generator_version "10.0")
 	(layer "F.Cu")
-	(descr "SOT-223 (LDL1117S33R, LCSC C435835). Pad 1 GND, 2 VOUT, 3 VIN, 4 = tab (VOUT), per LDL1117 DS Table 1. Checked against DS Table 5 (b 0.6-0.85, b1 2.9-3.15, e 2.3, H 6.7-7.3). Tab needs >= 2 cm2 copper (README 4.4).")
+	(descr "SOT-223 (TLV76133DCYR, LCSC C7527500). Pad 1 GND, 2 OUT, 3 IN, 4 = tab (OUT), per TLV761 DS Table 4-1. JEDEC TO-261AA (TLV761 DS DCY drawing: b 0.66-0.84, b1 2.90-3.10, e 2.30, H 6.70-7.30). Tab needs >= 4 cm2 top copper (README 4.4).")
 	(tags "SOT-223 LDO")
 	(property "Reference" "REF**"
 		(at 0 -6.3 0)

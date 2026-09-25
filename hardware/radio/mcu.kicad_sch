@@ -8,7 +8,7 @@
 		(title "freedo radio rev A: MCU")
 		(date "2026-09-24")
 		(rev "A")
-		(comment 1 "U201 ESP32-S3-MINI-1-N8, USB series resistors, EN and BOOT, UART0, LEDs")
+		(comment 1 "U201 ESP32-S3-MINI-1-N8, USB series R, EN, BOOT, UART0, J203 header, LEDs")
 		(comment 2 "Spec: hardware/radio/README.md sections 3 and 5.2")
 	)
 	(lib_symbols
@@ -2204,222 +2204,6 @@
 			)
 			(embedded_fonts no)
 		)
-		(symbol "freedo-radio:Conn_01x04"
-			(pin_names
-				(offset 1.016)
-				(hide yes)
-			)
-			(exclude_from_sim no)
-			(in_bom yes)
-			(on_board yes)
-			(in_pos_files yes)
-			(duplicate_pin_numbers_are_jumpers no)
-			(property "Reference" "J"
-				(at 0 5.08 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "Value" "Conn_01x04"
-				(at 0 -7.62 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "Footprint" ""
-				(at 0 0 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "Datasheet" ""
-				(at 0 0 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "Description" "Generic connector, single row, 01x04, script generated (kicad-library-utils/schlib/autogen/connector/)"
-				(at 0 0 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "ki_keywords" "connector"
-				(at 0 0 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "ki_fp_filters" "Connector*:*_1x??_*"
-				(at 0 0 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(symbol "Conn_01x04_1_1"
-				(rectangle
-					(start -1.27 3.81)
-					(end 1.27 -6.35)
-					(stroke
-						(width 0.254)
-						(type default)
-					)
-					(fill
-						(type background)
-					)
-				)
-				(rectangle
-					(start -1.27 2.667)
-					(end 0 2.413)
-					(stroke
-						(width 0.1524)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(rectangle
-					(start -1.27 0.127)
-					(end 0 -0.127)
-					(stroke
-						(width 0.1524)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(rectangle
-					(start -1.27 -2.413)
-					(end 0 -2.667)
-					(stroke
-						(width 0.1524)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(rectangle
-					(start -1.27 -4.953)
-					(end 0 -5.207)
-					(stroke
-						(width 0.1524)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(pin passive line
-					(at -5.08 2.54 0)
-					(length 3.81)
-					(name "Pin_1"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "1"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-				(pin passive line
-					(at -5.08 0 0)
-					(length 3.81)
-					(name "Pin_2"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "2"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-				(pin passive line
-					(at -5.08 -2.54 0)
-					(length 3.81)
-					(name "Pin_3"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "3"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-				(pin passive line
-					(at -5.08 -5.08 0)
-					(length 3.81)
-					(name "Pin_4"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "4"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-			)
-			(embedded_fonts no)
-		)
 		(symbol "freedo-radio:+3V3"
 			(power global)
 			(pin_numbers
@@ -2682,6 +2466,398 @@
 			)
 			(embedded_fonts no)
 		)
+		(symbol "freedo-radio:Conn_01x10"
+			(pin_names
+				(offset 1.016)
+				(hide yes)
+			)
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(in_pos_files yes)
+			(duplicate_pin_numbers_are_jumpers no)
+			(property "Reference" "J"
+				(at 0 12.7 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Value" "Conn_01x10"
+				(at 0 -16.51 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Datasheet" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Description" "Generic connector, single row, 01x10, script generated (kicad-library-utils/schlib/autogen/connector/)"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_keywords" "connector"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_fp_filters" "Connector*:*_1x??_*"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(symbol "Conn_01x10_0_1"
+				(rectangle
+					(start -1.27 11.43)
+					(end 1.27 -13.97)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type background)
+					)
+				)
+				(rectangle
+					(start -1.27 10.287)
+					(end 0 10.033)
+					(stroke
+						(width 0.1524)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(rectangle
+					(start -1.27 7.747)
+					(end 0 7.493)
+					(stroke
+						(width 0.1524)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(rectangle
+					(start -1.27 5.207)
+					(end 0 4.953)
+					(stroke
+						(width 0.1524)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(rectangle
+					(start -1.27 2.667)
+					(end 0 2.413)
+					(stroke
+						(width 0.1524)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(rectangle
+					(start -1.27 0.127)
+					(end 0 -0.127)
+					(stroke
+						(width 0.1524)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(rectangle
+					(start -1.27 -2.413)
+					(end 0 -2.667)
+					(stroke
+						(width 0.1524)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(rectangle
+					(start -1.27 -4.953)
+					(end 0 -5.207)
+					(stroke
+						(width 0.1524)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(rectangle
+					(start -1.27 -7.493)
+					(end 0 -7.747)
+					(stroke
+						(width 0.1524)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(rectangle
+					(start -1.27 -10.033)
+					(end 0 -10.287)
+					(stroke
+						(width 0.1524)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(rectangle
+					(start -1.27 -12.573)
+					(end 0 -12.827)
+					(stroke
+						(width 0.1524)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+			)
+			(symbol "Conn_01x10_1_1"
+				(pin passive line
+					(at -5.08 10.16 0)
+					(length 3.81)
+					(name "Pin_1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at -5.08 7.62 0)
+					(length 3.81)
+					(name "Pin_2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at -5.08 5.08 0)
+					(length 3.81)
+					(name "Pin_3"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "3"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at -5.08 2.54 0)
+					(length 3.81)
+					(name "Pin_4"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "4"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at -5.08 0 0)
+					(length 3.81)
+					(name "Pin_5"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "5"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at -5.08 -2.54 0)
+					(length 3.81)
+					(name "Pin_6"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "6"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at -5.08 -5.08 0)
+					(length 3.81)
+					(name "Pin_7"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "7"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at -5.08 -7.62 0)
+					(length 3.81)
+					(name "Pin_8"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "8"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at -5.08 -10.16 0)
+					(length 3.81)
+					(name "Pin_9"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "9"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at -5.08 -12.7 0)
+					(length 3.81)
+					(name "Pin_10"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "10"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
 	)
 	(junction
 		(at 210.82 93.98)
@@ -2719,44 +2895,12 @@
 		(uuid "2587b9a5-0994-4a9f-ae05-42cd5497188a")
 	)
 	(no_connect
-		(at 195.58 124.46)
-		(uuid "a175490a-c3d4-4481-98ac-2db03946967b")
-	)
-	(no_connect
-		(at 195.58 127)
-		(uuid "e361a47e-7a1a-4642-8b45-7a6eace28732")
-	)
-	(no_connect
 		(at 195.58 129.54)
 		(uuid "3da41205-5368-4918-8462-cc5848fb6966")
 	)
 	(no_connect
-		(at 195.58 139.7)
-		(uuid "68aff2ea-c845-4bd9-8340-74a7484253de")
-	)
-	(no_connect
-		(at 195.58 142.24)
-		(uuid "2dac267a-5d15-4e81-8c8f-79a91b1bc155")
-	)
-	(no_connect
-		(at 195.58 160.02)
-		(uuid "c3222b48-0f2e-464c-9b09-bd6a059fac9b")
-	)
-	(no_connect
-		(at 195.58 162.56)
-		(uuid "5641eb7a-b39d-43b2-a7bb-4570778a054b")
-	)
-	(no_connect
-		(at 195.58 165.1)
-		(uuid "ff08a73b-489c-4710-aea7-7aa525564bcb")
-	)
-	(no_connect
 		(at 195.58 167.64)
 		(uuid "acad9eb3-1a12-475e-9c3a-797846fcb832")
-	)
-	(no_connect
-		(at 226.06 129.54)
-		(uuid "92d2359d-5fce-49ba-ade1-5d2acd3e1a4b")
 	)
 	(no_connect
 		(at 226.06 132.08)
@@ -2785,14 +2929,6 @@
 	(no_connect
 		(at 226.06 162.56)
 		(uuid "f6b07187-d5c6-407d-b951-aee021c09368")
-	)
-	(no_connect
-		(at 226.06 165.1)
-		(uuid "b3e9f274-b987-4019-b533-f33cacd9952f")
-	)
-	(no_connect
-		(at 226.06 167.64)
-		(uuid "0714ef15-f0ca-49db-8f89-e45c3c205fe9")
 	)
 	(wire
 		(pts
@@ -3242,41 +3378,6 @@
 		)
 		(uuid "94135627-452c-4234-a635-812b864fbcea")
 	)
-	(wire
-		(pts
-			(xy 335.28 86.36)
-			(xy 327.66 86.36)
-		)
-		(uuid "a9a5b33f-3d5a-4c3f-86bf-72a846764fd2")
-	)
-	(wire
-		(pts
-			(xy 335.28 88.9)
-			(xy 327.66 88.9)
-		)
-		(uuid "a9227404-b2cc-4783-b98a-b97d44df82b0")
-	)
-	(wire
-		(pts
-			(xy 335.28 91.44)
-			(xy 327.66 91.44)
-		)
-		(uuid "e346c24f-4455-4197-87f3-0b0119c05cc0")
-	)
-	(wire
-		(pts
-			(xy 335.28 93.98)
-			(xy 332.74 93.98)
-		)
-		(uuid "628e77f0-5eab-4bac-b864-7d3115592d2c")
-	)
-	(wire
-		(pts
-			(xy 332.74 93.98)
-			(xy 332.74 99.06)
-		)
-		(uuid "a2eda88b-cc2c-47cd-8646-b5e1902bc5ba")
-	)
 	(label "EN"
 		(at 190.5 116.84 180)
 		(effects
@@ -3466,36 +3567,6 @@
 			(justify right bottom)
 		)
 		(uuid "585453c6-3a2a-486f-9d04-3644f790b4a7")
-	)
-	(label "EN"
-		(at 327.66 86.36 180)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right bottom)
-		)
-		(uuid "f43cbfc0-7f25-4159-94b3-5a654bfe840e")
-	)
-	(label "UART0_RX"
-		(at 327.66 88.9 180)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right bottom)
-		)
-		(uuid "6aac1d91-5d17-4607-b508-5dd4f341d69c")
-	)
-	(label "UART0_TX"
-		(at 327.66 91.44 180)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right bottom)
-		)
-		(uuid "313b2ec5-0e65-46f1-ba70-15cf16fd5c71")
 	)
 	(hierarchical_label "ETH_RST"
 		(shape output)
@@ -3696,20 +3767,15 @@
     (effects (font (size 1.27 1.27)) (justify left bottom))
     (uuid "54aa76c0-a2ff-40ea-a56d-065681b00105")
   )
-  (text "R207 at U201 (HDG 1.3.7)"
+  (text "R207 1k at U201 (HDG 1.3.7, review E02)"
     (at 276.7 91.68 0)
     (effects (font (size 1.27 1.27)) (justify left bottom))
     (uuid "9b12b14a-6ae8-4f09-bc18-99abf78a2183")
   )
-  (text "UART0 debug (spec 5.5)"
+  (text "UART0 debug and GPIO header (spec 5.5)"
     (at 261.46 78.98 0)
     (effects (font (size 1.524 1.524) (bold yes)) (justify left bottom))
     (uuid "776fb37a-008c-4900-a7f3-92f246d8d1b7")
-  )
-  (text "J202 DNP: fit by hand for log capture.\nNo 3V3 on the header."
-    (at 319.88 112 0)
-    (effects (font (size 1.27 1.27)) (justify left bottom))
-    (uuid "669504c4-bbef-48dc-bd16-6e7b16539fa0")
   )
   (text "LEDs: D203 PWR on +3V3; D204 TX, D205 RX, D206 STATUS active high"
     (at 105.1 176.45 0)
@@ -5490,7 +5556,7 @@
 				)
 			)
 		)
-		(property "Value" "510R"
+		(property "Value" "1k"
 			(at 283.21 86.36 90)
 			(effects
 				(font
@@ -5525,7 +5591,7 @@
 				)
 			)
 		)
-		(property "MPN" "0603WAF5100T5E"
+		(property "MPN" "0603WAF1001T5E"
 			(at 283.21 86.36 0)
 			(hide yes)
 			(effects
@@ -5534,7 +5600,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C23193"
+		(property "LCSC" "C21190"
 			(at 283.21 86.36 0)
 			(hide yes)
 			(effects
@@ -5694,94 +5760,6 @@
 			(project "freedo-radio"
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/00b1a12d-78e9-4603-825f-6baf2f84fd14"
 					(reference "TP212")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "freedo-radio:Conn_01x04")
-		(at 340.36 91.44 0)
-		(mirror x)
-		(unit 1)
-		(in_bom no)
-		(on_board yes)
-		(dnp yes)
-		(uuid "f257464a-533c-4510-84aa-f01cf0a9284a")
-		(property "Reference" "J202"
-			(at 340.36 96.52 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Value" "UART0"
-			(at 340.36 83.82 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Footprint" "freedo-radio:PinHeader_1x04_P2.54mm_Vertical"
-			(at 340.36 91.44 0)
-			(hide yes)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Datasheet" ""
-			(at 340.36 91.44 0)
-			(hide yes)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Description" "Generic connector, single row, 01x04, script generated (kicad-library-utils/schlib/autogen/connector/)"
-			(at 340.36 91.44 0)
-			(hide yes)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "MPN" ""
-			(at 340.36 91.44 0)
-			(hide yes)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "LCSC" ""
-			(at 340.36 91.44 0)
-			(hide yes)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Asm" "hand"
-			(at 340.36 91.44 0)
-			(hide yes)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(instances
-			(project "freedo-radio"
-				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/00b1a12d-78e9-4603-825f-6baf2f84fd14"
-					(reference "J202")
 					(unit 1)
 				)
 			)
@@ -6710,33 +6688,246 @@
 			)
 		)
 	)
+	(wire
+		(pts
+			(xy 195.58 124.46)
+			(xy 190.5 124.46)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "002fc343-e1e7-4ab3-ba6e-8d1c242ad461")
+	)
+	(label "IO1"
+		(at 190.5 124.46 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "7e586100-561a-42d4-a152-4927abfb5447")
+	)
+	(wire
+		(pts
+			(xy 195.58 127)
+			(xy 190.5 127)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "8dfe318b-62fd-456f-b16c-0239ce5f373a")
+	)
+	(label "IO2"
+		(at 190.5 127 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "ab2dc922-72a3-4f67-8430-0c46c8268bcb")
+	)
+	(wire
+		(pts
+			(xy 195.58 139.7)
+			(xy 190.5 139.7)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "25a64e85-34f3-4125-a2d8-2f6d6b5bde19")
+	)
+	(label "IO7"
+		(at 190.5 139.7 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "c05c461d-ec8a-41fb-836b-3deb434b1d73")
+	)
+	(wire
+		(pts
+			(xy 195.58 142.24)
+			(xy 190.5 142.24)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "54efae67-e307-4ac2-b17c-e202bc929134")
+	)
+	(label "IO8"
+		(at 190.5 142.24 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "c602f214-0663-45c4-9afc-c944e7402541")
+	)
+	(wire
+		(pts
+			(xy 195.58 160.02)
+			(xy 190.5 160.02)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "31bd363c-1bf1-4117-ab93-28d21b077113")
+	)
+	(label "I2C_SDA"
+		(at 190.5 160.02 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "984d6a2b-17ef-4ce6-9f49-70041d34419f")
+	)
+	(wire
+		(pts
+			(xy 195.58 162.56)
+			(xy 190.5 162.56)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "35ffeafd-5f76-4a97-bc18-c419d9cb780e")
+	)
+	(label "I2C_SCL"
+		(at 190.5 162.56 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "73e9ad9f-4df1-4606-bfc1-b44db5c237de")
+	)
+	(wire
+		(pts
+			(xy 195.58 165.1)
+			(xy 190.5 165.1)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "fda7bc62-248a-4b93-99ce-307d632f89c1")
+	)
+	(hierarchical_label "VBUS_SENSE"
+		(shape input)
+		(at 190.5 165.1 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "c09bd497-8b8c-43a1-8c18-280bcb12a460")
+	)
+	(wire
+		(pts
+			(xy 226.06 129.54)
+			(xy 231.14 129.54)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "419a9769-f72c-483f-bcab-350d24a2bff5")
+	)
+	(hierarchical_label "E22_NRST"
+		(shape output)
+		(at 231.14 129.54 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "1ecb43cc-32de-4030-938c-6eabc782168a")
+	)
+	(wire
+		(pts
+			(xy 226.06 165.1)
+			(xy 241.3 165.1)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "097c52b3-6200-4bed-9d50-dadf3e85a471")
+	)
+	(hierarchical_label "E22_RXEN"
+		(shape output)
+		(at 241.3 165.1 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "c64f3cae-f9c2-4b9e-af97-d191bfcc3e4e")
+	)
+	(wire
+		(pts
+			(xy 226.06 167.64)
+			(xy 241.3 167.64)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "75b77d89-fb5e-4415-9f54-5d7175895875")
+	)
+	(hierarchical_label "E22_BUSY"
+		(shape input)
+		(at 241.3 167.64 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "e499caa0-cba9-43c7-9913-fd7847f85cf6")
+	)
 	(symbol
-		(lib_id "freedo-radio:GND")
-		(at 332.74 99.06 0)
+		(lib_id "freedo-radio:Conn_01x10")
+		(at 381 139.7 0)
 		(unit 1)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
-		(dnp no)
-		(uuid "f3f17e2d-df0c-4da3-89b3-e67fc27a2c55")
-		(property "Reference" "#PWR0515"
-			(at 332.74 105.41 0)
-			(hide yes)
+		(dnp yes)
+		(uuid "5a97f650-f784-436b-ac13-0e95d73e9d41")
+		(property "Reference" "J203"
+			(at 381 127 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
 			)
 		)
-		(property "Value" "GND"
-			(at 332.74 102.87 0)
+		(property "Value" "GPIO"
+			(at 381 156.21 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
 			)
 		)
-		(property "Footprint" ""
-			(at 332.74 99.06 0)
+		(property "Footprint" "freedo-radio:PinHeader_1x10_P2.54mm_Vertical"
+			(at 381 139.7 0)
 			(hide yes)
 			(effects
 				(font
@@ -6745,7 +6936,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 332.74 99.06 0)
+			(at 381 139.7 0)
 			(hide yes)
 			(effects
 				(font
@@ -6753,8 +6944,35 @@
 				)
 			)
 		)
-		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
-			(at 332.74 99.06 0)
+		(property "Description" "GPIO header 1x10 2.54 mm: 1 3V3 out, 2 SDA, 3 SCL, 4 IO1, 5 IO2, 6 IO7, 7 IO8, 8 U0TXD, 9 U0RXD, 10 GND"
+			(at 381 139.7 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" ""
+			(at 381 139.7 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" ""
+			(at 381 139.7 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "hand"
+			(at 381 139.7 0)
 			(hide yes)
 			(effects
 				(font
@@ -6765,10 +6983,850 @@
 		(instances
 			(project "freedo-radio"
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/00b1a12d-78e9-4603-825f-6baf2f84fd14"
-					(reference "#PWR0515")
+					(reference "J203")
 					(unit 1)
 				)
 			)
 		)
+	)
+	(wire
+		(pts
+			(xy 375.92 129.54)
+			(xy 370.84 129.54)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "b11caedd-05d9-44fe-9ded-a4841e2bd234")
+	)
+	(wire
+		(pts
+			(xy 370.84 129.54)
+			(xy 370.84 124.46)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "68e197a6-0f29-4906-8552-39309d3c2f1e")
+	)
+	(symbol
+		(lib_id "freedo-radio:+3V3")
+		(at 370.84 124.46 0)
+		(unit 1)
+		(in_bom no)
+		(on_board no)
+		(dnp no)
+		(uuid "a74bb951-de6b-4a5a-9d7c-07e75cb30399")
+		(property "Reference" "#PWR0521"
+			(at 370.84 128.27 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "+3V3"
+			(at 370.84 120.904 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 370.84 124.46 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 370.84 124.46 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"+3V3\""
+			(at 370.84 124.46 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/00b1a12d-78e9-4603-825f-6baf2f84fd14"
+					(reference "#PWR0521")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(wire
+		(pts
+			(xy 375.92 152.4)
+			(xy 370.84 152.4)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "e45fa57e-cd0b-403b-b92a-671e79159cf1")
+	)
+	(wire
+		(pts
+			(xy 370.84 152.4)
+			(xy 370.84 157.48)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "7a88baf3-035b-4fea-9e0d-907cb47b0cf9")
+	)
+	(symbol
+		(lib_id "freedo-radio:GND")
+		(at 370.84 157.48 0)
+		(unit 1)
+		(in_bom no)
+		(on_board no)
+		(dnp no)
+		(uuid "bcf8f68f-7ff7-46f6-b58a-b0c5e1264574")
+		(property "Reference" "#PWR0522"
+			(at 370.84 163.83 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 370.84 161.29 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 370.84 157.48 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 370.84 157.48 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 370.84 157.48 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/00b1a12d-78e9-4603-825f-6baf2f84fd14"
+					(reference "#PWR0522")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(wire
+		(pts
+			(xy 375.92 132.08)
+			(xy 370.84 132.08)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "5eee7019-9699-48d7-b80d-312691df9dae")
+	)
+	(label "I2C_SDA"
+		(at 370.84 132.08 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "70946a86-d9d0-421f-95ef-aa86e84dc179")
+	)
+	(wire
+		(pts
+			(xy 375.92 134.62)
+			(xy 370.84 134.62)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "20bf3382-d3d2-47c6-9219-fe1d8322e154")
+	)
+	(label "I2C_SCL"
+		(at 370.84 134.62 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "6043896d-55cc-4d80-90a2-36b844eab3a8")
+	)
+	(wire
+		(pts
+			(xy 375.92 137.16)
+			(xy 370.84 137.16)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "53838102-9ee7-4d01-91fb-71c6a9f2811a")
+	)
+	(label "IO1"
+		(at 370.84 137.16 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "5afa7f0b-e4d3-4826-ae9b-1e28b0be4694")
+	)
+	(wire
+		(pts
+			(xy 375.92 139.7)
+			(xy 370.84 139.7)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "a545e09f-8e80-42ad-97db-ac444cb62d15")
+	)
+	(label "IO2"
+		(at 370.84 139.7 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "d53f78f8-a9a5-4d8e-adac-2134e21acf77")
+	)
+	(wire
+		(pts
+			(xy 375.92 142.24)
+			(xy 370.84 142.24)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "06cc1c03-7d9a-47f3-8693-fd437e7e3454")
+	)
+	(label "IO7"
+		(at 370.84 142.24 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "3d8ad36d-28ba-43d3-bbeb-8640ab2de122")
+	)
+	(wire
+		(pts
+			(xy 375.92 144.78)
+			(xy 370.84 144.78)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "ad6fe359-68f1-4281-9f63-fd7a8be20bad")
+	)
+	(label "IO8"
+		(at 370.84 144.78 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "6a030141-29d0-4d54-bb55-4dcca4c39d1d")
+	)
+	(wire
+		(pts
+			(xy 375.92 147.32)
+			(xy 370.84 147.32)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "b1cb01d6-a687-4e1d-af79-4618231ddf6b")
+	)
+	(label "UART0_TX"
+		(at 370.84 147.32 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "0489c55f-614f-456c-a85a-e8eaf4ea74b4")
+	)
+	(symbol
+		(lib_id "freedo-radio:R")
+		(at 345.44 149.86 90)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "1916f0c8-c041-460e-95e8-9ee9d84198fb")
+		(property "Reference" "R218"
+			(at 345.44 146.05 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "1k"
+			(at 345.44 153.67 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "freedo-radio:R_0603_1608Metric"
+			(at 345.44 149.86 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 345.44 149.86 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Resistor"
+			(at 345.44 149.86 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "0603WAF1001T5E"
+			(at 345.44 149.86 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C21190"
+			(at 345.44 149.86 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "JLC"
+			(at 345.44 149.86 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/00b1a12d-78e9-4603-825f-6baf2f84fd14"
+					(reference "R218")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(wire
+		(pts
+			(xy 375.92 149.86)
+			(xy 349.25 149.86)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "c205e272-6fa6-4aad-bf0f-1e376d0f7c8e")
+	)
+	(wire
+		(pts
+			(xy 341.63 149.86)
+			(xy 335.28 149.86)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "585c7725-abfe-46b7-9f06-3cd92f39d478")
+	)
+	(label "UART0_RX"
+		(at 335.28 149.86 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "4da1db02-f52b-45c7-a5d2-744892aa5471")
+	)
+	(symbol
+		(lib_id "freedo-radio:R")
+		(at 337.82 134.62 0)
+		(unit 1)
+		(in_bom no)
+		(on_board yes)
+		(dnp yes)
+		(uuid "2a835310-6a4b-4856-83f8-0cb02c79a44d")
+		(property "Reference" "R219"
+			(at 340.36 133.35 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "4.7k"
+			(at 340.36 135.89 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "freedo-radio:R_0603_1608Metric"
+			(at 337.82 134.62 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 337.82 134.62 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Resistor"
+			(at 337.82 134.62 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "0603WAF4701T5E"
+			(at 337.82 134.62 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C23162"
+			(at 337.82 134.62 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "none"
+			(at 337.82 134.62 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/00b1a12d-78e9-4603-825f-6baf2f84fd14"
+					(reference "R219")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(wire
+		(pts
+			(xy 337.82 130.81)
+			(xy 337.82 128.27)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "2ae866b3-7d54-4724-89f4-a9ab2a1da3ae")
+	)
+	(symbol
+		(lib_id "freedo-radio:+3V3")
+		(at 337.82 128.27 0)
+		(unit 1)
+		(in_bom no)
+		(on_board no)
+		(dnp no)
+		(uuid "5143d064-ef9c-4c62-8ad3-7ba460700010")
+		(property "Reference" "#PWR0523"
+			(at 337.82 132.08 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "+3V3"
+			(at 337.82 124.714 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 337.82 128.27 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 337.82 128.27 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"+3V3\""
+			(at 337.82 128.27 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/00b1a12d-78e9-4603-825f-6baf2f84fd14"
+					(reference "#PWR0523")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(wire
+		(pts
+			(xy 337.82 138.43)
+			(xy 337.82 140.97)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "67fdc8c8-22a6-4cbf-96b5-a8193973ce36")
+	)
+	(label "I2C_SDA"
+		(at 337.82 140.97 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "50e4d263-b0e3-4c12-b7f5-de7264dbed6e")
+	)
+	(symbol
+		(lib_id "freedo-radio:R")
+		(at 347.98 134.62 0)
+		(unit 1)
+		(in_bom no)
+		(on_board yes)
+		(dnp yes)
+		(uuid "72f0aa58-ba23-40f5-b9ec-8a51668de486")
+		(property "Reference" "R220"
+			(at 350.52 133.35 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "4.7k"
+			(at 350.52 135.89 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "freedo-radio:R_0603_1608Metric"
+			(at 347.98 134.62 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 347.98 134.62 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Resistor"
+			(at 347.98 134.62 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "0603WAF4701T5E"
+			(at 347.98 134.62 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C23162"
+			(at 347.98 134.62 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "none"
+			(at 347.98 134.62 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/00b1a12d-78e9-4603-825f-6baf2f84fd14"
+					(reference "R220")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(wire
+		(pts
+			(xy 347.98 130.81)
+			(xy 347.98 128.27)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "526bf8bf-8f84-4ca4-9acc-59bd92c25322")
+	)
+	(symbol
+		(lib_id "freedo-radio:+3V3")
+		(at 347.98 128.27 0)
+		(unit 1)
+		(in_bom no)
+		(on_board no)
+		(dnp no)
+		(uuid "fab6c2ff-cdb8-4eee-9e88-1b738f22fcfb")
+		(property "Reference" "#PWR0524"
+			(at 347.98 132.08 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "+3V3"
+			(at 347.98 124.714 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 347.98 128.27 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 347.98 128.27 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"+3V3\""
+			(at 347.98 128.27 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/00b1a12d-78e9-4603-825f-6baf2f84fd14"
+					(reference "#PWR0524")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(wire
+		(pts
+			(xy 347.98 138.43)
+			(xy 347.98 140.97)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "a48dc812-78eb-4e00-8a9c-65ac97461f98")
+	)
+	(label "I2C_SCL"
+		(at 347.98 140.97 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "41a35150-9245-433d-8872-2925ea657b3b")
+	)
+	(text "J203 DNP (Asm hand): 1x10 2.54 mm header at a board edge (spec 5.5)."
+		(exclude_from_sim no)
+		(at 325.12 111.76 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "c6511714-346f-484c-9d21-15a59f668ebe")
+	)
+	(text "Pin 1 is a 3V3 output: never feed 3V3 into the header."
+		(exclude_from_sim no)
+		(at 325.12 114.3 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "d2e96d1b-03ef-4a43-bceb-fb27a7a28e5c")
+	)
+	(text "U0TXD via R207 1k, U0RXD via R218 1k (review E02)."
+		(exclude_from_sim no)
+		(at 325.12 116.84 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "2a5d2fb0-54eb-45cd-81b8-026643eb3f34")
+	)
+	(text "R219, R220: DNP I2C pull-ups."
+		(exclude_from_sim no)
+		(at 325.12 119.38 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "f7203cb1-d53b-40a5-ba8b-b0b716458735")
 	)
 )

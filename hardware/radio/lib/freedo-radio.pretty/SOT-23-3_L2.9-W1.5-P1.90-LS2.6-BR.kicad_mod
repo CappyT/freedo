@@ -1,0 +1,238 @@
+(footprint "SOT-23-3_L2.9-W1.5-P1.90-LS2.6-BR"
+	(version 20260206)
+	(generator "pcbnew")
+	(generator_version "10.0")
+	(layer "F.Cu")
+	(descr "SOT-23-3 (H5VUT2U, LCSC C20615824), EasyEDA land. Pins 1, 2 = I/O at 1.90 mm, pin 3 = GND. Checked against the HJC H5VUT2U DS p.3: e 0.95, e1 1.80-2.00, E1 2.25-2.55 (pad centres 2.50 mm apart, 1.25 x 0.70 mm pads).")
+	(tags "SOT-23 ESD")
+	(property "Reference" "REF**"
+		(at 0 -4.95 0)
+		(layer "F.SilkS")
+		(uuid "17752d4d-a3c5-42fd-a662-edb6ddbce404")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Value" "SOT-23-3_L2.9-W1.5-P1.90-LS2.6-BR"
+		(at 0 4.95 0)
+		(layer "F.Fab")
+		(uuid "f3307c8c-b970-405b-b1e3-4bafde1d86bf")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "c178c755-3e2b-4539-a81b-06ffe8426722")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(property "Description" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "5b62c33d-4e2c-4f20-b1f1-fe90966275dd")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(attr smd)
+	(duplicate_pad_numbers_are_jumpers no)
+	(fp_line
+		(start -0.65 -1.46)
+		(end -0.65 -0.8)
+		(stroke
+			(width 0.25)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "27924424-4176-4fe8-aaf0-0c844c6253b0")
+	)
+	(fp_line
+		(start -0.65 -1.46)
+		(end 0.17 -1.46)
+		(stroke
+			(width 0.25)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "592f6f53-c61c-4279-a3cf-a1e0e95fde29")
+	)
+	(fp_line
+		(start -0.65 -0.8)
+		(end -0.65 -1.46)
+		(stroke
+			(width 0.25)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "8db59c66-4311-428f-840a-514a0d6fdb77")
+	)
+	(fp_line
+		(start -0.65 -0.8)
+		(end -0.65 -1.46)
+		(stroke
+			(width 0.25)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "c2d59587-6b70-4fb4-9c2f-f617c1290a7f")
+	)
+	(fp_line
+		(start -0.65 1.46)
+		(end -0.65 0.8)
+		(stroke
+			(width 0.25)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "ddf8505f-2cef-45df-8839-41326b228030")
+	)
+	(fp_line
+		(start 0.17 1.46)
+		(end -0.65 1.46)
+		(stroke
+			(width 0.25)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "000fbc1f-e66a-418b-bd86-24a6f0eb9f85")
+	)
+	(fp_line
+		(start 0.9 0.3)
+		(end 0.9 -0.3)
+		(stroke
+			(width 0.2)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "8a1c5fb8-44d9-4728-8851-180718a9788c")
+	)
+	(fp_circle
+		(center 1.19 1.59)
+		(end 1.29 1.59)
+		(stroke
+			(width 0.2)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.SilkS")
+		(uuid "203951d2-324a-4ec6-937d-cfb620fb2a24")
+	)
+	(fp_circle
+		(center 1.3 1.45)
+		(end 1.33 1.45)
+		(stroke
+			(width 0.06)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.SilkS")
+		(uuid "c34ce8ca-1351-4dd7-842c-4225c380abeb")
+	)
+	(fp_circle
+		(center 1.21 0.98)
+		(end 1.34 0.98)
+		(stroke
+			(width 0.25)
+			(type solid)
+		)
+		(fill no)
+		(layer "Cmts.User")
+		(uuid "ce887da0-bbb6-4b65-aa0a-a2389684c580")
+	)
+	(fp_line
+		(start -0.75 -1.45)
+		(end 0.75 -1.45)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "2ab761b6-f797-4f2d-af1f-2ab512c1eb14")
+	)
+	(fp_line
+		(start -0.75 1.45)
+		(end -0.75 -1.45)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "85c34289-773d-4e12-b994-b6728e8929c7")
+	)
+	(fp_line
+		(start 0.75 -1.45)
+		(end 0.75 1.45)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "bd5a1f6f-db03-4d3f-b645-dab8c203de36")
+	)
+	(fp_line
+		(start 0.75 1.45)
+		(end -0.75 1.45)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "783936b1-9fcc-48d0-a87d-378170e46cb9")
+	)
+	(fp_text user "${REFERENCE}"
+		(at 0 0 0)
+		(layer "F.Fab")
+		(uuid "26a0f642-e751-436d-9380-e3947a4ad021")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(pad "1" smd rect
+		(at 1.25 0.95 270)
+		(size 0.7 1.25)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(uuid "acdb1c5e-7631-4398-a414-19e538d5afee")
+	)
+	(pad "2" smd rect
+		(at 1.25 -0.95 270)
+		(size 0.7 1.25)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(uuid "b48161cd-0d16-46e5-b92f-cf3bb32b1183")
+	)
+	(pad "3" smd rect
+		(at -1.25 0 270)
+		(size 0.7 1.25)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(uuid "9e7eefd1-447f-404c-88a5-95677afec130")
+	)
+	(embedded_fonts no)
+	(model "${KIPRJMOD}/lib/3dmodels/SOT-23-3_L2.9-W1.5-P1.90-LS2.6-BR.wrl"
+		(offset
+			(xyz 0 0 0)
+		)
+		(scale
+			(xyz 1 1 1)
+		)
+		(rotate
+			(xyz 0 0 270)
+		)
+	)
+)

@@ -69,7 +69,7 @@
 	(condition "((A.NetClass == 'SHIELD' && B.NetClass != 'SHIELD' && B.NetClass != 'POE_LINE') || (B.NetClass == 'SHIELD' && A.NetClass != 'SHIELD' && A.NetClass != 'POE_LINE')) && !(A.Type == 'Pad' && B.Type == 'Pad' && ((A.memberOfFootprint('C323') && B.memberOfFootprint('C323')) || (A.memberOfFootprint('J301') && B.memberOfFootprint('J301'))))")
 	(constraint clearance (min 2.0mm)))
 
-# Isolation (README 6.2): line side to every other class, SHIELD included, 2.0 mm on every layer. T301, U401 and C322 cross the barrier, so their own pads are exempt from each other.
+# Isolation (README 6.2): line side to every other class, SHIELD included, 2.0 mm on every layer. T301, U401 and C322 cross the barrier, so their own pads are exempt from each other. J301 is rated 1500 V AC contact to shield; its maker land keeps 1.56 mm between shield and contact pads.
 (rule "iso_line_side"
-	(condition "((A.NetClass == 'POE_LINE' && B.NetClass != 'POE_LINE') || (B.NetClass == 'POE_LINE' && A.NetClass != 'POE_LINE')) && !(A.Type == 'Pad' && B.Type == 'Pad' && ((A.memberOfFootprint('T301') && B.memberOfFootprint('T301')) || (A.memberOfFootprint('U401') && B.memberOfFootprint('U401')) || (A.memberOfFootprint('C322') && B.memberOfFootprint('C322'))))")
+	(condition "((A.NetClass == 'POE_LINE' && B.NetClass != 'POE_LINE') || (B.NetClass == 'POE_LINE' && A.NetClass != 'POE_LINE')) && !(A.Type == 'Pad' && B.Type == 'Pad' && ((A.memberOfFootprint('T301') && B.memberOfFootprint('T301')) || (A.memberOfFootprint('U401') && B.memberOfFootprint('U401')) || (A.memberOfFootprint('C322') && B.memberOfFootprint('C322')) || (A.memberOfFootprint('J301') && B.memberOfFootprint('J301'))))")
 	(constraint clearance (min 2.0mm)))

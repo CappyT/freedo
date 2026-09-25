@@ -8,7 +8,7 @@
 		(title "freedo radio rev A")
 		(date "2026-09-24")
 		(rev "A")
-		(comment 1 "ESP32-S3-MINI-1-N8, CC1101 868 MHz, W5500 Ethernet, optional isolated PoE, USB-C")
+		(comment 1 "ESP32-S3-MINI-1-N8, E07-900MM10S 868 MHz, W5500 Ethernet, isolated PoE option, USB-C")
 		(comment 2 "Design spec: hardware/radio/README.md")
 	)
 	(lib_symbols)
@@ -70,43 +70,43 @@
 	)
 	(wire
 		(pts
-			(xy 165.1 86.36)
-			(xy 198.12 86.36)
+			(xy 165.1 96.52)
+			(xy 198.12 96.52)
 		)
 		(uuid "d9c2a4ad-f2cc-4a3e-bfe2-067fd83b1ca3")
 	)
 	(wire
 		(pts
-			(xy 165.1 88.9)
-			(xy 198.12 88.9)
+			(xy 165.1 99.06)
+			(xy 198.12 99.06)
 		)
 		(uuid "adb1b4cc-17a5-4ecc-99ba-098b35a6f315")
 	)
 	(wire
 		(pts
-			(xy 165.1 91.44)
-			(xy 198.12 91.44)
+			(xy 165.1 101.6)
+			(xy 198.12 101.6)
 		)
 		(uuid "b16f4606-2efb-4842-83f0-06e462fd24ff")
 	)
 	(wire
 		(pts
-			(xy 165.1 93.98)
-			(xy 198.12 93.98)
+			(xy 165.1 104.14)
+			(xy 198.12 104.14)
 		)
 		(uuid "7f0899ae-f5ad-4b3d-99e4-c021bc0f32dc")
 	)
 	(wire
 		(pts
-			(xy 165.1 96.52)
-			(xy 198.12 96.52)
+			(xy 165.1 106.68)
+			(xy 198.12 106.68)
 		)
 		(uuid "ae3b8201-14fb-48d4-8a48-520f5b21861e")
 	)
 	(wire
 		(pts
-			(xy 165.1 99.06)
-			(xy 198.12 99.06)
+			(xy 165.1 109.22)
+			(xy 198.12 109.22)
 		)
 		(uuid "df99aee5-b6e2-46cf-9562-68a0fb4384dd")
 	)
@@ -120,30 +120,74 @@
 	(wire
 		(pts
 			(xy 101.6 88.9)
-			(xy 101.6 116.84)
+			(xy 101.6 127)
 		)
 		(uuid "d5ad45b4-0e71-4992-b2e0-a6022048ddc6")
 	)
 	(wire
 		(pts
-			(xy 101.6 116.84)
-			(xy 185.42 116.84)
+			(xy 101.6 127)
+			(xy 185.42 127)
 		)
 		(uuid "34769942-651b-486e-ba0d-768835f0a35a")
 	)
 	(wire
 		(pts
-			(xy 185.42 116.84)
-			(xy 185.42 104.14)
+			(xy 185.42 127)
+			(xy 185.42 114.3)
 		)
 		(uuid "8517178c-de22-4476-9aa5-722284c5b169")
 	)
 	(wire
 		(pts
-			(xy 185.42 104.14)
-			(xy 198.12 104.14)
+			(xy 185.42 114.3)
+			(xy 198.12 114.3)
 		)
 		(uuid "f61f10a5-7bca-4e2d-b214-853a4db30713")
+	)
+	(wire
+		(pts
+			(xy 86.36 81.28)
+			(xy 119.38 81.28)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "3043c969-a07b-4363-b256-3f11a03a5edf")
+	)
+	(wire
+		(pts
+			(xy 165.1 73.66)
+			(xy 198.12 73.66)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "1fb61bf6-252e-4b7e-913e-16b11f94ddaf")
+	)
+	(wire
+		(pts
+			(xy 165.1 76.2)
+			(xy 198.12 76.2)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "cdb5f2e2-a13d-46e2-9aba-2e17bec4eb5b")
+	)
+	(wire
+		(pts
+			(xy 165.1 78.74)
+			(xy 198.12 78.74)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "a0e4dc1c-963b-42da-9ce9-e82c3571d34a")
 	)
 	(sheet
 		(at 45.72 68.58)
@@ -209,6 +253,16 @@
 			)
 			(uuid "e95af6af-d439-4681-8171-657727ab3dac")
 		)
+		(pin "VBUS_SENSE" output
+			(at 86.36 81.28 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+			(uuid "c28839ab-06b3-4b44-9462-f2761deff489")
+		)
 		(instances
 			(project "freedo-radio"
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029"
@@ -219,7 +273,7 @@
 	)
 	(sheet
 		(at 119.38 50.8)
-		(size 45.72 55.88)
+		(size 45.72 66.04)
 		(fields_autoplaced)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -243,7 +297,7 @@
 			)
 		)
 		(property "Sheetfile" "mcu.kicad_sch"
-			(at 119.38 107.2646 0)
+			(at 119.38 117.4246 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -252,7 +306,7 @@
 			)
 		)
 		(pin "ETH_RST" output
-			(at 165.1 99.06 0)
+			(at 165.1 109.22 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -262,7 +316,7 @@
 			(uuid "dc590e2f-bab7-4c26-b197-7960de0ea9e2")
 		)
 		(pin "ETH_CS" output
-			(at 165.1 86.36 0)
+			(at 165.1 96.52 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -272,7 +326,7 @@
 			(uuid "f1cbf81f-d705-4c6c-8f89-ad914f717d18")
 		)
 		(pin "ETH_MOSI" output
-			(at 165.1 91.44 0)
+			(at 165.1 101.6 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -282,7 +336,7 @@
 			(uuid "b86f4acc-25e5-427a-81a8-342ae0c37fcc")
 		)
 		(pin "ETH_SCK" output
-			(at 165.1 88.9 0)
+			(at 165.1 99.06 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -292,7 +346,7 @@
 			(uuid "05c31135-b349-4055-afce-9dd42cd3b517")
 		)
 		(pin "ETH_MISO" input
-			(at 165.1 93.98 0)
+			(at 165.1 104.14 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -302,7 +356,7 @@
 			(uuid "dcc570d2-88d5-4ac0-a3bd-9beeac69d74f")
 		)
 		(pin "ETH_INT" input
-			(at 165.1 96.52 0)
+			(at 165.1 106.68 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -391,6 +445,46 @@
 			)
 			(uuid "4b0492c1-1034-4c5c-a897-f4a9bf2e1ee6")
 		)
+		(pin "E22_NRST" output
+			(at 165.1 73.66 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+			(uuid "c9b38841-326e-41b4-8098-d54c35b0f705")
+		)
+		(pin "E22_RXEN" output
+			(at 165.1 76.2 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+			(uuid "d8848128-dda8-4108-ad65-eb4225a85909")
+		)
+		(pin "E22_BUSY" input
+			(at 165.1 78.74 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+			(uuid "80af686f-554d-4fc5-b516-43011a1a0866")
+		)
+		(pin "VBUS_SENSE" input
+			(at 119.38 81.28 180)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+			(uuid "2dbed89c-bc69-42be-b69c-b59b595c01fa")
+		)
 		(instances
 			(project "freedo-radio"
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029"
@@ -401,7 +495,7 @@
 	)
 	(sheet
 		(at 198.12 50.8)
-		(size 45.72 22.86)
+		(size 45.72 30.48)
 		(fields_autoplaced)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -425,7 +519,7 @@
 			)
 		)
 		(property "Sheetfile" "rf.kicad_sch"
-			(at 198.12 74.2446 0)
+			(at 198.12 81.8646 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -493,6 +587,36 @@
 			)
 			(uuid "2242b2c3-b5ff-4979-ab12-7573757cc097")
 		)
+		(pin "E22_NRST" input
+			(at 198.12 73.66 180)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+			(uuid "b5c3baa7-306b-429b-af22-a48014143a3a")
+		)
+		(pin "E22_RXEN" input
+			(at 198.12 76.2 180)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+			(uuid "4adbfc58-2a7c-476b-9e18-b6df920fa93a")
+		)
+		(pin "E22_BUSY" output
+			(at 198.12 78.74 180)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+			(uuid "72485e5e-8134-4626-8052-c4f251a88e73")
+		)
 		(instances
 			(project "freedo-radio"
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029"
@@ -502,7 +626,7 @@
 		)
 	)
 	(sheet
-		(at 198.12 83.82)
+		(at 198.12 93.98)
 		(size 45.72 25.4)
 		(fields_autoplaced)
 		(exclude_from_sim no)
@@ -518,7 +642,7 @@
 		)
 		(uuid "b52121c9-5240-43d0-84a9-dfbd7401385c")
 		(property "Sheetname" "ethernet_poe"
-			(at 198.12 83.1084 0)
+			(at 198.12 93.2684 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -527,7 +651,7 @@
 			)
 		)
 		(property "Sheetfile" "ethernet_poe.kicad_sch"
-			(at 198.12 109.8046 0)
+			(at 198.12 119.9646 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -536,7 +660,7 @@
 			)
 		)
 		(pin "5V_SYS" output
-			(at 198.12 104.14 180)
+			(at 198.12 114.3 180)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -546,7 +670,7 @@
 			(uuid "00fe05c4-d013-4301-aeeb-b009961067fc")
 		)
 		(pin "ETH_CS" input
-			(at 198.12 86.36 180)
+			(at 198.12 96.52 180)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -556,7 +680,7 @@
 			(uuid "95cc2b32-3d3f-4ee9-9c62-013324a89b95")
 		)
 		(pin "ETH_SCK" input
-			(at 198.12 88.9 180)
+			(at 198.12 99.06 180)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -566,7 +690,7 @@
 			(uuid "49ab40fe-3709-45a7-916a-26d9242da7a4")
 		)
 		(pin "ETH_MOSI" input
-			(at 198.12 91.44 180)
+			(at 198.12 101.6 180)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -576,7 +700,7 @@
 			(uuid "358d9185-124b-43a7-a96d-9567fef2cbc6")
 		)
 		(pin "ETH_MISO" output
-			(at 198.12 93.98 180)
+			(at 198.12 104.14 180)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -586,7 +710,7 @@
 			(uuid "5be98953-bb33-414f-96d2-215d4542abc6")
 		)
 		(pin "ETH_INT" output
-			(at 198.12 96.52 180)
+			(at 198.12 106.68 180)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -596,7 +720,7 @@
 			(uuid "092c8e76-190a-4fa2-925d-c172e425086e")
 		)
 		(pin "ETH_RST" input
-			(at 198.12 99.06 180)
+			(at 198.12 109.22 180)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -619,28 +743,28 @@
 			(page "1")
 		)
 	)
-  (text "J201 USB-C, F201 PTC\nD201 TVS, U202 ESD\nD202 USB OR diode\nU203 LDO 3V3"
+  (text "J201 USB-C, F201 PTC\nD201 TVS, U202 ESD\nD202 USB OR diode\nU203 LDO 3V3, VBUS sense"
     (at 48.26 72.39 0)
     (effects (font (size 1.27 1.27)) (justify left top))
     (uuid "51e2a835-c741-4f24-9d75-27b9830c55ab")
   )
-  (text "U201 ESP32-S3-MINI-1-N8\nSW201 RESET, SW202 BOOT\nD203-D206 LEDs\nJ202 UART0 (DNP)"
+  (text "U201 ESP32-S3-MINI-1-N8\nSW201 RESET, SW202 BOOT\nD203-D206 LEDs\nJ203 GPIO header (DNP)"
     (at 121.92 54.61 0)
     (effects (font (size 1.27 1.27)) (justify left top))
     (uuid "2dfca106-01c0-4913-95ae-9afaa5f2eeb1")
   )
-  (text "U1 CC1101, X1 26 MHz\nTI EM 868 MHz match\nJ1 SMA (hand)"
+  (text "U1 E07-900MM10S (CC1101)\nE22-900MM22S pad option\nJ1 SMA (hand)"
     (at 215.9 54.61 0)
     (effects (font (size 1.27 1.27)) (justify left top))
     (uuid "e4971de1-edbe-46bf-ad26-1e701b2cc7ef")
   )
   (text "U301 W5500, T301 B1608S\nJ301 RJ45 (hand)\nU401 PoE module (opt)\nD402 PoE OR diode"
-    (at 215.9 87.63 0)
+    (at 215.9 97.79 0)
     (effects (font (size 1.27 1.27)) (justify left top))
     (uuid "26554457-d04e-43a8-8631-02c9e9aaf104")
   )
   (text "5V_SYS: diode-OR of USB (D202) and PoE (D402)"
-    (at 104.14 115.57 0)
+    (at 104.14 125.73 0)
     (effects (font (size 1.27 1.27)) (justify left bottom))
     (uuid "5a482dc4-6ef2-49f6-b02e-64194a753453")
   )

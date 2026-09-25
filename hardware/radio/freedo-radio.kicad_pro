@@ -673,11 +673,11 @@
     "netclass_patterns": [
       {
         "netclass": "RF_50",
-        "pattern": "Net-(C125-Pad2)"
+        "pattern": "/rf/RF_ANT"
       },
       {
         "netclass": "RF_50",
-        "pattern": "Net-(J1-In)"
+        "pattern": "/rf/RF_J1"
       },
       {
         "netclass": "USB_90",
