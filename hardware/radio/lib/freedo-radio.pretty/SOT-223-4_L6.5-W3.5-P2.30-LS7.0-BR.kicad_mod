@@ -95,7 +95,7 @@
 		(center 3.5 3.25)
 		(end 3.53 3.25)
 		(stroke
-			(width 0.06)
+			(width 0.15)
 			(type solid)
 		)
 		(fill no)
