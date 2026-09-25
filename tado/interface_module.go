@@ -231,7 +231,7 @@ func (e *EmuState) refreshThermostatDocument(dev *Device) {
 		e.log.Log("Config", dev.Ref(), "", rsnBuildFail+" d/config "+err.Error(), "")
 		return
 	}
-	e.cfgDoc[key] = snap
+	e.setConfigDocument(key, snap)
 }
 
 // refreshThermostatDocuments runs refreshThermostatDocument on every declared

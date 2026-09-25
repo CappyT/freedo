@@ -112,8 +112,8 @@ func TestFlowOptionsValidate(t *testing.T) {
 
 // TestThermostatConfigETagFollowsFlowLimit: the thermostat's d/config ETag
 // moves when a served flow limit moves and at no other time, so its next
-// conditional GET gets 2.05; the valve document stays the same and no device
-// gets a d/config write.
+// conditional GET gets 2.05. Each move queues it one re-read trigger; the valve
+// document stays the same and no device gets a d/config write.
 func TestThermostatConfigETagFollowsFlowLimit(t *testing.T) {
 	// The valve declares its logical id, so a reload can address a write to it.
 	install := func(limit *int) *Install {
@@ -127,14 +127,16 @@ func TestThermostatConfigETagFollowsFlowLimit(t *testing.T) {
 	ru, va := synthDevices(t, in)
 	e := NewEmu(in.EmuConfig(), nil)
 	e.OnFrame(moduleReport(t, in, ru, 71, 0x7501))
+	drainQueue(t, e, ru)
 	etag := func() []byte { return append([]byte(nil), e.cfgDoc[hexEUI(ru)].etag...) }
 	valveDoc := e.cfgDoc[hexEUI(va)]
-	noWrites := func(step string) {
+	noWrites := func(step string, rereads int) {
 		t.Helper()
-		for _, dev := range [][]byte{ru, va} {
-			if n := e.Pending(hexEUI(dev)); n != 0 {
-				t.Errorf("%s: %d downlinks queued to %s, want none", step, n, hexEUI(dev))
-			}
+		if n := e.Pending(hexEUI(va)); n != 0 {
+			t.Errorf("%s: %d downlinks queued to the valve, want none", step, n)
+		}
+		if total, n := rereadQueue(e, ru); total != rereads || n != rereads {
+			t.Errorf("%s: thermostat queue = %d downlinks, %d re-read triggers, want %d of each", step, total, n, rereads)
 		}
 		if got := e.cfgDoc[hexEUI(va)]; !bytes.Equal(got.body, valveDoc.body) || !bytes.Equal(got.etag, valveDoc.etag) {
 			t.Errorf("%s: the valve document moved", step)
@@ -157,7 +159,7 @@ func TestThermostatConfigETagFollowsFlowLimit(t *testing.T) {
 	if !bytes.Equal(etag(), base) {
 		t.Error("an unchanged reload moved the ETag")
 	}
-	noWrites("unchanged")
+	noWrites("unchanged", 0)
 
 	if err := e.EnqueueFlowSetpoint(hexEUI(ru), 1, 55); err != nil {
 		t.Fatal(err)
@@ -189,7 +191,8 @@ func TestThermostatConfigETagFollowsFlowLimit(t *testing.T) {
 	if got := hex.EncodeToString(m.Payload); got != "204002157c" {
 		t.Errorf("c/1/config = %s, want 2040 02 157c", got)
 	}
-	noWrites("changed")
+	noWrites("changed", 1)
+	drainQueue(t, e, ru)
 
 	// The value survives a restart with the same ETag.
 	restarted := NewEmu(in.EmuConfig(), nil)
@@ -211,5 +214,6 @@ func TestThermostatConfigETagFollowsFlowLimit(t *testing.T) {
 	if bytes.Equal(etag(), base) {
 		t.Error("a new flow_limit_c left the ETag")
 	}
-	noWrites("new default")
+	// The trigger the clear queued still waits, and covers the reload.
+	noWrites("new default", 1)
 }

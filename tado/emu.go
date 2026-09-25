@@ -4048,7 +4048,7 @@ func (e *EmuState) initConfigDocuments() {
 			e.log.Log("Config", dev.Ref(), "", rsnBuildFail+" initial d/config "+err.Error(), "")
 			continue
 		}
-		e.cfgDoc[key] = snap
+		e.setConfigDocument(key, snap)
 	}
 }
 
@@ -4155,7 +4155,7 @@ func (e *EmuState) enqueueConfig(target string, id int, w ConfigWrite) (bool, er
 	q[len(q)-1].responseToken = append([]byte{}, token...)
 	q[len(q)-1].responseCode = "2.04"
 	e.coalesceConfigWrites(key)
-	e.cfgDoc[key] = snap
+	e.setConfigDocument(key, snap)
 	if explicit != nil {
 		e.offlineSched[key] = *explicit
 	}
@@ -4194,7 +4194,8 @@ func (e *EmuState) coalesceConfigWrites(key string) {
 // valve home its motor, so a write is queued only when the device's document
 // moves: when the dropped value differs from the installation option. The id
 // names the write, as in EnqueueConfig. A device that refuses the write gets
-// the document served on its next read. It reports whether a write was queued.
+// the document served on its next read, and the re-read trigger when the
+// document moves (setConfigDocument). It reports whether a write was queued.
 func (e *EmuState) ClearOfflineSchedule(target string, id int) (bool, error) {
 	wire, _, err := e.resolve(target)
 	if err != nil {
@@ -4225,7 +4226,7 @@ func (e *EmuState) ClearOfflineSchedule(target string, id int) (bool, error) {
 		e.offlineSched[key] = previous
 		return false, err
 	}
-	e.cfgDoc[key] = snap
+	e.setConfigDocument(key, snap)
 	return false, nil
 }
 
@@ -4262,9 +4263,9 @@ var errThermostatConfig = errors.New("tado: the wall thermostat ignores a d/conf
 
 // serveConfig merges a write to the wall thermostat into the document it is
 // served, under a new ETag. The device takes the document on its next d/config
-// GET, answered 2.05. When the document moves, it queues the re-read trigger
-// (BuildConfigRereadCoAP), so that GET comes at once, not within the hour. A
-// write that moves a tag outside servedConfigTags is refused whole.
+// GET, answered 2.05, which the re-read trigger brings at once
+// (setConfigDocument). A write that moves a tag outside servedConfigTags is
+// refused whole.
 func (e *EmuState) serveConfig(wire []byte, w ConfigWrite) error {
 	key := hexEUI(wire)
 	base, ok := e.cfgDoc[key]
@@ -4281,9 +4282,34 @@ func (e *EmuState) serveConfig(wire []byte, w ConfigWrite) error {
 	if !bytes.Equal(configTagsKept(base), configTagsKept(snap)) {
 		return errThermostatConfig
 	}
+	e.setConfigDocument(key, snap)
+	return nil
+}
+
+// setConfigDocument stores the d/config document served to key. Every change
+// to a document goes through it; only RestoreDesiredState replaces them whole,
+// and its refresh then goes through it. The wall thermostat takes a document only on
+// its own GET, conditional on the ETag it holds and hourly, so when the ETag of
+// its document moves it gets the re-read trigger (BuildConfigRereadCoAP) and
+// GETs within seconds. A thermostat that held no document read the one without
+// 015d (withheldModuleDocument), whose ETag differs. One trigger waiting in the
+// queue covers every later change: the GET after it reads the newest document.
+func (e *EmuState) setConfigDocument(key string, snap cfgSnapshot) {
+	previous, held := e.cfgDoc[key]
 	e.cfgDoc[key] = snap
-	if bytes.Equal(base.etag, snap.etag) || e.ConfigRereadQueued(key) {
-		return nil
+	if held && bytes.Equal(previous.etag, snap.etag) || !e.isThermostat(key) || e.ConfigRereadQueued(key) {
+		return
+	}
+	if err := e.queueConfigReread(key); err != nil {
+		e.log.Log("Config", key, "", rsnBuildFail+" d/config reread "+err.Error(), "")
+	}
+}
+
+// queueConfigReread queues the wall thermostat's re-read trigger.
+func (e *EmuState) queueConfigReread(key string) error {
+	wire, _, err := e.resolve(key)
+	if err != nil {
+		return err
 	}
 	mid, token, err := downlinkIDs()
 	if err != nil {

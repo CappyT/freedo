@@ -96,9 +96,9 @@ func (e *EmuState) UTCOffset() *int {
 
 // SyncUTCOffset re-derives tag 02b2 at now and reports whether it changed, which
 // is a DST transition of the zone. On a change the wall thermostat's document
-// takes the new offset at once: the device drops a written document and picks
-// the new ETag up on its own conditional GET. The valves take it from
-// PushUTCOffset.
+// takes the new offset at once: the device drops a written document, so the
+// new ETag gets it the re-read trigger (setConfigDocument). The valves take it
+// from PushUTCOffset.
 func (e *EmuState) SyncUTCOffset(now time.Time) bool {
 	next := e.resolveUTCOffset(now)
 	if next == nil || (e.utcOffset != nil && *next == *e.utcOffset) {

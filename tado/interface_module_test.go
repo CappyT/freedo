@@ -163,6 +163,7 @@ func TestThermostatWithoutModuleServedWithout015d(t *testing.T) {
 
 // TestThermostatLearnsModuleFromCodesReport: the hvac/codes report carries the
 // thermostat's own 015d, and the document served after it carries that value.
+// The new document queues the one re-read trigger and no write.
 func TestThermostatLearnsModuleFromCodesReport(t *testing.T) {
 	in := synthInstall(t)
 	ru, _ := synthDevices(t, in)
@@ -180,8 +181,9 @@ func TestThermostatLearnsModuleFromCodesReport(t *testing.T) {
 	if answer := configGET(t, in, e, ru, 0x7102); answer.Code != "2.05" {
 		t.Errorf("d/config GET after the report = %s, want 2.05", answer.Code)
 	}
-	if n := e.Pending(hexEUI(ru)); n != 0 {
-		t.Errorf("thermostat pending = %d, want 0: it is served, never written", n)
+	if total, rereads := rereadQueue(e, ru); total != 1 || rereads != 1 {
+		t.Errorf("thermostat queue = %d downlinks, %d re-read triggers, want the one trigger: it is served, never written",
+			total, rereads)
 	}
 
 	// The id survives an export and a restore on a new emulator.

@@ -703,15 +703,35 @@ func TestInstallAPIReloadMovesTheElectionRecord(t *testing.T) {
 		t.Fatalf("the re-election queued no config write: %v", before)
 	}
 	// The wall thermostat refuses a d/config write, so its role moves in the
-	// served document alone.
-	if before[apiThermostatEUI] != 0 {
-		t.Fatalf("the wall thermostat was queued a d/config write: %v", before)
+	// served document, and it gets only the re-read trigger.
+	if waiting, other := a.rereads(apiThermostatEUI); waiting != 1 || other != 0 {
+		t.Fatalf("the wall thermostat queue = %d waiting re-read triggers and %d other downlinks, want the one trigger",
+			waiting, other)
 	}
 	a.mutate(http.MethodPut, "/api/install/zones/1/members",
 		map[string]any{"members": []string{"RU9000000001", "VA9000000001"}})
 	if after := a.pending(); !reflect.DeepEqual(after, before) {
 		t.Fatalf("an unchanged member list queued work: %v, was %v", after, before)
 	}
+}
+
+// rereads counts the re-read triggers queued to one device and not on the air
+// yet, and the downlinks queued to it that are no re-read trigger.
+func (a *installAPI) rereads(euiHex string) (waiting, other int) {
+	a.t.Helper()
+	v, err := a.d.do(func(e *tado.EmuState) (any, error) { return e.Queue(euiHex), nil })
+	if err != nil {
+		a.t.Fatalf("Queue(%s): %v", euiHex, err)
+	}
+	for _, q := range v.([]tado.QueueEntry) {
+		switch {
+		case q.Kind != "reread":
+			other++
+		case !q.InFlight:
+			waiting++
+		}
+	}
+	return waiting, other
 }
 
 // zoneRole reads the 015e role byte the engine serves one device for one zone.

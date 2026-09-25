@@ -32,6 +32,9 @@ func romeEmu(t *testing.T, clock *fakeClock) *EmuState {
 	e := NewEmu(cfg, NewUnhandledLogger(io.Discard))
 	e.moduleID[thermostatEUIHex] = 71
 	e.refreshThermostatDocuments()
+	// The first document queues the thermostat's re-read trigger: the tests
+	// start from an empty queue.
+	delete(e.queue, thermostatEUIHex)
 	// The fixture declares no logical id: each valve gets the one it would use
 	// on air.
 	for i, key := range declaredValves(e) {
@@ -102,7 +105,7 @@ func docUTCOffset(t *testing.T, e *EmuState, key string) int {
 
 // TestUTCOffsetFollowsDSTTransition: across the end of summer time every valve
 // gets exactly one 02b2 write, the writes stay the spacing apart, and the wall
-// thermostat gets a new served document and no write.
+// thermostat gets a new served document, its re-read trigger and no write.
 func TestUTCOffsetFollowsDSTTransition(t *testing.T) {
 	clock := &fakeClock{now: romeDSTEnd.Add(-30 * time.Minute)}
 	e := romeEmu(t, clock)
@@ -147,8 +150,8 @@ func TestUTCOffsetFollowsDSTTransition(t *testing.T) {
 	if bytes.Equal(e.cfgDoc[thermostatEUIHex].etag, thermoETag) {
 		t.Error("the thermostat ETag did not move: its conditional GET would not pick the offset up")
 	}
-	if n := len(e.queue[thermostatEUIHex]); n != 0 {
-		t.Errorf("thermostat has %d queued downlinks, want none: it refuses d/config writes", n)
+	if q := e.queue[thermostatEUIHex]; len(q) != 1 || q[0].kind != configRereadKind {
+		t.Errorf("thermostat has %d queued downlinks, want the one re-read trigger: it refuses d/config writes", len(q))
 	}
 }
 
@@ -230,8 +233,8 @@ func TestUTCOffsetPushSurvivesRestart(t *testing.T) {
 }
 
 // TestUTCOffsetOptionChangeIsSpaced: a changed utc_offset_min reaches the
-// thermostat's document at once and the valves through the spaced push, not as
-// one write per valve at reload.
+// thermostat's document at once, with its re-read trigger, and the valves
+// through the spaced push, not as one write per valve at reload.
 func TestUTCOffsetOptionChangeIsSpaced(t *testing.T) {
 	clock := &fakeClock{now: time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC)}
 	e := romeEmu(t, clock)
@@ -239,7 +242,10 @@ func TestUTCOffsetOptionChangeIsSpaced(t *testing.T) {
 	if _, _, err := e.SetInstall(next); err != nil {
 		t.Fatalf("SetInstall: %v", err)
 	}
-	if n := queuedDownlinks(e); n != 0 {
+	if q := e.queue[thermostatEUIHex]; len(q) != 1 || q[0].kind != configRereadKind {
+		t.Fatalf("the reload queued the thermostat %d downlinks, want the one re-read trigger", len(q))
+	}
+	if n := queuedDownlinks(e) - 1; n != 0 {
 		t.Fatalf("the reload queued %d writes, want none", n)
 	}
 	if got := docUTCOffset(t, e, thermostatEUIHex); got != 90 {

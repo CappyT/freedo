@@ -161,7 +161,7 @@ func (e *EmuState) applyDbg2(key string, d *queuedDownlink) {
 	if !ok || slices.ContainsFunc(e.queue[key], func(q *queuedDownlink) bool { return q.kind == "config" }) {
 		return
 	}
-	e.cfgDoc[key] = patchConfigDocument(previous, d.dbg2)
+	e.setConfigDocument(key, patchConfigDocument(previous, d.dbg2))
 	e.deliveredChanged = true
 }
 

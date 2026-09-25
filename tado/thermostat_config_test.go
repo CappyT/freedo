@@ -29,6 +29,7 @@ func TestThermostatCalibOffsetServed(t *testing.T) {
 	key := hexEUI(ru)
 	e := NewEmu(in.EmuConfig(), nil)
 	e.OnFrame(moduleReport(t, in, ru, 71, 0x7601))
+	drainQueue(t, e, ru)
 	old := append([]byte(nil), e.cfgDoc[key].etag...)
 	if len(old) == 0 {
 		t.Fatal("no thermostat document after the module report")

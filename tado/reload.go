@@ -390,7 +390,7 @@ func (e *EmuState) refreshConfigDocuments() map[string]bool {
 			e.log.Log("Config", dev.Ref(), "", rsnBuildFail+" d/config "+err.Error(), "")
 			continue
 		}
-		e.cfgDoc[key] = snap
+		e.setConfigDocument(key, snap)
 	}
 	return written
 }
