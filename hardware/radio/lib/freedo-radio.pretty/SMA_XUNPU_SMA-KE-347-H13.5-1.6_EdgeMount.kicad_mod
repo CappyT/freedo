@@ -21,7 +21,7 @@
   (fp_text reference "REF**" (at 0.0000 -3.3500 0) (layer "F.SilkS") (effects (font (size 1 1) (thickness 0.15))))
   (fp_text value "SMA_XUNPU_SMA-KE-347-H13.5-1.6_EdgeMount" (at 0.0000 3.3500 0) (layer "F.Fab") (effects (font (size 1 1) (thickness 0.15))))
   (model "${KIPRJMOD}/lib/3dmodels/SMA-SMD_SMA-KE-347-H13.5-1.6.wrl"
-    (offset (xyz 0 0 0))
+    (offset (xyz 0 -0.09 0))
     (scale (xyz 1 1 1))
     (rotate (xyz 0 0 0))
   )

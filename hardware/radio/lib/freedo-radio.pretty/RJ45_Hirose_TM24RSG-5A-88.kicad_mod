@@ -214,46 +214,6 @@
 		(layer "Dwgs.User")
 		(uuid "5e7cc98f-606c-44d8-8a68-aace3d593362")
 	)
-	(fp_line
-		(start -9 -4.95)
-		(end 9 -4.95)
-		(stroke
-			(width 0.05)
-			(type solid)
-		)
-		(layer "F.CrtYd")
-		(uuid "843035ec-326c-4ddc-a72d-07a18a9cb9b0")
-	)
-	(fp_line
-		(start 9 -4.95)
-		(end 9 9.52)
-		(stroke
-			(width 0.05)
-			(type solid)
-		)
-		(layer "F.CrtYd")
-		(uuid "4f7cc1fd-de1c-49fd-be69-d7c866c4f710")
-	)
-	(fp_line
-		(start 9 9.52)
-		(end -9 9.52)
-		(stroke
-			(width 0.05)
-			(type solid)
-		)
-		(layer "F.CrtYd")
-		(uuid "0d826bb7-b7f7-4490-aa9d-ed8ba097db3b")
-	)
-	(fp_line
-		(start -9 9.52)
-		(end -9 -4.95)
-		(stroke
-			(width 0.05)
-			(type solid)
-		)
-		(layer "F.CrtYd")
-		(uuid "8750c8d5-2204-44cd-99c9-8b4234af6a77")
-	)
 	(fp_text user "${REFERENCE}"
 		(at 0 2 0)
 		(layer "F.Fab")
@@ -264,6 +224,17 @@
 				(thickness 0.15)
 			)
 		)
+	)
+	(fp_rect
+		(start -9.05 -5.7)
+		(end 9.05 9.55)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.CrtYd")
+		(uuid "5a0e301a-7762-4fa3-b6e4-d069c3ab6d1c")
 	)
 	(pad "1" thru_hole circle
 		(at 3.556 -2.08)
