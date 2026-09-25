@@ -13,12 +13,14 @@ const (
 )
 
 // SendRouterAdvertBurst sends a timed wake-up burst and the Router Advertisement on-chip.
+// A pair window sends the first copy with Frame Pending (0x59e8), which only
+// firmware v2.9 accepts.
 func (b *Bridge) SendRouterAdvertBurst(frame []byte, timeout time.Duration) (int, error) {
 	if len(frame) < 3 || len(frame) > maxTrainFrame {
 		return 0, fmt.Errorf("router advertisement frame length %d out of range", len(frame))
 	}
-	if frame[0] != 0x49 || frame[1] != 0xe8 {
-		return 0, fmt.Errorf("router advertisement frame is not 0x49e8")
+	if (frame[0] != 0x49 && frame[0] != 0x59) || frame[1] != 0xe8 {
+		return 0, fmt.Errorf("router advertisement frame is not 0x49e8 or 0x59e8")
 	}
 	savedTimeout := b.timeout
 	if timeout > b.timeout {

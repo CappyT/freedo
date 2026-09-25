@@ -98,8 +98,8 @@ func ParseBroadcast(key, frame []byte) (*BroadcastMsg, error) {
 	if len(frame) < headerLen+micLen+4 {
 		return nil, errors.New("tado: broadcast frame too short")
 	}
-	if frame[0] != fcfBroadcast[0] || frame[1] != fcfBroadcast[1] {
-		return nil, errors.New("tado: not a broadcast (0x49e8) frame")
+	if Classify(frame) != ClassBroadcast {
+		return nil, errors.New("tado: not a broadcast (0x49e8/0x59e8) frame")
 	}
 	block, err := aes.NewCipher(key)
 	if err != nil {

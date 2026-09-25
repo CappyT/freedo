@@ -72,6 +72,7 @@ const (
 	ActData
 	ActWakeUp
 	ActBroadcast
+	ActBeacon // Enhanced Beacon to a device that listens right after its request
 )
 
 func (k ActionKind) String() string {
@@ -84,6 +85,8 @@ func (k ActionKind) String() string {
 		return "WakeUp"
 	case ActBroadcast:
 		return "Broadcast"
+	case ActBeacon:
+		return "EnhBeacon"
 	}
 	return "None"
 }
@@ -783,6 +786,8 @@ func (e *EmuState) OnFrame(raw []byte) []Action {
 		e.onWakeUp(raw)
 	case ClassBroadcast:
 		return e.onBroadcast(raw)
+	case ClassBeaconRequest:
+		return e.onBeaconRequest(raw)
 	default:
 		e.stats.Unknown++
 		e.log.Log("Unknown", "", "", rsnUnclassified, hex.EncodeToString(raw))
@@ -2685,8 +2690,10 @@ func (e *EmuState) onBroadcast(raw []byte) []Action {
 	if err != nil {
 		reason := rsnMalformed
 		if errors.Is(err, ErrMICFail) {
-			if !bridgeSource && e.notePairingBroadcast(raw) {
-				return nil
+			if !bridgeSource {
+				if pb, ok := e.notePairingBroadcast(raw); ok {
+					return e.answerPairingSolicit(pb)
+				}
 			}
 			reason = rsnMICFail
 			e.stats.MICFails++
@@ -5216,6 +5223,11 @@ func (e *EmuState) ScheduleDownlink(target string) ([]Action, error) {
 // the real bridge sends, rebuilt field by field. Only the 2-byte app trailer
 // differs from a captured RA, its content being unexplained.
 func (e *EmuState) Beacon() (Action, error) {
+	return e.routerAdvert(BuildBroadcast, e.key, "")
+}
+
+// routerAdvert builds one advertisement with build under key.
+func (e *EmuState) routerAdvert(build func([]byte, byte, []byte, uint16, byte, []byte) ([]byte, error), key []byte, note string) (Action, error) {
 	pkt, err := BuildRouterAdvert(e.selfEUI, BridgeRouterAdvert(e.selfEUI))
 	if err != nil {
 		return Action{}, err
@@ -5224,7 +5236,7 @@ func (e *EmuState) Beacon() (Action, error) {
 	if err != nil {
 		return Action{}, err
 	}
-	frame, err := BuildBroadcast(e.key, e.nextSeq(), e.selfEUI, uint16(ctr), bcastSecCtrl,
+	frame, err := build(key, e.nextSeq(), e.selfEUI, uint16(ctr), bcastSecCtrl,
 		WrapBroadcastPayload(pkt, uint16(ctr>>16)))
 	if err != nil {
 		return Action{}, err
@@ -5232,28 +5244,50 @@ func (e *EmuState) Beacon() (Action, error) {
 	return Action{
 		Kind:   ActBroadcast,
 		Bytes:  frame,
-		Reason: fmt.Sprintf("beacon router-advert ctr=%d", ctr),
+		Reason: fmt.Sprintf("beacon router-advert ctr=%d%s", ctr, note),
 		Node:   "ffff",
 	}, nil
 }
 
+// BeaconBurst builds the advertisement behind its wake-up train. While the pair
+// window is open and the radio takes a Frame Pending advertisement, the burst
+// goes twice, as the commercial bridge sends it (coap_sniff_1786619225, four
+// pairs): under the network key with Frame Pending set, then under the pairing
+// key for the devices that join, each behind its own train.
 func (e *EmuState) BeaconBurst() ([]Action, error) {
-	a, err := e.Beacon()
-	if err != nil {
-		return nil, err
+	var ras []Action
+	if e.pairWindowOpen() && e.pair.responder {
+		net, err := e.routerAdvert(BuildBroadcastPending, e.key, " pending")
+		if err != nil {
+			return nil, err
+		}
+		pair, err := e.routerAdvert(BuildBroadcast, PairingKey, " pairing-key")
+		if err != nil {
+			return nil, err
+		}
+		ras = []Action{net, pair}
+	} else {
+		a, err := e.Beacon()
+		if err != nil {
+			return nil, err
+		}
+		ras = []Action{a}
 	}
-	train := BuildRouterAdvertWakeUpBurst(a.Bytes[2])
 	e.routerAdvertPending = true
-	actions := make([]Action, 0, len(train)+1)
-	for i, frame := range train {
-		actions = append(actions, Action{
-			Kind:   ActWakeUp,
-			Bytes:  frame,
-			Reason: fmt.Sprintf("beacon wake-up %d/%d seq=%02x", i+1, len(train), a.Bytes[2]),
-			Node:   "ffff",
-		})
+	actions := make([]Action, 0, len(ras)*(RouterAdvertWakeUpCount+1))
+	for _, a := range ras {
+		train := BuildRouterAdvertWakeUpBurst(a.Bytes[2])
+		for i, frame := range train {
+			actions = append(actions, Action{
+				Kind:   ActWakeUp,
+				Bytes:  frame,
+				Reason: fmt.Sprintf("beacon wake-up %d/%d seq=%02x", i+1, len(train), a.Bytes[2]),
+				Node:   "ffff",
+			})
+		}
+		actions = append(actions, a)
 	}
-	return append(actions, a), nil
+	return actions, nil
 }
 
 func (e *EmuState) CompleteBeacon(sent bool) {
@@ -5563,6 +5597,7 @@ const (
 	rsnRouterAdvert      = "icmpv6-router-advertisement"
 	rsnNeighborSolicit   = "icmpv6-neighbor-solicitation"
 	rsnPairingKey        = "pairing-key-frame"
+	rsnPairWindowClosed  = "pair-window-closed"
 	rsnUnknownEnhAck     = "enh-ack-from-unknown-node"
 	rsnDownlinkLost      = "downlink-undelivered"
 	rsnDownlinkReset     = "downlink-reset"

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -19,8 +20,12 @@ import (
 // (coap_sniff_1786619225), so the window learns its address before any d/pair.
 //
 // freedo keeps the same fallback, bounded to a window the operator opens. It
-// records the sender and nothing else: it neither acknowledges nor processes
-// the frame.
+// records the sender. It answers only the two frames a joiner needs before
+// d/pair: the Enhanced Beacon Request with an Enhanced Beacon (beacon.go) and
+// the Router Solicitation with the doubled advertisement (BeaconBurst). Bridge
+// firmware v2.9 answers the Beacon Request itself, 4 ms after it, which the
+// host cannot do: the window then tells the radio to send the advertisement
+// with Frame Pending too.
 
 // MaxPairWindow bounds a pair window. The valve's own commissioning window
 // lasts two minutes.
@@ -42,10 +47,13 @@ type PairJoiner struct {
 
 // PairWindowView is the state of the pair window.
 type PairWindowView struct {
-	Open    bool         `json:"open"`
-	Opened  time.Time    `json:"opened,omitzero"`
-	Until   time.Time    `json:"until,omitzero"`
-	Joiners []PairJoiner `json:"joiners"`
+	Open   bool      `json:"open"`
+	Opened time.Time `json:"opened,omitzero"`
+	Until  time.Time `json:"until,omitzero"`
+	// Responder says that the radio answers the Enhanced Beacon Requests of
+	// this window and sends the doubled advertisement.
+	Responder bool         `json:"responder"`
+	Joiners   []PairJoiner `json:"joiners"`
 }
 
 type pairWindow struct {
@@ -53,7 +61,8 @@ type pairWindow struct {
 	joiners       map[string]*PairJoiner // wire EUI hex
 	// netHeard holds, per wire EUI hex, the last frame that verified under the
 	// network key while the window was open.
-	netHeard map[string]time.Time
+	netHeard  map[string]time.Time
+	responder bool
 }
 
 // OpenPairWindow opens the pair window for d, capped at MaxPairWindow, and
@@ -75,15 +84,42 @@ func (e *EmuState) ClosePairWindow() {
 	if e.pairWindowOpen() {
 		e.pair.until = e.cfg.Now()
 	}
+	e.pair.responder = false
 }
 
 func (e *EmuState) pairWindowOpen() bool {
 	return !e.pair.until.IsZero() && e.cfg.Now().Before(e.pair.until)
 }
 
+// SetPairResponder records whether the radio answers the Enhanced Beacon
+// Requests of the open window and takes the Frame Pending advertisement
+// (bridge firmware v2.9). With it the host sends no beacon and doubles the
+// advertisement; without it the host sends the beacon itself, late, and the
+// advertisement stays single.
+func (e *EmuState) SetPairResponder(on bool) {
+	e.pair.responder = on && e.pairWindowOpen()
+}
+
+// ReservePairBeacons takes n MAC seq and n frame counter values for the
+// beacons the radio sends on its own, and returns the first of each. No host
+// frame reuses them.
+func (e *EmuState) ReservePairBeacons(n int) (byte, uint32, error) {
+	if err := e.reserveTx(n); err != nil {
+		return 0, 0, err
+	}
+	seq, ctr := e.seq+1, e.tx+1
+	e.seq += byte(n)
+	e.tx += uint32(n)
+	return seq, ctr, nil
+}
+
 // PairWindow returns the window state and the devices it learned, oldest first.
 func (e *EmuState) PairWindow() PairWindowView {
-	v := PairWindowView{Open: e.pairWindowOpen(), Opened: e.pair.opened, Until: e.pair.until, Joiners: []PairJoiner{}}
+	open := e.pairWindowOpen()
+	v := PairWindowView{
+		Open: open, Opened: e.pair.opened, Until: e.pair.until,
+		Responder: open && e.pair.responder, Joiners: []PairJoiner{},
+	}
 	for _, j := range e.pair.joiners {
 		v.Joiners = append(v.Joiners, *j)
 	}
@@ -158,17 +194,91 @@ func (e *EmuState) notePairingData(class FrameClass, raw []byte) bool {
 }
 
 // notePairingBroadcast is notePairingData for a 0x49e8 broadcast.
-func (e *EmuState) notePairingBroadcast(raw []byte) bool {
+func (e *EmuState) notePairingBroadcast(raw []byte) (*BroadcastMsg, bool) {
 	if !e.pairWindowOpen() {
-		return false
+		return nil, false
 	}
 	b, err := ParseBroadcast(PairingKey, raw)
 	if err != nil {
-		return false
+		return nil, false
 	}
 	e.notePairingFrame("Broadcast", b.SrcEUI)
 	e.log.Log("Broadcast", e.name(b.SrcEUI), "ffff", rsnPairingKey, hex.EncodeToString(raw))
-	return true
+	return b, true
+}
+
+// answerPairingSolicit answers a Router Solicitation under the pairing key with
+// the doubled advertisement, as the commercial bridge does
+// (coap_sniff_1786619225 lines 3823, 35818, 37195, each answered within 1.4 s).
+// A single advertisement carries only the network key, which the joiner cannot
+// read, so without the doubling there is nothing to answer with.
+func (e *EmuState) answerPairingSolicit(b *BroadcastMsg) []Action {
+	if b.ICMPType != icmpRouterSolicit || !e.pair.responder || e.BridgeSeen() || !e.armed() {
+		return nil
+	}
+	actions, due, err := e.beaconIfDue(routerSolicitAnswerWindow)
+	if err != nil {
+		e.log.Log("Broadcast", e.name(b.SrcEUI), "ffff", rsnBuildFail, "")
+		return nil
+	}
+	e.stats.RouterSolicitationsAnswered++
+	if !due {
+		return nil
+	}
+	return actions
+}
+
+// onBeaconRequest takes an Enhanced Beacon Request. Only a device that looks
+// for a coordinator sends one, under the pairing key, so outside the window
+// the request is dropped. In the window it names a joiner, and it gets the
+// Enhanced Beacon from the host when the radio does not answer it itself.
+func (e *EmuState) onBeaconRequest(raw []byte) []Action {
+	src := ""
+	if len(raw) == beaconRequestLen {
+		src = e.name(raw[7:15])
+	}
+	if !e.pairWindowOpen() {
+		e.log.Log(ClassBeaconRequest.String(), src, "ffff", rsnPairWindowClosed, hex.EncodeToString(raw))
+		return nil
+	}
+	r, err := ParseBeaconRequest(PairingKey, raw)
+	if err != nil {
+		reason := rsnMalformed
+		if errors.Is(err, ErrMICFail) {
+			reason = rsnMICFail
+		}
+		e.log.Log(ClassBeaconRequest.String(), src, "ffff", reason, hex.EncodeToString(raw))
+		return nil
+	}
+	if bytes.Equal(r.SrcEUI[:5], e.selfEUI[:5]) {
+		return nil
+	}
+	e.notePairingFrame(ClassBeaconRequest.String(), r.SrcEUI)
+	e.log.Log(ClassBeaconRequest.String(), src, "ffff", rsnPairingKey, hex.EncodeToString(raw))
+	if e.pair.responder || e.BridgeSeen() {
+		return nil
+	}
+	if !e.armed() {
+		e.log.Log(ClassBeaconRequest.String(), src, "ffff", rsnPairingKey+" suppressed=tx-not-armed", "")
+		return nil
+	}
+	ctr, err := e.nextTx()
+	if err != nil {
+		e.log.Log(ClassBeaconRequest.String(), src, "ffff", rsnBuildFail, err.Error())
+		return nil
+	}
+	seq := e.nextSeq()
+	eb, err := BuildEnhancedBeacon(PairingKey, seq, r.SrcEUI, e.selfEUI, ctr)
+	if err != nil {
+		e.log.Log(ClassBeaconRequest.String(), src, "ffff", rsnBuildFail, err.Error())
+		return nil
+	}
+	return []Action{{
+		Kind:   ActBeacon,
+		Bytes:  eb,
+		Reason: fmt.Sprintf("enhanced-beacon seq=%02x ctr=%d", seq, ctr),
+		Node:   src,
+	}}
 }
 
 // noteNetworkKeyFrame records a frame from src that verified under the

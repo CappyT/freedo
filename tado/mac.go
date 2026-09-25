@@ -32,12 +32,14 @@ const (
 type FrameClass int
 
 const (
-	ClassUnknown     FrameClass = iota
-	ClassData                   // 0x69ec unicast Data (secured, ack-req)
-	ClassDataPending            // 0x79ec Data with Frame Pending set
-	ClassBroadcast              // 0x49e8 broadcast Data (aux security header on wire)
-	ClassEnhAck                 // 0x42ee Enhanced Acknowledgment (unsecured)
-	ClassWakeUp                 // 0x25.. Multipurpose wake-up (CSL rendezvous)
+	ClassUnknown       FrameClass = iota
+	ClassData                     // 0x69ec unicast Data (secured, ack-req)
+	ClassDataPending              // 0x79ec Data with Frame Pending set
+	ClassBroadcast                // 0x49e8 broadcast Data (aux security header on wire), 0x59e8 with Frame Pending
+	ClassEnhAck                   // 0x42ee Enhanced Acknowledgment (unsecured)
+	ClassWakeUp                   // 0x25.. Multipurpose wake-up (CSL rendezvous)
+	ClassBeaconRequest            // 0x0be8 MAC command, secured: Enhanced Beacon Request
+	ClassBeacon                   // 0x18ec Enhanced Beacon, secured
 )
 
 func (c FrameClass) String() string {
@@ -52,6 +54,10 @@ func (c FrameClass) String() string {
 		return "EnhACK"
 	case ClassWakeUp:
 		return "WakeUp"
+	case ClassBeaconRequest:
+		return "BeaconReq"
+	case ClassBeacon:
+		return "EnhBeacon"
 	}
 	return "Unknown"
 }
@@ -66,8 +72,12 @@ func Classify(frame []byte) FrameClass {
 		return ClassData
 	case frame[0] == 0x79 && frame[1] == 0xec:
 		return ClassDataPending
-	case frame[0] == 0x49 && frame[1] == 0xe8:
+	case (frame[0] == 0x49 || frame[0] == 0x59) && frame[1] == 0xe8:
 		return ClassBroadcast
+	case frame[0] == fcfBeaconRequest[0] && frame[1] == fcfBeaconRequest[1]:
+		return ClassBeaconRequest
+	case frame[0] == fcfEnhBeacon[0] && frame[1] == fcfEnhBeacon[1]:
+		return ClassBeacon
 	case frame[0] == 0x42 && frame[1] == 0xee:
 		return ClassEnhAck
 	case frame[0] == 0x25:
@@ -233,8 +243,22 @@ func dissect(in *Install, key []byte, ra *Reassembler, frame []byte) string {
 		if len(frame) < 16 {
 			return "Broadcast (malformed)"
 		}
-		return fmt.Sprintf("Broadcast seq=%02x src=%s secCtrl=%02x frameCtr=%d (aux-security)",
-			frame[2], nameOf(in, frame[5:13]), frame[13], binary.LittleEndian.Uint16(frame[14:16]))
+		pending := ""
+		if frame[0] == 0x59 {
+			pending = " pending"
+		}
+		return fmt.Sprintf("Broadcast seq=%02x src=%s secCtrl=%02x frameCtr=%d (aux-security)%s",
+			frame[2], nameOf(in, frame[5:13]), frame[13], binary.LittleEndian.Uint16(frame[14:16]), pending)
+	case ClassBeaconRequest:
+		if len(frame) != beaconRequestLen {
+			return "BeaconReq (malformed)"
+		}
+		return fmt.Sprintf("BeaconReq seq=%02x src=%s (pairing key)", frame[2], nameOf(in, frame[7:15]))
+	case ClassBeacon:
+		if len(frame) != enhBeaconLen {
+			return "EnhBeacon (malformed)"
+		}
+		return fmt.Sprintf("EnhBeacon seq=%02x -> %s (pairing key)", frame[2], nameOf(in, frame[5:13]))
 	}
 	return "Unknown   " + hex.EncodeToString(frame[:min2(4, len(frame))])
 }

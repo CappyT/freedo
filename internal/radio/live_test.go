@@ -1438,6 +1438,74 @@ func TestLiveRadioRoutesRouterAdvertBurst(t *testing.T) {
 	}
 }
 
+// A pair window sends the advertisement twice, each copy behind its own
+// wake-up train: the bridge gets two bursts in order.
+func TestLiveRadioRoutesDoubledRouterAdvert(t *testing.T) {
+	bridge := &orderedLiveBridge{}
+	radio := &Live{br: bridge}
+	pending := []byte{0x59, 0xe8, 0x42}
+	frames := append(tado.BuildRouterAdvertWakeUpBurst(pending[2]), pending)
+	frames = append(frames, routerAdvertTestFrames()...)
+	if err := radio.sendTrain(frames); err != nil {
+		t.Fatal(err)
+	}
+	events, trains, _ := bridge.snapshot()
+	bursts := bridge.burstSnapshot()
+	if len(events) != 2 || len(trains) != 0 || len(bursts) != 2 {
+		t.Fatalf("events=%v trains=%d bursts=%d", events, len(trains), len(bursts))
+	}
+	if !bytes.Equal(bursts[0], pending) || !bytes.Equal(bursts[1], []byte{0x49, 0xe8, 0x42}) {
+		t.Fatalf("router advertisements=%x", bursts)
+	}
+}
+
+type pairLiveBridge struct {
+	*orderedLiveBridge
+	mu      sync.Mutex
+	windows []cc1101.PairWindow
+}
+
+func (b *pairLiveBridge) SetPairWindow(w cc1101.PairWindow) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.windows = append(b.windows, w)
+	return len(b.windows) - 1, nil
+}
+
+// The pair window request runs on the owner loop, which alone talks to the
+// bridge. A bridge without the command reports it unsupported.
+func TestLiveRadioSetPairWindow(t *testing.T) {
+	coordinator := []byte{0x09, 0xa1, 0xce, 0xfa, 0x07, 0xc5, 0x1b, 0x00}
+	bridge := &pairLiveBridge{orderedLiveBridge: &orderedLiveBridge{}}
+	r, err := StartLive(bridge, coordinator, 0, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	w := cc1101.PairWindow{Duration: time.Minute, Key: []byte("0123456789abcdef"), Coordinator: coordinator, Seq: 7, Counter: 9, Count: 64}
+	if sent, err := r.SetPairWindow(w); err != nil || sent != 0 {
+		t.Fatalf("open: sent=%d err=%v", sent, err)
+	}
+	if sent, err := r.SetPairWindow(cc1101.PairWindow{}); err != nil || sent != 1 {
+		t.Fatalf("close: sent=%d err=%v", sent, err)
+	}
+	bridge.mu.Lock()
+	got := append([]cc1101.PairWindow(nil), bridge.windows...)
+	bridge.mu.Unlock()
+	if len(got) != 2 || got[0].Count != 64 || got[1].Duration != 0 {
+		t.Fatalf("windows %+v", got)
+	}
+
+	plain, err := StartLive(&orderedLiveBridge{}, coordinator, 0, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer plain.Close()
+	if _, err := plain.SetPairWindow(w); !errors.Is(err, cc1101.ErrPairWindowUnsupported) {
+		t.Fatalf("bridge without the command: %v", err)
+	}
+}
+
 func TestLiveRadioRouterAdvertBurstFailsWithoutFallback(t *testing.T) {
 	boom := errors.New("burst failed")
 	for _, bridge := range []*orderedLiveBridge{

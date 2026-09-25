@@ -35,6 +35,10 @@ type routerAdvertBurstBridge interface {
 	SendRouterAdvertBurst([]byte, time.Duration) (int, error)
 }
 
+type pairWindowBridge interface {
+	SetPairWindow(cc1101.PairWindow) (int, error)
+}
+
 // configuredBridge reads back whether the chip still holds its register set.
 type configuredBridge interface {
 	Configured() (bool, error)
@@ -56,6 +60,7 @@ type Live struct {
 	frames               chan []byte
 	immediate            chan liveBatch
 	async                chan liveAsyncBatch
+	pairCtl              chan livePairWindow
 	deferred             []liveAsyncBatch
 	bootstrapAttemptAt   map[string]time.Time
 	bootstrapConfirmedAt map[string]time.Time
@@ -136,6 +141,16 @@ type liveAsyncBatch struct {
 	done   chan error
 }
 
+type livePairWindow struct {
+	window cc1101.PairWindow
+	done   chan livePairResult
+}
+
+type livePairResult struct {
+	sent int
+	err  error
+}
+
 const liveReceiveWindow = 250 * time.Millisecond
 const liveRXErrorBackoff = 100 * time.Millisecond
 const liveRXErrorLimit = 10
@@ -199,6 +214,7 @@ func buildLiveRadio(br LiveBridge, coordinator []byte, phase uint16, autoAck boo
 		frames:               make(chan []byte, 1),
 		immediate:            make(chan liveBatch, 1),
 		async:                make(chan liveAsyncBatch, 4),
+		pairCtl:              make(chan livePairWindow, 1),
 		bootstrapAttemptAt:   make(map[string]time.Time),
 		bootstrapConfirmedAt: make(map[string]time.Time),
 		cslPending:           make(map[uint16]liveCSLPending),
@@ -229,7 +245,7 @@ func (r *Live) loop() {
 		}
 		r.drainFrames()
 		r.drainCSLCompletions()
-		if r.takeImmediate() {
+		if r.takeImmediate() || r.takePairWindow() {
 			continue
 		}
 		drained, err := r.drainCSL()
@@ -505,9 +521,64 @@ func (r *Live) awaitImmediate() bool {
 			} else {
 				r.deferred = append(r.deferred, batch)
 			}
+		case req := <-r.pairCtl:
+			// The engine that owes the immediate batch may be the caller.
+			r.finishPairWindow(req)
 		case <-r.stop:
 			return false
 		}
+	}
+}
+
+func (r *Live) takePairWindow() bool {
+	select {
+	case req := <-r.pairCtl:
+		r.finishPairWindow(req)
+		return true
+	default:
+		return false
+	}
+}
+
+func (r *Live) finishPairWindow(req livePairWindow) {
+	br, ok := r.br.(pairWindowBridge)
+	if !ok {
+		req.done <- livePairResult{err: cc1101.ErrPairWindowUnsupported}
+		return
+	}
+	sent, err := br.SetPairWindow(req.window)
+	req.done <- livePairResult{sent: sent, err: err}
+}
+
+// SetPairWindow opens or closes the Enhanced Beacon answer of the bridge on the
+// owner loop. It returns the beacons the bridge sent in the window it ends.
+func (r *Live) SetPairWindow(w cc1101.PairWindow) (int, error) {
+	req := livePairWindow{window: w, done: make(chan livePairResult, 1)}
+	if err := r.endedErr(); err != nil {
+		return 0, err
+	}
+	r.lifecycleMu.RLock()
+	if err := r.endedErr(); err != nil {
+		r.lifecycleMu.RUnlock()
+		return 0, err
+	}
+	select {
+	case r.pairCtl <- req:
+		r.lifecycleMu.RUnlock()
+	case <-r.stop:
+		r.lifecycleMu.RUnlock()
+		return 0, ErrStopped
+	case <-r.ownerGone():
+		r.lifecycleMu.RUnlock()
+		return 0, r.endedErr()
+	}
+	select {
+	case res := <-req.done:
+		return res.sent, res.err
+	case <-r.stop:
+		return 0, ErrStopped
+	case <-r.ownerGone():
+		return 0, r.endedErr()
 	}
 }
 
@@ -1001,17 +1072,19 @@ func cslShort(frame []byte) string {
 }
 
 func (r *Live) sendFrames(frames [][]byte) ([][]byte, error) {
-	if ra, ok := routerAdvertBurst(frames); ok {
+	if ras, ok := routerAdvertBursts(frames); ok {
 		if br, ok := r.br.(routerAdvertBurstBridge); ok {
-			r.markTX()
-			sent, err := br.SendRouterAdvertBurst(ra, time.Second)
-			if err != nil {
-				return nil, err
+			for _, ra := range ras {
+				r.markTX()
+				sent, err := br.SendRouterAdvertBurst(ra, time.Second)
+				if err != nil {
+					return nil, err
+				}
+				if sent < 3 || sent > tado.RouterAdvertWakeUpCount+1 {
+					return nil, fmt.Errorf("router advertisement burst returned invalid frame count %d", sent)
+				}
+				log.Printf("router advertisement burst: sent %d frames", sent)
 			}
-			if sent < 3 || sent > tado.RouterAdvertWakeUpCount+1 {
-				return nil, fmt.Errorf("router advertisement burst returned invalid frame count %d", sent)
-			}
-			log.Printf("router advertisement burst: sent %d frames", sent)
 			return nil, nil
 		}
 	}
@@ -1041,6 +1114,24 @@ func (r *Live) sendFrames(frames [][]byte) ([][]byte, error) {
 		start = end
 	}
 	return acks, nil
+}
+
+// routerAdvertBursts splits frames into whole advertisement bursts. A pair
+// window sends two in a row.
+func routerAdvertBursts(frames [][]byte) ([][]byte, bool) {
+	n := tado.RouterAdvertWakeUpCount + 1
+	if len(frames) == 0 || len(frames)%n != 0 {
+		return nil, false
+	}
+	var ras [][]byte
+	for i := 0; i < len(frames); i += n {
+		ra, ok := routerAdvertBurst(frames[i : i+n])
+		if !ok {
+			return nil, false
+		}
+		ras = append(ras, ra)
+	}
+	return ras, true
 }
 
 func routerAdvertBurst(frames [][]byte) ([]byte, bool) {

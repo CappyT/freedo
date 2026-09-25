@@ -1,6 +1,7 @@
 package tado
 
 import (
+	"bytes"
 	"errors"
 	"testing"
 	"time"
@@ -203,4 +204,171 @@ func deviceAck(t *testing.T, dev []byte, mid uint16, code string) []byte {
 		t.Fatal(err)
 	}
 	return f.Bytes()
+}
+
+// TestPairWindowAnswersBeaconRequest: an Enhanced Beacon Request under the
+// pairing key names a joiner, and with an armed transmitter it gets the
+// Enhanced Beacon from the host when the radio does not answer it itself.
+// Outside the window it gets nothing.
+func TestPairWindowAnswersBeaconRequest(t *testing.T) {
+	now := time.Date(2026, 9, 25, 10, 0, 0, 0, time.UTC)
+	e := pairEmu(t, &now)
+	e.SetTXArmed(func() bool { return true })
+	ebr := beaconRequest(t, PairingKey, 0x7b, joinerEUI, 16, 0x07)
+
+	if actions := e.OnFrame(ebr); actions != nil {
+		t.Fatalf("closed window: actions %v", reasons(actions))
+	}
+	if n := len(e.PairWindow().Joiners); n != 0 {
+		t.Fatalf("closed window learned %d joiners", n)
+	}
+
+	e.OpenPairWindow(2 * time.Minute)
+	actions := e.OnFrame(ebr)
+	if len(actions) != 1 || actions[0].Kind != ActBeacon {
+		t.Fatalf("open window: actions %v, want one Enhanced Beacon", reasons(actions))
+	}
+	eb := actions[0].Bytes
+	if Classify(eb) != ClassBeacon || !bytes.Equal(eb[5:13], joinerEUI) {
+		t.Fatalf("beacon %x", eb)
+	}
+	want, err := BuildEnhancedBeacon(PairingKey, eb[2], joinerEUI, BridgeEUI, 100001)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(eb, want) {
+		t.Errorf("beacon %x, want %x: the next seq and frame counter of the bridge", eb, want)
+	}
+	v := e.PairWindow()
+	if len(v.Joiners) != 1 || v.Joiners[0].EUI != hexEUI(joinerEUI) || v.Joiners[0].LastClass != "BeaconReq" {
+		t.Fatalf("joiners %+v", v.Joiners)
+	}
+
+	// The radio answers on its own: the host sends nothing.
+	e.SetPairResponder(true)
+	if actions := e.OnFrame(ebr); actions != nil {
+		t.Errorf("radio responder: actions %v, want none", reasons(actions))
+	}
+	e.SetPairResponder(false)
+	e.SetTXArmed(func() bool { return false })
+	if actions := e.OnFrame(ebr); actions != nil {
+		t.Errorf("unarmed: actions %v, want none", reasons(actions))
+	}
+	if got := e.PairWindow().Joiners[0].Frames; got != 3 {
+		t.Errorf("joiner frames %d, want 3", got)
+	}
+}
+
+// TestReservePairBeacons: the block the radio answers with is taken from the
+// bridge seq and frame counter, so no host frame reuses it.
+func TestReservePairBeacons(t *testing.T) {
+	now := time.Date(2026, 9, 25, 10, 0, 0, 0, time.UTC)
+	e := pairEmu(t, &now)
+	a, err := e.Beacon()
+	if err != nil {
+		t.Fatal(err)
+	}
+	seq, ctr, err := e.ReservePairBeacons(64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if seq != a.Bytes[2]+1 || ctr != 100002 {
+		t.Fatalf("block seq=%02x ctr=%d, want %02x and 100002", seq, ctr, a.Bytes[2]+1)
+	}
+	b, err := e.Beacon()
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := ParseBroadcast(NetworkKey, b.Bytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.Bytes[2] != seq+64 || m.FrameCounter != ctr+64 {
+		t.Errorf("next frame seq=%02x ctr=%d, want %02x and %d", b.Bytes[2], m.FrameCounter, seq+64, ctr+64)
+	}
+}
+
+// TestPairWindowDoublesRouterAdvert: while the window is open and the radio
+// takes the Frame Pending advertisement, each advertisement goes out twice,
+// each behind its own wake-up train: under the network key with Frame Pending
+// set, then under the pairing key, on consecutive seq and frame counter
+// (coap_sniff_1786619225 lines 4357/4612, 34607/34862, 36073/36328,
+// 37450/37705).
+func TestPairWindowDoublesRouterAdvert(t *testing.T) {
+	now := time.Date(2026, 9, 25, 10, 0, 0, 0, time.UTC)
+	e := pairEmu(t, &now)
+	burst := RouterAdvertWakeUpCount + 1
+	single := func(label string) {
+		t.Helper()
+		actions, err := e.BeaconBurst()
+		e.CompleteBeacon(false)
+		if err != nil || len(actions) != burst || actions[burst-1].Bytes[0] != 0x49 {
+			t.Fatalf("%s: %d actions, err %v, want one plain burst", label, len(actions), err)
+		}
+	}
+	single("closed window")
+	e.OpenPairWindow(2 * time.Minute)
+	single("no radio responder")
+
+	e.SetPairResponder(true)
+	actions, err := e.BeaconBurst()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(actions) != 2*burst {
+		t.Fatalf("%d actions, want two bursts of %d", len(actions), burst)
+	}
+	first, second := actions[burst-1], actions[2*burst-1]
+	if first.Kind != ActBroadcast || second.Kind != ActBroadcast {
+		t.Fatalf("kinds %v %v", first.Kind, second.Kind)
+	}
+	if first.Bytes[0] != 0x59 || second.Bytes[0] != 0x49 {
+		t.Errorf("FCF %02x then %02x, want 59 (Frame Pending) then 49", first.Bytes[0], second.Bytes[0])
+	}
+	for i := 0; i < RouterAdvertWakeUpCount; i++ {
+		if actions[i].Kind != ActWakeUp || actions[i].Bytes[1] != first.Bytes[2] ||
+			actions[burst+i].Kind != ActWakeUp || actions[burst+i].Bytes[1] != second.Bytes[2] {
+			t.Fatalf("wake-up %d does not share the seq of its advertisement", i)
+		}
+	}
+	if second.Bytes[2] != first.Bytes[2]+1 {
+		t.Errorf("seq %02x then %02x, want consecutive", first.Bytes[2], second.Bytes[2])
+	}
+	net, err := ParseBroadcast(NetworkKey, first.Bytes)
+	if err != nil {
+		t.Fatalf("first advertisement is not under the network key: %v", err)
+	}
+	pair, err := ParseBroadcast(PairingKey, second.Bytes)
+	if err != nil {
+		t.Fatalf("second advertisement is not under the pairing key: %v", err)
+	}
+	if net.RA == nil || pair.RA == nil || pair.FrameCounter != net.FrameCounter+1 {
+		t.Errorf("counters %d then %d, want consecutive advertisements", net.FrameCounter, pair.FrameCounter)
+	}
+	if !bytes.Equal(net.Plaintext[:len(net.Plaintext)-2], pair.Plaintext[:len(pair.Plaintext)-2]) {
+		t.Error("the two advertisements carry different payloads")
+	}
+}
+
+// TestPairWindowAnswersPairingKeySolicitation: a Router Solicitation under the
+// pairing key gets the doubled advertisement, as the commercial bridge answers
+// it (coap_sniff_1786619225: solicitation at line 35818, advertisement 1.05 s
+// later at line 36073).
+func TestPairWindowAnswersPairingKeySolicitation(t *testing.T) {
+	now := time.Date(2026, 9, 25, 10, 0, 0, 0, time.UTC)
+	e := pairEmu(t, &now)
+	e.SetTXArmed(func() bool { return true })
+	e.OpenPairWindow(2 * time.Minute)
+	if actions := e.OnFrame(pairingRS(t)); actions != nil {
+		t.Fatalf("no radio responder: actions %d, want none", len(actions))
+	}
+	e.SetPairResponder(true)
+	now = now.Add(time.Second)
+	actions := e.OnFrame(pairingRS(t))
+	if len(actions) != 2*(RouterAdvertWakeUpCount+1) {
+		t.Fatalf("actions %d, want the doubled advertisement", len(actions))
+	}
+	if got := e.Stats().RouterSolicitationsAnswered; got != 1 {
+		t.Errorf("answered %d, want 1", got)
+	}
 }

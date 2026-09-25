@@ -15,7 +15,11 @@ import (
 
 // fcfBroadcast is the Frame Control of the 0x49e8 broadcast Data frame, which
 // carries an aux security header on the wire instead of the implicit one.
-var fcfBroadcast = [2]byte{0x49, 0xe8}
+// fcfBroadcastPending sets Frame Pending on it.
+var (
+	fcfBroadcast        = [2]byte{0x49, 0xe8}
+	fcfBroadcastPending = [2]byte{0x59, 0xe8}
+)
 
 var (
 	ieRendezBytes = mustHex(ieRendezvousTime)
@@ -132,6 +136,16 @@ func setMACFCS(header, plaintext []byte) ([]byte, error) {
 // As for unicast Data the security inputs are slices of the header itself:
 // nonce = header[0:13], aad = header[0:16].
 func BuildBroadcast(key []byte, seq byte, srcEUI []byte, frameCounter uint16, secCtrl byte, plaintext []byte) ([]byte, error) {
+	return buildBroadcast(fcfBroadcast, key, seq, srcEUI, frameCounter, secCtrl, plaintext)
+}
+
+// BuildBroadcastPending builds the broadcast with the Frame Pending bit (FCF
+// 0x59e8): the pair window sends it ahead of the copy under the pairing key.
+func BuildBroadcastPending(key []byte, seq byte, srcEUI []byte, frameCounter uint16, secCtrl byte, plaintext []byte) ([]byte, error) {
+	return buildBroadcast(fcfBroadcastPending, key, seq, srcEUI, frameCounter, secCtrl, plaintext)
+}
+
+func buildBroadcast(fcf [2]byte, key []byte, seq byte, srcEUI []byte, frameCounter uint16, secCtrl byte, plaintext []byte) ([]byte, error) {
 	if len(srcEUI) != 8 {
 		return nil, errors.New("tado: srcEUI must be 8 bytes")
 	}
@@ -140,7 +154,7 @@ func BuildBroadcast(key []byte, seq byte, srcEUI []byte, frameCounter uint16, se
 		return nil, err
 	}
 	header := make([]byte, 0, headerLen)
-	header = append(header, fcfBroadcast[0], fcfBroadcast[1], seq, 0xff, 0xff)
+	header = append(header, fcf[0], fcf[1], seq, 0xff, 0xff)
 	header = append(header, srcEUI...)
 	header = append(header, secCtrl)
 	header = binary.LittleEndian.AppendUint16(header, frameCounter)

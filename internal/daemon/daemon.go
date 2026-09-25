@@ -60,6 +60,10 @@ type cslCompletionRadio interface {
 	CSLCompletions() <-chan radio.CSLCompletion
 }
 
+type pairWindowRadio interface {
+	SetPairWindow(cc1101.PairWindow) (int, error)
+}
+
 type liveRadioStatus interface {
 	TXArmed() bool
 	RadioError() error
@@ -3805,9 +3809,51 @@ func (d *daemon) postPairWindow(w http.ResponseWriter, r *http.Request) {
 	}
 	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		e.OpenPairWindow(window)
+		d.armPairResponder(e, window)
 		return e.PairWindow(), nil
 	})
 	write(w, v, err)
+}
+
+// pairBeaconBlock is the number of Enhanced Beacons the bridge may send in one
+// window. A joiner asks every 8 s until it gets one, so 64 cover several
+// joiners in the longest window.
+const pairBeaconBlock = 64
+
+// armPairResponder opens or closes the pair window of the bridge firmware.
+// The Enhanced Beacon has to follow the Beacon Request within a few
+// milliseconds, faster than a round trip through the host, so the bridge
+// answers it from the pairing key, the coordinator and a block of seq and
+// frame counter. A bridge without the command leaves the answer to the host.
+func (d *daemon) armPairResponder(e *tado.EmuState, window time.Duration) {
+	pr, ok := d.radio.(pairWindowRadio)
+	if !ok || !d.txArmed() {
+		return
+	}
+	w := cc1101.PairWindow{Duration: window}
+	if window > 0 {
+		seq, ctr, err := e.ReservePairBeacons(pairBeaconBlock)
+		if err != nil {
+			log.Printf("pair window: %v", err)
+			return
+		}
+		w = cc1101.PairWindow{
+			Duration: window, Key: tado.PairingKey, Coordinator: d.inst.Load().CoordinatorEUI(),
+			Seq: seq, Counter: ctr, Count: pairBeaconBlock,
+		}
+	}
+	sent, err := pr.SetPairWindow(w)
+	switch {
+	case err != nil && window > 0:
+		log.Printf("pair window: bridge responder: %v; the host answers Enhanced Beacon Requests", err)
+	case err != nil:
+		log.Printf("pair window: close on the bridge: %v", err)
+	case window > 0:
+		e.SetPairResponder(true)
+		log.Printf("pair window: bridge answers Enhanced Beacon Requests for %v", window)
+	default:
+		log.Printf("pair window: closed, the bridge sent %d Enhanced Beacons", sent)
+	}
 }
 
 // --- entry point ---
