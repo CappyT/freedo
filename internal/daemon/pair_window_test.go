@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -16,12 +18,14 @@ import (
 	"freedo/tado"
 )
 
-// pairRadio is a radio whose bridge takes the pair window command.
+// pairRadio is a radio whose bridge takes the pair window command. A close
+// reports sent Enhanced Beacons.
 type pairRadio struct {
 	*radio.Mock
 	mu      sync.Mutex
 	windows []cc1101.PairWindow
 	err     error
+	sent    int
 }
 
 func (r *pairRadio) SetPairWindow(w cc1101.PairWindow) (int, error) {
@@ -31,6 +35,9 @@ func (r *pairRadio) SetPairWindow(w cc1101.PairWindow) (int, error) {
 		return 0, r.err
 	}
 	r.windows = append(r.windows, w)
+	if w.Duration == 0 {
+		return r.sent, nil
+	}
 	return 0, nil
 }
 
@@ -40,7 +47,7 @@ func (r *pairRadio) snapshot() []cc1101.PairWindow {
 	return append([]cc1101.PairWindow(nil), r.windows...)
 }
 
-func pairRadioDaemon(t *testing.T, rad *pairRadio, dryRun bool) (*daemon, string) {
+func pairRadioDaemon(t *testing.T, rad *pairRadio, dryRun bool) (*daemon, string, *testClock) {
 	t.Helper()
 	clock := newTestClock(time.Date(2026, 9, 25, 10, 0, 0, 0, time.UTC))
 	cfg := defaultInstall.EmuConfig()
@@ -53,7 +60,7 @@ func pairRadioDaemon(t *testing.T, rad *pairRadio, dryRun bool) (*daemon, string
 		srv.Close()
 		cancel()
 	})
-	return d, srv.URL
+	return d, srv.URL, clock
 }
 
 // TestPairWindowArmsBridgeResponder: with an armed transmitter the window
@@ -62,7 +69,7 @@ func pairRadioDaemon(t *testing.T, rad *pairRadio, dryRun bool) (*daemon, string
 // its own. Closing the window closes it on the bridge too.
 func TestPairWindowArmsBridgeResponder(t *testing.T) {
 	rad := &pairRadio{Mock: radio.NewMock(nil)}
-	d, url := pairRadioDaemon(t, rad, false)
+	d, url, _ := pairRadioDaemon(t, rad, false)
 	before := txCounter(t, d)
 
 	var view tado.PairWindowView
@@ -102,13 +109,86 @@ func TestPairWindowArmsBridgeResponder(t *testing.T) {
 // window stays closed.
 func TestPairWindowDryRunLeavesBridge(t *testing.T) {
 	rad := &pairRadio{Mock: radio.NewMock(nil)}
-	_, url := pairRadioDaemon(t, rad, true)
+	_, url, _ := pairRadioDaemon(t, rad, true)
 	var view tado.PairWindowView
 	if code := postJSON(t, http.MethodPost, url+"/api/pair/window", map[string]any{"seconds": 120}, &view); code != http.StatusOK || !view.Open || view.Responder {
 		t.Fatalf("open window: code=%d %+v", code, view)
 	}
 	if got := rad.snapshot(); len(got) != 0 {
 		t.Errorf("dry-run armed the bridge: %+v", got)
+	}
+}
+
+// TestPairWindowExpiryReportsBeacons: a window that runs out closes on the
+// bridge too, and the log gives the Enhanced Beacons the bridge sent in it, as
+// an explicit close does. The bridge keeps that count after its own window
+// ends, until the next pair window command.
+func TestPairWindowExpiryReportsBeacons(t *testing.T) {
+	logs := captureLog(t)
+	rad := &pairRadio{Mock: radio.NewMock(nil), sent: 3}
+	d, url, clock := pairRadioDaemon(t, rad, false)
+	var view tado.PairWindowView
+	if code := postJSON(t, http.MethodPost, url+"/api/pair/window", map[string]any{"seconds": 60}, &view); code != http.StatusOK || !view.Responder {
+		t.Fatalf("open window: code=%d %+v", code, view)
+	}
+	clock.advance(61 * time.Second)
+	deadline := time.Now().Add(3 * time.Second)
+	for len(rad.snapshot()) < 2 && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	got := rad.snapshot()
+	if len(got) != 2 || got[1].Duration != 0 {
+		t.Fatalf("bridge windows %+v, want the open and a close at expiry", got)
+	}
+	// The engine logs before the next command runs.
+	if _, err := d.do(func(*tado.EmuState) (any, error) { return nil, nil }); err != nil {
+		t.Fatal(err)
+	}
+	if want := "pair window: expired, the bridge sent 3 Enhanced Beacons"; !strings.Contains(logs.String(), want) {
+		t.Errorf("log %q, want %q", logs.String(), want)
+	}
+	time.Sleep(1200 * time.Millisecond)
+	if got := rad.snapshot(); len(got) != 2 {
+		t.Errorf("bridge windows %+v, want a single close", got)
+	}
+}
+
+// TestPairDispatchesAfterUnansweredAttempt: the attempt the radio held ends
+// without an Enhanced ACK while d/pair waits behind it. d/pair goes at once and
+// does not wait for the 30 s retry of that attempt.
+func TestPairDispatchesAfterUnansweredAttempt(t *testing.T) {
+	now := time.Date(2026, 9, 25, 10, 0, 0, 0, time.UTC)
+	cfg := defaultInstall.EmuConfig()
+	cfg.Now = func() time.Time { return now }
+	emu := tado.NewEmu(cfg, tado.NewUnhandledLogger(io.Discard))
+	rad := newImmediateTestRadio(false, nil)
+	rad.cslQueue, rad.accept = true, true
+	d := newDaemon(defaultInstall, emu, rad, false, "live")
+	clock := newManualRetryClock()
+	d.retryAfter, d.retryNow = clock.after, func() time.Time { return now }
+	t.Cleanup(func() { close(d.done) })
+
+	if err := emu.EnqueueNetcmd(dhwNode, 1); err != nil {
+		t.Fatal(err)
+	}
+	d.dispatchQueued(emu, dhwNode)
+	attempts := rad.queuedAttempts()
+	if len(attempts) != 1 || !emu.QueuedDownlinkAwaitingCSL(dhwNode) {
+		t.Fatalf("attempts %v, want the netcmd on the radio", attempts)
+	}
+	if err := emu.EnqueuePair(dhwNode, defaultInstall.NetworkKey()); err != nil {
+		t.Fatal(err)
+	}
+	completion := radio.CSLCompletion{Action: attempts[0], Result: &cc1101.CSLTxResult{Sent: 23}, Err: errors.New("CSLTX got no Enhanced ACK")}
+	d.handleCSLCompletion(completion)
+	d.chainQueuedDispatch(completion)
+	if !d.dispatchDue[dhwNode] {
+		t.Fatal("d/pair waits for the retry of the unanswered attempt")
+	}
+	d.dispatchQueued(emu, dhwNode)
+	attempts = rad.queuedAttempts()
+	if last := attempts[len(attempts)-1]; !strings.HasPrefix(last.Reason, "downlink pair") {
+		t.Errorf("attempt after the completion %q, want d/pair", last.Reason)
 	}
 }
 

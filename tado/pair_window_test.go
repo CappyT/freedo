@@ -3,6 +3,8 @@ package tado
 import (
 	"bytes"
 	"errors"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -370,5 +372,148 @@ func TestPairWindowAnswersPairingKeySolicitation(t *testing.T) {
 	}
 	if got := e.Stats().RouterSolicitationsAnswered; got != 1 {
 		t.Errorf("answered %d, want 1", got)
+	}
+}
+
+// queueKinds lists the kinds queued to target, head first.
+func queueKinds(e *EmuState, target string) []string {
+	var kinds []string
+	for _, q := range e.Queue(target) {
+		kinds = append(kinds, q.Kind)
+	}
+	return kinds
+}
+
+// queuedAttempt builds the next queued attempt to target and returns its frame
+// action.
+func queuedAttempt(t *testing.T, e *EmuState, target string) (Action, bool) {
+	t.Helper()
+	actions, ok, err := e.NextQueuedDownlink(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		return Action{}, false
+	}
+	return actions[len(actions)-1], true
+}
+
+// TestPairGoesFirst: d/pair goes ahead of every downlink queued to the joiner,
+// as the commercial bridge sends it ahead of the frames it holds
+// (coap_sniff_1786619225: the d/config MID efaf waits for its CoAP answer after
+// the Enhanced ACK of line 4102, and d/pair goes on line 4634 without it). An
+// attempt the radio holds keeps the head until it completes; any other attempt
+// in flight waits behind d/pair with its MID, and the other writes keep their
+// order.
+func TestPairGoesFirst(t *testing.T) {
+	now := time.Date(2026, 9, 25, 10, 0, 0, 0, time.UTC)
+	e := pairEmu(t, &now)
+	e.OpenPairWindow(2 * time.Minute)
+	e.OnFrame(pairingRS(t))
+	target := hexEUI(joinerEUI)
+
+	if err := e.EnqueueIdentify(target, 1); err != nil {
+		t.Fatal(err)
+	}
+	identify, ok := queuedAttempt(t, e, target)
+	if !ok || !strings.HasPrefix(identify.Reason, "downlink identify") {
+		t.Fatalf("first attempt %q, want the identify", identify.Reason)
+	}
+	if !e.MarkQueuedDownlinkAwaitingCSL(joinerEUI, identify.Bytes[2]) {
+		t.Fatal("the radio did not take the identify attempt")
+	}
+	if err := e.EnqueueNetcmd(target, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.EnqueueChildLock(target, 1, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.EnqueuePair(target, NetworkKey); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := queueKinds(e, target), []string{"identify", "pair", "netcmd", "childlock"}; !slices.Equal(got, want) {
+		t.Fatalf("queue %v, want %v: only the attempt on the radio stays ahead of d/pair", got, want)
+	}
+	if a, ok := queuedAttempt(t, e, target); ok {
+		t.Fatalf("built %q while the radio holds the identify attempt", a.Reason)
+	}
+
+	// The attempt ends without an answer. The identify now waits for its CoAP
+	// answer, and d/pair does not wait for it.
+	e.CompleteQueuedDownlinkAttempt(joinerEUI, identify.Bytes[2])
+	pair, ok := queuedAttempt(t, e, target)
+	if !ok || !strings.HasPrefix(pair.Reason, "downlink pair") {
+		t.Fatalf("attempt after the identify %q, want d/pair", pair.Reason)
+	}
+	if got, want := queueKinds(e, target), []string{"pair", "identify", "netcmd", "childlock"}; !slices.Equal(got, want) {
+		t.Fatalf("queue %v, want %v", got, want)
+	}
+	q := e.Queue(target)
+	if q[1].InFlight || q[1].Tries != 1 {
+		t.Errorf("identify behind d/pair: %+v, want waiting with its one try", q[1])
+	}
+	identifyMID := q[1].MID
+
+	f, err := ParseData(PairingKey, pair.Bytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The 2.04 closes d/pair, and the same rendezvous carries the identify
+	// again.
+	now = now.Add(time.Second)
+	actions := e.OnFrame(deviceAck(t, joinerEUI, ParseApp(f.Plaintext).CoAP.MID, "2.04"))
+	if got, want := queueKinds(e, target), []string{"identify", "netcmd", "childlock"}; !slices.Equal(got, want) {
+		t.Fatalf("queue after the 2.04 %v, want %v", got, want)
+	}
+	again, ok := findAction(actions, ActData, "downlink identify")
+	if !ok || again.QueueMID != identifyMID || again.QueueTry != 2 {
+		t.Errorf("attempt after d/pair %q mid=%04x try=%d, want the identify mid=%04x try=2", again.Reason, again.QueueMID, again.QueueTry, identifyMID)
+	}
+}
+
+// TestPairKeyChosenAtSend: the key of d/pair follows the window when the frame
+// is built, not when it is queued. A joiner that the window hears under the
+// network key after d/pair was queued takes it under the network key.
+func TestPairKeyChosenAtSend(t *testing.T) {
+	now := time.Date(2026, 9, 25, 10, 0, 0, 0, time.UTC)
+	e := pairEmu(t, &now)
+	e.OpenPairWindow(2 * time.Minute)
+	e.OnFrame(pairingRS(t))
+	target := hexEUI(joinerEUI)
+	if err := e.EnqueuePair(target, NetworkKey); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(time.Second)
+	actions := e.OnFrame(deviceAck(t, joinerEUI, 0x7777, "2.04"))
+	a, ok := findAction(actions, ActData, "downlink pair")
+	if !ok {
+		t.Fatalf("no d/pair on the uplink: %v", reasons(actions))
+	}
+	if _, err := ParseData(NetworkKey, a.Bytes); err != nil {
+		t.Errorf("d/pair built after a network-key frame is not under the network key: %v", err)
+	}
+}
+
+// TestPairAlwaysBootstraps: every d/pair attempt may take the bootstrap train.
+// The joiner of coap_sniff_1786619225 restarted its frame counter before both
+// windows (lines 1500 and 33325, counter 1). A reboot moves its CSL phase, so
+// an anchor from before the reboot misses.
+func TestPairAlwaysBootstraps(t *testing.T) {
+	now := time.Date(2026, 9, 25, 10, 0, 0, 0, time.UTC)
+	e := pairEmu(t, &now)
+	e.OpenPairWindow(2 * time.Minute)
+	e.OnFrame(pairingRS(t))
+	target := hexEUI(joinerEUI)
+	if err := e.EnqueuePair(target, NetworkKey); err != nil {
+		t.Fatal(err)
+	}
+	for try := 1; try <= 2; try++ {
+		a, ok := queuedAttempt(t, e, target)
+		if !ok || !strings.HasPrefix(a.Reason, "downlink pair") {
+			t.Fatalf("try %d: %q, want d/pair", try, a.Reason)
+		}
+		if !a.CSLBootstrapAlways {
+			t.Errorf("try %d: d/pair without CSLBootstrapAlways", try)
+		}
 	}
 }

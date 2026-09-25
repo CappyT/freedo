@@ -126,8 +126,9 @@ type Action struct {
 	// specific to d/identify. The firmware path of other CON requests is unknown.
 	IdentifyCSLBootstrapRetry bool
 	// CSLBootstrapAlways permits the bootstrap train on every attempt. A device
-	// asks auth/token on a (re)join, when the bridge may hold a stale anchor for
-	// it; the firmware prefers a warm anchor over the train until it misses once.
+	// asks auth/token on a (re)join and takes d/pair after a reboot, when the
+	// bridge may hold a stale anchor for it; the firmware prefers a warm anchor
+	// over the train until it misses once.
 	CSLBootstrapAlways bool
 	// ZoneRelay marks a re-emitted zone datagram. Its requester retransmits
 	// within seconds, so a missed Enhanced ACK retries on that scale.
@@ -345,7 +346,7 @@ type queuedDownlink struct {
 	kind          string // resource class: setpoint, childlock, identify, pair, ...
 	desc          string // human note used in the Action.Reason
 	coap          []byte // the fixed CoAP datagram
-	key           []byte // MAC key: the network key, or PairingKey for d/pair
+	key           []byte // MAC key: the network key; nil for d/pair, which takes pairKeyFor per attempt
 	mid           uint16 // for confirm-by-MID
 	responseToken []byte // required token of the terminal CoAP response
 	responseCode  string // required terminal response code; empty means 2.04
@@ -3579,10 +3580,12 @@ func (e *EmuState) TakeOpenWindowReports() []OpenWindowReport {
 }
 
 // EnqueuePair queues the d/pair commission write that hands networkKey (16 bytes,
-// plaintext) to a device. Its Data frame is encrypted under PairingKey, so the
-// device accepts it only while its commissioning window is open, unless the
-// open pair window heard the device under the network key (pairKeyFor). The
-// request carries an empty token, so the terminal 2.04 echoes an empty token too.
+// plaintext) to a device, ahead of every downlink not on the air yet
+// (pairFirst). Its Data frame is encrypted under PairingKey, so the device
+// accepts it only while its commissioning window is open, unless the open pair
+// window heard the device under the network key. pairKeyFor picks the key when
+// each attempt is built. The request carries an empty token, so the terminal
+// 2.04 echoes an empty token too.
 func (e *EmuState) EnqueuePair(target string, networkKey []byte) error {
 	wire, _, err := e.resolve(target)
 	if err != nil {
@@ -3593,13 +3596,20 @@ func (e *EmuState) EnqueuePair(target string, networkKey []byte) error {
 	if err != nil {
 		return err
 	}
-	if err := e.enqueue(target, "pair", "pair", pkt, e.pairKeyFor(wire), mid); err != nil {
+	if err := e.enqueue(target, "pair", "pair", pkt, nil, mid); err != nil {
 		return err
 	}
 	q := e.queue[hexEUI(wire)]
-	q[len(q)-1].requireCoAP = true
-	q[len(q)-1].responseToken = []byte{}
-	q[len(q)-1].responseCode = "2.04"
+	d := q[len(q)-1]
+	d.requireCoAP = true
+	d.responseToken = []byte{}
+	d.responseCode = "2.04"
+	at := 0
+	if q[0].inFlight && q[0] != d {
+		at = 1
+	}
+	copy(q[at+1:], q[at:len(q)-1])
+	q[at] = d
 	return nil
 }
 
@@ -4868,6 +4878,7 @@ func (e *EmuState) nextDownlink(dstEUI []byte, label string) ([]Action, bool) {
 		if e.fwLock[key] && !e.fwAtHead(key) {
 			return nil, false
 		}
+		e.pairFirst(key)
 		d := e.queue[key][0]
 		if d.inFlight && d.awaitingCSL {
 			return nil, false
@@ -4907,7 +4918,7 @@ func (e *EmuState) nextDownlink(dstEUI []byte, label string) ([]Action, bool) {
 			if len(frames) > 1 {
 				reason += fmt.Sprintf(" fragment=%d/%d", i+1, len(frames))
 			}
-			actions = append(actions, Action{Kind: ActData, Bytes: frame, Reason: reason, Node: label, CSLTx: true, HasCSLBatch: d.fragmented, CSLBatchTag: d.fragTag, QueueAttempt: true, WaitResponse: d.kind == "get" || d.requireCoAP || d.fragmented, QueueTry: d.tries, QueueMID: d.mid, CoAPTransaction: d.requireCoAP || d.fragmented, ResponseRetry: d.responseRetry, IdentifyCSLBootstrapRetry: d.kind == "identify", CSLBootstrapAlways: d.kind == "auth", ZoneRelay: d.kind == "zone"})
+			actions = append(actions, Action{Kind: ActData, Bytes: frame, Reason: reason, Node: label, CSLTx: true, HasCSLBatch: d.fragmented, CSLBatchTag: d.fragTag, QueueAttempt: true, WaitResponse: d.kind == "get" || d.requireCoAP || d.fragmented, QueueTry: d.tries, QueueMID: d.mid, CoAPTransaction: d.requireCoAP || d.fragmented, ResponseRetry: d.responseRetry, IdentifyCSLBootstrapRetry: d.kind == "identify", CSLBootstrapAlways: d.kind == "auth" || d.kind == "pair", ZoneRelay: d.kind == "zone"})
 		}
 		return actions, true
 	}
@@ -4921,6 +4932,10 @@ func (e *EmuState) nextDownlink(dstEUI []byte, label string) ([]Action, bool) {
 // does. A downlink that waits for a CoAP answer retries as a new frame.
 func (e *EmuState) buildFrames(dstEUI []byte, d *queuedDownlink) ([][]byte, byte, error) {
 	more := len(e.queue[hexEUI(dstEUI)]) > 1
+	key := d.key
+	if d.kind == "pair" {
+		key = e.pairKeyFor(dstEUI)
+	}
 	if !d.fragmented {
 		ctr, err := e.nextTx()
 		if err != nil {
@@ -4930,7 +4945,7 @@ func (e *EmuState) buildFrames(dstEUI []byte, d *queuedDownlink) ([][]byte, byte
 		if d.tries == 0 || d.requireCoAP || d.kind == "get" {
 			seq = e.nextSeq()
 		}
-		f, err := buildDownlinkData(more, d.key, seq, dstEUI, e.selfEUI[:5], WrapAppPayload(d.coap, ctr, nil))
+		f, err := buildDownlinkData(more, key, seq, dstEUI, e.selfEUI[:5], WrapAppPayload(d.coap, ctr, nil))
 		if err != nil {
 			return nil, 0, err
 		}
@@ -4952,7 +4967,7 @@ func (e *EmuState) buildFrames(dstEUI []byte, d *queuedDownlink) ([][]byte, byte
 			return nil, 0, err
 		}
 		lastSeq = e.nextSeq()
-		f, err := buildDownlinkData(i < len(fragments)-1 || more, d.key, lastSeq, dstEUI, e.selfEUI[:5], WrapAppPayload(fragment, ctr, nil))
+		f, err := buildDownlinkData(i < len(fragments)-1 || more, key, lastSeq, dstEUI, e.selfEUI[:5], WrapAppPayload(fragment, ctr, nil))
 		if err != nil {
 			return nil, 0, err
 		}
@@ -5314,9 +5329,14 @@ func routerAdvertDelay(longest time.Duration) time.Duration {
 	return shortest + time.Duration(rand.Int64N(int64(longest-shortest)+1))
 }
 
-// routerSolicitAnswerWindow bounds the answer to one burst. Devices that lose
-// the router solicit together: a capture holds 180 solicitations in 75 s.
-const routerSolicitAnswerWindow = 5 * time.Second
+// routerSolicitAnswerWindow is MIN_DELAY_BETWEEN_RAS of RFC 4861. A
+// solicitation less than 3 s after the last burst ended gets no burst, now or
+// later: the burst on air answers it. In coap_sniff_1786619225 the commercial
+// bridge answers none 0.4 to 2.8 s after an advertisement (lines 1886, 1959,
+// 11006, 12448, 36632), and it answers one 4.2 s after (line 12759). Devices
+// that lose the router solicit together: a capture holds 180 solicitations in
+// 75 s.
+const routerSolicitAnswerWindow = 3 * time.Second
 
 // MaybeBeacon returns the periodic burst when the configured interval is due.
 func (e *EmuState) MaybeBeacon() ([]Action, bool, error) {

@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -289,12 +290,36 @@ func (e *EmuState) noteNetworkKeyFrame(src []byte) {
 	}
 }
 
-// pairKeyFor returns the key that secures a d/pair to wire. The commercial
-// bridge sends it under the network key to a device that already talks the
-// network key (coap_sniff_1786619225, answered 2.03), and under the pairing
-// key to one that joins. freedo takes the network key only when the open window
-// heard the device under it after its last pairing-key frame: without that
-// evidence a device waiting to join cannot read anything else.
+// pairFirst moves a queued d/pair of key to the head, ahead of every downlink
+// the radio does not hold. The commercial bridge sends d/pair ahead of the
+// frames it holds for the joiner: in coap_sniff_1786619225 the d/config MID
+// efaf still waits for its CoAP answer after the Enhanced ACK of line 4102, and
+// d/pair goes on line 4634 without it. An attempt the radio holds
+// (awaitingCSL) cannot be recalled, so it keeps the head until it completes.
+// Any other attempt in flight waits behind d/pair with its tries, MID and MAC
+// seq. Its answer no longer closes it, and its next attempt asks again under
+// the same MID. A firmware upload owns the queue, so d/pair waits for it.
+func (e *EmuState) pairFirst(key string) {
+	q := e.queue[key]
+	if len(q) < 2 || q[0].kind == "pair" || q[0].awaitingCSL || e.fwLock[key] {
+		return
+	}
+	i := slices.IndexFunc(q, func(d *queuedDownlink) bool { return d.kind == "pair" })
+	if i < 0 {
+		return
+	}
+	head, pair := q[0], q[i]
+	head.inFlight, head.retryAt, head.deferred = false, time.Time{}, false
+	copy(q[1:i+1], q[:i])
+	q[0] = pair
+}
+
+// pairKeyFor returns the key that secures a d/pair attempt to wire. The
+// commercial bridge sends it under the network key to a device that already
+// talks the network key (coap_sniff_1786619225, answered 2.03), and under the
+// pairing key to one that joins. freedo takes the network key only when the
+// open window heard the device under it after its last pairing-key frame:
+// without that evidence a device waiting to join cannot read anything else.
 func (e *EmuState) pairKeyFor(wire []byte) []byte {
 	if !e.pairWindowOpen() {
 		return PairingKey

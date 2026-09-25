@@ -3395,6 +3395,35 @@ func TestRouterSolicitationAnswerRateLimit(t *testing.T) {
 	}
 }
 
+// TestRouterSolicitationMinDelay: a solicitation less than 3 s after the last
+// burst ended gets nothing, and none later either. One after that gets a burst
+// at once. In coap_sniff_1786619225 the solicitations 0.4 to 2.8 s after an
+// advertisement ended get none (lines 1886, 1959, 11006, 12448, 36632), and the
+// one 4.2 s after the advertisement of line 12397 gets a burst (line 12759,
+// train from line 12810).
+func TestRouterSolicitationMinDelay(t *testing.T) {
+	now := time.Unix(100, 0)
+	e := NewEmu(EmuConfig{
+		Now:                  func() time.Time { return now },
+		RouterAdvertInterval: 10 * time.Minute,
+	}, nil)
+	e.SetTXArmed(func() bool { return true })
+	burst := RouterAdvertWakeUpCount + 1
+	if got := len(e.OnFrame(mustB(capturedRS))); got != burst {
+		t.Fatalf("first solicitation: %d actions, want %d", got, burst)
+	}
+	e.CompleteBeacon(true)
+
+	now = now.Add(2800 * time.Millisecond)
+	if actions := e.OnFrame(mustB(capturedRS)); actions != nil {
+		t.Errorf("solicitation 2.8 s after the burst: %d actions, want none", len(actions))
+	}
+	now = now.Add(1400 * time.Millisecond)
+	if got := len(e.OnFrame(mustB(capturedRS))); got != burst {
+		t.Errorf("solicitation 4.2 s after the burst: %d actions, want %d", got, burst)
+	}
+}
+
 func TestRouterAdvertRetriesAfterFailedTransmit(t *testing.T) {
 	e := NewEmu(EmuConfig{}, nil)
 	e.SetTXArmed(func() bool { return true })

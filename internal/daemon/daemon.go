@@ -160,6 +160,9 @@ type daemon struct {
 	// command that stores one.
 	calibrated bool
 	calPort    string
+	// pairBridgeOpen says that the bridge firmware took the open pair window
+	// and nobody closed it yet. It belongs to the engine goroutine.
+	pairBridgeOpen bool
 	// installMu serialises the management mutations: one transaction and one
 	// engine reload at a time, so two HTTP writers cannot interleave them.
 	installMu sync.Mutex
@@ -386,6 +389,7 @@ func (d *daemon) run(ctx context.Context) {
 			d.tickCounters(d.emu)
 			d.tickHomeState(d.emu)
 			d.tickWindows(d.emu)
+			d.tickPairWindow(d.emu)
 			flowChanged := d.tickFlowLimits(d.emu)
 			utcChanged := d.tickUTCOffset(d.emu)
 			targets, err := d.emu.ExpireBoosts(d.retryNow())
@@ -496,14 +500,21 @@ func (d *daemon) handleCSLCompletion(completion radio.CSLCompletion) {
 
 // chainQueuedDispatch sends the next queued downlink of a target right after an
 // Enhanced ACK closed the previous one: the anchor is fresh, and waiting for the
-// next uplink or the retry timer left relayed answers queued for minutes.
+// next uplink or the retry timer left relayed answers queued for minutes. A
+// d/pair behind the attempt that ended goes at once with or without the ACK:
+// it does not wait for the answer or the retry of that attempt.
 func (d *daemon) chainQueuedDispatch(completion radio.CSLCompletion) {
 	action := completion.Action
-	if !action.QueueAttempt || completion.Result == nil || completion.Result.Ack == nil {
+	if !action.QueueAttempt || completion.Result == nil {
 		return
 	}
 	target := d.queueTarget(action)
-	if queue := d.emu.Queue(target); len(queue) != 0 && !queue[0].InFlight {
+	queue := d.emu.Queue(target)
+	if len(queue) == 0 {
+		return
+	}
+	pairWaits := queue[0].Kind != "pair" && slices.ContainsFunc(queue[1:], func(q tado.QueueEntry) bool { return q.Kind == "pair" })
+	if (completion.Result.Ack != nil && !queue[0].InFlight) || pairWaits {
 		d.requestQueuedDispatch(target)
 	}
 }
@@ -3843,6 +3854,7 @@ func (d *daemon) armPairResponder(e *tado.EmuState, window time.Duration) {
 		}
 	}
 	sent, err := pr.SetPairWindow(w)
+	d.pairBridgeOpen = window > 0 && err == nil
 	switch {
 	case err != nil && window > 0:
 		log.Printf("pair window: bridge responder: %v; the host answers Enhanced Beacon Requests", err)
@@ -3854,6 +3866,26 @@ func (d *daemon) armPairResponder(e *tado.EmuState, window time.Duration) {
 	default:
 		log.Printf("pair window: closed, the bridge sent %d Enhanced Beacons", sent)
 	}
+}
+
+// tickPairWindow reports a pair window that ran out with the bridge still
+// holding it. The bridge stops answering at the deadline on its own and keeps
+// the beacon count until the next pair window command, so a close reads it.
+func (d *daemon) tickPairWindow(e *tado.EmuState) {
+	if !d.pairBridgeOpen || e.PairWindow().Open {
+		return
+	}
+	d.pairBridgeOpen = false
+	pr, ok := d.radio.(pairWindowRadio)
+	if !ok {
+		return
+	}
+	sent, err := pr.SetPairWindow(cc1101.PairWindow{})
+	if err != nil {
+		log.Printf("pair window: expired, the bridge count is unknown: %v", err)
+		return
+	}
+	log.Printf("pair window: expired, the bridge sent %d Enhanced Beacons", sent)
 }
 
 // --- entry point ---
