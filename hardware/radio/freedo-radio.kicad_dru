@@ -2,9 +2,9 @@
 
 # Later rules take precedence: general limits first, the isolation rules last.
 
-# Hole to copper 0.25 mm. The HRO TYPE-C-31-M-12 maker land puts four pads 0.2 mm from the J201 pegs.
+# Hole to other-net copper 0.25 mm. The HRO TYPE-C-31-M-12 maker land puts four pads 0.2 mm from the J201 pegs.
 (rule "hole_clearance"
-	(condition "!(A.memberOfFootprint('J201') && B.memberOfFootprint('J201'))")
+	(condition "A.Net != B.Net && !(A.memberOfFootprint('J201') && B.memberOfFootprint('J201'))")
 	(constraint hole_clearance (min 0.25mm)))
 
 # JLC: 0.45 mm between the holes of two pads. Via holes use the board minimum of 0.2 mm.
@@ -22,9 +22,9 @@
 	(condition "A.Type == 'Pad' && A.Pad_Type == 'Through-hole'")
 	(constraint annular_width (min 0.15mm)))
 
-# Main rails at least 0.5 mm (net class 0.65 mm, HDG 1.4.2 25 mil). Necks into U201 and U301 pins inside their courtyards are exempt.
+# Main rails at least 0.5 mm (net class 0.65 mm, HDG 1.4.2 25 mil). Necks into U201, U301 and J201 pins inside their courtyards are exempt: the J201 VBUS pads leave between the NPTH pegs and the CC/SBU pads.
 (rule "power_rail_width"
-	(condition "A.Type == 'Track' && (A.NetName == '*/5V_SYS' || A.NetName == '+3V3' || A.NetName == '*/VBUS' || A.NetName == 'Net-(F201-Pad1)' || A.NetName == '*/+VDC') && !A.intersectsCourtyard('U201') && !A.intersectsCourtyard('U301')")
+	(condition "A.Type == 'Track' && (A.NetName == '*/5V_SYS' || A.NetName == '+3V3' || A.NetName == '*/VBUS' || A.NetName == 'Net-(F201-Pad1)' || A.NetName == '*/+VDC') && !A.intersectsCourtyard('U201') && !A.intersectsCourtyard('U301') && !A.intersectsCourtyard('J201')")
 	(constraint track_width (min 0.5mm)))
 
 # Copper pours keep 0.5 mm from the 90/100 ohm pairs, so the pairs stay close to the edge-coupled model of the JLC calculator.
@@ -35,13 +35,21 @@
 # USB D+/D- (README 6.3): 90 ohm differential on F.Cu over In1.Cu, 0.29 mm track, 0.20 mm gap.
 (rule "usb_90_pair"
 	(condition "A.NetClass == 'USB_90'")
-	(constraint track_width (min 0.27mm) (opt 0.29mm) (max 0.31mm))
+	(constraint track_width (min 0.27mm) (opt 0.29mm) (max 0.31mm)))
+
+# The gap applies to the coupled run. The pair splits only inside the courtyards of the parts it passes (R203, R204, U202, J201); U201 -> R203/R204 is a 4 mm fan-out.
+(rule "usb_90_gap"
+	(condition "A.NetClass == 'USB_90' && A.NetName != '/mcu/USB_MCU_*' && !A.intersectsCourtyard('R203') && !A.intersectsCourtyard('R204') && !A.intersectsCourtyard('U202') && !A.intersectsCourtyard('J201')")
 	(constraint diff_pair_gap (min 0.18mm) (opt 0.20mm) (max 0.22mm)))
 
 # Ethernet MDI, both sides of T301 (README 6.3): 100 ohm differential, 0.23 mm track, 0.20 mm gap. The line-side pairs are POE_LINE nets.
 (rule "eth_100_pair"
 	(condition "A.NetClass == 'ETH_100' || A.NetName == '/ethernet_poe/MDI_*'")
-	(constraint track_width (min 0.21mm) (opt 0.23mm) (max 0.25mm))
+	(constraint track_width (min 0.21mm) (opt 0.23mm) (max 0.25mm)))
+
+# The gap applies to the coupled runs. The rule areas ETH_FANOUT cover the J301 pin field, the T301 pins and the series/termination ladders, where the pair lines split around parts.
+(rule "eth_100_gap"
+	(condition "(A.NetClass == 'ETH_100' || A.NetName == '/ethernet_poe/MDI_*') && !A.intersectsArea('ETH_FANOUT')")
 	(constraint diff_pair_gap (min 0.18mm) (opt 0.20mm) (max 0.22mm)))
 
 # RF feed C125 -> R191 -> J1 (README 6.3): 50 ohm grounded coplanar on F.Cu over In1.Cu, 0.30 mm track, 0.20 mm gap (net class clearance).
