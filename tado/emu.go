@@ -198,7 +198,7 @@ type SetpointParams struct {
 	Setpoint float64
 	// Sched is the caller's scheduled setpoint. The emulator does not use it:
 	// the 6200 of the write, and the one its delivery records, come from
-	// homeBlock.
+	// homeBlock, or from awayTemp in the away state.
 	Sched   float64
 	Overlay byte // 0 auto, 2 manual, 3 until_next
 	// OpenWindow 1 opens the window (62e0) of a zone the daemon does not
@@ -618,6 +618,9 @@ type EmuState struct {
 	// schedOff holds the zones whose program block in force is disabled. The
 	// daemon owns it and pushes it with SetScheduleOff.
 	schedOff map[int]bool
+	// awayC holds the 6200 of the zones that keep a temperature in away. The
+	// daemon owns it and pushes it with SetAwayTemperatures.
+	awayC map[int]float64
 	// windowOpen holds the 62e0 the daemon wants in each zone its window engine
 	// drives. The daemon
 	// owns it and pushes it with SetOpenWindows.
@@ -1511,13 +1514,14 @@ func (e *EmuState) directZoneReadBody(zone int) []byte {
 	return encodeTLVs(append(read, TLV{Tag: "62e0", Val: window}))
 }
 
-// zoneReadHead is the zone rewrite head of a read, with the 6200 of homeBlock.
-// With no home state pushed the head leaves out 6160, 61e0 and 6200, and the
-// device keeps its own.
+// zoneReadHead is the zone rewrite head of a read, with the 6200 of homeBlock,
+// or the away temperature of the zone. With no home state pushed the head leaves
+// out 6160, 61e0 and 6200, and the device keeps its own.
 func (e *EmuState) zoneReadHead(zone int) []TLV {
 	home, schedC, known := e.homeBlock(zone)
 	head := zoneWriteHead(zoneWrite{
-		home: home, programOff: e.schedOff[zone], schedC: schedC, noSchedC: !known, kind: e.zoneKind(zone),
+		home: home, programOff: e.schedOff[zone], schedC: schedC, noSchedC: !known, awayC: e.awayTemp(zone),
+		kind: e.zoneKind(zone),
 	})
 	if !e.homeSet {
 		return withoutTag(withoutTag(withoutTag(head, "6160"), "61e0"), "6200")
@@ -2819,6 +2823,7 @@ func (e *EmuState) EnqueueSetpoint(target string, sp SetpointParams) error {
 		OpenWindow: openWindow,
 		Home:       home,
 		SchedC:     schedC,
+		AwayC:      e.awayTemp(sp.ID),
 		NoSchedC:   !known,
 		ProgramOff: e.schedOff[sp.ID],
 		ZoneFlags:  sp.ZoneFlags,
@@ -2907,17 +2912,27 @@ func (e *EmuState) zoneWriteQueued(wire string, zone int) bool {
 	return false
 }
 
-// EnqueueZoneRewrite queues the per-zone write of a home or away switch, or of
-// a schedule block change: the zone keeps the overlay and the setpoint it
-// already holds, so the block carries no 6440.
+// EnqueueZoneRewrite queues the per-zone write of a schedule block change: the
+// zone keeps the overlay and the setpoint it already holds, so the block carries
+// no 6440.
 func (e *EmuState) EnqueueZoneRewrite(target string, id int) error {
-	return e.enqueueZoneRewrite(target, id, false)
+	return e.enqueueZoneRewrite(target, id, false, false)
+}
+
+// EnqueueZoneSwitch queues the per-zone write of a home or away switch, or of a
+// change of the away temperature while away. It is EnqueueZoneRewrite, except
+// that a room zone that runs no overlay carries 6440=0001: the cloud marks the
+// write that way on every such zone but one (capture-away-20261011). A zone that
+// runs an overlay keeps it and carries no 6440, as in capture-app-20260907.
+func (e *EmuState) EnqueueZoneSwitch(target string, id int) error {
+	return e.enqueueZoneRewrite(target, id, false, true)
 }
 
 // enqueueZoneRewrite is EnqueueZoneRewrite. fromZone restates the overlay of
 // the zone cache in place of the node's block and of the writes queued ahead:
-// a device overlay set it after both.
-func (e *EmuState) enqueueZoneRewrite(target string, id int, fromZone bool) error {
+// a device overlay set it after both. switched marks the write of a home or away
+// switch.
+func (e *EmuState) enqueueZoneRewrite(target string, id int, fromZone, switched bool) error {
 	wire, _, err := e.resolve(target)
 	if err != nil {
 		return err
@@ -2944,6 +2959,7 @@ func (e *EmuState) enqueueZoneRewrite(target string, id int, fromZone bool) erro
 			restatePending(&c, pending)
 		}
 		c.OpenWindow = e.zoneOpenWindow(id, wire)
+		c.NewOverlay = switched && c.Overlay == overlayAuto
 		if body, err = setpointBody(c); err == nil {
 			pkt, err = BuildSetpointCoAP(c)
 		}
@@ -3294,7 +3310,7 @@ func (e *EmuState) enqueueBoostBlock(target string, id int, on, newOverlay bool,
 	}
 	home, schedC, known := e.homeBlock(id)
 	c := BoostCoAP{
-		ID: id, Enabled: on, Home: home, SchedC: schedC, NoSchedC: !known, ProgramOff: e.schedOff[id],
+		ID: id, Enabled: on, Home: home, SchedC: schedC, AwayC: e.awayTemp(id), NoSchedC: !known, ProgramOff: e.schedOff[id],
 		OpenWindow: e.zoneOpenWindow(id, wire), NewOverlay: newOverlay,
 		MID: mid, Token: token, SrcEUI: e.selfEUI, DstEUI: wire,
 	}
@@ -4422,6 +4438,26 @@ func (e *EmuState) SetScheduleOff(zones map[int]bool) {
 	}
 }
 
+// SetAwayTemperatures gives the emulator the temperature each zone keeps in
+// away, on the scale the valve takes. Every away z/s write to such a zone
+// carries 61e0=1 and that value in 6200; a zone outside the map is off in away,
+// 61e0=0 with no 6200. The daemon replaces the map as a whole.
+func (e *EmuState) SetAwayTemperatures(zones map[int]float64) {
+	e.awayC = make(map[int]float64, len(zones))
+	for zone, c := range zones {
+		e.awayC[zone] = c
+	}
+}
+
+// awayTemp returns the away temperature of zone, 0 at home and for a zone that
+// is off in away.
+func (e *EmuState) awayTemp(zone int) float64 {
+	if e.home {
+		return 0
+	}
+	return e.awayC[zone]
+}
+
 // SetOpenWindows gives the emulator the 62e0 the daemon wants in the zones its
 // window engine drives. Every z/s write to such a zone carries that value, so a
 // setpoint or a zone rewrite cannot undo the window behind the daemon's back
@@ -4467,8 +4503,8 @@ func (e *EmuState) ZoneSchedC(zone int) (float64, bool) {
 // 6200 comes from the program the owner pushed, else from the zone cache, never
 // from a node: the wall thermostat sits in two zones, so its own last 6200 may
 // belong to the other one. known is false at home when neither holds one; the
-// block then leaves 6200 out and the device keeps its own. Away no block
-// carries 6200.
+// block then leaves 6200 out and the device keeps its own. Away it returns no
+// 6200: the 6200 of an away write is the away temperature, see awayTemp.
 func (e *EmuState) homeBlock(zone int) (home bool, schedC float64, known bool) {
 	if !e.home {
 		return false, 0, true
@@ -4506,7 +4542,7 @@ func (e *EmuState) lastSetpointBlock(wire []byte, id int, mid uint16, token []by
 	}
 	var known bool
 	c.Home, c.SchedC, known = e.homeBlock(id)
-	c.NoSchedC = !known
+	c.NoSchedC, c.AwayC = !known, e.awayTemp(id)
 	overlay, setpoint, off, ok := e.cachedZoneOverlay(id)
 	switch {
 	case !e.hasLastSetpointBlock(wire, id):
@@ -4637,10 +4673,15 @@ func (e *EmuState) promoteHeatingBlock(wire []byte, block *heatingBlock) {
 	e.storeZoneState(block.zone, "z/s", encodeTLVs(schedCAfterPresence(mergeConfigTLVs(parseTLVList(e.zoneState[key]), updates))))
 }
 
-// writtenHead is the 6160 6180 6020 61e0 [6200] head a zone write carried.
+// writtenHead is the 6160 6180 6020 61e0 [6200] head a zone write carried. An
+// away write that carried a 6200 carried an away temperature, with 61e0=1.
 func writtenHead(home, programOff bool, kind byte, sched []byte) []TLV {
-	head := zoneWriteHead(zoneWrite{home: home, programOff: programOff, kind: kind, noSchedC: true})
-	if sched != nil {
+	z := zoneWrite{home: home, programOff: programOff, kind: kind, noSchedC: true}
+	if !home && sched != nil {
+		z.awayC = float64(be(sched)) / 100
+	}
+	head := zoneWriteHead(z)
+	if home && sched != nil {
 		head = append(head, TLV{Tag: "6200", Val: append([]byte(nil), sched...)})
 	}
 	return head

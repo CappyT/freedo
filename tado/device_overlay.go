@@ -141,7 +141,7 @@ func (e *EmuState) restateDeviceOverlay(zone int) {
 			continue
 		}
 		e.queue[key] = kept
-		if err := e.enqueueZoneRewrite(key, zone, true); err != nil {
+		if err := e.enqueueZoneRewrite(key, zone, true, false); err != nil {
 			e.log.Log("Data", "self", key, rsnBuildFail+" device overlay rewrite "+err.Error(), "")
 		}
 	}

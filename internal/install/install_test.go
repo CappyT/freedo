@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"freedo/tado"
@@ -171,6 +172,32 @@ func TestInstallRoundTrip(t *testing.T) {
 			}
 			compareInstalls(t, got, want)
 		})
+	}
+}
+
+// TestInstallRoundTripKeepsAwayTemperatures: the away temperature of a zone
+// survives the database, as a number with its fraction, and a zone that states
+// none loads none.
+func TestInstallRoundTripKeepsAwayTemperatures(t *testing.T) {
+	in, err := tado.Parse([]byte(fixtureInstallYAML + "  away_temperature_c: {1: 12.5, 3: 18}\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, _ := storeWithInstall(t, in)
+	got, _, err := store.LoadInstall(context.Background())
+	if err != nil {
+		t.Fatalf("LoadInstall: %v", err)
+	}
+	if want := (map[int]float64{1: 12.5, 3: 18}); !reflect.DeepEqual(got.Options.AwayTemperatures, want) {
+		t.Errorf("loaded away temperatures = %v, want %v", got.Options.AwayTemperatures, want)
+	}
+	bare, _ := storeWithInstall(t, defaultInstall)
+	got, _, err = bare.LoadInstall(context.Background())
+	if err != nil {
+		t.Fatalf("LoadInstall: %v", err)
+	}
+	if len(got.Options.AwayTemperatures) != 0 {
+		t.Errorf("an installation without away temperatures loaded %v", got.Options.AwayTemperatures)
 	}
 }
 

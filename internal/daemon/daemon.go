@@ -283,6 +283,7 @@ func (d *daemon) setInstall(in *tado.Install) (added, removed []string, err erro
 	d.reconcile(added, removed)
 	if before != nil {
 		d.restateShiftedZones(d.emu, before, in)
+		d.restateAwayZones(d.emu, before, in)
 		d.forgetRemovedZones(before, in)
 	}
 	return added, removed, nil
@@ -2315,8 +2316,9 @@ func runningOverlay(e *tado.EmuState, short string, zone int) bool {
 	return false
 }
 
-// applyHomeState pushes the home flag and the per-zone scheduled blocks into
-// the emulator, so every z/s write it builds stamps the current state. It
+// applyHomeState pushes the home flag, the per-zone scheduled blocks and the
+// away temperatures into the emulator, so every z/s write it builds stamps the
+// current state. It
 // returns the zones whose program holds another block than the one they last
 // took. Only tickHomeState writes them: a command between a block boundary and
 // the next tick leaves the change owed to every other zone. The first
@@ -2328,11 +2330,15 @@ func (d *daemon) applyHomeState(e *tado.EmuState) []int {
 	blocks := make(map[int]scheduledBlock)
 	sched := make(map[int]float64)
 	off := make(map[int]bool)
+	away := make(map[int]float64)
 	var programs []int
 	if inst := d.inst.Load(); inst != nil {
 		now := d.retryNow()
 		for i := range inst.Zones {
 			zone := inst.Zones[i].Number
+			if c, ok := inst.Options.AwayTemperature(zone); ok {
+				away[zone] = rawSetpointC(inst, zone, c)
+			}
 			block, program, ok := d.zoneScheduledBlock(e, inst, zone, now)
 			if !ok {
 				continue
@@ -2346,6 +2352,7 @@ func (d *daemon) applyHomeState(e *tado.EmuState) []int {
 	}
 	e.SetHomeState(!d.away, sched)
 	e.SetScheduleOff(off)
+	e.SetAwayTemperatures(away)
 	d.zoneSched = blocks
 	if !d.schedSeeded {
 		d.schedSeeded = true
@@ -2492,7 +2499,7 @@ func (d *daemon) tickHomeState(e *tado.EmuState) {
 		zones = slices.DeleteFunc(zones, d.isHotWaterZone)
 	}
 	if len(zones) > 0 {
-		d.rewriteZones(e, zones, d.requestQueuedDispatch)
+		d.rewriteZones(e, zones, d.requestQueuedDispatch, false)
 	}
 	d.settleProgramWrites(e)
 	d.requeueProgramWrites(e)
@@ -2556,14 +2563,19 @@ func (d *daemon) tickUTCOffset(e *tado.EmuState) bool {
 }
 
 // rewriteZones queues one z/s write per zone, to its zoneWriteTargets. The
-// write keeps the overlay and the setpoint the zone already holds, so it
-// carries no 6440: it is the shape of the home or away burst and of a schedule
-// block change. Each zone then holds the block it follows now.
-func (d *daemon) rewriteZones(e *tado.EmuState, zones []int, dispatch func(string)) int {
+// write keeps the overlay and the setpoint the zone already holds. switched
+// marks the home or away burst and the restate of an away temperature, whose
+// write carries 6440 on a room zone with no overlay; a schedule block change
+// carries none. Each zone then holds the block it follows now.
+func (d *daemon) rewriteZones(e *tado.EmuState, zones []int, dispatch func(string), switched bool) int {
+	enqueue := e.EnqueueZoneRewrite
+	if switched {
+		enqueue = e.EnqueueZoneSwitch
+	}
 	written := 0
 	for _, zone := range zones {
 		for _, target := range d.zoneWriteTargets(e, zone) {
-			if err := e.EnqueueZoneRewrite(target, zone); err != nil {
+			if err := enqueue(target, zone); err != nil {
 				log.Printf("zone %d rewrite: %v", zone, err)
 				continue
 			}
@@ -2629,7 +2641,7 @@ func (d *daemon) patchHome(w http.ResponseWriter, r *http.Request) {
 		d.applyHomeState(e)
 		queued := 0
 		if changed {
-			queued = d.rewriteZones(e, d.allZones(), func(target string) { d.dispatchQueued(e, target) })
+			queued = d.rewriteZones(e, d.allZones(), func(target string) { d.dispatchQueued(e, target) }, true)
 			// The owed writes reach the database before the flag: a restart
 			// between the two rewrites the zones once more, never none.
 			d.saveProgramBlocks()

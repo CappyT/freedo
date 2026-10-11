@@ -188,6 +188,9 @@ func ReadInstall(ctx context.Context, q Querier) (*tado.Install, uint64, error) 
 	if err := loadZonePIDs(kv, &in.Options); err != nil {
 		return nil, 0, err
 	}
+	if err := loadAwayTemperatures(kv, &in.Options); err != nil {
+		return nil, 0, err
+	}
 	if err := loadDevices(ctx, q, in); err != nil {
 		return nil, 0, err
 	}
@@ -398,6 +401,34 @@ func loadZonePIDs(kv map[string]string, o *tado.Options) error {
 			o.ZonePIDs = map[int]tado.ZonePID{}
 		}
 		o.ZonePIDs[zone] = pid
+	}
+	return nil
+}
+
+// awayTemperaturePrefix starts the install key of a zone's away temperature, in
+// degrees C. The key exists only while the zone states one.
+const awayTemperaturePrefix = "away_temperature_c."
+
+func AwayTemperatureKey(zone int) string { return awayTemperaturePrefix + strconv.Itoa(zone) }
+
+func loadAwayTemperatures(kv map[string]string, o *tado.Options) error {
+	for key, raw := range kv {
+		rest, ok := strings.CutPrefix(key, awayTemperaturePrefix)
+		if !ok {
+			continue
+		}
+		zone, err := strconv.Atoi(rest)
+		if err != nil {
+			return fmt.Errorf("install %s: %w", key, err)
+		}
+		c, err := strconv.ParseFloat(raw, 64)
+		if err != nil {
+			return fmt.Errorf("install %s %q: %w", key, raw, err)
+		}
+		if o.AwayTemperatures == nil {
+			o.AwayTemperatures = map[int]float64{}
+		}
+		o.AwayTemperatures[zone] = c
 	}
 	return nil
 }
@@ -644,6 +675,9 @@ func (s *Store) ReplaceInstall(ctx context.Context, in *tado.Install) (uint64, e
 			return 0, err
 		}
 		values = append(values, [2]string{ZonePIDKey(zone), string(raw)})
+	}
+	for zone, c := range in.Options.AwayTemperatures {
+		values = append(values, [2]string{AwayTemperatureKey(zone), strconv.FormatFloat(c, 'g', -1, 64)})
 	}
 	for _, kv := range values {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO install (key, value) VALUES (?, ?)`, kv[0], kv[1]); err != nil {

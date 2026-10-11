@@ -21,8 +21,8 @@ import (
 const (
 	// zoneMinC and zoneMaxC bound a room setpoint: the range of the tado app,
 	// whose captured writes span 5.00 C (away) to 25.00 C (boost).
-	zoneMinC        = 5.0
-	zoneMaxC        = 25.0
+	zoneMinC        = tado.RoomMinC
+	zoneMaxC        = tado.RoomMaxC
 	zoneMaxDuration = tado.OverlayMaxDuration
 )
 
@@ -388,9 +388,9 @@ func overlayKind(overlay byte) string {
 
 // zoneTargetView is what zone z targets now, from the z/s block the daemon
 // holds, its program, its window and the home state. targetC is null when the
-// device falls back to a value of its own: an open window, the away state, an
-// off overlay or a program block that is off. Hot water follows the away state
-// like the cloud: with no overlay it is off. On air a timer is an until_next
+// device falls back to a value of its own: an open window, the away state of a
+// zone with no away temperature, an off overlay or a program block that is off.
+// Hot water follows the away state like the cloud: with no overlay it is off. On air a timer is an until_next
 // overlay; endsAt is the deadline the coordinator keeps.
 func (d *daemon) zoneTargetView(e *tado.EmuState, z *tado.Zone) map[string]any {
 	hotWater := z.Kind == tado.ZoneHotWater
@@ -438,6 +438,8 @@ func (d *daemon) zoneTargetView(e *tado.EmuState, z *tado.Zone) map[string]any {
 		// Away, 61e0=0 is the hot-water enable of a zone with no overlay.
 		if hotWater {
 			view["on"] = false
+		} else if c, ok := d.inst.Load().Options.AwayTemperature(z.Number); ok {
+			view["targetC"] = c
 		}
 	case known:
 		view["source"] = "program"

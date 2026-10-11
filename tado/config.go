@@ -227,6 +227,9 @@ type Options struct {
 	// ZonePIDs holds the zone controller gains, per heating zone. A zone
 	// outside the map takes DefaultZonePID.
 	ZonePIDs map[int]ZonePID `yaml:"zone_pid"`
+	// AwayTemperatures holds the temperature a heating zone keeps in away, per
+	// zone. A zone outside the map, or at RoomMinC, is off in away.
+	AwayTemperatures map[int]float64 `yaml:"away_temperature_c"`
 	// BoilerMaxPowerKW is the heat output of the boiler at 100 % modulation, in
 	// kW. Without it the daemon does not estimate the boiler energy.
 	BoilerMaxPowerKW *float64 `yaml:"boiler_max_power_kw"`
@@ -755,6 +758,7 @@ func (in *Install) checkOptions(c *issues) {
 	in.checkDeviceOverlayEnds(c)
 	in.checkZoneOffsets(c)
 	in.checkZonePIDs(c)
+	in.checkAwayTemperatures(c)
 }
 
 // NetworkKey returns the resolved 16-byte PAN key. It is nil until Validate ran.

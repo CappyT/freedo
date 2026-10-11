@@ -108,6 +108,9 @@ type zonePatch struct {
 	// PID sets the controller gains kp, ki and kd; null returns the zone to
 	// the default ones.
 	PID optPID `json:"pid"`
+	// AwayTemperatureC is the temperature a heating zone keeps in away, in
+	// degrees C; null clears it. Unset and 5 C both read as off in away.
+	AwayTemperatureC optFloat `json:"away_temperature_c"`
 	// SetpointOffsetCenti is set by POST /api/zones/{number}/offset alone.
 	SetpointOffsetCenti *int `json:"-"`
 }
@@ -176,6 +179,7 @@ func zoneView(in *tado.Install, z *tado.Zone) map[string]any {
 		"offset_mode":              nil,
 		"setpoint_offset_c":        nil,
 		"pid":                      nil,
+		"away_temperature_c":       nil,
 	}
 	if z.Kind == tado.ZoneHeating {
 		end := in.Options.DeviceOverlayEnd(z.Number)
@@ -189,6 +193,9 @@ func zoneView(in *tado.Install, z *tado.Zone) map[string]any {
 			out["setpoint_offset_c"] = in.Options.SetpointShiftC(z.Number)
 		}
 		out["pid"] = in.Options.ZonePID(z.Number)
+		if c, ok := in.Options.AwayTemperatures[z.Number]; ok {
+			out["away_temperature_c"] = c
+		}
 	}
 	if z.Circuit != nil {
 		out["circuit"] = *z.Circuit

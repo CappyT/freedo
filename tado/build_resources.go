@@ -504,6 +504,7 @@ type BoostCoAP struct {
 	// whole home, the program block and the overlay marker, as in SetpointCoAP.
 	Home       bool
 	SchedC     float64
+	AwayC      float64
 	NoSchedC   bool
 	ProgramOff bool
 	NewOverlay bool
@@ -529,7 +530,7 @@ func BuildBoostCoAP(c BoostCoAP) ([]byte, error) {
 
 func boostHeatingBody(c BoostCoAP) []byte {
 	z := zoneWrite{
-		home: c.Home, programOff: c.ProgramOff, schedC: c.SchedC, noSchedC: c.NoSchedC, kind: roomZoneKind,
+		home: c.Home, programOff: c.ProgramOff, schedC: c.SchedC, noSchedC: c.NoSchedC, awayC: c.AwayC, kind: roomZoneKind,
 		overlay: overlayAuto, openWindow: c.OpenWindow, newOverlay: c.NewOverlay,
 	}
 	if c.Enabled {

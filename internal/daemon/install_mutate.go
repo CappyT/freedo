@@ -788,6 +788,9 @@ func (s *stateStore) PatchZone(ctx context.Context, number int, p zonePatch) (in
 		if err := patchZonePID(ctx, tx, cur, number, p.PID); err != nil {
 			return err
 		}
+		if err := patchZoneAway(ctx, tx, number, p.AwayTemperatureC); err != nil {
+			return err
+		}
 		switch {
 		case p.EarlyStart == nil:
 		case *p.EarlyStart:
@@ -891,6 +894,25 @@ func patchZonePID(ctx context.Context, tx querier, cur *tado.Install, number int
 	return setInstallValue(ctx, tx, install.ZonePIDKey(number), string(raw))
 }
 
+// patchZoneAway stores the away temperature of a zone; null clears it. The
+// range is the one of a room setpoint. A value at the room minimum is stored and
+// reads back, and the engine treats it as off in away.
+func patchZoneAway(ctx context.Context, tx querier, number int, p optFloat) error {
+	switch {
+	case !p.set:
+		return nil
+	case p.value == nil:
+		return clearInstallValue(ctx, tx, install.AwayTemperatureKey(number))
+	}
+	if _, err := centiDegrees(*p.value); err != nil {
+		return badf("away_temperature_c: %v", err)
+	}
+	if err := roomSetpointErr("away_temperature_c", *p.value); err != nil {
+		return badf("%v", err)
+	}
+	return setInstallValue(ctx, tx, install.AwayTemperatureKey(number), strconv.FormatFloat(*p.value, 'g', -1, 64))
+}
+
 func (s *stateStore) DeleteZone(ctx context.Context, number int, expect *uint64) (installResult, *tado.Zone, error) {
 	var gone *tado.Zone
 	res, err := s.mutate(ctx, expect, func(ctx context.Context, tx querier, cur *tado.Install) error {
@@ -926,6 +948,9 @@ func (s *stateStore) DeleteZone(ctx context.Context, number int, expect *uint64)
 			return err
 		}
 		if err := clearInstallValue(ctx, tx, install.ZonePIDKey(number)); err != nil {
+			return err
+		}
+		if err := clearInstallValue(ctx, tx, install.AwayTemperatureKey(number)); err != nil {
 			return err
 		}
 		_, err = tx.ExecContext(ctx, `DELETE FROM zone WHERE number = ?`, number)

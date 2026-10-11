@@ -242,11 +242,13 @@ func BuildContextAckBody(code string, mid uint16, token, payload, srcEUI, dstEUI
 	})
 }
 
-// Fixed control tags of every captured "z/s" block. Tags 6160 and 61e0 carry
-// the home or away state of the whole home, the same pair on every zone.
+// Fixed control tags of every captured "z/s" block. Tag 6160 carries the home or
+// away state of the whole home, the same on every zone. Tag 61e0 and the 6200
+// after it carry the setpoint the zone follows: the program block at home, the
+// away temperature in away.
 const (
 	zoneCtlHome  = 0x01 // 6160 at home, with 61e0 = 1
-	zoneCtlAway  = 0x02 // 6160 away, with 61e0 = 0
+	zoneCtlAway  = 0x02 // 6160 away; 61e0 = 0 unless the zone has an away temperature
 	roomZoneKind = 0x01 // 6020, room zone; hot water uses dhwZoneKind
 	overlayAuto  = 0x00 // 6240, follow the program
 )
@@ -261,6 +263,7 @@ type zoneWrite struct {
 	programOff bool    // 61e0=0 in the home state: the program block is off
 	schedC     float64 // 6200, home state only, and never on a room block that is off
 	noSchedC   bool    // leaves 6200 out: the zone's program block is unknown
+	awayC      float64 // 6200 and 61e0=1 in the away state; 0 writes 61e0=0 and no 6200
 	kind       byte    // 6020
 	overlay    byte    // 6240
 	enabled    *byte   // 6260
@@ -281,6 +284,8 @@ func zoneWriteHead(z zoneWrite) []TLV {
 		if !z.programOff {
 			presence = 1
 		}
+	} else if z.awayC > 0 {
+		presence = 1
 	}
 	head := []TLV{
 		{Tag: "6160", Val: []byte{mode}},
@@ -297,7 +302,13 @@ func zoneWriteHead(z zoneWrite) []TLV {
 // sentSchedC returns the 6200 the write carries, nil when it leaves 6200 out.
 // Only the room capture shows a block that is off, so hot water keeps 6200.
 func (z zoneWrite) sentSchedC() []byte {
-	if !z.home || z.noSchedC || z.programOff && z.kind == roomZoneKind {
+	switch {
+	case !z.home:
+		if z.awayC > 0 {
+			return tempC(z.awayC)
+		}
+		return nil
+	case z.noSchedC, z.programOff && z.kind == roomZoneKind:
 		return nil
 	}
 	return tempC(z.schedC)
@@ -306,7 +317,7 @@ func (z zoneWrite) sentSchedC() []byte {
 // sentSchedC returns the 6200 the room write carries, nil when it leaves 6200
 // out.
 func (c SetpointCoAP) sentSchedC() []byte {
-	return zoneWrite{home: c.Home, programOff: c.ProgramOff, schedC: c.SchedC, noSchedC: c.NoSchedC, kind: roomZoneKind}.sentSchedC()
+	return zoneWrite{home: c.Home, programOff: c.ProgramOff, schedC: c.SchedC, noSchedC: c.NoSchedC, awayC: c.AwayC, kind: roomZoneKind}.sentSchedC()
 }
 
 // sentSchedC returns the 6200 the hot-water write carries, nil when it leaves
@@ -369,9 +380,12 @@ type SetpointCoAP struct {
 	Overlay    byte    // 6240: 0 auto, 2 manual, 3 until_next
 	OpenWindow byte    // 62e0
 	// Home is the state of the whole home: 6160=1 and 61e0=1 with SchedC in
-	// 6200, against 6160=2 and 61e0=0 with no 6200 when away.
+	// 6200, against 6160=2 when away, with AwayC in 6200 and 61e0=1.
 	Home   bool
 	SchedC float64 // 6200, the setpoint the weekly program holds now
+	// AwayC is the away temperature of the zone. 0 writes the cloud's default,
+	// off in away: 61e0=0 and no 6200.
+	AwayC float64
 	// NoSchedC leaves 6200 out of a home write: the program block of the zone
 	// is unknown, so the device keeps its own.
 	NoSchedC bool
@@ -445,7 +459,7 @@ func setpointBody(c SetpointCoAP) ([]byte, error) {
 		return nil, errors.New("tado: a room off write needs an overlay")
 	}
 	z := zoneWrite{
-		home: c.Home, programOff: c.ProgramOff, schedC: c.SchedC, noSchedC: c.NoSchedC, kind: roomZoneKind,
+		home: c.Home, programOff: c.ProgramOff, schedC: c.SchedC, noSchedC: c.NoSchedC, awayC: c.AwayC, kind: roomZoneKind,
 		overlay: c.Overlay, openWindow: c.OpenWindow,
 		circuit: c.Circuit, zoneFlags: c.ZoneFlags, ctrlEnable: c.CtrlEnable,
 		newOverlay: c.NewOverlay,

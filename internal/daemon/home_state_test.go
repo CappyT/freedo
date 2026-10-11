@@ -154,8 +154,9 @@ func TestSetpointDurationQueuesReturnToSchedule(t *testing.T) {
 }
 
 // TestAwayToggleRewritesEveryZone: the switch to away queues one write per zone,
-// to its writer alone, keeping the overlay the zone already runs, so none
-// carries 6440. The other members take the block from the writer's echo.
+// to its writer alone, keeping the overlay the zone already runs. A room zone
+// with no overlay carries 6440, as in capture-away-20261011; hot water does not.
+// The other members take the block from the writer's echo.
 func TestAwayToggleRewritesEveryZone(t *testing.T) {
 	clock := newTestClock(time.Date(2026, 1, 5, 5, 0, 0, 0, time.UTC))
 	d, url := newHomeDaemon(t, clock)
@@ -169,6 +170,7 @@ func TestAwayToggleRewritesEveryZone(t *testing.T) {
 	}
 	// A writer of two zones takes one write per zone.
 	writes := map[string]int{}
+	first := map[string]tado.ZoneKind{}
 	for i := range defaultInstall.Zones {
 		list, err := defaultInstall.ZoneMembers(defaultInstall.Zones[i].Number)
 		if err != nil {
@@ -182,6 +184,9 @@ func TestAwayToggleRewritesEveryZone(t *testing.T) {
 			t.Fatal(err)
 		}
 		writes[hex.EncodeToString(writer.WireEUI())]++
+		if _, ok := first[hex.EncodeToString(writer.WireEUI())]; !ok {
+			first[hex.EncodeToString(writer.WireEUI())] = defaultInstall.Zones[i].Kind
+		}
 	}
 	if !res.Away || res.Queued != len(defaultInstall.Zones) {
 		t.Fatalf("away response=%+v, want one write per zone (%d)", res, len(defaultInstall.Zones))
@@ -197,9 +202,14 @@ func TestAwayToggleRewritesEveryZone(t *testing.T) {
 		if want == 0 {
 			continue
 		}
-		wantTags(t, "the away burst on "+target, nextZoneWrite(t, d, target), map[string]string{
-			"6160": "02", "61e0": "00",
-		}, "6200", "6440")
+		tags := nextZoneWrite(t, d, target)
+		if first[target] == tado.ZoneHotWater {
+			wantTags(t, "the away burst on "+target, tags, map[string]string{"6160": "02", "61e0": "00"}, "6200", "6440")
+			continue
+		}
+		wantTags(t, "the away burst on "+target, tags, map[string]string{
+			"6160": "02", "6180": "00", "61e0": "00", "6240": "00", "6440": "0001",
+		}, "6200")
 	}
 
 	var state struct {
@@ -212,7 +222,8 @@ func TestAwayToggleRewritesEveryZone(t *testing.T) {
 
 // TestReturnHomeWithoutProgramLeavesSchedOut: on a fresh daemon no zone has a
 // program or a cached 6200, so the return home writes the home head with no
-// 6200 and the device keeps its own, instead of a 6200 of 0 C.
+// 6200 and the device keeps its own, instead of a 6200 of 0 C. The room has no
+// overlay, so the write carries 6440.
 func TestReturnHomeWithoutProgramLeavesSchedOut(t *testing.T) {
 	clock := newTestClock(time.Date(2026, 1, 5, 5, 0, 0, 0, time.UTC))
 	d, url := newHomeDaemon(t, clock)
@@ -226,8 +237,8 @@ func TestReturnHomeWithoutProgramLeavesSchedOut(t *testing.T) {
 		t.Fatalf("home: code=%d %v", code, res)
 	}
 	wantTags(t, "the return home with no program", nextZoneWrite(t, d, target), map[string]string{
-		"6160": "01", "61e0": "01", "6240": "00", "62e0": "00",
-	}, "6200", "6440")
+		"6160": "01", "61e0": "01", "6240": "00", "62e0": "00", "6440": "0001",
+	}, "6200")
 }
 
 // TestScheduleBlockChangePushesSetpoint: when the weekly program moves to its
