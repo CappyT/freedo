@@ -16,7 +16,7 @@ import (
 //	nonce = frame[0:13]   aad = frame[0:16]   ct = frame[16:len-4]   MIC = frame[len-4:]
 //
 // The 4-byte internal frame counter is inside the plaintext (LE, offset 4:8),
-// not in the nonce. See docs "MAC Layer" and "Chiavi e Cifratura".
+// not in the nonce.
 const (
 	headerLen = 16 // FCF(2)+seq(1)+dst(8)+srcPrefix(5)
 	nonceLen  = 13

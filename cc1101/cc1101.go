@@ -40,7 +40,7 @@ const (
 
 // tadoRegs is the Tado 868 MHz PHY register set (26 MHz crystal). Channel 26 =
 // 868.324 MHz, 2-GFSK, 25.39 kHz dev, 49.99 kBaud, sync 0xD391, variable length,
-// hardware CRC16, no whitening. See docs "RF Protocol e PHY".
+// hardware CRC16, no whitening.
 var tadoRegs = []struct{ addr, val byte }{
 	{IOCFG2, 0x00}, // GDO2: RX FIFO threshold
 	{IOCFG0, iocfg0Tado},

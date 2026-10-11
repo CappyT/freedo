@@ -1,7 +1,7 @@
 // Package cc1101 drives a CC1101 radio over the thin ESP32 serial<->SPI bridge.
 // All CC1101 semantics (registers, strobes, FIFO) live here on the host; the
 // ESP32 only frames raw SPI transactions. See firmware/cc1101_bridge for the
-// firmware and docs "CC1101 Bridge - Driver e Setup".
+// firmware.
 package cc1101
 
 import (

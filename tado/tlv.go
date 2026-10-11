@@ -14,8 +14,8 @@ import (
 //	[c51b00][04][ctr:4 LE][meta ... 0xff][TLV list][trailer:2]
 //	TLV = [tag:2 BE][len:1][value:len]
 //
-// Tag semantics were confirmed by controlled HA experiments (docs "SAP e
-// Protocollo TLV"). The tag space is shared end-to-end (device<->bridge<->cloud).
+// Tag semantics were confirmed by controlled HA experiments. The tag space is
+// shared end-to-end (device<->bridge<->cloud).
 
 // TLV is one tag/length/value triple.
 type TLV struct {
@@ -167,7 +167,7 @@ func parseTLVSuffix(pt []byte) (off, leftover int, best []TLV) {
 	return off, leftover, best
 }
 
-// --- tag catalog (docs "SAP e Protocollo TLV") ---
+// --- tag catalog ---
 
 type tagInfo struct {
 	name   string
@@ -247,7 +247,7 @@ var tags = withHVACTags(map[string]tagInfo{
 	// for itself in d/RU1000000001/sen over the same window.
 	"4000": {"lead_zone_target_C", div(100, "C")},
 	"4040": {"lead_zone_temp_C", div(100, "C")},
-	// circuit config (c/N/config): the CH flow setpoint ("mandata") the cloud
+	// circuit config (c/N/config): the CH flow setpoint the cloud
 	// serves and the thermostat applies as the boiler OpenTherm CH setpoint
 	"2040": {"ch_flow_setpoint_C", div(100, "C")},
 	// circuit call-for-heat (c/N/act); 0 with the boiler off (summer)
