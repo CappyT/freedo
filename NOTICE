@@ -1,0 +1,12 @@
+freedo
+Copyright 2026 The freedo contributors
+
+This product is licensed under the Apache License, Version 2.0. See LICENSE.
+
+freedo is not affiliated with, endorsed by or sponsored by tado.
+tado is a trademark of its owner. This project uses the name only to describe
+which devices it works with.
+
+The PCB footprints and symbols under hardware/radio/lib derive from EasyEDA and
+LCSC libraries and from Espressif libraries. Their terms are the terms of those
+sources and are not set by this notice.
