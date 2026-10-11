@@ -3,8 +3,10 @@
 # checks in docs/SYSTEM_VALIDATION.md, with the commercial bridge switched off.
 services:
   freedo:
-    build: .
-    image: freedo:local
+    # Published multi-arch image (linux/amd64 and linux/arm64). To build from
+    # this checkout instead, replace the line with "build: ." and use
+    # docker compose up -d --build.
+    image: ghcr.io/cappyt/freedo:latest
     restart: unless-stopped
     command:
       - --addr=:8080
