@@ -38,6 +38,7 @@ from .model import (
     ZONE_MIN_C,
     Zone,
     flow_circuit,
+    flow_managed,
     fuel_unit,
     zone_offset_mode,
     zone_setting,
@@ -207,12 +208,14 @@ class AwayTemperatureNumber(FreedoZoneSettingEntity, NumberEntity):
 
 
 class FlowLimitNumber(FreedoEntity, NumberEntity):
-    """POST /api/boiler/flow: the flow limit (tag 2040) the wall thermostat
-    that drives the circuit is served. The thermostat takes a new value by
-    re-opening its OpenTherm session, at its next poll. A circuit that follows
-    its weather curve takes no value from here: the number is unavailable. The
-    range is the circuit's minC and maxC, which the daemon cuts to the boiler's
-    highest CH setpoint; a daemon that sends none gets the fixed range."""
+    """The flow limit (tag 2040) the wall thermostat that drives the circuit is
+    served. The thermostat takes a new value by re-opening its OpenTherm
+    session, at its next poll. A circuit that follows a weather curve, the
+    default curve or the adaptation refuses POST /api/boiler/flow (409): the
+    number then shows and edits the manual limit flow_limit_c of PATCH
+    /api/install, which the curve and the adaptation start from. The range is
+    the circuit's minC and maxC, which the daemon cuts to the boiler's highest
+    CH setpoint; a daemon that sends none gets the fixed range."""
 
     _attr_device_class = NumberDeviceClass.TEMPERATURE
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
@@ -232,12 +235,14 @@ class FlowLimitNumber(FreedoEntity, NumberEntity):
         return flow_circuit(self.coordinator.data, self._circuit)
 
     @property
+    def _managed(self) -> bool:
+        return flow_managed(self._view or {})
+
+    @property
     def available(self) -> bool:
-        view = self._view
         return (
             super().available
-            and view is not None
-            and not view.get("curve")
+            and self._view is not None
             and self._circuit in self.coordinator.data.circuit_sources
         )
 
@@ -253,11 +258,19 @@ class FlowLimitNumber(FreedoEntity, NumberEntity):
 
     @property
     def native_value(self) -> float | None:
+        if self._managed:
+            return self.coordinator.data.settings.get("flow_limit_c")
         return (self._view or {}).get("servedC")
 
     async def async_set_native_value(self, value: float) -> None:
-        source = self.coordinator.data.circuit_sources[self._circuit]
-        await call_api(self.coordinator.client.set_flow_limit(self._circuit, value, source))
+        client = self.coordinator.client
+        if self._managed:
+            view = await call_api(client.patch_install(flow_limit_c=round(value)))
+            if isinstance(view, Mapping):
+                self.coordinator.data.settings.update(view)
+        else:
+            source = self.coordinator.data.circuit_sources[self._circuit]
+            await call_api(client.set_flow_limit(self._circuit, value, source))
         await self.coordinator.async_request_refresh()
 
 

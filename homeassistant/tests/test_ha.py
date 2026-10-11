@@ -144,6 +144,9 @@ class FakeClient:
         low, high = merged.get("boiler_min_gas_m3h"), merged.get("boiler_max_gas_m3h")
         if high is not None and low is not None and low >= high:
             raise FreedoApiError(400, f"options.boiler_min_gas_m3h: {low} is not below boiler_max_gas_m3h {high}")
+        # The default curve reduces the manual limit and refuses to run without it.
+        if merged.get("flow_default_curve") and merged.get("flow_limit_c") is None:
+            raise FreedoApiError(400, "options.flow_default_curve: needs options.flow_limit_c")
         self.settings_json = merged
         return copy.deepcopy(merged)
 
@@ -1407,16 +1410,104 @@ async def test_flow_limit_number_range_falls_back_without_the_fields(hass, clien
     assert (state.attributes["min"], state.attributes["max"]) == (30, 75)
 
 
-async def test_flow_limit_number_follows_the_curve(hass, client):
-    with_flow_circuit(client, curve=True, computedC=41)
+@pytest.mark.parametrize("driver", ["curve", "defaultCurve", "adapt"])
+async def test_flow_limit_number_edits_the_manual_limit_while_managed(hass, client, driver):
+    # The daemon refuses POST /api/boiler/flow on a circuit that a curve, the
+    # default curve or the adaptation drives (409). The number then shows and
+    # edits flow_limit_c, which they start from.
+    client.settings_json["flow_limit_c"] = 56
+    with_flow_circuit(client, computedC=41, **{driver: True})
     entry = await setup_entry(hass, client)
     flow = entity_id(hass, entry, "number", "circuit1_flow_limit")
-    # The daemon refuses a value on a circuit with a curve (409).
-    assert hass.states.get(flow).state == "unavailable"
+    assert float(hass.states.get(flow).state) == 56
 
-    client.boiler_json["flowLimit"]["circuits"][0]["curve"] = False
+    await hass.services.async_call(
+        "number", "set_value", {ATTR_ENTITY_ID: flow, "value": 58}, blocking=True
+    )
+    assert client.calls == [("patch_install", {"flow_limit_c": 58})]
+    assert float(hass.states.get(flow).state) == 58
+
+    # The circuit is free again: the number shows what is served and writes it.
+    client.boiler_json["flowLimit"]["circuits"][0][driver] = False
     await refresh(hass, entry)
     assert float(hass.states.get(flow).state) == 45
+    await hass.services.async_call(
+        "number", "set_value", {ATTR_ENTITY_ID: flow, "value": 52}, blocking=True
+    )
+    assert client.calls[-1] == ("flow", 1, 52.0, "0000000000000001")
+
+
+async def test_flow_limit_number_unknown_while_managed_without_a_manual_limit(hass, client):
+    with_flow_circuit(client, curve=True)
+    entry = await setup_entry(hass, client)
+    flow = entity_id(hass, entry, "number", "circuit1_flow_limit")
+    assert hass.states.get(flow).state == "unknown"
+
+    await hass.services.async_call(
+        "number", "set_value", {ATTR_ENTITY_ID: flow, "value": 50}, blocking=True
+    )
+    assert client.calls == [("patch_install", {"flow_limit_c": 50})]
+    assert float(hass.states.get(flow).state) == 50
+
+
+async def test_flow_limit_sensor_attributes_show_the_default_curve(hass, client):
+    with_flow_circuit(client, defaultCurve=True, reductionC=7, computedC=49, servedC=49)
+    entry = await setup_entry(hass, client)
+    for field in ("servedC", "computedC"):
+        state = hass.states.get(entity_id(hass, entry, "sensor", f"circuit1_{field}"))
+        assert float(state.state) == 49
+        assert state.attributes["default_curve"] is True
+        assert state.attributes["reduction_c"] == 7
+
+
+async def test_flow_default_curve_switch(hass, client):
+    client.settings_json["flow_limit_c"] = 56
+    entry = await setup_entry(hass, client)
+    switch = entity_id(hass, entry, "switch", "flow_default_curve")
+    assert hass.states.get(switch).state == "off"
+    assert er.async_get(hass).async_get(switch).entity_category == "config"
+
+    await hass.services.async_call("switch", "turn_on", {ATTR_ENTITY_ID: switch}, blocking=True)
+    assert client.calls == [("patch_install", {"flow_default_curve": True})]
+    assert hass.states.get(switch).state == "on"
+
+    await hass.services.async_call("switch", "turn_off", {ATTR_ENTITY_ID: switch}, blocking=True)
+    assert client.calls[-1] == ("patch_install", {"flow_default_curve": False})
+    assert hass.states.get(switch).state == "off"
+
+
+async def test_flow_default_curve_switch_needs_the_manual_limit(hass, client):
+    entry = await setup_entry(hass, client)
+    switch = entity_id(hass, entry, "switch", "flow_default_curve")
+    # The daemon refuses the curve while flow_limit_c is unset.
+    with pytest.raises(HomeAssistantError, match="flow_limit_c"):
+        await hass.services.async_call("switch", "turn_on", {ATTR_ENTITY_ID: switch}, blocking=True)
+    assert hass.states.get(switch).state == "off"
+
+
+async def test_flow_auto_adapt_switch(hass, client):
+    entry = await setup_entry(hass, client)
+    switch = entity_id(hass, entry, "switch", "flow_auto_adapt")
+    assert hass.states.get(switch).state == "off"
+
+    await hass.services.async_call("switch", "turn_on", {ATTR_ENTITY_ID: switch}, blocking=True)
+    assert client.calls == [("patch_install", {"flow_auto_adapt": True})]
+    assert hass.states.get(switch).state == "on"
+
+    # The state follows the daemon at the next poll.
+    client.settings_json["flow_auto_adapt"] = False
+    await refresh(hass, entry)
+    assert hass.states.get(switch).state == "off"
+
+
+async def test_flow_switches_need_a_daemon_that_serves_the_flags(hass, client):
+    # An older daemon sends neither flag, and a daemon without an installation
+    # sends no options at all.
+    for key in ("flow_default_curve", "flow_auto_adapt"):
+        del client.settings_json[key]
+    entry = await setup_entry(hass, client)
+    assert not has_entity(hass, entry, "switch", "flow_default_curve")
+    assert not has_entity(hass, entry, "switch", "flow_auto_adapt")
 
 
 async def test_flow_limit_shows_the_default_until_a_value_is_set(hass, client):

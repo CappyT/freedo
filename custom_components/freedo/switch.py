@@ -3,11 +3,14 @@ switch: options.offline_schedule of GET and PATCH /api/install. Notification
 switch of each valve: the change notification of d/config tag 0158. Child lock
 switch of each valve: d/lock. Early start and open window detection switch of
 each heating zone: the zone row of GET and PATCH /api/install/zones. Pairing
-mode switch: the pair window of GET and POST /api/pair/window."""
+mode switch: the pair window of GET and POST /api/pair/window. Default weather
+curve and flow adaptation switch: options.flow_default_curve and
+options.flow_auto_adapt of GET and PATCH /api/install."""
 
 from __future__ import annotations
 
 import time
+from collections.abc import Mapping
 from typing import Any
 
 from homeassistant.components.switch import SwitchEntity
@@ -44,6 +47,11 @@ async def async_setup_entry(
         AwaySwitch(coordinator),
         OfflineScheduleSwitch(coordinator),
     ]
+    entities.extend(
+        switch(coordinator)
+        for switch in (FlowDefaultCurveSwitch, FlowAutoAdaptSwitch)
+        if switch.field in coordinator.data.settings
+    )
     if coordinator.data.pair_window is not None:
         entities.append(PairingModeSwitch(coordinator))
     for short, dev in sorted(coordinator.data.devices.items()):
@@ -107,6 +115,58 @@ class OfflineScheduleSwitch(FreedoEntity, SwitchEntity):
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         await self._set(False)
+
+
+class _InstallFlagSwitch(FreedoEntity, SwitchEntity):
+    """A flag of the installation options (GET and PATCH /api/install). The
+    daemon answers a write with the whole view. A refused write, such as the
+    default curve without a flow limit, comes back as the daemon error."""
+
+    _attr_entity_category = EntityCategory.CONFIG
+    field: str
+
+    def __init__(self, coordinator: FreedoCoordinator) -> None:
+        super().__init__(coordinator, self.field)
+        self._attr_device_info = self.hub_device()
+
+    @property
+    def available(self) -> bool:
+        return super().available and self.field in self.coordinator.data.settings
+
+    @property
+    def is_on(self) -> bool | None:
+        value = self.coordinator.data.settings.get(self.field)
+        return value if isinstance(value, bool) else None
+
+    async def _set(self, enabled: bool) -> None:
+        view = await call_api(self.coordinator.client.patch_install(**{self.field: enabled}))
+        if isinstance(view, Mapping):
+            self.coordinator.data.settings.update(view)
+        self.async_write_ha_state()
+        # The flow limit view of the boiler follows the flag.
+        await self.coordinator.async_request_refresh()
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self._set(True)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self._set(False)
+
+
+class FlowDefaultCurveSwitch(_InstallFlagSwitch):
+    """The circuits without a weather curve of their own follow the default
+    curve under the manual flow limit. The daemon needs flow_limit_c for it."""
+
+    _attr_translation_key = "flow_default_curve"
+    field = "flow_default_curve"
+
+
+class FlowAutoAdaptSwitch(_InstallFlagSwitch):
+    """The daemon trims the flow limit of each circuit from the room feedback,
+    below the manual limit or the curve."""
+
+    _attr_translation_key = "flow_auto_adapt"
+    field = "flow_auto_adapt"
 
 
 class PairingModeSwitch(FreedoEntity, SwitchEntity):

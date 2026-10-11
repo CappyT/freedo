@@ -430,6 +430,14 @@ def flow_circuit(data: FreedoData, circuit: int) -> Mapping[str, Any] | None:
     return None
 
 
+def flow_managed(view: Mapping[str, Any]) -> bool:
+    """Whether a weather curve, the default curve or the adaptation sets the
+    flow limit of a circuit (an item of flowLimit.circuits[]). The daemon then
+    answers 409 to POST /api/boiler/flow and takes the manual limit from
+    flow_limit_c."""
+    return bool(view.get("curve") or view.get("defaultCurve") or view.get("adapt"))
+
+
 def boiler_energy(data: FreedoData) -> Mapping[str, Any] | None:
     """GET /api/boiler energy: the heat output estimate, None on a daemon that
     does not serve it."""

@@ -70,7 +70,8 @@ integration after you add a zone or a device.
 | sensor Gas estimate | hub | `/api/boiler` `energy.gas` `running`, `reason` |
 | number Boiler maximum power, Boiler minimum power | hub | `/api/install` `boiler_max_power_kw`, `boiler_min_power_kw`; writes `PATCH /api/install` |
 | number Boiler maximum gas flow, Boiler minimum gas flow | hub | `/api/install` `boiler_max_gas_m3h`, `boiler_min_gas_m3h`; writes `PATCH /api/install` |
-| number Flow limit | circuit | `/api/boiler` `flowLimit.circuits[]`, `/api/install/circuits` `heat_source`; writes `POST /api/boiler/flow` |
+| number Flow limit | circuit | `/api/boiler` `flowLimit.circuits[]`, `/api/install/circuits` `heat_source`, `/api/install` `flow_limit_c`; writes `POST /api/boiler/flow`, or `PATCH /api/install` while a curve or the adaptation drives the circuit |
+| switch Flow limit default curve, switch Flow limit adaptation | hub | `GET /api/install` `flow_default_curve`, `flow_auto_adapt`; writes `PATCH /api/install` |
 | switch Away | hub | `GET` and `PATCH /api/home` |
 | switch Offline schedule | hub | `GET /api/install` `offline_schedule`; writes `PATCH /api/install` |
 | switch Pairing mode | hub | `GET /api/pair/window` `open`, `until`; writes `POST /api/pair/window` |
@@ -109,9 +110,26 @@ integration after you add a zone or a device.
 - The daemon has no default flow limit. While the option `flow_limit_c` is unset,
   the sensor Default flow limit is unknown, and so is the sensor Flow limit served
   of a circuit that nothing manages. The daemon serves that circuit no limit.
-- A circuit with an enabled weather curve takes no value: the daemon answers
-  409 and the number is unavailable while the curve is on. The read-only
-  curve values stay in the sensors Flow limit computed and Default flow limit.
+- A circuit that follows a weather curve, the default curve or the adaptation
+  takes no direct value: the daemon answers 409 to `POST /api/boiler/flow`. The
+  number then shows the manual limit `flow_limit_c` (unknown while it is unset)
+  and writes it with `PATCH /api/install`. The curve and the adaptation start
+  from this limit. The computed and the served values stay in the sensors Flow
+  limit computed and Flow limit served.
+- Switch Flow limit default curve is `flow_default_curve`. It gives each circuit
+  without a curve of its own a built-in weather curve under `flow_limit_c`: the
+  limit is `flow_limit_c` minus a reduction of 0 to 8 C that grows with the
+  outdoor temperature. The daemon refuses the switch while `flow_limit_c` is
+  unset, so set the number Flow limit first. The curve needs the outdoor
+  temperature, so select an outdoor temperature sensor in the options of the
+  integration. The curve is a fit on one plant and one season of monthly means
+  and is off by default. The details are in the
+  [API reference](../../docs/API.md#flow-limit).
+- Switch Flow limit adaptation is `flow_auto_adapt`. It trims the limit of each
+  circuit from the room feedback, below the manual limit or the curve.
+- The attributes `default_curve` and `reduction_c` of the sensors Flow limit
+  computed and Flow limit served show that a circuit follows the default curve
+  and the reduction in force now.
 - The number exists for a circuit that the boiler view lists and the
   installation gives a heat source.
 

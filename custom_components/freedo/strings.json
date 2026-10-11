@@ -152,6 +152,8 @@
     "switch": {
       "away": { "name": "Away" },
       "offline_schedule": { "name": "Offline schedule" },
+      "flow_default_curve": { "name": "Flow limit default curve" },
+      "flow_auto_adapt": { "name": "Flow limit adaptation" },
       "pairing_mode": { "name": "Pairing mode" },
       "notification": { "name": "Change notification" },
       "child_lock": { "name": "Child lock" },

@@ -354,7 +354,8 @@ class GasSensor(BoilerSensor):
 
 class FlowLimitSensor(FreedoEntity, SensorEntity):
     """GET /api/boiler flowLimit.circuits[]: the flow limit served to the
-    thermostat, or the one the weather curve computes."""
+    thermostat, or the one the weather curve computes. reduction_c is how far
+    the default curve puts the limit under the manual limit now."""
 
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
@@ -386,6 +387,8 @@ class FlowLimitSensor(FreedoEntity, SensorEntity):
         view = self._view or {}
         return {
             "curve": view.get("curve"),
+            "default_curve": view.get("defaultCurve"),
+            "reduction_c": view.get("reductionC"),
             "fetched": view.get("fetched"),
             "changed_at": view.get("changedAt"),
         }

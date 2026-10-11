@@ -13,6 +13,7 @@ from model import (
     boiler_unsupported,
     energy_state,
     flow_circuit,
+    flow_managed,
     fuel_unit,
     gas_state,
     node_calibration,
@@ -133,7 +134,7 @@ INSTALL_ZONES = {
 # GET /api/install/circuits and the flow limit view of GET /api/boiler for circuit 1.
 CIRCUITS = {"rev": 7, "circuits": [{"id": 1, "name": "Heating", "heat_source": "0000000000000001"}]}
 FLOW_CIRCUIT = {"id": 1, "curve": False, "computedC": None, "servedC": 45, "changedAt": None,
-                "fetched": True}
+                "fetched": True, "adapt": False, "defaultCurve": False, "reductionC": None}
 
 # GET /api/zones/{n}/schedule of zone 1.
 SCHEDULE = {
@@ -150,9 +151,11 @@ SCHEDULE = {
 }
 
 # GET /api/install: the installation options the integration reads. The boiler
-# power is unset: the maximum is null and the minimum 0. The gas flows are unset.
+# power is unset: the maximum is null and the minimum 0. The gas flows are unset,
+# and so is the flow limit. The flow limit curves and the adaptation are off.
 INSTALL = {"rev": 7, "home_id": 1234567, "offline_schedule": True,
            "utc_offset_min": None, "timezone": "",
+           "flow_limit_c": None, "flow_auto_adapt": False, "flow_default_curve": False,
            "boiler_max_power_kw": None, "boiler_min_power_kw": 0.0,
            "boiler_max_gas_m3h": None, "boiler_min_gas_m3h": None}
 
@@ -602,6 +605,15 @@ def test_circuit_sources_and_flow_view():
     # No installation (503 read as {}): no source.
     assert parse(HEALTH, ZONES, NODES, boiler, HOME, None, None, {}).circuit_sources == {}
     assert flow_circuit(data(), 1) is None
+
+
+def test_flow_managed():
+    # The direct route is open on a circuit that nothing manages, and on a daemon
+    # that sends none of the fields.
+    assert not flow_managed(FLOW_CIRCUIT)
+    assert not flow_managed({"id": 1, "curve": False})
+    for field in ("curve", "defaultCurve", "adapt"):
+        assert flow_managed(dict(FLOW_CIRCUIT, **{field: True}))
 
 
 def test_boiler_energy_state():
