@@ -175,6 +175,8 @@ Symptom: the log shows lines like these, and `serialErrors` in `GET /api/health`
 ```text
 rx autoack: serial link fault: reply truncated: deadline exceeded after 89/113 bytes
 CSL queue poll: serial link fault: reply truncated: deadline exceeded after 98/119 bytes
+bridge: CC1101BRIDGE v2.9 at 921600 baud
+WARNING: this firmware talks 921600 baud, which loses replies on some USB hosts
 ```
 
 Before version 0.3.1 the daemon ended with `radio loop ended: live radio owner ended`
@@ -184,7 +186,13 @@ Cause: the CH340 adapter of the ESP32 board lost bytes of replies of about 80 to
 921600 baud. The board has no flow control line, and the CH340 datasheet advises flow control
 or a lower rate from 500 kbaud in both directions. It showed on a Raspberry Pi 5 with a
 second full-speed USB device on the same bus, and not on an x86 host. The point of loss inside
-the USB stack is not measured.
+the USB stack is not measured. Bridge firmware v2.10 and later talks 230400 baud.
+
+Fix: flash firmware v2.10 or later, see the
+[firmware README](../firmware/cc1101_bridge/README.md#flash-a-released-image). The daemon
+tries 230400 and then 921600, so an old bridge keeps working until you flash it. The daemon
+logs the banner and the rate at start. A bridge that answers at neither rate stops the start
+with a message that names both rates.
 
 What the daemon does with a lost reply:
 

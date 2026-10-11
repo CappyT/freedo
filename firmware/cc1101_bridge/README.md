@@ -16,7 +16,8 @@ byte only when it is there.
 The contract with the host driver:
 
 - Request frame `A5 cmd lenHi lenLo payload`, response frame
-  `5A status lenHi lenLo payload`, 921600 8N1, payload limit 1024 bytes.
+  `5A status lenHi lenLo payload`, 230400 8N1 (921600 before v2.10, see
+  [Serial rate](#serial-rate)), payload limit 1024 bytes.
 - Commands `01` PING to `0D` CSLQUEUE, with the same request and response layout.
   `0E` PAIRWIN is new in v2.9, see below. `0B` RABURST also takes a frame with
   FCF `59 E8`.
@@ -32,8 +33,10 @@ The contract with the host driver:
 - Wake burst cadence, rendezvous countdown payload, 500 ms follow window and
   ACK timeout semantics. An anchored job can report up to 255 frames, because
   its guard grows with the age of the anchor.
-- The PING banner keeps the `CC1101BRIDGE` prefix and reads `CC1101BRIDGE v2.9`.
-  The host tests only the prefix. A reply carries no command echo, so after a
+- The PING banner keeps the `CC1101BRIDGE` prefix and reads
+  `CC1101BRIDGE v2.10 (<build>)`. The build is the release version of a released
+  image, for example `0.3.1`, and `dev` for a local build. The host tests only the
+  prefix. A reply carries no command echo, so after a
   request misses its deadline the host sends a PING and reads every reply
   before the banner as a late reply, in request order.
 
@@ -225,6 +228,42 @@ timeout and a total budget. An assembly that stops in the middle of a frame is
 thrown away after 60 ms. `Serial.flush()` is gone from the radio path, because
 the radio task never writes to the serial port.
 
+## Serial rate
+
+Firmware v2.10 talks 230400 baud. Firmware before v2.10 talked 921600 baud. The host
+driver asks for the PING banner at 230400 and then at 921600, and keeps the rate that
+answers, so a bridge with old firmware keeps working. The daemon logs the banner and
+the rate at start, and warns when the rate is 921600.
+
+The reason is a loss of bytes. A CH340 adapter on a USB 2.0 full-speed bus, shared with
+another full-speed device, lost bytes of replies of about 80 to 120 bytes at 921600
+baud. The board has no flow control line, and the CH340 datasheet advises flow control
+or a lower rate from 500 kbaud in both directions. The point of loss inside the USB
+stack is not measured.
+
+A byte takes 10 bit times (start, 8 data, stop). Time on the wire:
+
+| Rate (baud) | Bytes per ms | 110 bytes (a reply with one frame) | 1028 bytes (the largest request or reply) |
+| --- | --- | --- | --- |
+| 921600 | 92.2 | 1.2 ms | 11.2 ms |
+| 460800 | 46.1 | 2.4 ms | 22.3 ms |
+| 230400 | 23.0 | 4.8 ms | 44.6 ms |
+| 115200 | 11.5 | 9.5 ms | 89.2 ms |
+
+The serial rate sets no radio timing. The Enhanced ACK, the CSL state machine, the wake
+burst, the pair window answer and the idle receive run on the radio task, and none of
+them waits for the serial port. The Enhanced ACK of `CMD_AUTOACK` leaves before the
+reply is built. The rate adds latency only to the exchange with the host. An enqueue
+of 1028 bytes arrives 33 ms later than at 921600, and a reply with a frame arrives 4 ms
+later. Both are small against the 2 s poll timeout, the 500 ms follow window and the
+3 s budget that the firmware gives one request. The radio task meets the serial port
+at the output queue, which holds four replies. Only the stream of the developer tools
+fills it: a frame of at most 150 bytes leaves every 23 ms at the earliest, which is 6.5
+bytes per ms against 23 bytes per ms.
+
+A host that is older than daemon 0.3.1 opens 921600 and does not talk to firmware
+v2.10. Update the daemon and the firmware together.
+
 ## Build and flash
 
 Install `arduino-cli` and the ESP32 core:
@@ -237,6 +276,14 @@ Compile:
 
 ```
 arduino-cli compile --fqbn esp32:esp32:esp32 firmware/cc1101_bridge
+```
+
+A release build sets the version that the PING banner shows, with an unquoted value:
+
+```
+arduino-cli compile --fqbn esp32:esp32:esp32 \
+  --build-property 'compiler.cpp.extra_flags=-DFIRMWARE_BUILD=0.3.1' \
+  firmware/cc1101_bridge
 ```
 
 Flash, with the port of the bridge:
@@ -255,8 +302,8 @@ freedo-dev ping -p /dev/ttyUSB0
 freedo-dev config -p /dev/ttyUSB0
 ```
 
-`freedo-dev ping` prints `CC1101BRIDGE v2.9`. `freedo-dev config` prints VERSION
-`0x04` or `0x14` for a live CC1101.
+`freedo-dev ping` prints `CC1101BRIDGE v2.10 (<build>)`. `freedo-dev config` prints
+VERSION `0x04` or `0x14` for a live CC1101.
 
 ## Wiring
 

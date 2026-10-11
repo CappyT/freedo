@@ -14,6 +14,13 @@ import (
 	"go.bug.st/serial"
 )
 
+// Link speeds. Firmware v2.10 and later talks DefaultBaud. Firmware before v2.10
+// talks LegacyBaud, and Open still reaches it.
+const (
+	DefaultBaud = 230400
+	LegacyBaud  = 921600
+)
+
 // ErrLinkFault wraps every error of a request or reply that the serial link
 // lost or cut: no answer by the deadline, a reply that stops before its length,
 // a reply of the wrong shape. The framing is restored before the next request,
@@ -34,6 +41,9 @@ const replyStall = 250 * time.Millisecond
 // replyQuiet is the silence that ends the discard of a lost reply.
 const replyQuiet = 30 * time.Millisecond
 
+// probeWait bounds the PING that tells which rate the firmware talks.
+const probeWait = time.Second
+
 // serialStaleMax bounds the replies one request reads past before its own. A
 // reply carries no command echo, so a reply of the wrong shape is the late
 // reply of an earlier request, and the reply to this request follows it.
@@ -53,7 +63,7 @@ type replyCheck func(status byte, data []byte) bool
 // reply arrives. A nil lateReply discards it.
 type lateReply func(status byte, data []byte)
 
-// Serial framing (matches firmware/cc1101_bridge/cc1101_bridge.ino @ 921600 8N1):
+// Serial framing (matches firmware/cc1101_bridge/cc1101_bridge.ino, 8N1):
 //
 //	request : 0xA5 cmd lenHi lenLo payload
 //	response: 0x5A status lenHi lenLo payload
@@ -93,34 +103,71 @@ type Bridge struct {
 	late []*CSLQueueEvent
 	// serialErrors counts the requests whose reply the link lost, since Open.
 	serialErrors atomic.Uint64
+	baud         int
+	banner       string
 }
 
 // SerialErrors is the number of requests whose reply did not arrive whole.
 func (b *Bridge) SerialErrors() uint64 { return b.serialErrors.Load() }
 
+// Baud is the rate the firmware answered at when the port opened.
+func (b *Bridge) Baud() int { return b.baud }
+
+// Banner is the PING banner the firmware answered with when the port opened.
+func (b *Bridge) Banner() string { return b.banner }
+
 // Open connects to the ESP32 bridge on the given serial port. The ESP32
-// auto-resets when the port opens, so this waits for it to boot.
+// auto-resets when the port opens, so this waits for it to boot. It asks the
+// firmware for its banner at DefaultBaud and then at LegacyBaud, and keeps the
+// rate that answered.
 func Open(portName string) (*Bridge, error) {
-	p, err := serial.Open(portName, &serial.Mode{BaudRate: 921600})
+	p, err := serial.Open(portName, &serial.Mode{BaudRate: DefaultBaud})
 	if err != nil {
 		return nil, err
 	}
+	return start(p, 2*time.Second)
+}
+
+func start(p serial.Port, boot time.Duration) (*Bridge, error) {
 	if err := p.SetReadTimeout(100 * time.Millisecond); err != nil {
 		p.Close()
 		return nil, err
 	}
-	time.Sleep(2 * time.Second) // ESP32 boot if DTR reset fired
+	time.Sleep(boot) // ESP32 boot if DTR reset fired
 	b := &Bridge{port: p, timeout: 4 * time.Second}
-	// The DTR reset is unreliable on the CH340, so a stream left running by a
-	// previous (killed) session may still be flooding the port. Send a byte to
-	// abort any running stream (firmware breaks on Serial.available()), then drain
-	// everything until the port goes quiet, so we start from a clean command loop.
-	p.Write([]byte{0x00})
-	if err := b.drain(400*time.Millisecond, serialDrainLimit); err != nil {
+	if err := b.probe(); err != nil {
 		p.Close()
 		return nil, err
 	}
 	return b, nil
+}
+
+// probe finds the rate of the firmware. The DTR reset is unreliable on the
+// CH340, so a stream left running by a previous (killed) session may still be
+// flooding the port. Send a byte to abort any running stream (firmware breaks on
+// Serial.available()), then drain everything until the port goes quiet, so the
+// PING starts from a clean command loop.
+func (b *Bridge) probe() error {
+	for _, baud := range []int{DefaultBaud, LegacyBaud} {
+		if err := b.port.SetMode(&serial.Mode{BaudRate: baud}); err != nil {
+			return err
+		}
+		b.port.Write([]byte{0x00})
+		if err := b.drain(400*time.Millisecond, serialDrainLimit); err != nil {
+			return err
+		}
+		_, banner, err := b.reqUntil(cmdPing, nil, time.Now().Add(probeWait), isBanner, nil)
+		b.owed = nil
+		if err == nil {
+			b.baud, b.banner = baud, string(banner)
+			b.serialErrors.Store(0)
+			return nil
+		}
+		if !errors.Is(err, ErrLinkFault) {
+			return err
+		}
+	}
+	return fmt.Errorf("the bridge does not answer at %d or %d baud: check the port, then flash firmware v2.10 or later from firmware/cc1101_bridge", DefaultBaud, LegacyBaud)
 }
 
 // Close releases the serial port.

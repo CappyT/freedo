@@ -48,9 +48,21 @@ static const int PIN_GDO2 = 26;
 
 // --------------------------------------------------------------- serial layout
 
-static const uint32_t SERIAL_BAUD = 921600;
+// Firmware before v2.10 used 921600. A CH340 adapter on a shared USB 2.0 full-speed bus lost
+// bytes of replies of 80 to 120 bytes at that rate. The host driver still opens an old bridge
+// at 921600. See README.md.
+static const uint32_t SERIAL_BAUD = 230400;
 static const size_t SERIAL_RX_BUF = 2048;
 static const size_t SERIAL_TX_BUF = 2048;
+
+// PING banner. The level is the serial protocol level. A release build adds the release
+// version with -DFIRMWARE_BUILD=<version> (unquoted), a local build reads "dev".
+#ifndef FIRMWARE_BUILD
+#define FIRMWARE_BUILD dev
+#endif
+#define BANNER_STR_(x) #x
+#define BANNER_STR(x) BANNER_STR_(x)
+static const char BANNER[] = "CC1101BRIDGE v2.10 (" BANNER_STR(FIRMWARE_BUILD) ")";
 
 static const uint8_t REQ_MAGIC = 0xA5;
 static const uint8_t RSP_MAGIC = 0x5A;
@@ -1908,7 +1920,7 @@ static void execCommand(CmdMsg *msg) {
   uint16_t len = msg->len;
   switch (msg->cmd) {
     case CMD_PING: {
-      const char *s = "CC1101BRIDGE v2.9";
+      const char *s = BANNER;
       sendResp(ST_OK, (const uint8_t *)s, strlen(s));
       break;
     }

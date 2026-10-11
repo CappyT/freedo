@@ -1483,6 +1483,10 @@ func newLiveRadio(store *stateStore, port string, coordinator []byte, phase uint
 	if err != nil {
 		return nil, err
 	}
+	log.Printf("bridge: %s at %d baud", br.Banner(), br.Baud())
+	if br.Baud() != cc1101.DefaultBaud {
+		log.Printf("WARNING: this firmware talks %d baud, which loses replies on some USB hosts: flash firmware v2.10 or later (docs/OPERATION.md)", br.Baud())
+	}
 	if err := br.Configure(); err != nil {
 		br.Close()
 		return nil, err
