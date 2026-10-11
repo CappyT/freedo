@@ -265,3 +265,27 @@ func TestTimezoneValidated(t *testing.T) {
 		}
 	}
 }
+
+// TestUTCZoneSource: the fixed offset and a loadable options.timezone are the
+// source of tag 02b2, and the host's zone is a fallback in every other case.
+func TestUTCZoneSource(t *testing.T) {
+	host := time.Local
+	time.Local = time.FixedZone("CET", 3600)
+	t.Cleanup(func() { time.Local = host })
+	now := time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC)
+	fixed := -90
+	for name, tc := range map[string]struct {
+		options Options
+		want    UTCZone
+	}{
+		"fixed offset":     {Options{UTCOffsetMin: &fixed}, UTCZone{Name: "fixed offset", OffsetMin: -90}},
+		"fixed over zone":  {Options{UTCOffsetMin: &fixed, Timezone: "Europe/Rome"}, UTCZone{Name: "fixed offset", OffsetMin: -90}},
+		"timezone":         {Options{Timezone: "America/New_York"}, UTCZone{Name: "America/New_York", OffsetMin: -300}},
+		"host fallback":    {Options{}, UTCZone{Name: "CET", OffsetMin: 60, Fallback: true}},
+		"unknown timezone": {Options{Timezone: "Europe/Nowhere"}, UTCZone{Name: "CET", OffsetMin: 60, Fallback: true}},
+	} {
+		if got := tc.options.UTCZone(now); got != tc.want {
+			t.Errorf("%s: %+v, want %+v", name, got, tc.want)
+		}
+	}
+}

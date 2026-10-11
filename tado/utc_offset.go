@@ -51,6 +51,32 @@ func (o Options) UTCOffsetAt(t time.Time) int {
 	return zoneOffsetMin(t, loc)
 }
 
+// UTCZone is where tag 02b2 comes from at one instant. Fallback is true when
+// it is the host's zone, since neither options.utc_offset_min nor a loadable
+// options.timezone is set.
+type UTCZone struct {
+	Name      string `json:"name"`
+	OffsetMin int    `json:"offsetMin"`
+	Fallback  bool   `json:"fallback"`
+}
+
+// UTCZone returns the source of tag 02b2 at t: the fixed offset, the
+// installation's zone, or the host's zone.
+func (o Options) UTCZone(t time.Time) UTCZone {
+	z := UTCZone{OffsetMin: o.UTCOffsetAt(t)}
+	if o.UTCOffsetMin != nil {
+		z.Name = "fixed offset"
+		return z
+	}
+	if _, err := o.Location(); err == nil && o.Timezone != "" {
+		z.Name = o.Timezone
+		return z
+	}
+	z.Name, _ = t.In(time.Local).Zone()
+	z.Fallback = true
+	return z
+}
+
 func zoneOffsetMin(t time.Time, loc *time.Location) int {
 	_, sec := t.In(loc).Zone()
 	return sec / 60

@@ -287,3 +287,40 @@ func TestHealthAndExitOnEndedRadio(t *testing.T) {
 		})
 	}
 }
+
+// TestHealthReportsTimezone: GET /api/health names the zone tag 02b2 follows
+// and says whether it is the host's, and the start warning fires for a UTC host
+// with no zone and no offset set, and for nothing else.
+func TestHealthReportsTimezone(t *testing.T) {
+	host := time.Local
+	time.Local = time.UTC
+	t.Cleanup(func() { time.Local = host })
+	now := time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC)
+	for name, tc := range map[string]struct {
+		edit    func(*tado.Install)
+		want    tado.UTCZone
+		warning bool
+	}{
+		"fixed offset": {func(in *tado.Install) {}, tado.UTCZone{Name: "fixed offset"}, false},
+		"zone": {func(in *tado.Install) { in.Options.UTCOffsetMin, in.Options.Timezone = nil, "Europe/Rome" },
+			tado.UTCZone{Name: "Europe/Rome", OffsetMin: 60}, false},
+		"host UTC": {func(in *tado.Install) { in.Options.UTCOffsetMin = nil },
+			tado.UTCZone{Name: "UTC", Fallback: true}, true},
+	} {
+		in := windowInstall(t, tc.edit)
+		if got := utcZoneWarning(in.Options, now) != ""; got != tc.warning {
+			t.Errorf("%s: warning = %v, want %v", name, got, tc.warning)
+		}
+		_, url := newWindowDaemon(t, in, newTestClock(now), nil)
+		var health struct {
+			Timezone tado.UTCZone `json:"timezone"`
+		}
+		if code := getJSON(t, url+"/api/health", &health); code != http.StatusOK || health.Timezone != tc.want {
+			t.Errorf("%s: health timezone = %+v (code %d), want %+v", name, health.Timezone, code, tc.want)
+		}
+	}
+	time.Local = time.FixedZone("CET", 3600)
+	if w := utcZoneWarning(tado.Options{}, now); w != "" {
+		t.Errorf("a host zone of +01:00 warns: %q", w)
+	}
+}

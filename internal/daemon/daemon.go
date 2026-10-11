@@ -1983,7 +1983,21 @@ func (d *daemon) healthEngine(e *tado.EmuState, txArmed bool) map[string]any {
 	}
 	health["devices"], health["alerts"] = d.deviceHealth(e)
 	health["zoneFallback"] = zoneFallbacks(e)
+	if inst := d.inst.Load(); inst != nil {
+		health["timezone"] = inst.Options.UTCZone(d.retryNow())
+	}
 	return health
+}
+
+// utcZoneWarning says that the devices get an offset of 0 because the host runs
+// in UTC and the installation names no zone and no offset. It is empty
+// otherwise.
+func utcZoneWarning(o tado.Options, now time.Time) string {
+	if z := o.UTCZone(now); !z.Fallback || z.OffsetMin != 0 || z.Name != "UTC" {
+		return ""
+	}
+	return "options.timezone is unset and the host zone is UTC: the devices get a UTC offset of 0. " +
+		"Set options.timezone (PATCH /api/install) or options.utc_offset_min, or run the daemon with TZ set."
 }
 
 // deviceHealth lists every declared device with its alert flags, and the
@@ -4145,6 +4159,9 @@ flags:
 		die("installation in %s: %v", dbPath, err)
 	}
 	for _, w := range in.Warnings() {
+		fmt.Fprintf(os.Stderr, "warning: %s\n", w)
+	}
+	if w := utcZoneWarning(in.Options, time.Now()); w != "" {
 		fmt.Fprintf(os.Stderr, "warning: %s\n", w)
 	}
 
