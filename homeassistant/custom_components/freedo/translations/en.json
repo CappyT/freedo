@@ -85,6 +85,19 @@
           "no_modulation": "No modulation reported"
         }
       },
+      "gas_volume": { "name": "Gas volume" },
+      "gas_flow": { "name": "Gas flow" },
+      "gas_estimate": {
+        "name": "Gas estimate",
+        "state": {
+          "running": "Running",
+          "no_gas_flow": "No gas flow range set",
+          "no_report": "No report from the thermostat",
+          "stale": "Report too old",
+          "no_burner_flag": "No burner flag reported",
+          "no_modulation": "No modulation reported"
+        }
+      },
       "flow_limit_served": { "name": "Circuit {circuit} flow limit served" },
       "flow_limit_computed": { "name": "Circuit {circuit} flow limit computed" },
       "battery_voltage": { "name": "Battery voltage" },
@@ -110,7 +123,9 @@
       "away_temperature": { "name": "Away temperature" },
       "flow_limit": { "name": "Circuit {circuit} flow limit" },
       "boiler_max_power": { "name": "Boiler maximum power" },
-      "boiler_min_power": { "name": "Boiler minimum power" }
+      "boiler_min_power": { "name": "Boiler minimum power" },
+      "boiler_max_gas": { "name": "Boiler maximum gas flow" },
+      "boiler_min_gas": { "name": "Boiler minimum gas flow" }
     },
     "select": {
       "orientation": {

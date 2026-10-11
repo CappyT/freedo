@@ -60,6 +60,9 @@ PAIR_WINDOW_MAX_SEC = 600
 # typo in W).
 BOILER_POWER_MAX_KW = 500.0
 
+# The daemon rejects a boiler gas flow above this with 400.
+BOILER_GAS_MAX_M3H = 60.0
+
 # GET /api/boiler energy.reason, the cause of an estimate that does not run, by
 # the state of the energy estimate sensor.
 ENERGY_REASONS = {
@@ -70,6 +73,15 @@ ENERGY_REASONS = {
     "noModulation": "no_modulation",
 }
 ENERGY_RUNNING = "running"
+
+# GET /api/boiler energy.gas.reason, by the state of the gas estimate sensor.
+GAS_REASONS = {
+    "noGasFlow": "no_gas_flow",
+    "noReport": "no_report",
+    "stale": "stale",
+    "noBurnerFlag": "no_burner_flag",
+    "noModulation": "no_modulation",
+}
 
 # The device stores one day program in at most this many bytes of its protobuf
 # encoding, and the daemon rejects a longer one with 400.
@@ -401,6 +413,24 @@ def energy_state(data: FreedoData) -> str | None:
     if energy.get("running"):
         return ENERGY_RUNNING
     return ENERGY_REASONS.get(energy.get("reason"))
+
+
+def boiler_gas(data: FreedoData) -> Mapping[str, Any] | None:
+    """GET /api/boiler energy.gas: the gas volume estimate, None on a daemon
+    that does not serve it."""
+    gas = (boiler_energy(data) or {}).get("gas")
+    return gas if isinstance(gas, Mapping) else None
+
+
+def gas_state(data: FreedoData) -> str | None:
+    """"running", or the cause the gas estimate does not run, None when the
+    daemon names a cause this version does not know."""
+    gas = boiler_gas(data)
+    if gas is None:
+        return None
+    if gas.get("running"):
+        return ENERGY_RUNNING
+    return GAS_REASONS.get(gas.get("reason"))
 
 
 def boiler_unsupported(data: FreedoData) -> set[str]:

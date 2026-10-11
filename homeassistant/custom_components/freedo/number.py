@@ -1,6 +1,7 @@
 """Numbers: the temperature correction of each heating zone, its open window
 detection time, its away temperature and the timer of a change made on a
-device, the flow limit of each circuit and the power of the boiler."""
+device, the flow limit of each circuit, and the power and the gas flow of the
+boiler."""
 
 from __future__ import annotations
 
@@ -12,13 +13,20 @@ from homeassistant.components.number import (
     NumberMode,
     RestoreNumber,
 )
-from homeassistant.const import EntityCategory, UnitOfPower, UnitOfTemperature, UnitOfTime
+from homeassistant.const import (
+    EntityCategory,
+    UnitOfPower,
+    UnitOfTemperature,
+    UnitOfTime,
+    UnitOfVolumeFlowRate,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import FreedoConfigEntry, FreedoCoordinator
 from .entity import FreedoEntity, FreedoZoneSettingEntity, call_api
 from .model import (
+    BOILER_GAS_MAX_M3H,
     BOILER_POWER_MAX_KW,
     FLOW_LIMIT_MAX_C,
     FLOW_LIMIT_MIN_C,
@@ -59,11 +67,16 @@ async def async_setup_entry(
     for circuit in sorted(data.circuit_sources):
         if flow_circuit(data, circuit) is not None:
             entities.append(FlowLimitNumber(coordinator, circuit))
-    # GET /api/install serves the boiler power while the daemon holds an
-    # installation.
+    # GET /api/install serves the boiler power and gas flow while the daemon
+    # holds an installation.
     entities.extend(
         number(coordinator)
-        for number in (BoilerMaxPowerNumber, BoilerMinPowerNumber)
+        for number in (
+            BoilerMaxPowerNumber,
+            BoilerMinPowerNumber,
+            BoilerMaxGasNumber,
+            BoilerMinGasNumber,
+        )
         if number.field in data.settings
     )
     async_add_entities(entities)
@@ -237,16 +250,11 @@ class FlowLimitNumber(FreedoEntity, NumberEntity):
         await self.coordinator.async_request_refresh()
 
 
-class _BoilerPowerNumber(FreedoEntity, NumberEntity):
-    """The boiler power of the installation (GET and PATCH /api/install), which
-    sizes the energy estimate. The daemon keeps the minimum below the maximum
-    and answers 400 otherwise."""
+class _BoilerRangeNumber(FreedoEntity, NumberEntity):
+    """A boiler range option of the installation (GET and PATCH /api/install).
+    The daemon keeps the minimum below the maximum and answers 400 otherwise."""
 
-    _attr_device_class = NumberDeviceClass.POWER
-    _attr_native_unit_of_measurement = UnitOfPower.KILO_WATT
     _attr_entity_category = EntityCategory.CONFIG
-    _attr_native_max_value = BOILER_POWER_MAX_KW
-    _attr_native_step = 0.1
     _attr_mode = NumberMode.BOX
     field: str
 
@@ -269,6 +277,25 @@ class _BoilerPowerNumber(FreedoEntity, NumberEntity):
             self.coordinator.async_update_listeners()
 
 
+class _BoilerPowerNumber(_BoilerRangeNumber):
+    """The boiler power, which sizes the energy estimate."""
+
+    _attr_device_class = NumberDeviceClass.POWER
+    _attr_native_unit_of_measurement = UnitOfPower.KILO_WATT
+    _attr_native_max_value = BOILER_POWER_MAX_KW
+    _attr_native_step = 0.1
+
+
+class _BoilerGasNumber(_BoilerRangeNumber):
+    """The gas flow at the burner, which sizes the gas estimate. Both flows are
+    needed: the minimum has no default."""
+
+    _attr_device_class = NumberDeviceClass.VOLUME_FLOW_RATE
+    _attr_native_unit_of_measurement = UnitOfVolumeFlowRate.CUBIC_METERS_PER_HOUR
+    _attr_native_max_value = BOILER_GAS_MAX_M3H
+    _attr_native_step = 0.01
+
+
 class BoilerMaxPowerNumber(_BoilerPowerNumber):
     """The output of the boiler at 100 % modulation."""
 
@@ -283,3 +310,19 @@ class BoilerMinPowerNumber(_BoilerPowerNumber):
     _attr_translation_key = "boiler_min_power"
     _attr_native_min_value = 0
     field = "boiler_min_power_kw"
+
+
+class BoilerMaxGasNumber(_BoilerGasNumber):
+    """The gas flow of the boiler at 100 % modulation."""
+
+    _attr_translation_key = "boiler_max_gas"
+    _attr_native_min_value = 0.01
+    field = "boiler_max_gas_m3h"
+
+
+class BoilerMinGasNumber(_BoilerGasNumber):
+    """The gas flow of the boiler at 0 % modulation."""
+
+    _attr_translation_key = "boiler_min_gas"
+    _attr_native_min_value = 0
+    field = "boiler_min_gas_m3h"

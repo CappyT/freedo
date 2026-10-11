@@ -1,5 +1,5 @@
-"""Sensors: device battery, boiler values, the boiler energy estimate and the
-flow limit state."""
+"""Sensors: device battery, boiler values, the boiler energy and gas estimates
+and the flow limit state."""
 
 from __future__ import annotations
 
@@ -22,6 +22,8 @@ from homeassistant.const import (
     UnitOfPressure,
     UnitOfTemperature,
     UnitOfTime,
+    UnitOfVolume,
+    UnitOfVolumeFlowRate,
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
@@ -32,13 +34,16 @@ from .model import (
     CALIBRATION_STATES,
     ENERGY_REASONS,
     ENERGY_RUNNING,
+    GAS_REASONS,
     KIND_BRIDGE,
     KIND_VALVE,
     FreedoData,
     Zone,
     boiler_energy,
+    boiler_gas,
     boiler_unsupported,
     energy_state,
+    gas_state,
     node_calibration,
     node_firmware,
     node_humidity,
@@ -75,6 +80,21 @@ def _energy_power(data: FreedoData) -> Any:
     sends 0 then."""
     energy = boiler_energy(data)
     return energy.get("powerKW") if energy and energy.get("running") else None
+
+
+def _gas(key: str) -> Callable[[FreedoData], Any]:
+    def value(data: FreedoData) -> Any:
+        gas = boiler_gas(data)
+        return gas.get(key) if gas else None
+
+    return value
+
+
+def _gas_flow(data: FreedoData) -> Any:
+    """The gas flow now. Unknown while the estimate does not run: the daemon
+    sends 0 then."""
+    gas = boiler_gas(data)
+    return gas.get("flowM3H") if gas and gas.get("running") else None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -173,6 +193,37 @@ ENERGY_STATUS = FreedoSensorDescription(
     value_fn=energy_state,
 )
 
+# GET /api/boiler energy.gas: an estimate of the gas the boiler burns, from the
+# modulation and the gas flow range of the installation. The two sensors need
+# both flows: the estimate cannot run without them.
+GAS_SENSORS = (
+    FreedoSensorDescription(
+        key="gas_volume",
+        translation_key="gas_volume",
+        device_class=SensorDeviceClass.GAS,
+        native_unit_of_measurement=UnitOfVolume.CUBIC_METERS,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        value_fn=_gas("totalM3"),
+    ),
+    FreedoSensorDescription(
+        key="gas_flow",
+        translation_key="gas_flow",
+        device_class=SensorDeviceClass.VOLUME_FLOW_RATE,
+        native_unit_of_measurement=UnitOfVolumeFlowRate.CUBIC_METERS_PER_HOUR,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=_gas_flow,
+    ),
+)
+
+GAS_STATUS = FreedoSensorDescription(
+    key="gas_estimate",
+    translation_key="gas_estimate",
+    device_class=SensorDeviceClass.ENUM,
+    options=[ENERGY_RUNNING, *GAS_REASONS.values()],
+    entity_category=EntityCategory.DIAGNOSTIC,
+    value_fn=gas_state,
+)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -187,6 +238,8 @@ async def async_setup_entry(
     ]
     if boiler_energy(data) is not None:
         entities.append(BoilerSensor(coordinator, ENERGY_STATUS))
+    if boiler_gas(data) is not None:
+        entities.append(BoilerSensor(coordinator, GAS_STATUS))
     for circuit in (data.boiler.get("flowLimit") or {}).get("circuits") or []:
         entities.append(FlowLimitSensor(coordinator, int(circuit["id"]), "servedC"))
         entities.append(FlowLimitSensor(coordinator, int(circuit["id"]), "computedC"))
@@ -235,6 +288,21 @@ async def async_setup_entry(
 
     add_estimate()
     entry.async_on_unload(coordinator.async_add_listener(add_estimate))
+
+    # The gas sensors appear once the installation holds both gas flows.
+    gas_estimate = False
+
+    @callback
+    def add_gas_estimate() -> None:
+        nonlocal gas_estimate
+        gas = boiler_gas(coordinator.data)
+        if gas_estimate or not gas or gas.get("maxFlowM3H") is None or gas.get("minFlowM3H") is None:
+            return
+        gas_estimate = True
+        async_add_entities(BoilerSensor(coordinator, d) for d in GAS_SENSORS)
+
+    add_gas_estimate()
+    entry.async_on_unload(coordinator.async_add_listener(add_gas_estimate))
 
 
 class BoilerSensor(FreedoEntity, SensorEntity):

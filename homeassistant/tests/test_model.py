@@ -7,9 +7,11 @@ import pytest
 
 from model import (
     boiler_energy,
+    boiler_gas,
     boiler_unsupported,
     energy_state,
     flow_circuit,
+    gas_state,
     node_calibration,
     node_child_lock,
     node_display,
@@ -143,15 +145,20 @@ SCHEDULE = {
 }
 
 # GET /api/install: the installation options the integration reads. The boiler
-# power is unset: the maximum is null and the minimum 0.
+# power is unset: the maximum is null and the minimum 0. The gas flows are unset.
 INSTALL = {"rev": 7, "home_id": 1234567, "offline_schedule": True,
            "utc_offset_min": None, "timezone": "",
-           "boiler_max_power_kw": None, "boiler_min_power_kw": 0.0}
+           "boiler_max_power_kw": None, "boiler_min_power_kw": 0.0,
+           "boiler_max_gas_m3h": None, "boiler_min_gas_m3h": None}
 
 # The energy view of GET /api/boiler, with the boiler power set.
 ENERGY = {"running": True, "reason": None, "powerKW": 12.4, "totalKWh": 1234.567,
           "maxPowerKW": 24.0, "minPowerKW": 3.0, "holdSec": 300,
           "reportedAt": "2026-01-01T00:00:00Z", "updatedAt": "2026-01-01T00:00:00Z"}
+
+# The gas view of GET /api/boiler energy.gas, with both flows set.
+GAS = {"running": True, "reason": None, "flowM3H": 1.465, "totalM3": 321.654,
+       "maxFlowM3H": 2.63, "minFlowM3H": 0.3}
 
 
 def data():
@@ -584,6 +591,31 @@ def test_boiler_energy_state():
     # A daemon that does not serve the estimate.
     assert boiler_energy(data()) is None
     assert energy_state(data()) is None
+
+
+def test_boiler_gas_state():
+    energy = {**ENERGY, "gas": GAS}
+    d = parse(HEALTH, ZONES, NODES, {**BOILER, "energy": energy}, HOME)
+    assert boiler_gas(d)["totalM3"] == 321.654
+    assert gas_state(d) == "running"
+    for reason, state in (
+        ("noGasFlow", "no_gas_flow"),
+        ("noReport", "no_report"),
+        ("stale", "stale"),
+        ("noBurnerFlag", "no_burner_flag"),
+        ("noModulation", "no_modulation"),
+        # A reason of a newer daemon is unknown, not an error.
+        ("noSuchReason", None),
+    ):
+        stopped = {**BOILER, "energy": {**ENERGY, "gas": {**GAS, "running": False, "reason": reason}}}
+        assert gas_state(parse(HEALTH, ZONES, NODES, stopped, HOME)) == state
+    # A daemon that serves the heat estimate but not the gas one, and one that
+    # serves neither.
+    old = parse(HEALTH, ZONES, NODES, {**BOILER, "energy": ENERGY}, HOME)
+    assert boiler_gas(old) is None
+    assert gas_state(old) is None
+    assert boiler_gas(data()) is None
+    assert gas_state(data()) is None
 
 
 def test_install_settings():

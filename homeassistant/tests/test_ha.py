@@ -48,6 +48,7 @@ from test_model import (  # noqa: E402
     CIRCUITS,
     ENERGY,
     FLOW_CIRCUIT,
+    GAS,
     HEALTH,
     HOME,
     INSTALL,
@@ -138,6 +139,9 @@ class FakeClient:
         low, high = merged["boiler_min_power_kw"], merged["boiler_max_power_kw"]
         if high is not None and low >= high:
             raise FreedoApiError(400, f"options.boiler_min_power_kw: {low} is not below boiler_max_power_kw {high}")
+        low, high = merged.get("boiler_min_gas_m3h"), merged.get("boiler_max_gas_m3h")
+        if high is not None and low is not None and low >= high:
+            raise FreedoApiError(400, f"options.boiler_min_gas_m3h: {low} is not below boiler_max_gas_m3h {high}")
         self.settings_json = merged
         return copy.deepcopy(merged)
 
@@ -1477,8 +1481,146 @@ async def test_boiler_power_numbers_need_an_installation(hass, client):
     # 503 on GET /api/install: the daemon holds no installation.
     client.settings_error = FreedoApiError(503, "no installation")
     entry = await setup_entry(hass, client)
-    assert not has_entity(hass, entry, "number", "boiler_max_power")
-    assert not has_entity(hass, entry, "number", "boiler_min_power")
+    for key in ("boiler_max_power", "boiler_min_power", "boiler_max_gas", "boiler_min_gas"):
+        assert not has_entity(hass, entry, "number", key)
+
+
+# --- boiler gas ---
+
+
+def with_gas(client, **change):
+    client.boiler_json["energy"] = dict(ENERGY, gas=dict(GAS, **change))
+
+
+async def test_gas_sensors(hass, client):
+    with_gas(client)
+    entry = await setup_entry(hass, client)
+    registry = er.async_get(hass)
+
+    volume = hass.states.get(entity_id(hass, entry, "sensor", "boiler_gas_volume"))
+    assert float(volume.state) == 321.654
+    assert volume.attributes["device_class"] == "gas"
+    assert volume.attributes["state_class"] == "total_increasing"
+    assert volume.attributes["unit_of_measurement"] == "m³"
+
+    flow = hass.states.get(entity_id(hass, entry, "sensor", "boiler_gas_flow"))
+    assert float(flow.state) == 1.465
+    assert flow.attributes["device_class"] == "volume_flow_rate"
+    assert flow.attributes["state_class"] == "measurement"
+    assert flow.attributes["unit_of_measurement"] == "m³/h"
+
+    status_id = entity_id(hass, entry, "sensor", "boiler_gas_estimate")
+    assert hass.states.get(status_id).state == "running"
+    assert hass.states.get(status_id).attributes["device_class"] == "enum"
+    assert registry.async_get(status_id).entity_category == "diagnostic"
+
+    # The counter follows the daemon, and the flow is unknown while the
+    # estimate does not run.
+    with_gas(client, totalM3=330.0, flowM3H=0.0, running=False, reason="stale")
+    await refresh(hass, entry)
+    assert float(hass.states.get(volume.entity_id).state) == 330.0
+    assert hass.states.get(flow.entity_id).state == "unknown"
+    assert hass.states.get(status_id).state == "stale"
+
+
+async def test_gas_sensors_wait_for_both_flows(hass, client):
+    unset = {"running": False, "reason": "noGasFlow", "flowM3H": 0.0, "maxFlowM3H": None}
+    with_gas(client, minFlowM3H=None, **unset)
+    entry = await setup_entry(hass, client)
+    # One flow is not enough: the volume and the flow do not exist, and the
+    # status says why.
+    assert not has_entity(hass, entry, "sensor", "boiler_gas_volume")
+    assert not has_entity(hass, entry, "sensor", "boiler_gas_flow")
+    status_id = entity_id(hass, entry, "sensor", "boiler_gas_estimate")
+    assert hass.states.get(status_id).state == "no_gas_flow"
+
+    with_gas(client, maxFlowM3H=2.63, minFlowM3H=None, **{k: v for k, v in unset.items() if k != "maxFlowM3H"})
+    await refresh(hass, entry)
+    assert not has_entity(hass, entry, "sensor", "boiler_gas_volume")
+
+    with_gas(client, running=False, reason="noReport", flowM3H=0.0)
+    await refresh(hass, entry)
+    assert hass.states.get(status_id).state == "no_report"
+    volume = hass.states.get(entity_id(hass, entry, "sensor", "boiler_gas_volume"))
+    assert float(volume.state) == 321.654
+    assert hass.states.get(entity_id(hass, entry, "sensor", "boiler_gas_flow")).state == "unknown"
+
+    # A later poll does not add them again.
+    await refresh(hass, entry)
+    unique_ids = [e.unique_id for e in er.async_entries_for_config_entry(er.async_get(hass), entry.entry_id)]
+    assert len([u for u in unique_ids if u.endswith("boiler_gas_volume")]) == 1
+
+
+@pytest.mark.parametrize(
+    ("reason", "state"),
+    [
+        ("noGasFlow", "no_gas_flow"),
+        ("noReport", "no_report"),
+        ("stale", "stale"),
+        ("noBurnerFlag", "no_burner_flag"),
+        ("noModulation", "no_modulation"),
+        ("someNewReason", "unknown"),
+    ],
+)
+async def test_gas_status_shows_the_reason(hass, client, reason, state):
+    with_gas(client, running=False, reason=reason, flowM3H=0.0)
+    entry = await setup_entry(hass, client)
+    assert hass.states.get(entity_id(hass, entry, "sensor", "boiler_gas_estimate")).state == state
+
+
+async def test_no_gas_sensors_without_the_gas_estimate(hass, client):
+    # A daemon that serves the heat estimate but not the gas one.
+    with_energy(client)
+    entry = await setup_entry(hass, client)
+    assert has_entity(hass, entry, "sensor", "boiler_heat_energy")
+    for key in ("boiler_gas_volume", "boiler_gas_flow", "boiler_gas_estimate"):
+        assert not has_entity(hass, entry, "sensor", key)
+
+
+async def test_boiler_gas_numbers(hass, client):
+    entry = await setup_entry(hass, client)
+    registry = er.async_get(hass)
+    high = entity_id(hass, entry, "number", "boiler_max_gas")
+    low = entity_id(hass, entry, "number", "boiler_min_gas")
+    # Both flows are unset.
+    for number in (high, low):
+        assert hass.states.get(number).state == "unknown"
+        assert registry.async_get(number).entity_category == "config"
+        assert hass.states.get(number).attributes["unit_of_measurement"] == "m³/h"
+        assert hass.states.get(number).attributes["device_class"] == "volume_flow_rate"
+
+    async def write(number, value):
+        await hass.services.async_call(
+            "number", "set_value", {ATTR_ENTITY_ID: number, "value": value}, blocking=True
+        )
+        await hass.async_block_till_done()
+
+    await write(high, 2.63)
+    await write(low, 0.3)
+    assert client.calls == [
+        ("patch_install", {"boiler_max_gas_m3h": 2.63}),
+        ("patch_install", {"boiler_min_gas_m3h": 0.3}),
+    ]
+    assert float(hass.states.get(high).state) == 2.63
+    assert float(hass.states.get(low).state) == 0.3
+
+    # The daemon refuses a minimum that is not below the maximum.
+    with pytest.raises(HomeAssistantError, match="not below boiler_max_gas_m3h"):
+        await write(low, 2.63)
+    assert float(hass.states.get(low).state) == 0.3
+    # The range is the daemon range: 0 < max <= 60, 0 <= min <= 60.
+    for number, value in ((high, 0), (high, 61), (low, -1), (low, 61)):
+        with pytest.raises(ServiceValidationError):
+            await write(number, value)
+    assert len(client.calls) == 3
+
+
+async def test_no_gas_numbers_on_a_daemon_without_the_gas_options(hass, client):
+    del client.settings_json["boiler_max_gas_m3h"], client.settings_json["boiler_min_gas_m3h"]
+    entry = await setup_entry(hass, client)
+    assert has_entity(hass, entry, "number", "boiler_max_power")
+    assert not has_entity(hass, entry, "number", "boiler_max_gas")
+    assert not has_entity(hass, entry, "number", "boiler_min_gas")
 
 
 # --- home level services ---
