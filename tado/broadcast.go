@@ -5,6 +5,7 @@ import (
 	"crypto/aes"
 	"encoding/binary"
 	"errors"
+	"net/netip"
 )
 
 // The 0x49e8 broadcast carries no CoAP: it is a plain ICMPv6 message to a
@@ -213,9 +214,10 @@ func BuildRouterAdvert(srcEUI []byte, ra RouterAdvert) ([]byte, error) {
 }
 
 // BridgeRouterAdvert is the configuration the real bridge advertises, for the
-// 8-byte wire (little-endian) EUI of the sender. The IPv4 values are its LAN's,
-// so they belong to the captured site, not to the protocol.
-func BridgeRouterAdvert(wireEUI []byte) RouterAdvert {
+// 8-byte wire (little-endian) EUI of the sender, with the IPv4 gateway and DNS
+// address the installation sets.
+func BridgeRouterAdvert(wireEUI []byte, gateway, dns netip.Addr) RouterAdvert {
+	gw, ns := gateway.As4(), dns.As4()
 	return RouterAdvert{
 		HopLimit:       64,
 		Flags:          0x40, // Other-configuration
@@ -223,8 +225,32 @@ func BridgeRouterAdvert(wireEUI []byte) RouterAdvert {
 		SLLAO:          euiBigEndian(wireEUI),
 		MTU:            1500,
 		Netmask:        0xffffffff,
-		Gateway:        []byte{192, 168, 5, 1},
-		DNS:            []byte{8, 8, 8, 8},
+		Gateway:        gw[:],
+		DNS:            ns[:],
+	}
+}
+
+// RouterIPv4 returns the gateway and the DNS address the router advertisement
+// carries: the unspecified address while the option is unset.
+func (o Options) RouterIPv4() (gateway, dns netip.Addr) {
+	return routerAddr(o.RouterGateway), routerAddr(o.RouterDNS)
+}
+
+func routerAddr(s string) netip.Addr {
+	if a, err := netip.ParseAddr(s); err == nil && a.Is4() {
+		return a
+	}
+	return netip.IPv4Unspecified()
+}
+
+func (in *Install) checkRouterIPv4(c *issues) {
+	for _, o := range []struct{ path, v string }{
+		{"options.router_gateway", in.Options.RouterGateway},
+		{"options.router_dns", in.Options.RouterDNS},
+	} {
+		if a, err := netip.ParseAddr(o.v); o.v != "" && (err != nil || !a.Is4()) {
+			c.errf(o.path, "%q is not an IPv4 address", o.v)
+		}
 	}
 }
 

@@ -5314,7 +5314,12 @@ func (e *EmuState) Beacon() (Action, error) {
 
 // routerAdvert builds one advertisement with build under key.
 func (e *EmuState) routerAdvert(build func([]byte, byte, []byte, uint16, byte, []byte) ([]byte, error), key []byte, note string) (Action, error) {
-	pkt, err := BuildRouterAdvert(e.selfEUI, BridgeRouterAdvert(e.selfEUI))
+	var o Options
+	if e.inst != nil {
+		o = e.inst.Options
+	}
+	gateway, dns := o.RouterIPv4()
+	pkt, err := BuildRouterAdvert(e.selfEUI, BridgeRouterAdvert(e.selfEUI, gateway, dns))
 	if err != nil {
 		return Action{}, err
 	}

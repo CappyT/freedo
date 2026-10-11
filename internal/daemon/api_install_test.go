@@ -1328,6 +1328,44 @@ func TestInstallAPIPatchesExternalWindowMax(t *testing.T) {
 	}
 }
 
+// TestInstallAPIPatchesRouterIPv4: the router advertisement addresses read the
+// unspecified address by default, the install patch stores new ones, null or ""
+// returns them to the default, and a value that is not IPv4 is refused.
+func TestInstallAPIPatchesRouterIPv4(t *testing.T) {
+	a := newInstallAPI(t)
+	view := a.get("/api/install")
+	if view["router_gateway"] != "0.0.0.0" || view["router_dns"] != "0.0.0.0" {
+		t.Errorf("defaults = %v, %v, want 0.0.0.0 and 0.0.0.0", view["router_gateway"], view["router_dns"])
+	}
+	a.mutate(http.MethodPatch, "/api/install", map[string]any{"router_gateway": "10.1.2.1", "router_dns": "10.1.2.2"})
+	view = a.get("/api/install")
+	if view["router_gateway"] != "10.1.2.1" || view["router_dns"] != "10.1.2.2" {
+		t.Errorf("patched = %v, %v, want 10.1.2.1 and 10.1.2.2", view["router_gateway"], view["router_dns"])
+	}
+	stored, _, err := a.store.LoadInstall(context.Background())
+	if err != nil {
+		t.Fatalf("LoadInstall: %v", err)
+	}
+	if gateway, dns := stored.Options.RouterIPv4(); gateway.String() != "10.1.2.1" || dns.String() != "10.1.2.2" {
+		t.Errorf("stored = %v, %v, want 10.1.2.1 and 10.1.2.2", gateway, dns)
+	}
+	for name, body := range map[string]map[string]any{
+		"gateway not an address": {"router_gateway": "gateway"},
+		"dns out of range":       {"router_dns": "10.1.2.256"},
+		"ipv6":                   {"router_gateway": "fe80::1"},
+		"a number":               {"router_dns": 8},
+	} {
+		if code, resp := a.call(http.MethodPatch, "/api/install", body); code != http.StatusBadRequest {
+			t.Errorf("%s: code=%d %v, want 400", name, code, resp)
+		}
+	}
+	a.mutate(http.MethodPatch, "/api/install", map[string]any{"router_gateway": nil, "router_dns": ""})
+	view = a.get("/api/install")
+	if view["router_gateway"] != "0.0.0.0" || view["router_dns"] != "0.0.0.0" {
+		t.Errorf("after the clear = %v, %v, want 0.0.0.0 and 0.0.0.0", view["router_gateway"], view["router_dns"])
+	}
+}
+
 // TestInstallAPIPatchesAlertThresholds: the device alert thresholds read their
 // defaults, the install patch stores new ones, and a value that is not positive
 // is refused.

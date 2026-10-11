@@ -233,6 +233,31 @@ func TestInstallRoundTripKeepsBoilerPower(t *testing.T) {
 	}
 }
 
+// TestInstallRoundTripKeepsRouterIPv4: the router advertisement addresses
+// survive the database, and an installation that states none loads none.
+func TestInstallRoundTripKeepsRouterIPv4(t *testing.T) {
+	in, err := tado.Parse([]byte(fixtureInstallYAML + "  router_gateway: 10.3.2.1\n  router_dns: 10.3.2.2\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, _ := storeWithInstall(t, in)
+	got, _, err := store.LoadInstall(context.Background())
+	if err != nil {
+		t.Fatalf("LoadInstall: %v", err)
+	}
+	if got.Options.RouterGateway != "10.3.2.1" || got.Options.RouterDNS != "10.3.2.2" {
+		t.Errorf("loaded = %q, %q, want 10.3.2.1 and 10.3.2.2", got.Options.RouterGateway, got.Options.RouterDNS)
+	}
+	bare, _ := storeWithInstall(t, defaultInstall)
+	got, _, err = bare.LoadInstall(context.Background())
+	if err != nil {
+		t.Fatalf("LoadInstall: %v", err)
+	}
+	if got.Options.RouterGateway != "" || got.Options.RouterDNS != "" {
+		t.Errorf("an installation without router addresses loaded %q, %q", got.Options.RouterGateway, got.Options.RouterDNS)
+	}
+}
+
 // compareInstalls checks the resolved values, not the reference spellings: the
 // database keeps a wire EUI where the config held a serial or a label.
 func compareInstalls(t *testing.T, got, want *tado.Install) {

@@ -458,12 +458,19 @@ func (s *stateStore) PatchInstall(ctx context.Context, p installPatch) (installR
 				return err
 			}
 		}
-		if p.Timezone.set {
+		for key, v := range map[string]optString{
+			"timezone":       p.Timezone,
+			"router_gateway": p.RouterGateway,
+			"router_dns":     p.RouterDNS,
+		} {
+			if !v.set {
+				continue
+			}
 			var err error
-			if p.Timezone.value == nil || *p.Timezone.value == "" {
-				err = clearInstallValue(ctx, tx, "timezone")
+			if v.value == nil || *v.value == "" {
+				err = clearInstallValue(ctx, tx, key)
 			} else {
-				err = setInstallValue(ctx, tx, "timezone", *p.Timezone.value)
+				err = setInstallValue(ctx, tx, key, *v.value)
 			}
 			if err != nil {
 				return err

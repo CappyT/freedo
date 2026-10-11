@@ -249,6 +249,11 @@ type Options struct {
 	// count the gas volume.
 	BoilerMaxGasM3H *float64 `yaml:"boiler_max_gas_m3h"`
 	BoilerMinGasM3H *float64 `yaml:"boiler_min_gas_m3h"`
+	// RouterGateway and RouterDNS are the IPv4 addresses, as dotted quads, that
+	// the router advertisement carries in its option 25. Unset takes the
+	// unspecified address.
+	RouterGateway string `yaml:"router_gateway"`
+	RouterDNS     string `yaml:"router_dns"`
 }
 
 // DefaultOfflineSchedule is tag 02b3 for an installation that states no
@@ -771,6 +776,7 @@ func (in *Install) checkOptions(c *issues) {
 	in.checkFlowOptions(c)
 	in.checkEarlyStartOptions(c)
 	in.checkBoilerPower(c)
+	in.checkRouterIPv4(c)
 	in.checkDeviceOverlayEnds(c)
 	in.checkZoneOffsets(c)
 	in.checkZonePIDs(c)

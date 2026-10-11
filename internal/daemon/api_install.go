@@ -67,6 +67,10 @@ type installPatch struct {
 	BoilerMinPowerKW optFloat `json:"boiler_min_power_kw"`
 	BoilerMaxGasM3H  optFloat `json:"boiler_max_gas_m3h"`
 	BoilerMinGasM3H  optFloat `json:"boiler_min_gas_m3h"`
+	// RouterGateway and RouterDNS are the IPv4 addresses of the router
+	// advertisement; null or "" takes the unspecified address.
+	RouterGateway optString `json:"router_gateway"`
+	RouterDNS     optString `json:"router_dns"`
 }
 
 // networkKeyPut carries the PAN key as 32 hex characters. The field travels in
@@ -245,6 +249,7 @@ func circuitView(in *tado.Install, c *tado.Circuit) map[string]any {
 }
 
 func installView(in *tado.Install, rev uint64) map[string]any {
+	gateway, dns := in.Options.RouterIPv4()
 	out := map[string]any{
 		"rev":     rev,
 		"home_id": in.HomeID,
@@ -275,6 +280,8 @@ func installView(in *tado.Install, rev uint64) map[string]any {
 		"boiler_min_power_kw":      0.0,
 		"boiler_max_gas_m3h":       nil,
 		"boiler_min_gas_m3h":       nil,
+		"router_gateway":           gateway.String(),
+		"router_dns":               dns.String(),
 		"counts": map[string]any{
 			"devices":  len(in.Devices),
 			"zones":    len(in.Zones),
