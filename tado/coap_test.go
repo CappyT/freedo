@@ -63,12 +63,12 @@ func TestCoAPGolden(t *testing.T) {
 // traffic, so both addresses are compressed against 6LoWPAN context 0 and the
 // UDP checksum can only be checked once Context0Prefix is put back.
 const (
-	// corridoio -> bridge, CON 0.03 z/s?lid=1: source and destination IIDs both
+	// thermostat -> bridge, CON 0.03 z/s?lid=1: source and destination IIDs both
 	// elided, taken from the L2 header (IPHC 7ef7).
 	lidUplinkHex = "69ec3509a1cefa07c51b0005a2cafa075fa8106b2b74b1ff891dfcaa8e1b074fd0737e" +
 		"47851a3daaa7e9825b50653c14e05c06acd90412566ea124b8871c3318962e389d8c35200a9c" +
 		"ca5276fadc2a98c747f129ff5c87f44a50e9d5aa1d454b8b52c0bbd9"
-	// bridge -> corridoio, CON 0.03 z/s?lid=5, relayed for cucina: the source IID
+	// bridge -> thermostat, CON 0.03 z/s?lid=5, relayed for another zone: the source IID
 	// travels inline because it is not the L2 sender's (IPHC 7cd7).
 	lidDownlinkHex = "79ec9c05a2cafa07c51b0009a1cefa0776e0e13fb6220b3a347c1052a72407c072d81bdf" +
 		"452670c0fcab833e4afa672a75ffddb8368e21e972f58072882647d1600fc209a3f5f12f185072577" +

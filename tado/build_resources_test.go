@@ -306,7 +306,7 @@ func TestBuildBoostCoAP(t *testing.T) {
 }
 
 // capturedFlowConfig is the real bridge -> RU wall thermostat answer to the
-// thermostat's GET of "h/7654321/c/1/config" (tado_capture/coap_sniff_1786609624.log,
+// thermostat's GET of "h/7654321/c/1/config" (an earlier sniff,
 // MID 9cc2): a link-local CoAP 2.05 Content carrying 2040=12c0 = 48.00 C, the CH
 // flow setpoint. The value is constant across both captures.
 const capturedFlowConfig = "69eca805a2cafa07c51b0009a1cefa07780b25dbac10179e0d97b05fdfa436d1" +

@@ -7,7 +7,7 @@ import (
 
 // A device that misses our Enhanced ACK sends the frame again with the same MAC
 // sequence number and datagram under the next frame counter, 1.5 to 3.6 s later
-// (capture-app-20260907 and the coap_sniff logs). The window bounds the match in
+// (the app capture and the pairing captures). The window bounds the match in
 // time, because a device restarts its sequence numbers after a reboot.
 const macDuplicateWindow = 10 * time.Second
 

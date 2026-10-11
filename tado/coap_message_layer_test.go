@@ -11,7 +11,7 @@ import (
 // macRetransmit rebuilds a device Data frame as the device's MAC retransmission
 // of it: the same MAC sequence number and the same datagram under a new frame
 // counter. The captured retransmissions keep the seq and advance the counter by
-// one (capture-app-20260907, corridoio seq 75, 78, 7d, 8d, a3).
+// one (the app capture, five cases on a wall thermostat).
 func macRetransmit(t *testing.T, raw []byte, ctr uint32) []byte {
 	t.Helper()
 	f, err := ParseData(NetworkKey, raw)
@@ -23,8 +23,8 @@ func macRetransmit(t *testing.T, raw []byte, ctr uint32) []byte {
 
 // reframe carries the datagram of a device Data frame in a new frame with the
 // given MAC sequence number and frame counter. A CoAP retransmission is a new
-// frame with a new seq (capture-app-20260907: camera GET mid 0x7437 at seq 19
-// and 1a).
+// frame with a new seq (the app capture: one valve GET at two
+// consecutive seq values).
 func reframe(t *testing.T, raw []byte, seq byte, ctr uint32) []byte {
 	t.Helper()
 	f, err := ParseData(NetworkKey, raw)
@@ -60,8 +60,8 @@ func relayedCoAP(t *testing.T, e *EmuState, log *UnhandledLogger, peer []byte) *
 
 // TestZoneRelayEmptyMessageVerbatim: the commercial bridge relays an empty ACK
 // and an empty RST as they came, 4 bytes with no option 2048
-// (capture-app-20260907: corridoio -> bridge -> camera, ufficio, bagno,
-// cucina, soggiorno). An empty message carries no options (RFC 7252, 4.1).
+// (the app capture: a wall thermostat to the bridge to five other devices).
+// An empty message carries no options (RFC 7252, 4.1).
 func TestZoneRelayEmptyMessageVerbatim(t *testing.T) {
 	sender := mustHex(NodeByAny("0a01").WireLE)
 	peer := mustHex(NodeByAny("a205").WireLE)
@@ -339,7 +339,7 @@ func TestPingGetsReset(t *testing.T) {
 }
 
 // TestDirectZoneReadCarriesETagAndBlock2: every captured answer to GET
-// h/<home>/z/N/s (21 in capture-app-20260907) carries an ETag and Block2
+// h/<home>/z/N/s (21 in the app capture) carries an ETag and Block2
 // 0/0/128, and no Content-Format. Reads of the same block carry the same ETag,
 // whichever zone and device: 107917f7351475a6 answers zones 8, 5, 2 and 1.
 func TestDirectZoneReadCarriesETagAndBlock2(t *testing.T) {

@@ -252,7 +252,7 @@ const (
 	roomZoneKind = 0x01 // 6020, room zone; hot water uses dhwZoneKind
 	overlayAuto  = 0x00 // 6240, follow the program
 	// overlayAutoChange is the 6240 of the app rule TADO_MODE, captured in
-	// capture-overlay-20261011: the overlay lasts until the next automatic change.
+	// the overlay capture: the overlay lasts until the next automatic change.
 	overlayAutoChange = 0x01
 )
 
@@ -729,7 +729,7 @@ func randBytes(n int) ([]byte, error) {
 }
 
 // midCounter holds the last Message ID minted. The commercial bridge takes its
-// requests from one counter shared by every device (capture-app-20260907: its
+// requests from one counter shared by every device (the app capture: its
 // own requests advance from 0x0efc to 0x608f), as Contiki's coap_get_mid does
 // from a random start. A sequential MID cannot repeat inside a device's
 // EXCHANGE_LIFETIME the way two random ones can, and a repeat reads as a

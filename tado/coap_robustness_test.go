@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// Regression tests for the CoAP and MAC edge cases of issue #105. Every frame
+// Regression tests for CoAP and MAC edge cases. Every frame
 // is synthesized with the package builders.
 
 // midZeroUplink is deviceUplink with the Message ID forced to 0 and the UDP

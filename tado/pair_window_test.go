@@ -13,7 +13,7 @@ import (
 var joinerEUI = mustHex("0bb1cefa07c51b00")
 
 // pairingRS is a Router Solicitation from joinerEUI under PairingKey, as a
-// joining valve sends it (coap_sniff_1786619225).
+// joining valve sends it (the pairing capture).
 func pairingRS(t *testing.T) []byte {
 	t.Helper()
 	rs := []byte{iphcMcast0, iphcMcast1, nhICMPv6, 0x02, icmpRouterSolicit, 0, 0, 0}
@@ -148,7 +148,7 @@ func pairDownlink(t *testing.T, e *EmuState, target string) []byte {
 
 // TestPairKeyFollowsWindow: d/pair goes under PairingKey to a device the window
 // heard under the pairing key, and under the network key to one the window
-// heard under the network key after that (coap_sniff_1786619225: the second
+// heard under the network key after that (the pairing capture: the second
 // d/pair to the joined valve, answered 2.03). It goes from UDP 5683 to 5683.
 func TestPairKeyFollowsWindow(t *testing.T) {
 	now := time.Date(2026, 9, 25, 10, 0, 0, 0, time.UTC)
@@ -294,8 +294,7 @@ func TestReservePairBeacons(t *testing.T) {
 // takes the Frame Pending advertisement, each advertisement goes out twice,
 // each behind its own wake-up train: under the network key with Frame Pending
 // set, then under the pairing key, on consecutive seq and frame counter
-// (coap_sniff_1786619225 lines 4357/4612, 34607/34862, 36073/36328,
-// 37450/37705).
+// (the pairing capture, four pairs).
 func TestPairWindowDoublesRouterAdvert(t *testing.T) {
 	now := time.Date(2026, 9, 25, 10, 0, 0, 0, time.UTC)
 	e := pairEmu(t, &now)
@@ -354,8 +353,7 @@ func TestPairWindowDoublesRouterAdvert(t *testing.T) {
 
 // TestPairWindowAnswersPairingKeySolicitation: a Router Solicitation under the
 // pairing key gets the doubled advertisement, as the commercial bridge answers
-// it (coap_sniff_1786619225: solicitation at line 35818, advertisement 1.05 s
-// later at line 36073).
+// it (the pairing capture: the advertisement follows the solicitation by 1.05 s).
 func TestPairWindowAnswersPairingKeySolicitation(t *testing.T) {
 	now := time.Date(2026, 9, 25, 10, 0, 0, 0, time.UTC)
 	e := pairEmu(t, &now)
@@ -400,8 +398,8 @@ func queuedAttempt(t *testing.T, e *EmuState, target string) (Action, bool) {
 
 // TestPairGoesFirst: d/pair goes ahead of every downlink queued to the joiner,
 // as the commercial bridge sends it ahead of the frames it holds
-// (coap_sniff_1786619225: the d/config MID efaf waits for its CoAP answer after
-// the Enhanced ACK of line 4102, and d/pair goes on line 4634 without it). An
+// (the pairing capture: a d/config waits for its CoAP answer after its
+// Enhanced ACK, and d/pair goes on without it). An
 // attempt the radio holds keeps the head until it completes; any other attempt
 // in flight waits behind d/pair with its MID, and the other writes keep their
 // order.
@@ -495,8 +493,8 @@ func TestPairKeyChosenAtSend(t *testing.T) {
 }
 
 // TestPairAlwaysBootstraps: every d/pair attempt may take the bootstrap train.
-// The joiner of coap_sniff_1786619225 restarted its frame counter before both
-// windows (lines 1500 and 33325, counter 1). A reboot moves its CSL phase, so
+// The joiner of the pairing capture restarted its frame counter before both
+// windows (counter 1 in both). A reboot moves its CSL phase, so
 // an anchor from before the reboot misses.
 func TestPairAlwaysBootstraps(t *testing.T) {
 	now := time.Date(2026, 9, 25, 10, 0, 0, 0, time.UTC)

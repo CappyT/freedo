@@ -116,7 +116,7 @@ func homePath(in *Install, rest ...string) []string {
 
 // TestDirectZoneReadMatchesCapturedShape: away, the thermostat's GET
 // h/<home>/z/N/s gets the captured away block in the downlink order, whatever
-// the cache holds. Byte-exact against "capture-analysis-20260827.md", section
+// the cache holds. Byte-exact against the heat-demand capture, section
 // 2; the return to schedule matches the auto reads of the same capture.
 func TestDirectZoneReadMatchesCapturedShape(t *testing.T) {
 	in := synthInstall(t)
@@ -199,7 +199,7 @@ func TestDirectZoneReadMatchesCapturedShape(t *testing.T) {
 
 // TestDirectZoneReadAtHome: at home the thermostat's read of a cached zone
 // carries the home state and the program block in force, as the cloud answers
-// in capture-app-20260907: 6160=1, 61e0=1 and 6200, then the overlay tags.
+// in the app capture: 6160=1, 61e0=1 and 6200, then the overlay tags.
 func TestDirectZoneReadAtHome(t *testing.T) {
 	in := synthInstall(t)
 	ru, err := in.Resolve("RU0000000001")
@@ -315,7 +315,7 @@ func TestDirectZoneReadAtHome(t *testing.T) {
 
 // TestDirectZoneReadWithoutCache: a zone with no cached block reads the home
 // state and the program block in force, then 6240=0 and 62e0=0, as every cloud
-// read of capture-app-20260907 carries both: a thermostat that restarted holds
+// read of the app capture carries both: a thermostat that restarted holds
 // no 6240 and skips the zone until one arrives. 6200 stays out when no program
 // block is known. With no home state pushed the read stays an empty 2.05, which
 // the device applies as no change.
@@ -434,7 +434,7 @@ func thermostatDHWEnable(state map[string]byte) (enable byte, published bool) {
 // TestHotWaterReadWithoutProgramKeepsHotWaterOn: at home, with no program for
 // the hot-water zone and nothing cached for it, the thermostat's read of
 // h/<home>/z/0/s must set 6240, as every cloud read of zone 0 does
-// (capture-app-20260907). A thermostat that restarted holds no 6240, and
+// (the app capture). A thermostat that restarted holds no 6240, and
 // zone_state_timer_cb then skips the zone: the DHW enable never goes out and
 // the boiler keeps hot water off.
 func TestHotWaterReadWithoutProgramKeepsHotWaterOn(t *testing.T) {
@@ -469,7 +469,7 @@ func TestHotWaterReadWithoutProgramKeepsHotWaterOn(t *testing.T) {
 // Away, a zone on its program reads and is rewritten with 6160=2, 61e0=0 and
 // 6240=0, so zone_state_timer_cb takes the enable from 61e0 and turns hot water
 // off. A manual overlay keeps 6240=2 6260=1 6280 under the away head, as the
-// cloud away read of zone 0 in capture-analysis-20260827 shows, so the enable
+// cloud away read of zone 0 in the heat-demand capture shows, so the enable
 // comes from 6260 and hot water stays on at the overlay setpoint.
 func TestHotWaterFollowsAway(t *testing.T) {
 	in := synthInstall(t)
@@ -543,7 +543,7 @@ func TestHotWaterFollowsAway(t *testing.T) {
 
 // TestDirectZoneReadValveRebuilt: a valve reading a cached zone gets the block
 // the thermostat gets, as the cloud answers every valve read of
-// capture-app-20260907: the pushed home state and program block, the overlay
+// the app capture: the pushed home state and program block, the overlay
 // tags of the zone, no 6440. The cache head is stale on purpose.
 func TestDirectZoneReadValveRebuilt(t *testing.T) {
 	in := synthInstall(t)

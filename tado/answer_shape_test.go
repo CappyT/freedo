@@ -7,9 +7,9 @@ import (
 )
 
 // The tests in this file pin the options of the answers the commercial bridge
-// gives to a device GET, as ota-watch-20260923-2008.log,
-// ota-watch-20260924-1410.log, capture-app-20260907.log and
-// coap_sniff_1786619225.log record them.
+// gives to a device GET, as the long watch captures,
+// the long watch captures, the app capture and
+// the pairing capture record them.
 
 // shapeGET sends a device GET of path with the captured request options:
 // Content-Format 42, the ETag when set, the Block2 when set.
@@ -147,7 +147,7 @@ func TestAuthTokenAnswerCarriesNoContentFormat(t *testing.T) {
 
 // TestMissingZoneConfigGetIsNotFound: a GET of the config of a zone the
 // installation does not hold gets 4.04 with the request's Block2 and nothing
-// else (coap_sniff_1786619225.log, line 9504: "4.04 blk2=0/0/128").
+// else (the pairing capture: "4.04 blk2=0/0/128").
 func TestMissingZoneConfigGetIsNotFound(t *testing.T) {
 	in := synthInstall(t)
 	e := NewEmu(in.EmuConfig(), nil)
@@ -172,7 +172,7 @@ func TestMissingZoneConfigGetIsNotFound(t *testing.T) {
 
 // TestThermostatConfigDocumentMatchesCapture: the wall thermostat's d/config
 // document carries no 021a and no 0149, and 0158 = 0000 as its last record
-// (capture-app-20260907.log line 70943, ota-watch-20260924-1410.log line 5199).
+// (the app capture and the long watch captures).
 // The valve document keeps 021a, 0149 and 0158 = 0200, and its ETag.
 func TestThermostatConfigDocumentMatchesCapture(t *testing.T) {
 	in := synthInstall(t)

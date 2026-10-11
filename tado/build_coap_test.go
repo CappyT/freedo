@@ -134,9 +134,9 @@ func TestBuildSetpointCoAPRoundTrip(t *testing.T) {
 	}
 }
 
-// The two "z/s?id=10" downlink bodies of capture-heatdemand-20260827.log,
-// decrypted. The bridge set the camera valve to 25.00 C at t=1787837637.098 and
-// returned it to its program at t=1787837960.105.
+// The two "z/s?id=10" downlink bodies of the heat-demand capture,
+// decrypted. The bridge set a valve to 25.00 C and returned it to its program
+// 323 s later.
 const (
 	capturedSetpointManualBody = "61600102" + // 6160=02, the same value on every zone
 		"61800100" +
@@ -211,7 +211,7 @@ func TestBuildZoneWriteHomeAndAwayShapes(t *testing.T) {
 			"62000207d0" + "62400103" + "62600101" + "6280020708" + "62e00100" + "6440020001",
 	}, {
 		// The app rule "until the next automatic change" (TADO_MODE), as
-		// capture-overlay-20261011 holds it: 6240=1, the rest as a timer start.
+		// the overlay capture holds it: 6240=1, the rest as a timer start.
 		name: "home until_auto_change start",
 		build: func() ([]byte, error) {
 			return BuildSetpointCoAP(SetpointCoAP{
@@ -369,7 +369,7 @@ func TestBuildSetpointOffRejectsReturnToSchedule(t *testing.T) {
 
 // capturedDHWSetpoint is the real bridge -> RU wall thermostat downlink the app
 // produced when it set the boiler hot-water setpoint to 53.00 C
-// (tado_capture/coap_sniff_1786609624.log, t=1786610002.738). The device echoed
+// (an earlier sniff, t=1786610002.738). The device echoed
 // 045b=14b4 on "h/7654321/hvac/mon/dhw" 19 s later.
 const capturedDHWSetpoint = "69ecdf05a2cafa07c51b0009a1cefa079e26414fc883187909ffb88b97851d0e" +
 	"03e689e7a6aac8c803cee273b52fdb842fe12728d794ccddd9e2eef356e3c707e" +

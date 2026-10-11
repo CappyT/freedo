@@ -1455,7 +1455,7 @@ func schedulePath(path string, in *Install) bool {
 // 2.05 and a 2.03 change nothing. A 4.xx or 5.xx is dropped. The GET carries
 // no ETag (app_node_notify_build, valve 0x118e4), so there is none to validate.
 //
-// Every captured answer (21 in capture-app-20260907) carries an ETag and Block2
+// Every captured answer (21 in the app capture) carries an ETag and Block2
 // 0/0/128, and no Content-Format. Its ETag follows the body alone: one body
 // reads under one ETag on every zone and device. The body is far shorter than
 // the 128 bytes the device asks for, so the one block is the last.
@@ -1475,7 +1475,7 @@ func (e *EmuState) servedDirectZoneState(m *CoAPMessage, dst []byte) ([]byte, st
 
 // directZoneReadBody is the block a device reads with GET h/<home>/z/N/s. The
 // cloud answers the wall thermostat and a valve alike, in the downlink tag
-// order of every captured read (capture-app-20260907), with no 6440:
+// order of every captured read (the app capture), with no 6440:
 //
 //	6160 6180 6020 61e0 [6200] 6240 [6260 6280] 62e0
 //
@@ -2945,10 +2945,10 @@ func (e *EmuState) EnqueueZoneRewrite(target string, id int) error {
 // EnqueueZoneSwitch queues the per-zone write of a home or away switch, or of a
 // change of the away temperature while away. It is EnqueueZoneRewrite, except
 // that a room zone that runs no overlay carries 6440=0001 when the write moves
-// its target, power or temperature (headTarget). In capture-away-20261011 all 16
+// its target, power or temperature (headTarget). In the away capture all 16
 // writes fit that rule: the zone whose program setpoint equals its away
 // temperature carries no 6440 in either direction. A zone that runs an overlay
-// keeps it and carries no 6440, as in capture-app-20260907.
+// keeps it and carries no 6440, as in the app capture.
 func (e *EmuState) EnqueueZoneSwitch(target string, id int) error {
 	return e.enqueueZoneRewrite(target, id, false, true)
 }
@@ -5169,7 +5169,7 @@ func (e *EmuState) confirmByMID(srcEUI []byte, m *CoAPMessage) {
 		// it: the 2.05 comes from the firmware, not from a capture.
 		calibrated := d.kind == "calibrate" && strings.HasPrefix(m.Code, "2.")
 		// A device that already holds the key answers d/pair 2.03
-		// (coap_sniff_1786619225).
+		// (the pairing capture).
 		paired := d.kind == "pair" && m.Code == "2.03"
 		if m.Code != code && !calibrated && !paired {
 			switch {
@@ -5362,7 +5362,7 @@ func (e *EmuState) routerAdvert(build func([]byte, byte, []byte, uint16, byte, [
 
 // BeaconBurst builds the advertisement behind its wake-up train. While the pair
 // window is open and the radio takes a Frame Pending advertisement, the burst
-// goes twice, as the commercial bridge sends it (coap_sniff_1786619225, four
+// goes twice, as the commercial bridge sends it (the pairing capture, four
 // pairs): under the network key with Frame Pending set, then under the pairing
 // key for the devices that join, each behind its own train.
 func (e *EmuState) BeaconBurst() ([]Action, error) {
@@ -5427,9 +5427,9 @@ func routerAdvertDelay(longest time.Duration) time.Duration {
 
 // routerSolicitAnswerWindow is MIN_DELAY_BETWEEN_RAS of RFC 4861. A
 // solicitation less than 3 s after the last burst ended gets no burst, now or
-// later: the burst on air answers it. In coap_sniff_1786619225 the commercial
-// bridge answers none 0.4 to 2.8 s after an advertisement (lines 1886, 1959,
-// 11006, 12448, 36632), and it answers one 4.2 s after (line 12759). Devices
+// later: the burst on air answers it. In the pairing capture the commercial
+// bridge answers none 0.4 to 2.8 s after an advertisement (five cases), and it
+// answers one 4.2 s after. Devices
 // that lose the router solicit together: a capture holds 180 solicitations in
 // 75 s.
 const routerSolicitAnswerWindow = 3 * time.Second

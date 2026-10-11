@@ -214,7 +214,7 @@ static const uint8_t SEC_CTRL = 0x04;
 static const uint8_t PAIRWIN_OPEN_LEN = 2 + 16 + 8 + 1 + 4 + 1;
 static const uint16_t PAIRWIN_MAX_S = 600;
 // The commercial beacon starts 2.4 to 7.4 ms after the request ends
-// (coap_sniff_1786619225), after its 124-tick listen of 3.968 ms.
+// (the pairing capture), after its 124-tick listen of 3.968 ms.
 static const uint32_t EB_GAP_US = 3968;
 
 // ------------------------------------------------------------- task parameters

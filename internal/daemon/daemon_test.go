@@ -5325,7 +5325,7 @@ func TestBootFollowsTheStoredInstallation(t *testing.T) {
 	if err := install.WriteInstall(path, defaultInstall); err != nil {
 		t.Fatal(err)
 	}
-	// The same installation with zone 1 reporting through the corridoio valve:
+	// The same installation with zone 1 reporting through its valve:
 	// the 015e role bytes of the thermostat move with the election.
 	stale, err := tado.Parse([]byte(strings.Replace(fixtureInstallYAML,
 		"reporter: RU1000000001}", "reporter: VA1000000003}", 1)))

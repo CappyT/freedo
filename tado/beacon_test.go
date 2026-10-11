@@ -10,7 +10,7 @@ import (
 )
 
 // beaconRequest builds an Enhanced Beacon Request as a joining valve sends it
-// (coap_sniff_1786619225 lines 3539, 34935, 35538): a secured MAC command to
+// (the pairing capture): a secured MAC command to
 // the broadcast address whose command id sits in the ciphertext.
 func beaconRequest(t *testing.T, key []byte, seq byte, src []byte, ctr uint32, cmd byte) []byte {
 	t.Helper()
@@ -76,7 +76,7 @@ func TestParseBeaconRequest(t *testing.T) {
 }
 
 // TestBuildEnhancedBeacon pins the answer layout of the capture
-// (coap_sniff_1786619225 lines 3540, 34936, 35539), rebuilt with a synthetic
+// (the pairing capture), rebuilt with a synthetic
 // identity: FCF 18ec, the bridge seq, PAN abcd, the requester, the bridge, then
 // the security control, the frame counter and the MAC FCS, sealed from byte 16
 // on. No IE and no payload. With the real identity this builder gives the

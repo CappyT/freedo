@@ -56,7 +56,7 @@ func TestEmuWithoutInstallStillResolvesRawEUI(t *testing.T) {
 	}
 }
 
-// utcUplink is a telemetry publish from the camera valve, carrying the "id=10"
+// utcUplink is a telemetry publish from a valve, carrying the "id=10"
 // the emulator needs to address that device's own d/config.
 func utcUplink(t *testing.T, dev []byte, mid uint16) []byte {
 	t.Helper()

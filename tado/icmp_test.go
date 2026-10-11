@@ -40,7 +40,7 @@ func icmpDownlink(t *testing.T, actions []Action, reason string) (*Frame, []byte
 
 // TestEchoRequestAnswered: an Echo Request from a device to the bridge gets an
 // Echo Reply with the same identifier, sequence and data, in the form the
-// commercial bridge sends (coap_sniff_1786619225): link-local addresses
+// commercial bridge sends (the pairing capture): link-local addresses
 // elided, hop limit 64.
 func TestEchoRequestAnswered(t *testing.T) {
 	dev := mustB(NodeByAny("camera").WireLE)
@@ -90,7 +90,7 @@ func TestEchoRequestRejected(t *testing.T) {
 }
 
 // neighborSolicit builds the Neighbor Solicitation a device broadcasts for
-// target, to its solicited-node address, as coap_sniff_1786619225 holds it.
+// target, to its solicited-node address, as the pairing capture holds it.
 func neighborSolicit(dev, target []byte) []byte {
 	src, dst := linkLocalFromWire(dev), solicitedNode(target)
 	msg := []byte{icmpNeighborSolicit, 0, 0, 0, 0, 0, 0, 0}

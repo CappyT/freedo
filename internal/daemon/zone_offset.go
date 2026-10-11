@@ -3,7 +3,7 @@ package daemon
 // zone_offset: the room temperature correction of a heating zone in mode
 // setpoint (tado.OffsetModeSetpoint). The valve keeps its 0140. The daemon
 // works on the corrected scale, corrected = reported + shift, as 0140 does on
-// the valve (012d = 012e + 0140, capture-analysis-20260827). The valve reaches
+// the valve (012d = 012e + 0140, the heat-demand capture). The valve reaches
 // a target T on that scale when it regulates to T - shift, so every setpoint
 // the daemon writes to the zone goes out shifted, and every zone temperature
 // and target it reports comes back corrected. The node API stays on the wire

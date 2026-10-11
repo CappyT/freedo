@@ -7,7 +7,7 @@ import (
 
 // The coordinator answers two ICMPv6 messages a device sends it: an Echo
 // Request with an Echo Reply, and a Neighbor Solicitation for its own address
-// with a unicast Neighbor Advertisement. coap_sniff_1786619225 holds one of
+// with a unicast Neighbor Advertisement. the pairing capture holds one of
 // each from a valve, and the bridge queued both answers for the next CSL
 // rendezvous of the device.
 const (

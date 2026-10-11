@@ -17,7 +17,7 @@ const (
 
 // AwayTemperature returns the temperature zone keeps in away, and false when the
 // zone is off in away: no value, or the room minimum. The cloud writes that
-// default as 61e0=0 with no 6200 (capture-away-20261011); a higher value goes
+// default as 61e0=0 with no 6200 (the away capture); a higher value goes
 // out as 61e0=1 and 6200=<value>.
 func (o Options) AwayTemperature(zone int) (float64, bool) {
 	if c := o.AwayTemperatures[zone]; c > RoomMinC {

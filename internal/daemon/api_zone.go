@@ -1,7 +1,7 @@
 package daemon
 
 // api_zone: the zone-level commands and the zone target view. A zone command
-// goes to one member: capture-app-20260907 shows the commercial coordinator
+// goes to one member: the app capture shows the commercial coordinator
 // writing z/s?id=N to the elected demand reporter alone, the wall thermostat
 // included when it holds the role, for a setpoint, a timer, a return to
 // schedule, a boost and the home or away burst. The other members take the

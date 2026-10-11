@@ -2314,7 +2314,7 @@ func TestZoneUplinkRelayed(t *testing.T) {
 
 // TestZoneRelayForwardsRequestVerbatim: a relayed request keeps the CoAP bytes
 // its author sent. The commercial bridge never adds option 2048 to a relayed
-// request (1444 relayed pairs in capture-app-20260907 and ota-watch-20260923/24,
+// request (1444 relayed pairs in the app capture and the long watch captures,
 // every one identical on both hops), also for an author that echoes a session
 // id on its own uplinks.
 func TestZoneRelayForwardsRequestVerbatim(t *testing.T) {
@@ -3158,7 +3158,7 @@ func TestBridgeSeen(t *testing.T) {
 }
 
 // capturedRA is a real 0x49e8 broadcast of the bridge, from
-// tado_capture/coap_sniff_1786609624.log: the Router Advertisement that carries
+// an earlier sniff: the Router Advertisement that carries
 // the network configuration of the PAN.
 const capturedRA = "49e8c1ffff09a1cefa07c51b0004f02bfd84800bc515da1c5f5bacc22474b591" +
 	"0a46eb30e5011c14af362cf3534250148a5c4cec23bd5b241cb6adc994bfdb5c04091ae40a" +
@@ -3397,10 +3397,9 @@ func TestRouterSolicitationAnswerRateLimit(t *testing.T) {
 
 // TestRouterSolicitationMinDelay: a solicitation less than 3 s after the last
 // burst ended gets nothing, and none later either. One after that gets a burst
-// at once. In coap_sniff_1786619225 the solicitations 0.4 to 2.8 s after an
-// advertisement ended get none (lines 1886, 1959, 11006, 12448, 36632), and the
-// one 4.2 s after the advertisement of line 12397 gets a burst (line 12759,
-// train from line 12810).
+// at once. In the pairing capture the solicitations 0.4 to 2.8 s after an
+// advertisement ended get none (five cases), and the one 4.2 s after an
+// advertisement gets a burst.
 func TestRouterSolicitationMinDelay(t *testing.T) {
 	now := time.Unix(100, 0)
 	e := NewEmu(EmuConfig{
@@ -3754,7 +3753,7 @@ func stm32FlowCircuit(recs []NodeTableRec, kind, circuit func(zone int) byte) by
 
 // TestThermostatNodeTableSelectsFlowCircuit: the commercial bridge serves the
 // wall thermostat 015e = 0d00 0b01 0202 0203 0205 0208 020a
-// (capture-app-20260907, d/<RU>/config 2.05), and after the next c/1/config
+// (the app capture, d/<RU>/config 2.05), and after the next c/1/config
 // the boiler read back MaxTSet = 48 C (hvac/config 046f = 12c1). The STM32
 // reaches tag 2040 only through the 0x02 bit of its own heating zone.
 func TestThermostatNodeTableSelectsFlowCircuit(t *testing.T) {

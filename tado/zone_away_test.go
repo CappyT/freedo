@@ -1,7 +1,7 @@
 package tado
 
 // zone_away_test: the away temperature of a heating zone on the wire. The
-// shapes are the ones of capture-away-20261011; the installation and the
+// shapes are the ones of the away capture; the installation and the
 // values are synthetic.
 
 import (
@@ -63,7 +63,7 @@ func cachedHead(mode, presence byte, sched ...byte) []TLV {
 }
 
 // TestAwaySwitchWriteShapes: the write of a home or away switch to a room zone
-// with no overlay, per capture-away-20261011. Away, a zone above the default
+// with no overlay, per the away capture. Away, a zone above the default
 // carries its temperature in 6200 with 61e0=1; a zone at the default carries
 // 61e0=0 and no 6200. Both carry 6180=0 and 6240=0. The return home restores the
 // program setpoint. 6440 follows the target: it is present when the write moves

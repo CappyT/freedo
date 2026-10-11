@@ -7,10 +7,10 @@ import (
 )
 
 // A joining valve looks for a coordinator with Enhanced Beacon Requests under
-// PairingKey, one on this channel every 8 s (coap_sniff_1786619225 lines 2900,
-// 3539, 34935, 35538). The commercial bridge answers each with an Enhanced
+// PairingKey, one on this channel every 8 s (the pairing capture). The commercial
+// bridge answers each with an Enhanced
 // Beacon unicast to the valve under the same key, with no wake-up train: the
-// beacon ends 9 to 14 ms after the request (lines 3540, 34936, 35539), so it
+// beacon ends 9 to 14 ms after the request, so it
 // starts 2.4 to 7.4 ms after it at 50 kBaud. After a beacon the valve sends its
 // Router Solicitation under the pairing key.
 //

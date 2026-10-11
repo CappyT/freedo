@@ -476,7 +476,7 @@ func (b *Bridge) Send(payload []byte, timeout time.Duration) (bool, error) {
 	return false, nil
 }
 
-// Firmware limits (tado_capture/cc1101_bridge/firmware/cc1101_bridge_v2/cc1101_bridge_v2.ino):
+// Firmware limits (firmware/cc1101_bridge/cc1101_bridge.ino):
 // MAX_TX_FRAME, MAX_TRAIN, MAX_MATCH and the request buffer MAX_PAYLOAD.
 const (
 	maxTrainFrame  = 140

@@ -1,6 +1,6 @@
 # freedo - compose example. Copy it to docker-compose.yml and edit the device
 # path and the group id. The daemon starts in dry-run: add --tx only after the
-# checks in docs/SYSTEM_VALIDATION.md, with the commercial bridge switched off.
+# checks in docs/OPERATION.md (first radio session), with the commercial bridge switched off.
 services:
   freedo:
     # Published multi-arch image (linux/amd64 and linux/arm64). To build from

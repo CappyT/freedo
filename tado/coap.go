@@ -37,7 +37,7 @@ import (
 //     bridge's own global address aaaa::21b:c507:fade:a304.
 //   - Captures. The UDP checksum of a context-compressed packet depends on the
 //     prefix only through its one's-complement sum, which every one of the 366
-//     lid= frames of coap_sniff_1786619225/1786609624 puts at 0xaaaa. See
+//     lid= frames of the pairing capture and an earlier sniff puts at 0xaaaa. See
 //     TestContext0PrefixVerifiesCapturedChecksums.
 var Context0Prefix = mustHex("aaaa000000000000")
 

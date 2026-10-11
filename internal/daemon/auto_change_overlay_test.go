@@ -1,7 +1,7 @@
 package daemon
 
 // auto_change_overlay_test: the end rule until_auto_change, the app's
-// TADO_MODE, which the cloud writes as 6240=1 (capture-overlay-20261011). The
+// TADO_MODE, which the cloud writes as 6240=1 (the overlay capture). The
 // overlay ends at the next block of the program or at the next switch between
 // home and away, in either direction, whichever comes first, with the write an
 // elapsed timer gets. With no program only the switch ends it. Frames and

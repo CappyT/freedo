@@ -224,8 +224,8 @@ func configDocDefaults() []TLV {
 
 // thermostatConfigDocDefaults are the always-present tags of the wall
 // thermostat's document. Its captured document carries no 021a and no 0149,
-// and 0158 = 0000 (capture-app-20260907.log line 70943,
-// ota-watch-20260924-1410.log line 5199). The thermostat refuses every d/config
+// and 0158 = 0000 (the app capture and the long watch captures). The
+// thermostat refuses every d/config
 // write, so no operator value replaces them.
 func thermostatConfigDocDefaults() []TLV {
 	return []TLV{
@@ -484,7 +484,7 @@ func BuildPairCoAP(networkKey []byte, mid uint16, srcEUI, dstEUI []byte) ([]byte
 		return nil, err
 	}
 	// Every captured d/pair goes from UDP 5683 to 5683, not from the bridge's
-	// request port 4005 (coap_sniff_1786619225, three requests).
+	// request port 4005 (the pairing capture, three requests).
 	return BuildCoAP(CoAPReq{
 		Type: "CON", Code: "0.02", MID: mid, Token: []byte{},
 		Path:    []string{"d", "pair"},

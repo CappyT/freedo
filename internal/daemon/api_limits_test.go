@@ -135,7 +135,7 @@ func TestJSONBodiesAreStrict(t *testing.T) {
 	}
 	wantNoWrites(t, "a refused body", d, wireOf(t, in, "VA1000000002"))
 
-	// The requests homeassistant/custom_components/freedo/api.py sends, with
+	// The requests custom_components/freedo/api.py sends, with
 	// the path its entities build: a display entity names the valve by its
 	// short address. Each one succeeds.
 	short := wireShort(t, in, "VA1000000002")

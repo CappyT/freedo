@@ -18,7 +18,7 @@ import (
 // verifies there tags its sender with key index 2, and csl_tx_statemachine
 // secures the frames to that sender with the pairing key. A joining valve sends
 // its Enhanced Beacon Requests and Router Solicitations under the pairing key
-// (coap_sniff_1786619225), so the window learns its address before any d/pair.
+// (the pairing capture), so the window learns its address before any d/pair.
 //
 // freedo keeps the same fallback, bounded to a window the operator opens. It
 // records the sender. It answers only the two frames a joiner needs before
@@ -210,7 +210,7 @@ func (e *EmuState) notePairingBroadcast(raw []byte) (*BroadcastMsg, bool) {
 
 // answerPairingSolicit answers a Router Solicitation under the pairing key with
 // the doubled advertisement, as the commercial bridge does
-// (coap_sniff_1786619225 lines 3823, 35818, 37195, each answered within 1.4 s).
+// (the pairing capture, three cases, each answered within 1.4 s).
 // A single advertisement carries only the network key, which the joiner cannot
 // read, so without the doubling there is nothing to answer with.
 func (e *EmuState) answerPairingSolicit(b *BroadcastMsg) []Action {
@@ -292,9 +292,9 @@ func (e *EmuState) noteNetworkKeyFrame(src []byte) {
 
 // pairFirst moves a queued d/pair of key to the head, ahead of every downlink
 // the radio does not hold. The commercial bridge sends d/pair ahead of the
-// frames it holds for the joiner: in coap_sniff_1786619225 the d/config MID
-// efaf still waits for its CoAP answer after the Enhanced ACK of line 4102, and
-// d/pair goes on line 4634 without it. An attempt the radio holds
+// frames it holds for the joiner: in the pairing capture a d/config still waits
+// for its CoAP answer after its Enhanced ACK, and d/pair goes on without it. An
+// attempt the radio holds
 // (awaitingCSL) cannot be recalled, so it keeps the head until it completes.
 // Any other attempt in flight waits behind d/pair with its tries, MID and MAC
 // seq. Its answer no longer closes it, and its next attempt asks again under
@@ -316,7 +316,7 @@ func (e *EmuState) pairFirst(key string) {
 
 // pairKeyFor returns the key that secures a d/pair attempt to wire. The
 // commercial bridge sends it under the network key to a device that already
-// talks the network key (coap_sniff_1786619225, answered 2.03), and under the
+// talks the network key (the pairing capture, answered 2.03), and under the
 // pairing key to one that joins. freedo takes the network key only when the
 // open window heard the device under it after its last pairing-key frame:
 // without that evidence a device waiting to join cannot read anything else.

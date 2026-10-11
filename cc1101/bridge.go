@@ -1,6 +1,6 @@
 // Package cc1101 drives a CC1101 radio over the thin ESP32 serial<->SPI bridge.
 // All CC1101 semantics (registers, strobes, FIFO) live here on the host; the
-// ESP32 only frames raw SPI transactions. See tado_capture/cc1101_bridge for the
+// ESP32 only frames raw SPI transactions. See firmware/cc1101_bridge for the
 // firmware and docs "CC1101 Bridge - Driver e Setup".
 package cc1101
 
@@ -37,7 +37,7 @@ type replyCheck func(status byte, data []byte) bool
 // reply arrives. A nil lateReply discards it.
 type lateReply func(status byte, data []byte)
 
-// Serial framing (matches tado_capture/cc1101_bridge/firmware/cc1101_bridge_v2/cc1101_bridge_v2.ino @ 921600 8N1):
+// Serial framing (matches firmware/cc1101_bridge/cc1101_bridge.ino @ 921600 8N1):
 //
 //	request : 0xA5 cmd lenHi lenLo payload
 //	response: 0x5A status lenHi lenLo payload

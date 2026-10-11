@@ -2,7 +2,7 @@ package daemon
 
 // zone_away_test: the away temperature of a heating zone on /api/install/zones,
 // the writes it causes and its storage. The installation is synthetic; the
-// write shapes are the ones of capture-away-20261011.
+// write shapes are the ones of the away capture.
 
 import (
 	"context"

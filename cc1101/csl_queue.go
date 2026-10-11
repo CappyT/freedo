@@ -21,7 +21,7 @@ const (
 	cslQueueNeighborFull = 0x1a
 )
 
-// Firmware CSL timing (cc1101_bridge_v2.ino): CSL_PERIOD_US, CSL_GUARD_MAX_US,
+// Firmware CSL timing (cc1101_bridge.ino): CSL_PERIOD_US, CSL_GUARD_MAX_US,
 // CCA_MAX_US, CSL_BOOTSTRAP_US, CSL_FOLLOW_TMO_MS and CSL_GUARD_MARGIN_MS.
 const (
 	cslFirmwarePeriod         = time.Second

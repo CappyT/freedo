@@ -420,7 +420,7 @@ circuits:
 // The device holds no DST rules of its own, so the offset has to come from the
 // installation unless the caller names another.
 func TestDaemonConfigUTCOffsetInherited(t *testing.T) {
-	const short = "a602" // camera valve
+	const short = "a602" // the valve of zone 10
 
 	var set struct {
 		Queued bool   `json:"queued"`

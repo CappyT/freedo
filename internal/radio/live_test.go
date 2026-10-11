@@ -1109,7 +1109,7 @@ func TestLiveRadioGroupsAllZeroCSLAccounting(t *testing.T) {
 
 // TestLiveRadioSetsNoHostCSLNeighborCap: the host caps no CSL neighbor count of
 // its own, so five neighbors all reach the bridge. The neighbor table is the
-// bridge firmware's (CSL_NEIGHBORS = 16 in cc1101_bridge_v2.ino), which answers
+// bridge firmware's (CSL_NEIGHBORS = 16 in cc1101_bridge.ino), which answers
 // a full table with ErrCSLQueueNeighborFull; this fake bridge does not model
 // that limit.
 func TestLiveRadioSetsNoHostCSLNeighborCap(t *testing.T) {
