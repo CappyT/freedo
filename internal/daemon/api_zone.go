@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"freedo/tado"
@@ -36,6 +37,10 @@ func roomSetpointErr(name string, c float64) error {
 	return nil
 }
 
+// errNoZoneWriter marks a zone that elects no demand reporter and has several
+// members: no one member is the writer.
+var errNoZoneWriter = errors.New("zone elects no demand reporter")
+
 // zoneWriter returns the member the coordinator writes a zone command to: the
 // wall thermostat of the hot-water zone, else the demand reporter, else the
 // only member of the zone.
@@ -50,8 +55,8 @@ func zoneWriter(inst *tado.Install, z *tado.Zone) (*tado.Device, error) {
 			return nil, merr
 		}
 		if len(members) != 1 {
-			return nil, fmt.Errorf("zone %d elects no demand reporter and has %d members: "+
-				"declare its reporter, the member the coordinator writes the zone to", z.Number, len(members))
+			return nil, fmt.Errorf("zone %d has %d members and %w: "+
+				"declare its reporter, the member the coordinator writes the zone to", z.Number, len(members), errNoZoneWriter)
 		}
 		dev = members[0]
 	}
@@ -102,8 +107,10 @@ func (d *daemon) deviceOffline(e *tado.EmuState, dev *tado.Device) bool {
 	return vv.Offline
 }
 
-// pathZoneWriter resolves the {number} path value to the zone and its writer.
-func (d *daemon) pathZoneWriter(w http.ResponseWriter, r *http.Request) (*tado.Zone, *tado.Device, bool) {
+// pathZoneWriters resolves the {number} path value to the zone and the devices
+// that take its command: the zone writer, or every member while the zone has
+// none, as zoneWriteTargets does.
+func (d *daemon) pathZoneWriters(w http.ResponseWriter, r *http.Request) (*tado.Zone, []*tado.Device, bool) {
 	inst := d.inst.Load()
 	if inst == nil {
 		writeResolveErr(w, errNoInstall)
@@ -120,11 +127,43 @@ func (d *daemon) pathZoneWriter(w http.ResponseWriter, r *http.Request) (*tado.Z
 		return nil, nil, false
 	}
 	dev, err := zoneWriter(inst, z)
+	if errors.Is(err, errNoZoneWriter) {
+		members, merr := inst.ZoneMembers(z.Number)
+		if merr != nil {
+			writeErr(w, http.StatusBadRequest, merr.Error())
+			return nil, nil, false
+		}
+		return z, members, true
+	}
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return nil, nil, false
 	}
-	return z, dev, true
+	return z, []*tado.Device{dev}, true
+}
+
+// enqueueEach runs enqueue on each of devs, dispatches what it queued and
+// returns the downlinks pending on them.
+func (d *daemon) enqueueEach(e *tado.EmuState, devs []*tado.Device, enqueue func(dev *tado.Device, target string) error) (int, error) {
+	pending := 0
+	for _, dev := range devs {
+		target := hex.EncodeToString(dev.WireEUI())
+		if err := enqueue(dev, target); err != nil {
+			return 0, err
+		}
+		d.dispatchQueued(e, target)
+		pending += e.Pending(target)
+	}
+	return pending, nil
+}
+
+// targetNames is targetName for each of devs, joined by commas.
+func targetNames(devs []*tado.Device) string {
+	names := make([]string, len(devs))
+	for i, dev := range devs {
+		names[i] = targetName(dev)
+	}
+	return strings.Join(names, ",")
 }
 
 // zoneOverlayBody is the overlay part of a zone setpoint or off request.
@@ -237,7 +276,7 @@ func (d *daemon) roomOverlay(e *tado.EmuState, z *tado.Zone, dev *tado.Device, o
 // postZoneSetpoint sets the target of a zone: a room overlay on the zone
 // writer, or the hot-water overlay on the wall thermostat.
 func (d *daemon) postZoneSetpoint(w http.ResponseWriter, r *http.Request) {
-	z, dev, ok := d.pathZoneWriter(w, r)
+	z, devs, ok := d.pathZoneWriters(w, r)
 	if !ok {
 		return
 	}
@@ -270,60 +309,49 @@ func (d *daemon) postZoneSetpoint(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, fmt.Sprintf("setpointC must be within %g..%g", lo, hi))
 		return
 	}
-	target := hex.EncodeToString(dev.WireEUI())
 	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		d.applyHomeState(e)
 		duration, err := d.overlayDuration(e, z, b.Mode, duration)
 		if err != nil {
 			return nil, err
 		}
-		if z.Kind == tado.ZoneHotWater {
-			err = e.EnqueueDHWOverlay(target, z.Number, c, true, duration, b.endRule())
-		} else {
+		return d.enqueueEach(e, devs, func(dev *tado.Device, target string) error {
+			if z.Kind == tado.ZoneHotWater {
+				return e.EnqueueDHWOverlay(target, z.Number, c, true, duration, b.endRule())
+			}
 			raw := d.rawSetpointC(d.inst.Load(), z.Number, c)
 			sp := d.roomOverlay(e, z, dev, overlay, duration, raw)
 			sp.Setpoint = raw
 			sp.EndRule = b.endRule()
-			err = e.EnqueueSetpoint(target, sp)
-		}
-		if err != nil {
-			return nil, err
-		}
-		d.dispatchQueued(e, target)
-		return e.Pending(target), nil
+			return e.EnqueueSetpoint(target, sp)
+		})
 	})
-	queued(w, v, d.persist(err), map[string]any{"zone": z.Number, "target": targetName(dev)})
+	queued(w, v, d.persist(err), map[string]any{"zone": z.Number, "target": targetNames(devs)})
 }
 
 // postZoneAuto returns a zone to its program.
 func (d *daemon) postZoneAuto(w http.ResponseWriter, r *http.Request) {
-	z, dev, ok := d.pathZoneWriter(w, r)
+	z, devs, ok := d.pathZoneWriters(w, r)
 	if !ok {
 		return
 	}
-	target := hex.EncodeToString(dev.WireEUI())
 	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		d.applyHomeState(e)
-		var err error
-		if z.Kind == tado.ZoneHotWater {
-			err = e.EnqueueDHWSchedule(target, z.Number)
-		} else {
-			err = e.EnqueueSchedule(target, z.Number)
-		}
-		if err != nil {
-			return nil, err
-		}
-		d.dispatchQueued(e, target)
-		return e.Pending(target), nil
+		return d.enqueueEach(e, devs, func(_ *tado.Device, target string) error {
+			if z.Kind == tado.ZoneHotWater {
+				return e.EnqueueDHWSchedule(target, z.Number)
+			}
+			return e.EnqueueSchedule(target, z.Number)
+		})
 	})
-	queued(w, v, d.persist(err), map[string]any{"zone": z.Number, "target": targetName(dev)})
+	queued(w, v, d.persist(err), map[string]any{"zone": z.Number, "target": targetNames(devs)})
 }
 
 // postZoneOff turns a zone off with an overlay, 6260=0 and no 6280: the
 // hot water on the wall thermostat, a room on its writer. The room block is
 // the captured one of the app's "off until the next time block".
 func (d *daemon) postZoneOff(w http.ResponseWriter, r *http.Request) {
-	z, dev, ok := d.pathZoneWriter(w, r)
+	z, devs, ok := d.pathZoneWriters(w, r)
 	if !ok {
 		return
 	}
@@ -336,34 +364,29 @@ func (d *daemon) postZoneOff(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	target := hex.EncodeToString(dev.WireEUI())
 	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		d.applyHomeState(e)
 		duration, err := d.overlayDuration(e, z, b.Mode, duration)
 		if err != nil {
 			return nil, err
 		}
-		if z.Kind == tado.ZoneHotWater {
-			err = e.EnqueueDHWOverlay(target, z.Number, 0, false, duration, b.endRule())
-		} else {
+		return d.enqueueEach(e, devs, func(dev *tado.Device, target string) error {
+			if z.Kind == tado.ZoneHotWater {
+				return e.EnqueueDHWOverlay(target, z.Number, 0, false, duration, b.endRule())
+			}
 			sp := d.roomOverlay(e, z, dev, overlay, duration, 0)
 			sp.Off = true
 			sp.EndRule = b.endRule()
-			err = e.EnqueueSetpoint(target, sp)
-		}
-		if err != nil {
-			return nil, err
-		}
-		d.dispatchQueued(e, target)
-		return e.Pending(target), nil
+			return e.EnqueueSetpoint(target, sp)
+		})
 	})
-	queued(w, v, d.persist(err), map[string]any{"zone": z.Number, "target": targetName(dev)})
+	queued(w, v, d.persist(err), map[string]any{"zone": z.Number, "target": targetNames(devs)})
 }
 
 // postZoneBoost starts or cancels the boost of a heating zone: 25 C for
 // tado.BoostDuration, then the return to schedule.
 func (d *daemon) postZoneBoost(w http.ResponseWriter, r *http.Request) {
-	z, dev, ok := d.pathZoneWriter(w, r)
+	z, devs, ok := d.pathZoneWriters(w, r)
 	if !ok {
 		return
 	}
@@ -381,16 +404,13 @@ func (d *daemon) postZoneBoost(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "on is required")
 		return
 	}
-	target := hex.EncodeToString(dev.WireEUI())
 	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		d.applyHomeState(e)
-		if err := e.EnqueueBoost(target, z.Number, *b.On); err != nil {
-			return nil, err
-		}
-		d.dispatchQueued(e, target)
-		return e.Pending(target), nil
+		return d.enqueueEach(e, devs, func(_ *tado.Device, target string) error {
+			return e.EnqueueBoost(target, z.Number, *b.On)
+		})
 	})
-	queued(w, v, d.persist(err), map[string]any{"zone": z.Number, "target": targetName(dev), "on": *b.On})
+	queued(w, v, d.persist(err), map[string]any{"zone": z.Number, "target": targetNames(devs), "on": *b.On})
 }
 
 // overlayRule names the end rule a zone overlay runs under: the one it was set

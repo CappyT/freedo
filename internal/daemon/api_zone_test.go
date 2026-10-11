@@ -153,13 +153,7 @@ func wireShort(t *testing.T, in *tado.Install, ref string) string {
 // TestZoneRoutesRejectBadRequests: every refused body names its error and
 // queues nothing.
 func TestZoneRoutesRejectBadRequests(t *testing.T) {
-	in := windowInstall(t, func(in *tado.Install) {
-		for i := range in.Zones {
-			if in.Zones[i].Number == 5 {
-				in.Zones[i].Reporter = nil
-			}
-		}
-	})
+	in := windowInstall(t, nil)
 	d, url := newWindowDaemon(t, in, newTestClock(windowStart), nil)
 	for _, tc := range []struct {
 		what, path string
@@ -179,7 +173,6 @@ func TestZoneRoutesRejectBadRequests(t *testing.T) {
 		{"hot water until_next without program", "0/setpoint", map[string]any{"setpointC": 50, "mode": "until_next"}, 400, "hot-water program"},
 		{"unknown zone", "99/setpoint", map[string]any{"setpointC": 20}, 404, "zone"},
 		{"bad zone number", "x/setpoint", map[string]any{"setpointC": 20}, 400, "invalid zone number"},
-		{"no reporter, two members", "5/setpoint", map[string]any{"setpointC": 20}, 400, "elects no demand reporter"},
 		{"room off bad mode", "3/off", map[string]any{"mode": "auto"}, 400, "bad mode"},
 		{"room off duration on manual", "3/off", map[string]any{"durationSec": 60}, 400, "needs mode timer"},
 		{"boost without on", "3/boost", map[string]any{}, 400, "on is required"},
@@ -193,6 +186,41 @@ func TestZoneRoutesRejectBadRequests(t *testing.T) {
 	}
 	for _, dev := range in.Devices {
 		wantNoWrites(t, "a refused request", d, wireOf(t, in, dev.Short()))
+	}
+}
+
+// TestZoneWithoutReporterWritesEveryMember: a zone of two members that elects
+// no demand reporter has no writer, so its commands go to both members, as the
+// engine's write targets do, and to no one else.
+func TestZoneWithoutReporterWritesEveryMember(t *testing.T) {
+	in := windowInstall(t, func(in *tado.Install) {
+		for i := range in.Zones {
+			if in.Zones[i].Number == 5 {
+				in.Zones[i].Reporter = nil
+			}
+		}
+	})
+	d, url := newWindowDaemon(t, in, newTestClock(windowStart), nil)
+	if _, writer := zoneTargetOf(t, url, 5); writer != "" {
+		t.Fatalf("zone 5 writer = %q, want none", writer)
+	}
+	body, code := postZone(t, url, 5, "setpoint", map[string]any{"setpointC": 21.5})
+	if code != http.StatusOK || body["queued"] != true || body["pending"] != float64(2) {
+		t.Fatalf("setpoint: code=%d body=%v, want 200 with a write queued to each member", code, body)
+	}
+	if target, _ := body["target"].(string); !strings.Contains(target, "VA1000000001") || !strings.Contains(target, "VA1000000006") {
+		t.Errorf("target = %q, want both members", body["target"])
+	}
+	for _, member := range []string{"VA1000000001", "VA1000000006"} {
+		wantTags(t, member+" setpoint", deliver(t, d, in, wireOf(t, in, member)),
+			map[string]string{"6240": "02", "6260": "01", "6280": "0866"})
+	}
+	wantNoWrites(t, "a setpoint on another zone", d, wireOf(t, in, "VA1000000004"))
+
+	for _, verb := range []string{"auto", "off"} {
+		if body, code := postZone(t, url, 5, verb, map[string]any{}); code != http.StatusOK || body["pending"] != float64(2) {
+			t.Errorf("%s: code=%d body=%v, want 200 with a write queued to each member", verb, code, body)
+		}
 	}
 }
 
