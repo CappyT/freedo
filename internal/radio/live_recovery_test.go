@@ -17,20 +17,20 @@ type flakyPollBridge struct {
 	*queuedLiveBridge
 	fails atomic.Int32
 	polls atomic.Int32
+	lost  atomic.Int32
 	err   error
 }
 
 func (b *flakyPollBridge) PollCSLQueue() (*cc1101.CSLQueueEvent, error) {
 	b.polls.Add(1)
 	if b.fails.Add(-1) >= 0 {
+		b.lost.Add(1)
 		return nil, b.err
 	}
 	return b.queuedLiveBridge.PollCSLQueue()
 }
 
-func (b *flakyPollBridge) SerialErrors() uint64 {
-	return uint64(max(b.polls.Load()-3, 0))
-}
+func (b *flakyPollBridge) SerialErrors() uint64 { return uint64(b.lost.Load()) }
 
 var errTruncatedReply = fmt.Errorf("%w: reply truncated", cc1101.ErrLinkFault)
 
