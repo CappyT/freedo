@@ -1,0 +1,151 @@
+blueprint:
+  name: freedo presence away
+  description: >-
+    Sets the freedo Away switch from the presence of people in Home Assistant.
+
+
+    - Away turns on when all selected people have been outside the home zone
+    for the away delay.
+
+    - Away turns off when one selected person is in the home zone, after the
+    optional home delay.
+
+    - A person or tracker that is unavailable or unknown never turns Away on.
+
+    - Home Assistant start and a change of a blocking entity apply the current
+    presence again.
+  domain: automation
+  author: CappyT
+  homeassistant:
+    min_version: "2026.8.0"
+  input:
+    away_switch:
+      name: Away switch
+      description: The freedo Away switch of the home.
+      selector:
+        entity:
+          filter:
+            - domain: switch
+              integration: freedo
+    people:
+      name: People
+      description: >-
+        The people or device trackers that decide if the home is away.
+      selector:
+        entity:
+          multiple: true
+          filter:
+            - domain:
+                - person
+                - device_tracker
+    home_zone:
+      name: Home zone
+      description: The zone that counts as home.
+      default: zone.home
+      selector:
+        entity:
+          filter:
+            - domain: zone
+    away_delay:
+      name: Delay before away
+      description: >-
+        All selected people must stay outside the home zone for this time
+        before Away turns on.
+      default:
+        hours: 0
+        minutes: 10
+        seconds: 0
+      selector:
+        duration:
+    home_delay:
+      name: Delay before home
+      description: >-
+        One selected person must stay in the home zone for this time before
+        Away turns off. 0 turns Away off at once.
+      default:
+        hours: 0
+        minutes: 0
+        seconds: 0
+      selector:
+        duration:
+    block_entities:
+      name: Blocking entities
+      description: >-
+        Optional. The automation does nothing while one of these entities is
+        on, for example a guest mode switch.
+      default: []
+      selector:
+        entity:
+          multiple: true
+          filter:
+            - domain:
+                - binary_sensor
+                - input_boolean
+                - schedule
+                - switch
+
+# A new run cancels the pending delay of the previous run.
+mode: restart
+
+triggers:
+  # to: null fires on a state change only, not on an attribute change such as
+  # a GPS update, which would restart the delay again and again.
+  - trigger: state
+    entity_id: !input people
+    to: null
+  - trigger: state
+    entity_id: !input block_entities
+    to: null
+  - trigger: homeassistant
+    event: start
+
+actions:
+  # This check is an action, not a condition: a condition that fails would not
+  # cancel the delay of the previous run.
+  - condition: not
+    conditions:
+      - condition: state
+        entity_id: !input block_entities
+        state: "on"
+        match: any
+  - choose:
+      - conditions:
+          - condition: zone.in_zone
+            target:
+              entity_id: !input people
+            options:
+              zone: !input home_zone
+              behavior: any
+          - condition: state
+            entity_id: !input away_switch
+            state: "on"
+        sequence:
+          - delay: !input home_delay
+          - action: switch.turn_off
+            target:
+              entity_id: !input away_switch
+      - conditions:
+          - condition: zone.not_in_zone
+            target:
+              entity_id: !input people
+            options:
+              zone: !input home_zone
+              behavior: all
+          # The zone condition skips unavailable and unknown entities, and
+          # passes when no entity is left.
+          - condition: not
+            conditions:
+              - condition: state
+                entity_id: !input people
+                state:
+                  - unavailable
+                  - unknown
+                match: any
+          - condition: state
+            entity_id: !input away_switch
+            state: "off"
+        sequence:
+          - delay: !input away_delay
+          - action: switch.turn_on
+            target:
+              entity_id: !input away_switch
