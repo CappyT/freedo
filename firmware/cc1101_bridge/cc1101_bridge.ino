@@ -2254,6 +2254,9 @@ static void wdtInit() {
 void setup() {
   Serial.setRxBufferSize(SERIAL_RX_BUF);
   Serial.setTxBufferSize(SERIAL_TX_BUF);
+  // The core clocks a UART at 250000 baud or less from the 1 MHz reference tick. At 230400 the
+  // divisor is 4.3 and a CH340 adapter garbled 28 of 100 replies. The 80 MHz APB clock gave none.
+  Serial.setClockSource(UART_CLK_SRC_APB);
   Serial.begin(SERIAL_BAUD);
 
   pinMode(PIN_CS, OUTPUT);

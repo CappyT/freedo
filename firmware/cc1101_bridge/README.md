@@ -241,6 +241,12 @@ baud. The board has no flow control line, and the CH340 datasheet advises flow c
 or a lower rate from 500 kbaud in both directions. The point of loss inside the USB
 stack is not measured.
 
+The firmware clocks the UART from the 80 MHz APB clock. The ESP32 core clocks a UART at
+250000 baud or less from a 1 MHz reference tick, and at 230400 baud that clock gave a
+divisor of 4.3: a CH340 adapter garbled 28 of 100 PING replies, and the same rate was
+clean from APB. 115200 baud was clean from either clock. The core uses APB above 250000
+baud.
+
 A byte takes 10 bit times (start, 8 data, stop). Time on the wire:
 
 | Rate (baud) | Bytes per ms | 110 bytes (a reply with one frame) | 1028 bytes (the largest request or reply) |
