@@ -18,6 +18,7 @@ from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.service_info.hassio import HassioServiceInfo
 
 from .api import FreedoAuthError, FreedoClient, FreedoConnectionError, FreedoError
 from .const import (
@@ -53,6 +54,40 @@ async def _validate(hass: HomeAssistant, host: str, port: int, token: str) -> st
 
 class FreedoConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
+
+    _discovered: dict[str, Any]
+
+    async def async_step_hassio(
+        self, discovery_info: HassioServiceInfo
+    ) -> ConfigFlowResult:
+        """The freedo add-on announces its host, port and token."""
+        config = discovery_info.config
+        self._discovered = {
+            CONF_HOST: config[CONF_HOST],
+            CONF_PORT: int(config[CONF_PORT]),
+            CONF_TOKEN: config.get(CONF_TOKEN, ""),
+        }
+        await self.async_set_unique_id(
+            f"{self._discovered[CONF_HOST]}:{self._discovered[CONF_PORT]}"
+        )
+        self._abort_if_unique_id_configured(updates=self._discovered)
+        return await self.async_step_hassio_confirm()
+
+    async def async_step_hassio_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            error = await _validate(
+                self.hass,
+                self._discovered[CONF_HOST],
+                self._discovered[CONF_PORT],
+                self._discovered[CONF_TOKEN],
+            )
+            if error is None:
+                return self.async_create_entry(title="freedo", data=self._discovered)
+            errors["base"] = error
+        return self.async_show_form(step_id="hassio_confirm", errors=errors)
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None

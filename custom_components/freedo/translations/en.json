@@ -14,6 +14,10 @@
           "token": "Bearer token of the API. Leave empty when the daemon has no token."
         }
       },
+      "hassio_confirm": {
+        "title": "freedo add-on",
+        "description": "Home Assistant found the freedo add-on. Set up the integration for it?"
+      },
       "reauth_confirm": {
         "title": "Update the freedo API token",
         "data": {
