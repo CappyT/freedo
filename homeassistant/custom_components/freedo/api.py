@@ -106,10 +106,24 @@ class FreedoClient:
     async def install_circuits(self) -> dict[str, Any]:
         return await self._request("GET", "/api/install/circuits")
 
+    async def pair_window(self) -> dict[str, Any] | None:
+        """The pair window of the bridge, None on a daemon without the route."""
+        try:
+            return await self._request("GET", "/api/pair/window")
+        except FreedoApiError as err:
+            if err.status == 404:
+                return None
+            raise
+
     # --- writes ---
 
     async def set_away(self, away: bool) -> dict[str, Any]:
         return await self._request("PATCH", "/api/home", {"away": away})
+
+    async def set_pair_window(self, seconds: int) -> dict[str, Any]:
+        """Open the pair window for seconds, 0 closes it. The answer is the
+        window view of the read."""
+        return await self._request("POST", "/api/pair/window", {"seconds": int(seconds)})
 
     async def set_offline_schedule(self, enabled: bool) -> dict[str, Any]:
         return await self._request(

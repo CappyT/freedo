@@ -53,6 +53,9 @@ OPEN_WINDOW_MAX_SEC = 0xFFFF
 # The daemon rejects an outdoor temperature outside -60..60 C with 400.
 OUTDOOR_BOUND_C = 60.0
 
+# The daemon rejects a pair window longer than this with 400.
+PAIR_WINDOW_MAX_SEC = 600
+
 # The daemon rejects a boiler power above this with 400 (a larger value is a
 # typo in W).
 BOILER_POWER_MAX_KW = 500.0
@@ -122,6 +125,9 @@ class FreedoData:
     # GET /api/install offline_schedule: d/config tag 02b3 of every device
     # without a per-device value. None when the daemon holds no installation.
     offline_schedule: bool | None = None
+    # GET /api/pair/window: the pair window of the bridge. None on a daemon
+    # without the route.
+    pair_window: dict[str, Any] | None = None
 
     @property
     def hot_water_zone(self) -> Zone | None:
@@ -146,14 +152,17 @@ def parse(
     install: Mapping[str, Any] | None = None,
     settings: Mapping[str, Any] | None = None,
     circuits: Mapping[str, Any] | None = None,
+    pair_window: Mapping[str, Any] | None = None,
 ) -> FreedoData:
     """Build the model from the read endpoints. install is the body of
     GET /api/install/zones, settings the body of GET /api/install, circuits the
-    body of GET /api/install/circuits."""
+    body of GET /api/install/circuits, pair_window the body of
+    GET /api/pair/window."""
     data = FreedoData(
         boiler=dict(boiler or {}),
         settings=dict(settings or {}),
         away=bool((home or {}).get("away")),
+        pair_window=dict(pair_window) if pair_window is not None else None,
     )
     offline = (settings or {}).get("offline_schedule")
     if isinstance(offline, bool):

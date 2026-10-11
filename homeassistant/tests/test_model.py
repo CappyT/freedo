@@ -184,6 +184,13 @@ def test_parse():
     assert d.offline_schedule is None
 
 
+def test_pair_window():
+    window = {"open": True, "until": "2026-01-01T00:10:00Z", "responder": False, "joiners": []}
+    assert parse(HEALTH, ZONES, NODES, BOILER, HOME, pair_window=window).pair_window == window
+    # A daemon without the route sends none.
+    assert data().pair_window is None
+
+
 def test_offline_schedule():
     for value in (True, False):
         settings = dict(INSTALL, offline_schedule=value)

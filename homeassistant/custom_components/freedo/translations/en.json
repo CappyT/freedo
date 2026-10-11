@@ -132,6 +132,7 @@
     "switch": {
       "away": { "name": "Away" },
       "offline_schedule": { "name": "Offline schedule" },
+      "pairing_mode": { "name": "Pairing mode" },
       "notification": { "name": "Change notification" },
       "child_lock": { "name": "Child lock" },
       "early_start": { "name": "Early start" },

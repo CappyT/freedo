@@ -90,6 +90,9 @@ class FakeClient:
         self.window_gate: asyncio.Event | None = None
         # Errors the next window pushes raise, one per push.
         self.window_errors: list[Exception] = []
+        # GET /api/pair/window, None for a daemon without the route. The times are
+        # left out while the window never opened.
+        self.pair_window_json: dict | None = {"open": False, "responder": False, "joiners": []}
 
     async def health(self):
         return copy.deepcopy(self.health_json)
@@ -111,6 +114,17 @@ class FakeClient:
 
     async def install_circuits(self):
         return copy.deepcopy(self.circuits_json)
+
+    async def pair_window(self):
+        return copy.deepcopy(self.pair_window_json)
+
+    async def set_pair_window(self, seconds):
+        self.calls.append(("pair_window", seconds))
+        self.pair_window_json = {
+            "open": seconds > 0, "responder": False, "joiners": [],
+            "opened": "2026-01-01T00:00:00Z", "until": f"2026-01-01T00:{seconds // 60:02d}:00Z",
+        }
+        return copy.deepcopy(self.pair_window_json)
 
     async def install(self):
         if self.settings_error is not None:
@@ -1106,6 +1120,74 @@ async def test_set_window_error_is_a_home_assistant_error(hass, client):
     with pytest.raises(HomeAssistantError, match="no open window"):
         await call_freedo(hass, "set_window", {ATTR_ENTITY_ID: BEDROOM})
     assert client.windows == []
+
+
+# --- pairing mode ---
+
+
+async def test_pairing_mode_switch(hass, client):
+    entry = await setup_entry(hass, client)
+    pairing = entity_id(hass, entry, "switch", "pairing_mode")
+    assert hass.states.get(pairing).state == "off"
+    entity = er.async_get(hass).async_get(pairing)
+    assert entity.entity_category == "config"
+    # The switch belongs to the hub device.
+    hub = dr.async_get(hass).async_get_device_by_identifier((DOMAIN, entry.entry_id), entry.entry_id)
+    assert entity.device_id == hub.id
+
+    await turn(hass, "turn_on", pairing)
+    # The longest window the daemon allows, 10 minutes.
+    assert client.calls == [("pair_window", 600)]
+    state = hass.states.get(pairing)
+    assert state.state == "on"
+    assert state.attributes["until"] == "2026-01-01T00:10:00Z"
+
+    await turn(hass, "turn_off", pairing)
+    assert client.calls[-1] == ("pair_window", 0)
+    state = hass.states.get(pairing)
+    assert state.state == "off"
+    assert state.attributes["until"] is None
+
+
+async def test_pairing_mode_follows_the_daemon(hass, client):
+    entry = await setup_entry(hass, client)
+    pairing = entity_id(hass, entry, "switch", "pairing_mode")
+    # A window opened outside Home Assistant shows at the next poll, and so does
+    # its end. The joiners the window learned are not exposed.
+    client.pair_window_json = {
+        "open": True, "opened": "2026-01-01T00:00:00Z", "until": "2026-01-01T00:02:00Z",
+        "responder": True,
+        "joiners": [{"eui": "0000000000000001", "short": "ffff", "label": "", "frames": 3}],
+    }
+    await refresh(hass, entry)
+    state = hass.states.get(pairing)
+    assert state.state == "on"
+    assert set(state.attributes) - {"friendly_name"} == {"until"}
+    client.pair_window_json = {"open": False, "responder": False, "joiners": []}
+    await refresh(hass, entry)
+    assert hass.states.get(pairing).state == "off"
+    assert client.calls == []
+
+
+async def test_no_pairing_mode_on_a_daemon_without_the_route(hass, client):
+    client.pair_window_json = None
+    entry = await setup_entry(hass, client)
+    assert not has_entity(hass, entry, "switch", "pairing_mode")
+    # The other entities load.
+    assert has_entity(hass, entry, "switch", "away")
+
+
+async def test_pairing_mode_error_is_a_home_assistant_error(hass, client):
+    entry = await setup_entry(hass, client)
+    pairing = entity_id(hass, entry, "switch", "pairing_mode")
+
+    async def refuse(seconds):
+        raise FreedoApiError(400, "seconds must be between 0 and 600")
+
+    client.set_pair_window = refuse
+    with pytest.raises(HomeAssistantError, match="between 0 and 600"):
+        await turn(hass, "turn_on", pairing)
+    assert hass.states.get(pairing).state == "off"
 
 
 # --- diagnostics ---

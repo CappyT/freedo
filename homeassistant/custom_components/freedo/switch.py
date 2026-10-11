@@ -2,7 +2,8 @@
 switch: options.offline_schedule of GET and PATCH /api/install. Notification
 switch of each valve: the change notification of d/config tag 0158. Child lock
 switch of each valve: d/lock. Early start and open window detection switch of
-each heating zone: the zone row of GET and PATCH /api/install/zones."""
+each heating zone: the zone row of GET and PATCH /api/install/zones. Pairing
+mode switch: the pair window of GET and POST /api/pair/window."""
 
 from __future__ import annotations
 
@@ -23,7 +24,14 @@ from .entity import (
     FreedoZoneSettingEntity,
     call_api,
 )
-from .model import KIND_VALVE, Zone, in_zone, node_child_lock, zone_setting
+from .model import (
+    KIND_VALVE,
+    PAIR_WINDOW_MAX_SEC,
+    Zone,
+    in_zone,
+    node_child_lock,
+    zone_setting,
+)
 
 
 async def async_setup_entry(
@@ -36,6 +44,8 @@ async def async_setup_entry(
         AwaySwitch(coordinator),
         OfflineScheduleSwitch(coordinator),
     ]
+    if coordinator.data.pair_window is not None:
+        entities.append(PairingModeSwitch(coordinator))
     for short, dev in sorted(coordinator.data.devices.items()):
         if dev.get("kind") == KIND_VALVE and in_zone(coordinator.data, short):
             entities.append(NotificationSwitch(coordinator, short))
@@ -97,6 +107,45 @@ class OfflineScheduleSwitch(FreedoEntity, SwitchEntity):
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         await self._set(False)
+
+
+class PairingModeSwitch(FreedoEntity, SwitchEntity):
+    """The pair window of the bridge: on, the daemon answers the beacon requests
+    of a device that joins. It opens the longest window the daemon allows and
+    closes by itself at the end, which the state shows at the next poll."""
+
+    _attr_translation_key = "pairing_mode"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, coordinator: FreedoCoordinator) -> None:
+        super().__init__(coordinator, "pairing_mode")
+        self._attr_device_info = self.hub_device()
+
+    @property
+    def available(self) -> bool:
+        return super().available and self.coordinator.data.pair_window is not None
+
+    @property
+    def is_on(self) -> bool | None:
+        window = self.coordinator.data.pair_window
+        return bool(window["open"]) if window and "open" in window else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        window = self.coordinator.data.pair_window or {}
+        return {"until": window.get("until") if window.get("open") else None}
+
+    async def _set(self, seconds: int) -> None:
+        view = await call_api(self.coordinator.client.set_pair_window(seconds))
+        if isinstance(view, dict):
+            self.coordinator.data.pair_window = view
+            self.async_write_ha_state()
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self._set(PAIR_WINDOW_MAX_SEC)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self._set(0)
 
 
 class NotificationSwitch(FreedoDisplayEntity, SwitchEntity):

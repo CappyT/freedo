@@ -127,6 +127,29 @@ def test_write_payloads():
     ]
 
 
+def test_pair_window():
+    closed = {"open": False, "responder": False, "joiners": []}
+    opened = {"open": True, "opened": "2026-01-01T00:00:00Z", "until": "2026-01-01T00:10:00Z",
+              "responder": False, "joiners": []}
+    session = FakeSession(
+        {("GET", "/api/pair/window"): (200, closed), ("POST", "/api/pair/window"): (200, opened)}
+    )
+    client = FreedoClient(session, "h", 8080)
+    assert run(client.pair_window()) == closed
+    assert run(client.set_pair_window(600)) == opened
+    assert run(client.set_pair_window(0)) == opened
+    assert [(c["method"], c["url"].split(":8080", 1)[-1], c["json"]) for c in session.calls] == [
+        ("GET", "/api/pair/window", None),
+        ("POST", "/api/pair/window", {"seconds": 600}),
+        ("POST", "/api/pair/window", {"seconds": 0}),
+    ]
+    # A daemon without the route answers 404: no pair window to show.
+    assert run(FreedoClient(FakeSession(), "h", 8080).pair_window()) is None
+    refusing = FakeSession({("GET", "/api/pair/window"): (500, {"error": "engine busy"})})
+    with pytest.raises(FreedoApiError):
+        run(FreedoClient(refusing, "h", 8080).pair_window())
+
+
 def test_install_read():
     body = {"rev": 7, "offline_schedule": True}
     session = FakeSession({("GET", "/api/install"): (200, body)})
