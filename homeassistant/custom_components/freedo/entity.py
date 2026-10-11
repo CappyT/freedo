@@ -81,6 +81,33 @@ class FreedoNodeEntity(FreedoEntity):
         return super().available and self._short in self.coordinator.data.nodes
 
 
+class FreedoZoneSettingEntity(FreedoEntity):
+    """A setting of one heating zone: the row of GET /api/install/zones,
+    written with PATCH /api/install/zones/{n}."""
+
+    def __init__(self, coordinator: FreedoCoordinator, zone: Zone, key: str) -> None:
+        super().__init__(coordinator, f"zone{zone.number}_{key}")
+        self._number = zone.number
+        self._attr_device_info = self.zone_device(zone)
+
+    @property
+    def _setting(self) -> Mapping[str, Any] | None:
+        return self.coordinator.data.zone_settings.get(self._number)
+
+    @property
+    def available(self) -> bool:
+        return super().available and self._setting is not None
+
+    async def _write(self, **fields: Any) -> None:
+        result = await call_api(
+            self.coordinator.client.patch_install_zone(self._number, **fields)
+        )
+        row = result.get("zone") if isinstance(result, Mapping) else None
+        if isinstance(row, Mapping):
+            self.coordinator.data.zone_settings[self._number] = dict(row)
+            self.coordinator.async_update_listeners()
+
+
 class FreedoDisplayEntity(FreedoEntity):
     """A display setting of one valve: GET /api/nodes Display, written with
     PUT /api/nodes/{id}/display."""

@@ -1,7 +1,8 @@
 """Away switch: the home state of GET and PATCH /api/home. Offline schedule
 switch: options.offline_schedule of GET and PATCH /api/install. Notification
 switch of each valve: the change notification of d/config tag 0158. Child lock
-switch of each valve: d/lock."""
+switch of each valve: d/lock. Early start and open window detection switch of
+each heating zone: the zone row of GET and PATCH /api/install/zones."""
 
 from __future__ import annotations
 
@@ -15,8 +16,14 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .const import PENDING_SEC
 from .coordinator import FreedoConfigEntry, FreedoCoordinator
-from .entity import FreedoDisplayEntity, FreedoEntity, FreedoNodeEntity, call_api
-from .model import KIND_VALVE, node_child_lock
+from .entity import (
+    FreedoDisplayEntity,
+    FreedoEntity,
+    FreedoNodeEntity,
+    FreedoZoneSettingEntity,
+    call_api,
+)
+from .model import KIND_VALVE, Zone, node_child_lock, zone_setting
 
 
 async def async_setup_entry(
@@ -35,6 +42,10 @@ async def async_setup_entry(
             # The node view serves ChildLock on a valve alone.
             if node_child_lock(coordinator.data, short) is not None:
                 entities.append(ChildLockSwitch(coordinator, short))
+    for zone in coordinator.data.heating_zones():
+        for switch in (EarlyStartSwitch, OpenWindowDetectionSwitch):
+            if zone_setting(coordinator.data, zone, switch.field) is not None:
+                entities.append(switch(coordinator, zone))
     async_add_entities(entities)
 
 
@@ -147,3 +158,37 @@ class ChildLockSwitch(FreedoNodeEntity, SwitchEntity):
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         await self._set(False)
+
+
+class _ZoneFlagSwitch(FreedoZoneSettingEntity, SwitchEntity):
+    _attr_entity_category = EntityCategory.CONFIG
+    field: str
+
+    def __init__(self, coordinator: FreedoCoordinator, zone: Zone) -> None:
+        super().__init__(coordinator, zone, self.field)
+
+    @property
+    def is_on(self) -> bool | None:
+        value = (self._setting or {}).get(self.field)
+        return value if isinstance(value, bool) else None
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self._write(**{self.field: True})
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self._write(**{self.field: False})
+
+
+class EarlyStartSwitch(_ZoneFlagSwitch):
+    """The daemon starts a warmer program block early, as the heat-up model of
+    the zone says."""
+
+    _attr_translation_key = "early_start"
+    field = "early_start"
+
+
+class OpenWindowDetectionSwitch(_ZoneFlagSwitch):
+    """The valves of the zone detect an open window (tag 60e0)."""
+
+    _attr_translation_key = "open_window_detection"
+    field = "open_window_detection"

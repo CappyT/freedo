@@ -88,7 +88,9 @@
       "calibrate": { "name": "Calibrate motor" }
     },
     "number": {
-      "temperature_offset": { "name": "Temperature offset" }
+      "temperature_offset": { "name": "Temperature offset" },
+      "open_window_duration": { "name": "Open window duration" },
+      "device_overlay_timer": { "name": "Device change timer" }
     },
     "select": {
       "orientation": {
@@ -97,13 +99,23 @@
           "horizontal": "Horizontal",
           "vertical": "Vertical"
         }
+      },
+      "device_overlay_end": {
+        "name": "Device change end rule",
+        "state": {
+          "manual": "Manual",
+          "until_next": "Until next time block",
+          "timer": "Timer"
+        }
       }
     },
     "switch": {
       "away": { "name": "Away" },
       "offline_schedule": { "name": "Offline schedule" },
       "notification": { "name": "Change notification" },
-      "child_lock": { "name": "Child lock" }
+      "child_lock": { "name": "Child lock" },
+      "early_start": { "name": "Early start" },
+      "open_window_detection": { "name": "Open window detection" }
     }
   },
   "services": {

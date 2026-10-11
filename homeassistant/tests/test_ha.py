@@ -134,6 +134,19 @@ class FakeClient:
         self.calls.append(("offset", zone, offset_c))
         return {"rev": 8}
 
+    async def patch_install_zone(self, zone, **fields):
+        self.calls.append(("patch_zone", zone, dict(fields)))
+        row = next(r for r in self.install_json["zones"] if r["number"] == zone)
+        mode = fields.get("device_overlay_end")
+        # The daemon drops the duration of a rule other than timer and refuses
+        # a timer without one.
+        if mode is not None and mode != "timer":
+            row["device_overlay_end_sec"] = None
+        if mode == "timer" and not (fields.get("device_overlay_end_sec") or row["device_overlay_end_sec"]):
+            raise FreedoApiError(400, "device_overlay_end: mode timer needs a duration_sec")
+        row.update(fields)
+        return {"rev": 9, "warnings": [], "zone": copy.deepcopy(row)}
+
     async def push_window(self, zone, is_open):
         if self.window_errors:
             raise self.window_errors.pop(0)
@@ -590,3 +603,116 @@ async def test_offset_number_refuses_beyond_the_daemon_limit(hass, client):
             "number", "set_value", {ATTR_ENTITY_ID: offset, "value": 10.5}, blocking=True
         )
     assert client.calls == []
+
+
+# --- zone settings ---
+
+
+async def turn(hass, service, target):
+    await hass.services.async_call("switch", service, {ATTR_ENTITY_ID: target}, blocking=True)
+    await hass.async_block_till_done()
+
+
+async def test_early_start_and_open_window_switches(hass, client):
+    entry = await setup_entry(hass, client)
+    early = entity_id(hass, entry, "switch", "zone1_early_start")
+    window = entity_id(hass, entry, "switch", "zone1_open_window_detection")
+    assert hass.states.get(early).state == "off"
+    assert hass.states.get(window).state == "on"
+
+    await turn(hass, "turn_on", early)
+    await turn(hass, "turn_off", window)
+    assert client.calls == [
+        ("patch_zone", 1, {"early_start": True}),
+        ("patch_zone", 1, {"open_window_detection": False}),
+    ]
+    # The entities show the row the daemon answered.
+    assert hass.states.get(early).state == "on"
+    assert hass.states.get(window).state == "off"
+    # The other zone keeps its own values.
+    assert hass.states.get(entity_id(hass, entry, "switch", "zone2_early_start")).state == "on"
+
+
+async def test_zone_settings_only_for_heating_zones_with_a_row(hass, client):
+    entry = await setup_entry(hass, client)
+    for key in ("early_start", "open_window_detection"):
+        assert not has_entity(hass, entry, "switch", f"zone9_{key}")
+    assert not has_entity(hass, entry, "number", "zone9_open_window_duration_sec")
+    assert not has_entity(hass, entry, "select", "zone9_device_overlay_end")
+    await hass.config_entries.async_unload(entry.entry_id)
+
+    # The daemon holds no installation (503 on GET /api/install/zones).
+    client.install_json = {}
+    entry = await setup_entry(hass, client)
+    assert not has_entity(hass, entry, "switch", "zone1_early_start")
+    assert not has_entity(hass, entry, "select", "zone1_device_overlay_end")
+
+
+async def test_open_window_duration_number(hass, client):
+    entry = await setup_entry(hass, client)
+    duration = entity_id(hass, entry, "number", "zone1_open_window_duration_sec")
+    assert float(hass.states.get(duration).state) == 15
+    await hass.services.async_call(
+        "number", "set_value", {ATTR_ENTITY_ID: duration, "value": 20}, blocking=True
+    )
+    assert client.calls == [("patch_zone", 1, {"open_window_duration_sec": 1200})]
+    assert float(hass.states.get(duration).state) == 20
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(
+            "number", "set_value", {ATTR_ENTITY_ID: duration, "value": 1093}, blocking=True
+        )
+    assert len(client.calls) == 1
+
+
+async def test_device_overlay_end_rule(hass, client):
+    entry = await setup_entry(hass, client)
+    rule = entity_id(hass, entry, "select", "zone1_device_overlay_end")
+    timer = entity_id(hass, entry, "number", "zone1_device_overlay_end_sec")
+    assert hass.states.get(rule).state == "until_next"
+    # The timer length applies to the rule timer alone.
+    assert hass.states.get(timer).state == "unavailable"
+
+    async def select(option):
+        await hass.services.async_call(
+            "select", "select_option", {ATTR_ENTITY_ID: rule, "option": option}, blocking=True
+        )
+        await hass.async_block_till_done()
+
+    await select("timer")
+    # The daemon refuses a timer without a length: the first one is one hour.
+    assert client.calls == [
+        ("patch_zone", 1, {"device_overlay_end": "timer", "device_overlay_end_sec": 3600})
+    ]
+    assert hass.states.get(rule).state == "timer"
+    assert float(hass.states.get(timer).state) == 60
+
+    await hass.services.async_call(
+        "number", "set_value", {ATTR_ENTITY_ID: timer, "value": 90}, blocking=True
+    )
+    assert client.calls[-1] == ("patch_zone", 1, {"device_overlay_end_sec": 5400})
+    assert float(hass.states.get(timer).state) == 90
+
+    await select("manual")
+    assert client.calls[-1] == ("patch_zone", 1, {"device_overlay_end": "manual"})
+    assert hass.states.get(rule).state == "manual"
+    assert hass.states.get(timer).state == "unavailable"
+
+
+async def test_zone_already_on_timer_keeps_its_length(hass, client):
+    entry = await setup_entry(hass, client)
+    # Zone 2 runs a 30 minute timer rule.
+    timer = entity_id(hass, entry, "number", "zone2_device_overlay_end_sec")
+    assert float(hass.states.get(timer).state) == 30
+
+
+async def test_zone_setting_error_is_a_home_assistant_error(hass, client):
+    entry = await setup_entry(hass, client)
+    early = entity_id(hass, entry, "switch", "zone1_early_start")
+
+    async def refuse(zone, **fields):
+        raise FreedoApiError(400, "zone 1 is not a heating zone")
+
+    client.patch_install_zone = refuse
+    with pytest.raises(HomeAssistantError, match="not a heating zone"):
+        await turn(hass, "turn_on", early)
+    assert hass.states.get(early).state == "off"

@@ -141,6 +141,11 @@ class FreedoClient:
             "POST", f"/api/zones/{int(zone)}/offset", {"offsetC": offset_c}
         )
 
+    async def patch_install_zone(self, zone: int, **fields: Any) -> dict[str, Any]:
+        """Write fields of a zone row: early_start, open_window_detection,
+        open_window_duration_sec, device_overlay_end, device_overlay_end_sec."""
+        return await self._request("PATCH", f"/api/install/zones/{int(zone)}", fields)
+
     async def push_outdoor(self, temp_c: float) -> dict[str, Any]:
         return await self._request("POST", "/api/outdoor", {"tempC": temp_c})
 

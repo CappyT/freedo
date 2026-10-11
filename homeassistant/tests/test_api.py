@@ -211,3 +211,16 @@ def test_valve_command_payloads():
         ("POST", "/api/nodes/aaaa/calibrate", None),
         ("POST", "/api/zones/3/offset", {"offsetC": -0.7}),
     ]
+
+
+def test_install_zone_patch():
+    body = {"rev": 9, "warnings": [], "zone": {"number": 1, "early_start": True}}
+    session = FakeSession({("PATCH", "/api/install/zones/1"): (200, body)})
+    client = FreedoClient(session, "h", 8080)
+    assert run(client.patch_install_zone(1, early_start=True)) == body
+    run(client.patch_install_zone(1, device_overlay_end="timer", device_overlay_end_sec=3600))
+    assert [(c["method"], c["url"].split(":8080", 1)[-1], c["json"]) for c in session.calls] == [
+        ("PATCH", "/api/install/zones/1", {"early_start": True}),
+        ("PATCH", "/api/install/zones/1",
+         {"device_overlay_end": "timer", "device_overlay_end_sec": 3600}),
+    ]

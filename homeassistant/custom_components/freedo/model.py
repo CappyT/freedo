@@ -25,6 +25,15 @@ ORIENTATIONS = ("horizontal", "vertical")
 OFFSET_LIMIT_C = 10.0
 OFFSET_MODE_SETPOINT = "setpoint"
 
+# The end rules of a change made on a device (GET /api/install/zones
+# device_overlay_end), and the timer length the daemon accepts in seconds.
+OVERLAY_END_RULES = ("manual", "until_next", "timer")
+OVERLAY_END_MAX_SEC = 7 * 24 * 3600
+# The timer a zone gets when its rule changes to timer.
+OVERLAY_END_DEFAULT_SEC = 3600
+# The daemon bounds the open window detection time at 16 bits of seconds.
+OPEN_WINDOW_MAX_SEC = 0xFFFF
+
 # The daemon rejects an outdoor temperature outside -60..60 C with 400.
 OUTDOOR_BOUND_C = 60.0
 
@@ -268,6 +277,11 @@ def node_calibration(data: FreedoData, short: str) -> tuple[str | None, int | No
     state = CALIBRATION_STATES.get(telemetry.get("calib_state", ""))
     error = telemetry.get("calib_error", "")
     return state, int(error) if error.isdigit() else None
+
+
+def zone_setting(data: FreedoData, zone: Zone, key: str) -> Any:
+    """A field of the zone row of GET /api/install/zones, None without one."""
+    return (data.zone_settings.get(zone.number) or {}).get(key)
 
 
 def zone_offset_mode(data: FreedoData, zone: Zone) -> str | None:
