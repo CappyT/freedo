@@ -333,13 +333,17 @@ func (e *EmuState) valveView(ns *NodeState) ValveView {
 	return v
 }
 
+// cloneTelemetry copies the Telemetry map of a node for a view, without the
+// keys of the secret tags.
 func cloneTelemetry(in map[string]string) map[string]string {
 	if in == nil {
 		return nil
 	}
 	out := make(map[string]string, len(in))
 	for key, value := range in {
-		out[key] = value
+		if !secretTelemetry[key] {
+			out[key] = value
+		}
 	}
 	return out
 }

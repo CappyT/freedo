@@ -460,7 +460,7 @@ func (in *Install) checkKey(c *issues) {
 	raw := strings.TrimSpace(in.NetworkKeyHex)
 	k, err := hex.DecodeString(raw)
 	if err != nil {
-		c.errf("network_key", "not hex: %q", elide(raw))
+		c.errf("network_key", "not hex")
 		return
 	}
 	if len(k) != 16 {
@@ -1135,11 +1135,4 @@ func joinInts(xs []int) string {
 		parts[i] = fmt.Sprint(x)
 	}
 	return strings.Join(parts, ", ")
-}
-
-func elide(s string) string {
-	if len(s) > 24 {
-		return s[:24] + "..."
-	}
-	return s
 }

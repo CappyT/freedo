@@ -3,6 +3,7 @@ package tado
 import (
 	"bytes"
 	"encoding/hex"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -128,5 +129,70 @@ func TestUnhandledLogKeepsNetworkKeyFrames(t *testing.T) {
 	}
 	if got := loggedFrameHex(frame.Bytes()); got != hex.EncodeToString(frame.Bytes()) {
 		t.Errorf("loggedFrameHex = %s, want the whole frame", got)
+	}
+}
+
+// TestNodeViewsHideAuthSecrets: a view of a node drops the Telemetry keys of
+// the secret tags, whatever tag a device sends them in, and keeps the others.
+// The engine keeps the values it needs.
+func TestNodeViewsHideAuthSecrets(t *testing.T) {
+	dev := mustHex("02a6cefa07c51b00")
+	synthSession := mustHex("5e5500000000000a")
+	synthRotate := bytes.Repeat([]byte{0xcd}, 16)
+	synthResponse := bytes.Repeat([]byte{0xef}, 16)
+	e, _, _ := newTestEmu(t)
+	e.OnFrame(deviceUplink(t, dev, CoAPReq{
+		Type: "CON", Code: "0.02", MID: 0x0301, Token: []byte{0x09},
+		Path: []string{"auth", "token"}, Options: []CoAPOption{optOctets},
+		Payload: concat(encTLV("0260", synthSerial), encTLV("0007", synthToken)),
+	}))
+	e.OnFrame(deviceUplink(t, dev, CoAPReq{
+		Type: "CON", Code: "0.03", MID: 0x0302, Token: []byte{0x0a},
+		Path: []string{"d", "sen"}, Options: []CoAPOption{optOctets},
+		Payload: concat(encTLV("012d", []byte{0x07, 0xd0}), encTLV("025e", synthSession),
+			encTLV("0261", synthRotate), encTLV("0262", synthResponse)),
+	}))
+
+	secretKeys := []string{"auth_token", "serial_id", "cloud_session_id", "challenge_key_rotate", "0262"}
+	nodes := e.Nodes()
+	if len(nodes) != 1 {
+		t.Fatalf("got %d nodes, want 1", len(nodes))
+	}
+	for _, key := range secretKeys {
+		if nodes[0].Telemetry[key] == "" {
+			t.Errorf("the engine lost its Telemetry %s", key)
+		}
+	}
+	if _, ok := e.IssuedSession(nodes[0].WireLE); !ok {
+		t.Error("the engine lost the session it served")
+	}
+
+	views := map[string][]ValveView{"NodeViews": e.NodeViews(), "Snapshot": e.Snapshot().Valves}
+	for name, valves := range views {
+		if len(valves) != 1 {
+			t.Fatalf("%s: got %d valves, want 1", name, len(valves))
+		}
+		v := valves[0]
+		if v.Telemetry["temp_C"] != "20.00C" {
+			t.Errorf("%s: Telemetry temp_C = %q, want 20.00C", name, v.Telemetry["temp_C"])
+		}
+		for _, key := range secretKeys {
+			if _, ok := v.Telemetry[key]; ok {
+				t.Errorf("%s: Telemetry serves %s", name, key)
+			}
+		}
+		if !v.SessionIssued {
+			t.Errorf("%s: SessionIssued = false after an auth answer", name)
+		}
+		body, err := json.Marshal(valves)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for what, val := range map[string][]byte{
+			"serial": synthSerial, "token": synthToken, "session id": synthSession,
+			"challenge key": synthRotate, "challenge response": synthResponse,
+		} {
+			logHasNo(t, string(body), what, val)
+		}
 	}
 }

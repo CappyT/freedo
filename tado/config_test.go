@@ -425,6 +425,19 @@ func TestValidationErrors(t *testing.T) {
 	}
 }
 
+// A key that is not hex is refused without a single digit of it in the message.
+func TestValidationErrorKeepsKeyValueOut(t *testing.T) {
+	in := base()
+	in.NetworkKeyHex = "0f1e2d3c4b5a69788796a5b4c3d2e1zz"
+	err := in.Validate()
+	if err == nil || !strings.Contains(err.Error(), "not hex") {
+		t.Fatalf("Validate = %v, want a not-hex error", err)
+	}
+	if strings.Contains(err.Error(), "0f1e2d") {
+		t.Errorf("Validate = %q, want no digit of the key", err)
+	}
+}
+
 func TestValidationWarnings(t *testing.T) {
 	tests := []struct {
 		name string
