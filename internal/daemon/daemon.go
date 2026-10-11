@@ -46,6 +46,9 @@ var (
 	errEngineBusy = errors.New("engine did not answer within the deadline")
 	// errNoDHW marks a hot-water request this installation cannot serve.
 	errNoDHW = errors.New("no hot-water target")
+	// errNoBoiler marks a request for the thermostat wired to the boiler that
+	// this installation cannot serve.
+	errNoBoiler = errors.New("no boiler thermostat")
 )
 
 type immediateBatchRadio interface {
@@ -1611,7 +1614,7 @@ func writeResolveErr(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, errNoInstall):
 		writeErr(w, http.StatusServiceUnavailable, err.Error()+": seed the database or pair a device")
-	case errors.Is(err, errNoDHW):
+	case errors.Is(err, errNoDHW), errors.Is(err, errNoBoiler):
 		writeErr(w, http.StatusServiceUnavailable, err.Error())
 	case errors.As(err, &amb):
 		writeJSON(w, http.StatusBadRequest, map[string]any{
@@ -1826,6 +1829,21 @@ func (d *daemon) hotWater() (*tado.Device, int, error) {
 		return nil, 0, fmt.Errorf("%w: %v", errNoDHW, err)
 	}
 	return dev, z.Number, nil
+}
+
+// boilerThermostat returns the wall thermostat wired to the boiler: the
+// hot-water thermostat, or the heat source of the first circuit when the
+// installation has no hot-water zone.
+func (d *daemon) boilerThermostat() (*tado.Device, error) {
+	inst := d.inst.Load()
+	if inst == nil {
+		return nil, errNoInstall
+	}
+	dev, err := inst.BoilerTarget()
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", errNoBoiler, err)
+	}
+	return dev, nil
 }
 
 // targetName is how a device is reported back to the API caller.
@@ -2928,16 +2946,13 @@ func (d *daemon) postBoilerFlow(w http.ResponseWriter, r *http.Request) {
 	if !decodeBody(w, r, &b) {
 		return
 	}
-	ref := b.Target
-	if ref == "" {
-		dev, _, err := d.hotWater()
-		if err != nil {
-			writeResolveErr(w, err)
-			return
-		}
-		ref = dev.Serial
+	var dev *tado.Device
+	var err error
+	if b.Target == "" {
+		dev, err = d.boilerThermostat()
+	} else {
+		dev, err = d.resolve(b.Target)
 	}
-	dev, err := d.resolve(ref)
 	if err != nil {
 		writeResolveErr(w, err)
 		return
@@ -3791,11 +3806,11 @@ func activeResource(r *http.Request) (string, []string, []string, error) {
 }
 
 // getHeatsourceCaps queries the wall thermostat's heat-source capabilities. The
-// target is the hot-water thermostat: only the node wired to the boiler knows
-// them, and that is the same node the hot-water zone elects.
+// target is the boiler thermostat: only the node wired to the boiler knows
+// them.
 func (d *daemon) getHeatsourceCaps(w http.ResponseWriter, r *http.Request) {
 	const resource = "heatsource/capabilities"
-	dev, _, err := d.hotWater()
+	dev, err := d.boilerThermostat()
 	if err != nil {
 		writeResolveErr(w, err)
 		return

@@ -343,8 +343,9 @@ func TestZoneOffsetTargetsMeasuringDevice(t *testing.T) {
 	}
 }
 
-// TestAPIWithoutHotWaterZone: an installation with no hot-water zone answers
-// the boiler endpoints with an error instead of panicking.
+// TestAPIWithoutHotWaterZone: an installation with no hot-water zone refuses
+// the hot-water endpoint, and the heat-source capabilities and the CH flow
+// default to the heat source of its first circuit.
 func TestAPIWithoutHotWaterZone(t *testing.T) {
 	_, err := tado.Parse([]byte(`
 version: 1
@@ -390,22 +391,26 @@ circuits:
 		map[string]any{"tempC": 50}, &body); code != http.StatusServiceUnavailable || body.Error == "" {
 		t.Fatalf("dhw without a hot-water zone: got %d %+v", code, body)
 	}
-	if code := getJSON(t, url+"/api/heatsource/capabilities", &body); code != http.StatusServiceUnavailable {
-		t.Fatalf("heatsource caps without a hot-water zone: got %d %+v", code, body)
-	}
 
-	// The CH flow endpoint still works when the caller names the thermostat.
 	var set struct {
 		Queued bool   `json:"queued"`
 		Target string `json:"target"`
 		ID     int    `json:"id"`
 	}
-	if code := postJSON(t, http.MethodPost, url+"/api/boiler/flow",
-		map[string]any{"tempC": 48, "target": "RU2001000001"}, &set); code != http.StatusOK || !set.Queued {
-		t.Fatalf("flow with an explicit target: got %d %+v", code, set)
+	if code := getJSON(t, url+"/api/heatsource/capabilities", &set); code != http.StatusOK || !set.Queued || set.Target != "RU2001000001" {
+		t.Fatalf("heatsource caps without a hot-water zone: got %d %+v, want queued to RU2001000001", code, set)
 	}
-	if set.Target != "RU2001000001" || set.ID != 1 {
-		t.Errorf("flow target=%q id=%d, want RU2001000001 on circuit 1", set.Target, set.ID)
+	for name, body := range map[string]map[string]any{
+		"the default target": {"tempC": 48},
+		"an explicit target": {"tempC": 48, "target": "RU2001000001"},
+	} {
+		set.Queued, set.Target, set.ID = false, "", 0
+		if code := postJSON(t, http.MethodPost, url+"/api/boiler/flow", body, &set); code != http.StatusOK || !set.Queued {
+			t.Fatalf("flow with %s: got %d %+v", name, code, set)
+		}
+		if set.Target != "RU2001000001" || set.ID != 1 {
+			t.Errorf("flow with %s: target=%q id=%d, want RU2001000001 on circuit 1", name, set.Target, set.ID)
+		}
 	}
 }
 

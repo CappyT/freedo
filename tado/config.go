@@ -935,6 +935,19 @@ func (in *Install) HotWaterZone() (*Zone, bool) {
 	return nil, false
 }
 
+// BoilerTarget returns the wall thermostat wired to the boiler: the one that
+// serves the hot-water zone, or the heat source of the first circuit while the
+// installation has no hot-water zone.
+func (in *Install) BoilerTarget() (*Device, error) {
+	if _, ok := in.HotWaterZone(); ok {
+		return in.HotWaterTarget()
+	}
+	if len(in.Circuits) == 0 {
+		return nil, errors.New("tado: config: no hot-water zone and no circuit declared")
+	}
+	return in.HeatSource(in.Circuits[0].ID)
+}
+
 // HotWaterTarget returns the thermostat that serves the hot-water zone: the
 // per-install answer to the former dhwNode constant.
 func (in *Install) HotWaterTarget() (*Device, error) {
