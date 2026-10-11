@@ -9,13 +9,13 @@
 __pycache__/
 *.pyc
 
-# private installation data, NEVER commit
+# Credentials and installation data. Never commit them.
 .ha_token
 tado_capture/.ha_token
 .env
 freedo_api_token
 
-# installation config: carries the PAN network key and the real device list.
+# Installation config: it holds the network key and the device list.
 # freedo.example.yaml is the committed template.
 freedo.yaml
 freedo.yml
@@ -24,20 +24,20 @@ freedo.*.yml
 !freedo.example.yaml
 *.key
 
-# large RF recordings and device images; reduced fixtures live in tado/testdata
+# Large RF recordings and device images. Reduced fixtures live in tado/testdata.
 *.iq
 *.bin
 
-# third-party proprietary artifacts
+# Third-party packages
 *.apk
 
-# Arduino build output for the ESP32 bridge firmware
-tado_capture/cc1101_bridge/firmware/cc1101_bridge_v2/build/
+# Arduino build output of the bridge firmware
+firmware/*/build/
 
-# bench campaign artifacts (captures, snapshots, per-test logs)
+# Bench output: captures, snapshots and per-test logs
 /bench/
 
-# debug logs & scratch state
+# Logs and local state
 /.tmp-check/
 /.tmp-race/
 /*.log
@@ -47,29 +47,28 @@ tado_capture/cc1101_bridge/firmware/cc1101_bridge_v2/build/
 tado_capture/*.log
 tado_capture/*.json
 
-# session notes (working notes, not a project deliverable)
+# Local working notes and recordings
 tado_capture/memory/
 
-# editor configuration, local to each developer
+# Editor and tool configuration, local to each developer
 .idea/
 .vscode/
 .mcp.json
-tado_capture/ota-watch/
+.claude/
 
-# local tooling and build outputs that hold installation values
+# Local tooling output and device dumps. They can hold installation values.
+tado_capture/ota-watch/
 tado_capture/ota-fetch/
-tado_capture/cc1101_bridge/firmware/*/build/
 tado_capture/internet_bridge/
 tado_capture/thermostat_ru/
 tado_capture/valve_nrf52/
 tado_capture/extflash/
 
-# flow-watch collector: logged samples and the OAuth token. The scripts stay tracked.
+# Collector output: logged samples and access tokens.
 tado_capture/flow-watch/data/
 tado_capture/flow-watch/.token.json*
-.claude/
 
-# developer run outputs
+# Developer run output
 docker-compose.yml
 .pytest_cache/
 .venv/
