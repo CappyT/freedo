@@ -14,6 +14,7 @@ routes and `CONTRIBUTING.md` for the rules of a change.
 - `internal/daemon`: engine, HTTP API, desired state in SQLite, firmware transfer.
 - `internal/install`: SQLite schema, installation, radio calibration.
 - `internal/radio`: live radio, replay and mock. `internal/cli`: flags, bootstrap file, replay.
+- `internal/web`: the embedded dashboard files (`dist`, filled by the build) and the handler that serves them.
 - `internal/buildinfo`: version stamp.
 - `tado`: codec, CoAP, TLV, state and coordinator logic. `tado/testdata`: small synthetic fixtures.
 - `cc1101`: serial link to the ESP32 bridge.

@@ -4314,7 +4314,7 @@ flags:
 	ctx, cancel := context.WithCancel(context.Background())
 	go d.run(ctx)
 
-	srv := newAPIServer(*addr, requireToken(token, *healthPublic, d.mux()))
+	srv := newAPIServer(*addr, serverHandler(token, *healthPublic, d.mux()))
 	// An open rx tap would otherwise hold the whole HTTP drain budget.
 	srv.RegisterOnShutdown(d.closeTaps)
 	srvErr := make(chan error, 1)

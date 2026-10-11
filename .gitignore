@@ -77,3 +77,17 @@ coverage.out
 freedo-state.db.bak-*
 freedo-state.db-journal
 tado_capture/capture-*-marks.txt
+
+# Dashboard: dependencies and build output. The Go build embeds internal/web/dist;
+# only its .gitkeep is tracked. The static icons are copied from assets/brand.
+/dashboard/node_modules/
+/dashboard/build/
+/dashboard/.svelte-kit/
+/dashboard/static/favicon.svg
+/dashboard/static/favicon.ico
+/dashboard/static/apple-touch-icon.png
+/dashboard/static/icon-192.png
+/dashboard/static/icon-512.png
+/dashboard/static/icon-maskable-512.png
+/internal/web/dist/*
+!/internal/web/dist/.gitkeep
