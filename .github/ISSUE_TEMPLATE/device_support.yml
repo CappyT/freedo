@@ -1,0 +1,57 @@
+name: Device support
+description: Ask for support of a device type, or offer a capture of one.
+labels: [device]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        freedo supports the valves and the wall thermostats of the V3+ line. Other device types need
+        a capture: the wireless receiver, the extension kit and the wireless sensor have none yet.
+
+        **A raw capture is not safe to post.** The MAC header holds the EUI of every device, and a
+        capture of a pairing can hold the network key. Follow
+        [CONTRIBUTING.md](https://github.com/CappyT/freedo/blob/main/CONTRIBUTING.md#contributing-a-capture-for-an-unsupported-device):
+
+        1. Record with `freedo-dev rx` and keep the file private.
+        2. Decode it on your machine with `freedo-dev decrypt` and `freedo-dev dissect`.
+        3. Replace every serial number, EUI, home id and token with an invented value.
+        4. Post the redacted text and your notes. Do not post raw hexadecimal frames, the database
+           or the network key.
+  - type: input
+    id: model
+    attributes:
+      label: Device model
+      description: The product name and the hardware generation. No serial number.
+    validations:
+      required: true
+  - type: input
+    id: firmware
+    attributes:
+      label: Firmware version
+      description: The version that the device or `freedo-dev` reports.
+    validations:
+      required: false
+  - type: textarea
+    id: actions
+    attributes:
+      label: What you did during the capture
+      description: Each action with its time, for example "set 21 C in the app at 14:03:10".
+    validations:
+      required: true
+  - type: textarea
+    id: capture
+    attributes:
+      label: Redacted capture
+      description: Decoded text with invented identifiers. Not raw frames.
+      render: text
+    validations:
+      required: false
+  - type: checkboxes
+    id: redaction
+    attributes:
+      label: Private data
+      options:
+        - label: I replaced serial numbers, EUIs, the home id, tokens and keys with invented values.
+          required: true
+        - label: I did not attach the database, the bootstrap file or raw frames.
+          required: true

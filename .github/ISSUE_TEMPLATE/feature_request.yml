@@ -1,0 +1,45 @@
+name: Feature request
+description: Ask for a function that freedo does not have.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check the [feature table](https://github.com/CappyT/freedo/blob/main/README.md#features) and
+        [Scope and limits](https://github.com/CappyT/freedo/blob/main/README.md#scope-and-limits) first. Some functions are out of
+        scope on purpose, for example the tado cloud and the tado app.
+  - type: textarea
+    id: need
+    attributes:
+      label: What you want to do
+      description: Describe the need, not only the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: today
+    attributes:
+      label: What you do today
+      description: A workaround, an automation in Home Assistant, or the tado app function that you miss.
+    validations:
+      required: false
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Daemon or HTTP API
+        - Home Assistant integration
+        - Add-on or container
+        - Radio firmware
+        - Documentation
+    validations:
+      required: true
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Help
+      options:
+        - label: I can test a change on a real plant.
+          required: false
+        - label: I can write the change.
+          required: false

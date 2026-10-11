@@ -1,0 +1,76 @@
+name: Bug report
+description: Something does not work as the documentation says.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Remove private data before you post.** Logs, API answers and screenshots can hold serial
+        numbers, device EUIs, the home id, API tokens and the network key. Replace each of them
+        with a placeholder. Never attach the database (`freedo-state.db`), the bootstrap file or
+        an unredacted unhandled log. See [SECURITY.md](https://github.com/CappyT/freedo/blob/main/SECURITY.md) for what the
+        log shows.
+
+        For a security problem, do not open an issue. Use the Security tab instead.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: Say what you did, what you expected and what you saw.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: false
+  - type: input
+    id: version
+    attributes:
+      label: freedo version
+      description: Output of `freedo --version`, or the add-on version.
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How you run freedo
+      options:
+        - Home Assistant add-on
+        - Container
+        - Built from source
+        - Replay or tests only
+    validations:
+      required: true
+  - type: input
+    id: firmware
+    attributes:
+      label: Bridge firmware version
+      description: The banner of the bridge, for example `CC1101BRIDGE v2.9`. Write "none" for replay.
+    validations:
+      required: false
+  - type: textarea
+    id: devices
+    attributes:
+      label: Devices
+      description: Device types and firmware versions that they report. No serial numbers.
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: The relevant lines, redacted.
+      render: text
+    validations:
+      required: false
+  - type: checkboxes
+    id: redaction
+    attributes:
+      label: Private data
+      options:
+        - label: I removed serial numbers, EUIs, the home id, tokens and keys from everything I posted.
+          required: true
+        - label: I did not attach the database, the bootstrap file or an unredacted log.
+          required: true
