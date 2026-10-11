@@ -36,11 +36,11 @@ func TestZoneWriteRecordsOnlySentSched(t *testing.T) {
 		}},
 		{"rewrite", 1, func(e *EmuState) error { return e.EnqueueZoneRewrite(ru, 1) }},
 		{"window", 1, func(e *EmuState) error { return e.EnqueueOpenWindow(ru, 1, true) }},
-		{"hot water overlay", 0, func(e *EmuState) error { return e.EnqueueDHWOverlay(ru, 0, 48, true, 0) }},
-		{"hot water off", 0, func(e *EmuState) error { return e.EnqueueDHWOverlay(ru, 0, 0, false, 0) }},
+		{"hot water overlay", 0, func(e *EmuState) error { return e.EnqueueDHWOverlay(ru, 0, 48, true, 0, "") }},
+		{"hot water off", 0, func(e *EmuState) error { return e.EnqueueDHWOverlay(ru, 0, 0, false, 0, "") }},
 		{"hot water return to schedule", 0, func(e *EmuState) error { return e.EnqueueDHWSchedule(ru, 0) }},
 		{"hot water timer expiry", 0, func(e *EmuState) error {
-			if err := e.EnqueueDHWOverlay(ru, 0, 48, true, time.Hour); err != nil {
+			if err := e.EnqueueDHWOverlay(ru, 0, 48, true, time.Hour, ""); err != nil {
 				return err
 			}
 			_, err := e.ExpireBoosts(later(e))

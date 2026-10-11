@@ -7,12 +7,15 @@ import (
 	"time"
 )
 
-// The end rules of an overlay set on a device. The names are the modes of the
-// zone overlay API.
+// The end rules of an overlay. The names are the modes of the zone overlay API.
+// A device overlay takes the first three: OverlayEnd.Check refuses the fourth.
 const (
 	OverlayEndManual    = "manual"
 	OverlayEndUntilNext = "until_next"
 	OverlayEndTimer     = "timer"
+	// OverlayEndHomeChange ends the overlay at the next switch between home and
+	// away, in either direction. It has no deadline.
+	OverlayEndHomeChange = "until_home_change"
 )
 
 // OverlayMaxDuration bounds a timer overlay.
@@ -173,7 +176,24 @@ func (e *EmuState) SetZoneOverlayTimer(zone int, targets []string, d time.Durati
 		}
 	}
 	for _, wire := range wires {
-		e.armOverlayTimer(wire, zone, d, e.zoneKind(zone) == dhwZoneKind, false)
+		e.armOverlayTimer(wire, zone, d, e.zoneKind(zone) == dhwZoneKind, false, "")
 	}
 	return nil
+}
+
+// EndHomeChangeOverlays takes the switch between home and away for every
+// overlay whose rule is OverlayEndHomeChange: its timer is due at now. The next
+// ExpireBoosts then queues the return to schedule, the write an elapsed
+// deadline gets. It returns the zones of those overlays in order.
+func (e *EmuState) EndHomeChangeOverlays(now time.Time) []int {
+	var zones []int
+	for key, timer := range e.boostTimers {
+		if timer.rule == OverlayEndHomeChange {
+			timer.expiresAt = now
+			e.boostTimers[key] = timer
+			zones = append(zones, timer.id)
+		}
+	}
+	slices.Sort(zones)
+	return slices.Compact(zones)
 }

@@ -740,8 +740,8 @@ func TestZoneWriteLeavesUnknownSchedOut(t *testing.T) {
 		{"return to schedule", 1, func(e *EmuState) error { return e.EnqueueSchedule(ru, 1) }},
 		{"boost", 1, func(e *EmuState) error { return e.EnqueueBoost(ru, 1, true) }},
 		{"rewrite", 1, func(e *EmuState) error { return e.EnqueueZoneRewrite(ru, 1) }},
-		{"hot water overlay", 0, func(e *EmuState) error { return e.EnqueueDHWOverlay(ru, 0, 48, true, 0) }},
-		{"hot water off", 0, func(e *EmuState) error { return e.EnqueueDHWOverlay(ru, 0, 0, false, 0) }},
+		{"hot water overlay", 0, func(e *EmuState) error { return e.EnqueueDHWOverlay(ru, 0, 48, true, 0, "") }},
+		{"hot water off", 0, func(e *EmuState) error { return e.EnqueueDHWOverlay(ru, 0, 0, false, 0, "") }},
 		{"hot water return to schedule", 0, func(e *EmuState) error { return e.EnqueueDHWSchedule(ru, 0) }},
 		{"hot water rewrite", 0, func(e *EmuState) error { return e.EnqueueZoneRewrite(ru, 0) }},
 	} {

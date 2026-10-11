@@ -120,6 +120,9 @@ func (s *stateStore) Save(ctx context.Context, state tado.DesiredState, seq uint
 			return err
 		}
 	}
+	if err := saveBoostRules(ctx, tx, state.Boost); err != nil {
+		return err
+	}
 	if err := saveSessions(ctx, tx, state.Session); err != nil {
 		return err
 	}
@@ -132,6 +135,49 @@ func (s *stateStore) Save(ctx context.Context, state tado.DesiredState, seq uint
 		return err
 	}
 	return tx.Commit()
+}
+
+// saveBoostRules stores the end rule of each timer in meta as one JSON value,
+// so the boost table keeps its layout.
+func saveBoostRules(ctx context.Context, tx *sql.Tx, timers map[string]tado.DesiredBoostTimer) error {
+	rules := map[string]string{}
+	for key, timer := range timers {
+		if timer.Rule != "" {
+			rules[key] = timer.Rule
+		}
+	}
+	if len(rules) == 0 {
+		_, err := tx.ExecContext(ctx, `DELETE FROM meta WHERE key = 'boost_rules'`)
+		return err
+	}
+	raw, err := json.Marshal(rules)
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `INSERT OR REPLACE INTO meta (key, value) VALUES ('boost_rules', ?)`, string(raw))
+	return err
+}
+
+// loadBoostRules sets the stored rule on each timer of timers.
+func (s *stateStore) loadBoostRules(timers map[string]tado.DesiredBoostTimer) error {
+	var raw string
+	switch err := s.db.QueryRow(`SELECT value FROM meta WHERE key = 'boost_rules'`).Scan(&raw); {
+	case errors.Is(err, sql.ErrNoRows):
+		return nil
+	case err != nil:
+		return err
+	}
+	var rules map[string]string
+	if err := json.Unmarshal([]byte(raw), &rules); err != nil {
+		return fmt.Errorf("meta boost_rules: %w", err)
+	}
+	for key, rule := range rules {
+		if timer, ok := timers[key]; ok {
+			timer.Rule = rule
+			timers[key] = timer
+		}
+	}
+	return nil
 }
 
 // saveSessions stores the served session ids in meta as one JSON value: the
@@ -686,6 +732,9 @@ func (s *stateStore) Load() (tado.DesiredState, error) {
 		out.Boost[key] = tado.DesiredBoostTimer{ID: id, ExpiresAt: time.UnixMilli(expires).UTC()}
 		return nil
 	}); err != nil {
+		return tado.DesiredState{}, err
+	}
+	if err := s.loadBoostRules(out.Boost); err != nil {
 		return tado.DesiredState{}, err
 	}
 	return out, nil

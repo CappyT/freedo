@@ -213,6 +213,9 @@ type SetpointParams struct {
 	// never goes on the air: at expiry the emulator queues the return to
 	// schedule itself. Zero leaves the overlay running.
 	Duration time.Duration
+	// EndRule is the OverlayEnd* rule the overlay was set with, kept with the
+	// timer. OverlayEndHomeChange needs it: that overlay has no Duration.
+	EndRule string
 	// Per-zone commissioning tags, written only when set and unobserved on air.
 	// Nothing in the daemon needs them: see SetpointCoAP.
 	ZoneFlags  *byte
@@ -410,10 +413,12 @@ type heatingBlock struct {
 // boostTimer is one coordinator-side overlay deadline. The boost owns the
 // captured case; a setpoint write with a duration arms the same timer.
 type boostTimer struct {
-	id        int
+	id int
+	// expiresAt is zero while the rule has no deadline (OverlayEndHomeChange).
 	expiresAt time.Time
-	dhw       bool // the restore is the hot-water block, 6020=2
-	boost     bool // the overlay is the boost, not a timed setpoint
+	dhw       bool   // the restore is the hot-water block, 6020=2
+	boost     bool   // the overlay is the boost, not a timed setpoint
+	rule      string // the OverlayEnd* rule the overlay was set with, "" when unknown
 	gen       uint64
 }
 
@@ -2853,7 +2858,7 @@ func (e *EmuState) EnqueueSetpoint(target string, sp SetpointParams) error {
 	q[len(q)-1].responseToken = append([]byte(nil), token...)
 	q[len(q)-1].responseCode = "2.04"
 	e.supersedeZoneWrites(wire, sp.ID)
-	e.armOverlayTimer(wire, sp.ID, sp.Duration, false, false)
+	e.armOverlayTimer(wire, sp.ID, sp.Duration, false, false, sp.EndRule)
 	return nil
 }
 
@@ -2872,10 +2877,11 @@ func overlayTimerNode(key string) string {
 // overlay zone id runs on target. A zero duration ends the deadline when the
 // node takes the write just queued, as a return to schedule does: until then
 // the node still runs the overlay, and a write the retry limit or a 4.xx drops
-// leaves the deadline due, so the next tick queues the return again.
-func (e *EmuState) armOverlayTimer(wire []byte, id int, d time.Duration, dhw, boost bool) {
+// leaves the deadline due, so the next tick queues the return again. The rule
+// OverlayEndHomeChange arms a timer with no deadline instead.
+func (e *EmuState) armOverlayTimer(wire []byte, id int, d time.Duration, dhw, boost bool, rule string) {
 	key := overlayTimerKey(hexEUI(wire), id)
-	if d <= 0 {
+	if d <= 0 && rule != OverlayEndHomeChange {
 		timer, ok := e.boostTimers[key]
 		q := e.queue[hexEUI(wire)]
 		if ok && len(q) > 0 {
@@ -2883,7 +2889,11 @@ func (e *EmuState) armOverlayTimer(wire []byte, id int, d time.Duration, dhw, bo
 		}
 		return
 	}
-	e.boostTimers[key] = e.stampTimer(boostTimer{id: id, expiresAt: e.cfg.Now().UTC().Add(d), dhw: dhw, boost: boost})
+	timer := boostTimer{id: id, dhw: dhw, boost: boost, rule: rule}
+	if d > 0 {
+		timer.expiresAt = e.cfg.Now().UTC().Add(d)
+	}
+	e.boostTimers[key] = e.stampTimer(timer)
 }
 
 func (e *EmuState) stampTimer(t boostTimer) boostTimer {
@@ -3055,13 +3065,14 @@ func (e *EmuState) EnqueueDHWSetpoint(target string, id int, tempC float64) erro
 }
 
 func (e *EmuState) EnqueueDHWControl(target string, id int, temperatureC float64, enabled bool) error {
-	return e.EnqueueDHWOverlay(target, id, temperatureC, enabled, 0)
+	return e.EnqueueDHWOverlay(target, id, temperatureC, enabled, 0, "")
 }
 
 // EnqueueDHWOverlay is EnqueueDHWControl with a coordinator-side deadline. A
 // non-zero duration arms the timer that queues the return to schedule; the
-// captured 4 h hot-water timer carries nothing on the air.
-func (e *EmuState) EnqueueDHWOverlay(target string, id int, temperatureC float64, enabled bool, d time.Duration) error {
+// captured 4 h hot-water timer carries nothing on the air. rule is the
+// OverlayEnd* rule the overlay was set with, see SetpointParams.EndRule.
+func (e *EmuState) EnqueueDHWOverlay(target string, id int, temperatureC float64, enabled bool, d time.Duration, rule string) error {
 	wire, _, err := e.resolve(target)
 	if err != nil {
 		return err
@@ -3116,7 +3127,7 @@ func (e *EmuState) EnqueueDHWOverlay(target string, id int, temperatureC float64
 	q[len(q)-1].responseToken = append([]byte(nil), token...)
 	q[len(q)-1].responseCode = "2.04"
 	e.supersedeZoneWrites(wire, id)
-	e.armOverlayTimer(wire, id, d, true, false)
+	e.armOverlayTimer(wire, id, d, true, false, rule)
 	return nil
 }
 
@@ -3158,7 +3169,7 @@ func (e *EmuState) EnqueueDHWSchedule(target string, id int) error {
 	q[len(q)-1].responseToken = append([]byte(nil), token...)
 	q[len(q)-1].responseCode = "2.04"
 	e.supersedeZoneWrites(wire, id)
-	e.armOverlayTimer(wire, id, 0, true, false)
+	e.armOverlayTimer(wire, id, 0, true, false, "")
 	return nil
 }
 
@@ -3335,7 +3346,7 @@ func (e *EmuState) enqueueBoostBlock(target string, id int, on, newOverlay bool,
 	if on {
 		d = BoostDuration
 	}
-	e.armOverlayTimer(wire, id, d, false, on)
+	e.armOverlayTimer(wire, id, d, false, on, "")
 	return nil
 }
 
@@ -3376,11 +3387,12 @@ func (b *heatingBlock) window() byte {
 // path. The captured room expiry carries no 6440, unlike the return to schedule
 // a user asks for. Each expiry ends the overlay of its own zone. The timer
 // stays until the node takes the return, and a zone with a write still queued
-// gets no second one. It returns the targets whose queue changed.
+// gets no second one. A timer with no deadline never elapses. It returns the
+// targets whose queue changed.
 func (e *EmuState) ExpireBoosts(now time.Time) ([]string, error) {
 	due := make([]string, 0)
 	for key, timer := range e.boostTimers {
-		if !now.Before(timer.expiresAt) && !e.zoneWriteQueued(overlayTimerNode(key), timer.id) {
+		if !timer.expiresAt.IsZero() && !now.Before(timer.expiresAt) && !e.zoneWriteQueued(overlayTimerNode(key), timer.id) {
 			due = append(due, key)
 		}
 	}
@@ -3531,7 +3543,7 @@ func (e *EmuState) EnqueueMode(target string, id int, overlay byte) error {
 	e.supersedeZoneWrites(wire, id)
 	// A mode carries no duration: the zone leaves the overlay the deadline
 	// belongs to, whether it returns to schedule or keeps a manual overlay.
-	e.armOverlayTimer(wire, id, 0, false, false)
+	e.armOverlayTimer(wire, id, 0, false, false, "")
 	return nil
 }
 

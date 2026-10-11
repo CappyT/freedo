@@ -135,10 +135,11 @@ type zoneOverlayBody struct {
 
 // overlay maps the request to the 6240 value and the timer it arms: manual
 // (2) runs until the next command, until_next (3) until the next block of the
-// program, timer (3) for durationSec.
+// program, timer (3) for durationSec, until_home_change (2) until the home
+// switches to away or back. The last one has no deadline: the daemon ends it.
 func (b zoneOverlayBody) overlay() (byte, time.Duration, error) {
 	switch b.Mode {
-	case "manual", "", "until_next":
+	case "manual", "", "until_next", tado.OverlayEndHomeChange:
 		if b.DurationSec != nil {
 			return 0, 0, errors.New("durationSec needs mode timer")
 		}
@@ -156,7 +157,17 @@ func (b zoneOverlayBody) overlay() (byte, time.Duration, error) {
 		}
 		return 3, d, nil
 	}
-	return 0, 0, errors.New("bad mode " + b.Mode + ": want manual, until_next or timer")
+	return 0, 0, errors.New("bad mode " + b.Mode + ": want manual, until_next, timer or " + tado.OverlayEndHomeChange)
+}
+
+// endRule is the rule the daemon keeps with the overlay the request sets. A
+// manual overlay has none.
+func (b zoneOverlayBody) endRule() string {
+	switch b.Mode {
+	case tado.OverlayEndUntilNext, tado.OverlayEndTimer, tado.OverlayEndHomeChange:
+		return b.Mode
+	}
+	return ""
 }
 
 // overlaySeconds is the timer a durationSec arms, within zoneMaxDuration. The
@@ -262,11 +273,12 @@ func (d *daemon) postZoneSetpoint(w http.ResponseWriter, r *http.Request) {
 			return nil, err
 		}
 		if z.Kind == tado.ZoneHotWater {
-			err = e.EnqueueDHWOverlay(target, z.Number, c, true, duration)
+			err = e.EnqueueDHWOverlay(target, z.Number, c, true, duration, b.endRule())
 		} else {
 			raw := rawSetpointC(d.inst.Load(), z.Number, c)
 			sp := d.roomOverlay(e, z, dev, overlay, duration, raw)
 			sp.Setpoint = raw
+			sp.EndRule = b.endRule()
 			err = e.EnqueueSetpoint(target, sp)
 		}
 		if err != nil {
@@ -327,10 +339,11 @@ func (d *daemon) postZoneOff(w http.ResponseWriter, r *http.Request) {
 			return nil, err
 		}
 		if z.Kind == tado.ZoneHotWater {
-			err = e.EnqueueDHWOverlay(target, z.Number, 0, false, duration)
+			err = e.EnqueueDHWOverlay(target, z.Number, 0, false, duration, b.endRule())
 		} else {
 			sp := d.roomOverlay(e, z, dev, overlay, duration, 0)
 			sp.Off = true
+			sp.EndRule = b.endRule()
 			err = e.EnqueueSetpoint(target, sp)
 		}
 		if err != nil {
@@ -418,7 +431,7 @@ func (d *daemon) zoneTargetView(e *tado.EmuState, z *tado.Zone) map[string]any {
 		if on && block.SetpointC != nil {
 			overlay["setpointC"] = correctedC(d.inst.Load(), z.Number, *block.SetpointC)
 		}
-		if timed {
+		if timed && !timer.ExpiresAt.IsZero() {
 			overlay["endsAt"] = timer.ExpiresAt.UTC().Format(time.RFC3339)
 		}
 		view["overlay"] = overlay

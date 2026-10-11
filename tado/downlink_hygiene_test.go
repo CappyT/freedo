@@ -201,7 +201,7 @@ func TestSilentDeviceKeepsOneZoneWrite(t *testing.T) {
 		if err := e.EnqueueZoneRewrite("RU0000000001", 0); err != nil {
 			t.Fatal(err)
 		}
-		if err := e.EnqueueDHWOverlay("RU0000000001", 0, 50, true, 0); err != nil {
+		if err := e.EnqueueDHWOverlay("RU0000000001", 0, 50, true, 0, ""); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -312,7 +312,7 @@ func TestZoneReadsRestateTheHomeState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := e.EnqueueDHWOverlay("RU0000000001", 0, 50, true, 0); err != nil {
+	if err := e.EnqueueDHWOverlay("RU0000000001", 0, 50, true, 0, ""); err != nil {
 		t.Fatal(err)
 	}
 	answerQueued(t, e, ru.WireEUI(), "2.04")

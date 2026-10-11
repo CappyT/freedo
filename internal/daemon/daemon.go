@@ -2641,7 +2641,10 @@ func (d *daemon) patchHome(w http.ResponseWriter, r *http.Request) {
 		d.applyHomeState(e)
 		queued := 0
 		if changed {
-			queued = d.rewriteZones(e, d.allZones(), func(target string) { d.dispatchQueued(e, target) }, true)
+			zones := d.allZones()
+			ended := d.endHomeChangeOverlays(e)
+			zones = slices.DeleteFunc(zones, func(zone int) bool { return slices.Contains(ended, zone) })
+			queued = d.rewriteZones(e, zones, func(target string) { d.dispatchQueued(e, target) }, true)
 			// The owed writes reach the database before the flag: a restart
 			// between the two rewrites the zones once more, never none.
 			d.saveProgramBlocks()
@@ -2653,6 +2656,23 @@ func (d *daemon) patchHome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, v)
+}
+
+// endHomeChangeOverlays ends the overlays whose rule is the next switch between
+// home and away. They take the write an elapsed timer gets, built with the home
+// state applyHomeState set, so their zones need no switch write. It returns
+// those zones.
+func (d *daemon) endHomeChangeOverlays(e *tado.EmuState) []int {
+	now := d.retryNow()
+	zones := e.EndHomeChangeOverlays(now)
+	targets, err := e.ExpireBoosts(now)
+	if err != nil {
+		log.Printf("home change overlay end: %v", err)
+	}
+	for _, target := range targets {
+		d.dispatchQueued(e, target)
+	}
+	return zones
 }
 
 // scheduledView renders the per-zone scheduled setpoint the writes carry, and
@@ -2862,7 +2882,7 @@ func (d *daemon) postBoilerDHW(w http.ResponseWriter, r *http.Request) {
 	target := hex.EncodeToString(dev.WireEUI())
 	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		d.applyHomeState(e)
-		if err := e.EnqueueDHWOverlay(target, id, tempC, on, duration); err != nil {
+		if err := e.EnqueueDHWOverlay(target, id, tempC, on, duration, ""); err != nil {
 			return nil, err
 		}
 		d.dispatchQueued(e, target)

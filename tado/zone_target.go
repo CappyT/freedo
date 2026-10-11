@@ -88,9 +88,10 @@ func (e *EmuState) PendingZoneBlock(target string, zone int) (ZoneBlock, bool) {
 
 // OverlayTimer is the coordinator-side deadline of the overlay a zone runs.
 type OverlayTimer struct {
-	Target    string // wire EUI hex of the node the timer restores
-	ExpiresAt time.Time
+	Target    string    // wire EUI hex of the node the timer restores
+	ExpiresAt time.Time // zero while the rule has no deadline
 	Boost     bool
+	Rule      string // the OverlayEnd* rule the overlay was set with, "" when unknown
 }
 
 // ZoneOverlayTimer returns the deadline of the overlay zone runs: the latest
@@ -110,7 +111,7 @@ func (e *EmuState) ZoneOverlayTimer(zone int) (OverlayTimer, bool) {
 	for _, key := range keys {
 		timer := e.boostTimers[key]
 		if out.Target == "" || timer.expiresAt.After(out.ExpiresAt) {
-			out = OverlayTimer{Target: overlayTimerNode(key), ExpiresAt: timer.expiresAt, Boost: timer.boost}
+			out = OverlayTimer{Target: overlayTimerNode(key), ExpiresAt: timer.expiresAt, Boost: timer.boost, Rule: timer.rule}
 		}
 	}
 	return out, true
@@ -121,7 +122,7 @@ func (e *EmuState) ZoneOverlayTimer(zone int) (OverlayTimer, bool) {
 // hot-water block, and a room overlay at the boost temperature is the boost,
 // since the air carries the same block for both.
 func (e *EmuState) restoredTimer(t DesiredBoostTimer) boostTimer {
-	out := boostTimer{id: t.ID, expiresAt: t.ExpiresAt, dhw: e.zoneKind(t.ID) == dhwZoneKind}
+	out := boostTimer{id: t.ID, expiresAt: t.ExpiresAt, dhw: e.zoneKind(t.ID) == dhwZoneKind, rule: t.Rule}
 	if block, ok := e.ZoneBlock(t.ID); ok && !out.dhw && block.Overlay == 3 &&
 		block.SetpointC != nil && *block.SetpointC == BoostTemperatureC {
 		out.boost = true

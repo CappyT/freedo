@@ -60,7 +60,7 @@ func TestRestoredTimers(t *testing.T) {
 	cfg := fixtureInstall(t).EmuConfig()
 	cfg.Now = func() time.Time { return now }
 	e := NewEmu(cfg, nil)
-	if err := e.EnqueueDHWOverlay("RU1000000001", 0, 50, true, time.Hour); err != nil {
+	if err := e.EnqueueDHWOverlay("RU1000000001", 0, 50, true, time.Hour, ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := e.EnqueueBoost("camera", 10, true); err != nil {
@@ -164,7 +164,7 @@ func TestOverlayTimersPerZone(t *testing.T) {
 
 	t.Run("room write keeps the hot-water timer", func(t *testing.T) {
 		e := NewEmu(cfg, nil)
-		if err := e.EnqueueDHWOverlay(ru, 0, 50, true, 4*time.Hour); err != nil {
+		if err := e.EnqueueDHWOverlay(ru, 0, 50, true, 4*time.Hour, ""); err != nil {
 			t.Fatal(err)
 		}
 		room(e, 2, 0)
@@ -198,7 +198,7 @@ func TestOverlayTimersPerZone(t *testing.T) {
 	t.Run("hot-water return keeps the room timer", func(t *testing.T) {
 		e := NewEmu(cfg, nil)
 		room(e, 3, 30*time.Minute)
-		if err := e.EnqueueDHWOverlay(ru, 0, 50, true, 4*time.Hour); err != nil {
+		if err := e.EnqueueDHWOverlay(ru, 0, 50, true, 4*time.Hour, ""); err != nil {
 			t.Fatal(err)
 		}
 		if err := e.EnqueueDHWSchedule(ru, 0); err != nil {
@@ -217,7 +217,7 @@ func TestOverlayTimersPerZone(t *testing.T) {
 
 	t.Run("room return keeps the hot-water timer", func(t *testing.T) {
 		e := NewEmu(cfg, nil)
-		if err := e.EnqueueDHWOverlay(ru, 0, 50, true, 4*time.Hour); err != nil {
+		if err := e.EnqueueDHWOverlay(ru, 0, 50, true, 4*time.Hour, ""); err != nil {
 			t.Fatal(err)
 		}
 		if err := e.EnqueueBoost(ru, 1, true); err != nil {
@@ -235,7 +235,7 @@ func TestOverlayTimersPerZone(t *testing.T) {
 
 	t.Run("persistence", func(t *testing.T) {
 		e := NewEmu(cfg, nil)
-		if err := e.EnqueueDHWOverlay(ru, 0, 50, true, 4*time.Hour); err != nil {
+		if err := e.EnqueueDHWOverlay(ru, 0, 50, true, 4*time.Hour, ""); err != nil {
 			t.Fatal(err)
 		}
 		room(e, 3, 30*time.Minute)
@@ -320,7 +320,7 @@ func TestDroppedReturnKeepsTimer(t *testing.T) {
 				}
 			}},
 		{"hot water, 4.04", ru, 0,
-			func(e *EmuState) error { return e.EnqueueDHWOverlay(ru, 0, 50, true, BoostDuration) },
+			func(e *EmuState) error { return e.EnqueueDHWOverlay(ru, 0, 50, true, BoostDuration, "") },
 			func(e *EmuState) { answerQueued(t, e, mustHex(ru), "4.04") }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -470,5 +470,85 @@ func TestThermostatBlockKeepsItsZone(t *testing.T) {
 	}
 	if got := queuedTags(t, e, ru); len(got) != 1 || got[0]["6240"] != "02" || got[0]["6280"] != "0898" {
 		t.Errorf("room rewrite = %v, want the 22 C overlay of zone 1", got)
+	}
+}
+
+// TestHomeChangeOverlayTimer: an overlay set with OverlayEndHomeChange keeps a
+// timer with no deadline. No clock ends it, a store keeps it, and the switch
+// between home and away makes it due, so ExpireBoosts queues the return to
+// schedule of an elapsed timer. A timer with another rule and no deadline is
+// refused at restore.
+func TestHomeChangeOverlayTimer(t *testing.T) {
+	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
+	cfg := fixtureInstall(t).EmuConfig()
+	cfg.Now = func() time.Time { return now }
+	e := NewEmu(cfg, nil)
+	if err := e.EnqueueSetpoint("bagno", SetpointParams{ID: 2, Setpoint: 21, Sched: 20, Overlay: 2, EndRule: OverlayEndHomeChange}); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.EnqueueDHWOverlay("RU1000000001", 0, 50, true, 0, OverlayEndHomeChange); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.EnqueueSetpoint("camera", SetpointParams{ID: 10, Setpoint: 21, Sched: 20, Overlay: 3, Duration: time.Hour, EndRule: OverlayEndTimer}); err != nil {
+		t.Fatal(err)
+	}
+	for _, ref := range []string{"RU1000000001", "bagno", "camera"} {
+		wire, _, err := e.resolve(ref)
+		if err != nil {
+			t.Fatal(err)
+		}
+		takeRestores(t, e, hexEUI(wire))
+	}
+	for _, zone := range []int{0, 2} {
+		if timer, ok := e.ZoneOverlayTimer(zone); !ok || !timer.ExpiresAt.IsZero() || timer.Rule != OverlayEndHomeChange {
+			t.Errorf("zone %d timer = %+v ok=%t, want the home change rule with no deadline", zone, timer, ok)
+		}
+	}
+	if due, err := e.ExpireBoosts(now.Add(365 * 24 * time.Hour)); err != nil || len(due) != 1 {
+		t.Fatalf("a year later due=%v err=%v, want the timer of zone 10 alone", due, err)
+	}
+
+	restored := NewEmu(cfg, nil)
+	if err := restored.RestoreDesiredState(e.ExportDesiredState()); err != nil {
+		t.Fatal(err)
+	}
+	for _, zone := range []int{0, 2} {
+		if timer, ok := restored.ZoneOverlayTimer(zone); !ok || !timer.ExpiresAt.IsZero() || timer.Rule != OverlayEndHomeChange {
+			t.Errorf("restored zone %d timer = %+v ok=%t, want the home change rule with no deadline", zone, timer, ok)
+		}
+	}
+
+	if zones := restored.EndHomeChangeOverlays(now); !reflect.DeepEqual(zones, []int{0, 2}) {
+		t.Fatalf("overlays ended = %v, want zones 0 and 2", zones)
+	}
+	due, err := restored.ExpireBoosts(now)
+	if err != nil || len(due) != 2 {
+		t.Fatalf("after the switch due=%v err=%v, want the thermostat and the bagno valve", due, err)
+	}
+	wantRestore := map[string]string{"RU1000000001": "dhw schedule id=0", "bagno": "boost id=2 on=false"}
+	for ref, want := range wantRestore {
+		wire, _, err := restored.resolve(ref)
+		if err != nil {
+			t.Fatal(err)
+		}
+		queue := restored.queue[hexEUI(wire)]
+		if len(queue) == 0 {
+			t.Errorf("%s holds no write after the switch", ref)
+			continue
+		}
+		if got := queue[len(queue)-1].desc; got != want {
+			t.Errorf("%s write = %q, want %q", ref, got, want)
+		}
+	}
+
+	bad := e.ExportDesiredState()
+	for key, timer := range bad.Boost {
+		if timer.Rule == OverlayEndTimer {
+			timer.ExpiresAt = time.Time{}
+			bad.Boost[key] = timer
+		}
+	}
+	if err := NewEmu(cfg, nil).RestoreDesiredState(bad); err == nil {
+		t.Error("a timer with no deadline and the timer rule was restored")
 	}
 }

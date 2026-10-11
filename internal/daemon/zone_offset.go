@@ -115,7 +115,8 @@ func (d *daemon) restateZone(e *tado.EmuState, inst *tado.Install, zone int, tar
 	if !known {
 		block, known = e.ZoneBlock(zone)
 	}
-	timer, timed := e.ZoneOverlayTimer(zone)
+	timer, held := e.ZoneOverlayTimer(zone)
+	timed := held && !timer.ExpiresAt.IsZero()
 	remaining := timer.ExpiresAt.Sub(d.retryNow())
 	if !known || block.Overlay == overlayAutoMode || block.SetpointC == nil ||
 		block.Enabled != nil && !*block.Enabled || timed && (timer.Boost || remaining <= 0) {
@@ -126,6 +127,7 @@ func (d *daemon) restateZone(e *tado.EmuState, inst *tado.Install, zone int, tar
 		Setpoint:       min(max(roundCenti(*block.SetpointC-delta), zoneMinC), zoneMaxC),
 		Overlay:        block.Overlay,
 		RunningOverlay: true,
+		EndRule:        timer.Rule,
 	}
 	if program, ok := d.zoneSched[zone]; ok {
 		sp.Sched = rawSetpointC(inst, zone, program.c)
