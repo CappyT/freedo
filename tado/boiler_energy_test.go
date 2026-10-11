@@ -57,6 +57,67 @@ func TestBoilerSample(t *testing.T) {
 	}
 }
 
+// TestBoilerSampleFollowsOneHeatSource: two thermostats that report hvac/mon do
+// not mix in the sample. It follows the heat source of the first circuit, and
+// only the only reporting thermostat when no circuit names one.
+func TestBoilerSampleFollowsOneHeatSource(t *testing.T) {
+	in, err := Parse([]byte(`
+version: 1
+home_id: 7654321
+network_key: "000102030405060708090a0b0c0d0e0f"
+coordinator:
+  eui: "1000000000c51b00"
+devices:
+  - {kind: thermostat, eui: "2000000000c51b00", serial: RU0000000001, label: hall}
+  - {kind: thermostat, eui: "2100000000c51b00", serial: RU0000000002, label: loft}
+  - {kind: valve, eui: "3000000000c51b00", serial: VA0000000001, label: study}
+  - {kind: valve, eui: "3100000000c51b00", serial: VA0000000002, label: attic}
+zones:
+  - {number: 4, name: study, kind: heating, circuit: 1, members: [VA0000000001], reporter: VA0000000001}
+  - {number: 5, name: attic, kind: heating, circuit: 2, members: [VA0000000002], reporter: VA0000000002}
+circuits:
+  - {id: 1, name: lower, heat_source: RU0000000001}
+  - {id: 2, name: upper, heat_source: RU0000000002}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 1, 5, 6, 0, 0, 0, time.UTC)
+	cfg := in.EmuConfig()
+	cfg.Now = func() time.Time { return now }
+	e := NewEmu(cfg, nil)
+	hall, loft := mustB("2000000000c51b00"), mustB("2100000000c51b00")
+	report := func(node []byte, modulation, burner byte) {
+		t.Helper()
+		e.cacheTLVs(e.node(node), []TLV{{Tag: "0452", Val: []byte{0, modulation}}, {Tag: "0457", Val: []byte{burner}}},
+			"h/7654321/hvac/mon", ClassData, "", "", "")
+	}
+
+	report(loft, 80, 1)
+	if s := e.BoilerSample(); !s.At.IsZero() || s.ModulationPct != nil {
+		t.Errorf("only the second circuit's thermostat reported: sample %+v, want the zero sample", s)
+	}
+	now = now.Add(10 * time.Second)
+	report(hall, 30, 1)
+	first := now
+	now = now.Add(10 * time.Second)
+	report(loft, 90, 0)
+	if s := e.BoilerSample(); !s.At.Equal(first) || !isPtr(s.ModulationPct, 30) || !isPtr(s.Burner, true) {
+		t.Errorf("sample = %+v, want the first circuit's report at %v: 30 %% and burner on", s, first)
+	}
+
+	// No circuit names a heat source: one reporting thermostat is the source,
+	// two are none.
+	e.inst.Circuits = nil
+	if s := e.BoilerSample(); !s.At.IsZero() {
+		t.Errorf("sample with two reporting thermostats and no circuit = %+v, want the zero sample", s)
+	}
+	delete(e.nodes, hexEUI(hall))
+	if s := e.BoilerSample(); !s.At.Equal(now) || !isPtr(s.ModulationPct, 90) || !isPtr(s.Burner, false) {
+		t.Errorf("sample with one reporting thermostat = %+v, want its report at %v", s, now)
+	}
+}
+
 // TestBoilerPowerOptions: the maximum output turns the estimate on, the minimum
 // defaults to 0, and a value outside the limits is refused.
 func TestBoilerPowerOptions(t *testing.T) {

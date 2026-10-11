@@ -269,6 +269,57 @@ func TestEnergyFromFrames(t *testing.T) {
 	}
 }
 
+// TestEnergyFollowsTheFirstCircuitHeatSource: two thermostats report their own
+// boiler, and the counter integrates the heat source of the first circuit alone.
+func TestEnergyFollowsTheFirstCircuitHeatSource(t *testing.T) {
+	in, err := tado.Parse([]byte(`
+version: 1
+home_id: 7654321
+network_key: "0f1e2d3c4b5a69788796a5b4c3d2e1f0"
+coordinator:
+  eui: "09a1cefa07c51b00"
+devices:
+  - {kind: thermostat, eui: "05a2cafa07c51b00", serial: RU1000000001, label: hall}
+  - {kind: thermostat, eui: "06a2cafa07c51b00", serial: RU1000000002, label: loft}
+  - {kind: valve, eui: "02a6cefa07c51b00", serial: VA1000000005, label: study}
+  - {kind: valve, eui: "04a3defa07c51b00", serial: VA1000000007, label: attic}
+zones:
+  - {number: 1, name: study, kind: heating, circuit: 1, members: [VA1000000005], reporter: VA1000000005}
+  - {number: 2, name: attic, kind: heating, circuit: 2, members: [VA1000000007], reporter: VA1000000007}
+circuits:
+  - {id: 1, name: lower, heat_source: RU1000000001}
+  - {id: 2, name: upper, heat_source: RU1000000002}
+options:
+  utc_offset_min: 0
+  boiler_max_power_kw: 24
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	clock := newTestClock(energyStart)
+	d := newEnergyDaemon(t, in, clock, nil)
+	report := func(ref string, mid uint16, tlvs ...tado.TLV) {
+		t.Helper()
+		var body []byte
+		for _, tlv := range tlvs {
+			body = append(body, tlv.Encode()...)
+		}
+		d.handleFrame(uplinkFrame(t, in, ref, false, tado.CoAPReq{
+			Type: "CON", Code: "0.03", MID: mid, Path: []string{"h", "7654321", "hvac", "mon"}, Payload: body,
+		}), true)
+	}
+
+	report("RU1000000001", 1, modFlag(50, 1)...)
+	clock.advance(time.Minute)
+	report("RU1000000002", 2, modFlag(100, 1)...)
+	clock.advance(time.Minute)
+	report("RU1000000001", 3, flameCurrent)
+	d.tickEnergy()
+	if got := d.energyView(clock.now())["totalKWh"]; got != 0.4 {
+		t.Errorf("total = %v, want 0.4: two minutes at 12 kW of the first circuit, the second boiler ignored", got)
+	}
+}
+
 // TestEnergyOffWithoutMaximumPower: with no maximum the estimate says so, adds
 // nothing and still reports the frames.
 func TestEnergyOffWithoutMaximumPower(t *testing.T) {

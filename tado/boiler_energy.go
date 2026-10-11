@@ -94,16 +94,13 @@ type BoilerSample struct {
 	Burner        *bool
 }
 
-// BoilerSample returns the sample of the wall thermostat that reported hvac/mon
-// last.
+// BoilerSample returns the sample of one wall thermostat: the heat source of
+// the first circuit, else the only thermostat that reported hvac/mon. The
+// samples of two boilers never mix. It is the zero sample while that
+// thermostat has not reported.
 func (e *EmuState) BoilerSample() BoilerSample {
-	var from *NodeState
-	for _, ns := range e.nodes {
-		if !ns.hvacMonAt.IsZero() && (from == nil || ns.hvacMonAt.After(from.hvacMonAt)) {
-			from = ns
-		}
-	}
-	if from == nil {
+	from := e.boilerNode()
+	if from == nil || from.hvacMonAt.IsZero() {
 		return BoilerSample{}
 	}
 	var b BoilerView
@@ -114,4 +111,27 @@ func (e *EmuState) BoilerSample() BoilerSample {
 		s.Burner = &on
 	}
 	return s
+}
+
+// boilerNode is the node whose boiler reports the estimate follows: the heat
+// source of the first circuit, else the only node that reported hvac/mon. It is
+// nil when the heat source never spoke, or when no circuit names one and several
+// nodes report.
+func (e *EmuState) boilerNode() *NodeState {
+	if e.inst != nil && len(e.inst.Circuits) > 0 {
+		if dev, err := e.inst.HeatSource(e.inst.Circuits[0].ID); err == nil {
+			return e.nodes[hexEUI(dev.WireEUI())]
+		}
+	}
+	var only *NodeState
+	for _, ns := range e.nodes {
+		if ns.hvacMonAt.IsZero() {
+			continue
+		}
+		if only != nil {
+			return nil
+		}
+		only = ns
+	}
+	return only
 }
