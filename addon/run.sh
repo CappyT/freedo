@@ -12,7 +12,9 @@ if [ -z "$token" ]; then
 fi
 export FREEDO_API_TOKEN="$token"
 
-set -- --addr :18080 --state /data/freedo-state.db --unhandled /data/freedo-unhandled.log
+# --ingress lets the Home Assistant gateway (172.30.32.2) reach the API without the token.
+# Only this script sets it: Home Assistant has already authenticated the user.
+set -- --addr :18080 --ingress --state /data/freedo-state.db --unhandled /data/freedo-unhandled.log
 
 port=$(jq -r '.serial_port // empty' "$options")
 if [ -n "$port" ]; then

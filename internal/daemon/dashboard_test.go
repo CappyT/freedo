@@ -11,7 +11,7 @@ import (
 
 func TestDashboardNeedsNoTokenAndTheAPIStillDoes(t *testing.T) {
 	files := fstest.MapFS{"index.html": {Data: []byte("<title>app</title>")}}
-	srv := httptest.NewServer(dashboardHandler(files, testAPIToken, false, okHandler()))
+	srv := httptest.NewServer(dashboardHandler(files, requireToken(testAPIToken, false, okHandler())))
 	t.Cleanup(srv.Close)
 
 	for _, tc := range []struct {
@@ -41,7 +41,7 @@ func TestDashboardNeverShadowsTheAPI(t *testing.T) {
 		"index.html":      {Data: []byte("<title>app</title>")},
 		"api/health.json": {Data: []byte("shadow")},
 	}
-	srv := httptest.NewServer(dashboardHandler(files, testAPIToken, true, okHandler()))
+	srv := httptest.NewServer(dashboardHandler(files, requireToken(testAPIToken, true, okHandler())))
 	t.Cleanup(srv.Close)
 	resp, err := http.Get(srv.URL + "/api/health")
 	if err != nil {
@@ -55,7 +55,7 @@ func TestDashboardNeverShadowsTheAPI(t *testing.T) {
 }
 
 func TestServerHandlerKeepsTheAPIRules(t *testing.T) {
-	srv := httptest.NewServer(serverHandler(testAPIToken, false, okHandler()))
+	srv := httptest.NewServer(serverHandler(testAPIToken, false, false, okHandler()))
 	t.Cleanup(srv.Close)
 	if got := authGet(t, srv.URL, "/api/stats", "Bearer "+testAPIToken).StatusCode; got != http.StatusOK {
 		t.Fatalf("GET /api/stats = %d, want 200", got)

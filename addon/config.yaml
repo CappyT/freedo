@@ -10,6 +10,10 @@ arch:
 stage: experimental
 startup: services
 backup: cold
+ingress: true
+ingress_port: 18080
+panel_icon: mdi:radiator
+panel_title: freedo
 discovery:
   - freedo
 ports:
