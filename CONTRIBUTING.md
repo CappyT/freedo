@@ -17,7 +17,8 @@ go test ./...
 ```
 
 The three commands are the gate. A change passes when all three succeed. CI runs them, and
-it also runs the Home Assistant tests and builds both container images.
+it also runs the Home Assistant tests, compiles the bridge firmware and builds both container
+images.
 
 The Home Assistant tests need Python and a test plugin:
 

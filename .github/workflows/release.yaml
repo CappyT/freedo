@@ -72,14 +72,25 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.target }}
           cache-to: type=gha,scope=${{ matrix.target }},mode=max
 
+  firmware:
+    uses: ./.github/workflows/firmware.yaml
+    with:
+      version: ${{ github.ref_name }}
+    permissions:
+      contents: read
+
   release:
-    needs: images
+    needs: [images, firmware]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Publish the GitHub release that HACS reads
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: firmware
+          path: dist
+      - name: Publish the GitHub release that HACS reads, with the firmware files
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
-        run: gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes
+        run: gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes dist/*

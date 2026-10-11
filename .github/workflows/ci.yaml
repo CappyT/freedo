@@ -27,6 +27,11 @@ jobs:
       - uses: astral-sh/setup-uv@v10.3.0
       - run: uv run --no-project --python 3.14 --with pytest-homeassistant-custom-component pytest homeassistant/tests
 
+  firmware:
+    uses: ./.github/workflows/firmware.yaml
+    permissions:
+      contents: read
+
   images:
     runs-on: ubuntu-latest
     strategy:

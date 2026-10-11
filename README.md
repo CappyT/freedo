@@ -78,7 +78,8 @@ freedo has not run for several days as the only coordinator of a plant.
 ## Requirements
 
 - Radio hardware: an ESP32 with a CC1101 module on a USB port, flashed with the bridge firmware
-  in [`firmware/cc1101_bridge`](firmware/cc1101_bridge/README.md).
+  in [`firmware/cc1101_bridge`](firmware/cc1101_bridge/README.md). Each release attaches the
+  firmware image: see [Flash a released image](firmware/cc1101_bridge/README.md#flash-a-released-image).
   This firmware is almost completely AI-generated. See the [notice](firmware/cc1101_bridge/README.md)
   in its README: it ran on one ESP32 development board with one CC1101 module only.
 - A radio board design for the bridge exists in [`hardware/radio`](hardware/radio/README.md). This PCB design is

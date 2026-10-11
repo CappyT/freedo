@@ -266,13 +266,16 @@ v2.10. Update the daemon and the firmware together.
 
 ## Build and flash
 
-Install `arduino-cli` and the ESP32 core:
+Install `arduino-cli` and the ESP32 core. CI and the release images use core 3.3.11:
 
 ```
-arduino-cli core install esp32:esp32
+arduino-cli core install esp32:esp32@3.3.11 \
+  --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
 ```
 
-Compile:
+The board is the ESP32 Dev Module, `esp32:esp32:esp32`. It matches the ESP32 DevKit
+(WROOM-32, 30-pin) of the wiring below. CI compiles the sketch for this board on every
+change. Compile:
 
 ```
 arduino-cli compile --fqbn esp32:esp32:esp32 firmware/cc1101_bridge
@@ -294,6 +297,23 @@ arduino-cli upload --fqbn esp32:esp32:esp32 -p /dev/ttyUSB0 \
 ```
 
 Stop the daemon before you flash. One coordinator unit transmits at a time.
+
+### Flash a released image
+
+Each release has the files `freedo-cc1101-bridge-<version>.bin` (the application),
+`freedo-cc1101-bridge-<version>-merged.bin` (bootloader, partition table and
+application in one image) and `SHA256SUMS`. Check the image against `SHA256SUMS`, then
+write the merged image at offset 0 with esptool 5:
+
+```
+esptool --chip esp32 --port /dev/ttyUSB0 write-flash 0x0 \
+  freedo-cc1101-bridge-0.3.1-merged.bin
+```
+
+Use the application image only at offset `0x10000` of a board that already has the
+bootloader and the partition table of the same core.
+
+### Check the bridge
 
 Check the bridge after the flash:
 

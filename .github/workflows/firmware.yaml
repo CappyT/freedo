@@ -1,0 +1,65 @@
+name: Firmware
+
+# Compiles the radio bridge firmware. CI calls it to catch a sketch that does not
+# compile. The release calls it with the release version and publishes the files.
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Build id for the PING banner and the file names, a leading v dropped. dev for a CI build.
+        type: string
+        default: dev
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      FQBN: esp32:esp32:esp32
+      ESP32_CORE: 3.3.11
+      ESP32_INDEX: https://espressif.github.io/arduino-esp32/package_esp32_index.json
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Take the version from the input
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          version="${INPUT_VERSION#v}"
+          case "$version" in
+            "" | *[!0-9A-Za-z.+-]*) echo "::error::'$INPUT_VERSION' is not a plain version string"; exit 1 ;;
+          esac
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+      - uses: arduino/setup-arduino-cli@v2.0.0
+        with:
+          version: 1.5.1
+      - uses: actions/cache@v6.1.0
+        with:
+          path: ~/.arduino15
+          key: arduino-esp32-${{ env.ESP32_CORE }}
+      - name: Install the ESP32 core
+        run: |
+          arduino-cli core update-index --additional-urls "$ESP32_INDEX"
+          arduino-cli core install "esp32:esp32@${ESP32_CORE}" --additional-urls "$ESP32_INDEX"
+          rm -rf ~/.arduino15/staging
+      - name: Compile
+        run: |
+          arduino-cli compile --fqbn "$FQBN" --output-dir out \
+            --build-property "compiler.cpp.extra_flags=-DFIRMWARE_BUILD=${VERSION}" \
+            firmware/cc1101_bridge
+      - name: The banner carries the version
+        run: strings -a out/cc1101_bridge.ino.bin | grep -Fx "CC1101BRIDGE v2.10 (${VERSION})"
+      - name: Name the files
+        run: |
+          mkdir dist
+          cp out/cc1101_bridge.ino.bin "dist/freedo-cc1101-bridge-${VERSION}.bin"
+          cp out/cc1101_bridge.ino.merged.bin "dist/freedo-cc1101-bridge-${VERSION}-merged.bin"
+          cd dist
+          sha256sum -- *.bin > SHA256SUMS
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: firmware
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
