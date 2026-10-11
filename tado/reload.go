@@ -110,11 +110,11 @@ func (e *EmuState) SetInstall(in *Install) (added, removed []string, err error) 
 	}
 	e.rehomeScheduleDocuments(e.inst, in)
 
-	oldFlow := e.defaultFlowC()
+	oldFlow, oldSet := e.defaultFlowC()
 	e.inst = in
-	if e.defaultFlowC() != oldFlow {
+	if flow, set := e.defaultFlowC(); set && (flow != oldFlow || !oldSet) {
 		for i := range in.Circuits {
-			if _, set := e.flowC[in.Circuits[i].ID]; !set {
+			if _, own := e.flowC[in.Circuits[i].ID]; !own {
 				e.flowFresh[in.Circuits[i].ID] = true
 			}
 		}

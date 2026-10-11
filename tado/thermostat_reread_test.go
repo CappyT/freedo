@@ -9,10 +9,14 @@ import (
 )
 
 // rereadInstall is the synthetic installation on Europe/Rome with options
-// added, and with src replaced by dst in its YAML when src is set.
+// added, and with src replaced by dst in its YAML when src is set. It serves a
+// flow limit of 48 C unless options sets one.
 func rereadInstall(t *testing.T, options, src, dst string) *Install {
 	t.Helper()
 	doc := synthInstallYAML + "options:\n  timezone: Europe/Rome\n" + options
+	if !strings.Contains(options, "flow_limit_c") {
+		doc += "  flow_limit_c: 48\n"
+	}
 	if src != "" {
 		doc = strings.Replace(doc, src, dst, 1)
 	}

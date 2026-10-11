@@ -68,6 +68,7 @@ func TestFlowCurveFollowsOutdoor(t *testing.T) {
 	in := windowInstall(t, func(in *tado.Install) {
 		in.Options.FlowCurves = map[int]tado.FlowCurve{1: testCurve}
 		in.Options.FlowHysteresisC = &hysteresis
+		in.Options.FlowLimitC = new(48)
 	})
 	clock := newTestClock(windowStart)
 	d, url := newWindowDaemon(t, in, clock, nil)
@@ -139,6 +140,7 @@ func TestFlowCurveFollowsOutdoor(t *testing.T) {
 func TestFlowCurveDisableRestoresDefault(t *testing.T) {
 	in := windowInstall(t, func(in *tado.Install) {
 		in.Options.FlowCurves = map[int]tado.FlowCurve{1: testCurve}
+		in.Options.FlowLimitC = new(48)
 	})
 	clock := newTestClock(windowStart)
 	d, url := newWindowDaemon(t, in, clock, nil)
@@ -152,6 +154,7 @@ func TestFlowCurveDisableRestoresDefault(t *testing.T) {
 		curve := testCurve
 		curve.Enabled = false
 		in.Options.FlowCurves = map[int]tado.FlowCurve{1: curve}
+		in.Options.FlowLimitC = new(48)
 	})
 	if _, err := d.do(func(*tado.EmuState) (any, error) {
 		_, _, err := d.setInstall(off)
@@ -165,14 +168,50 @@ func TestFlowCurveDisableRestoresDefault(t *testing.T) {
 	}
 }
 
+// TestFlowLimitUnset: while options.flow_limit_c is unset a circuit nothing
+// manages is served no limit, a manual value is served as it is, and the option
+// is served once set.
+func TestFlowLimitUnset(t *testing.T) {
+	a := newInstallAPIOn(t, windowInstall(t, nil))
+	flow := func() (defaultC any, circuit map[string]any) {
+		t.Helper()
+		code, body := a.call(http.MethodGet, "/api/boiler", nil)
+		if code != http.StatusOK {
+			t.Fatalf("GET /api/boiler: %d %v", code, body)
+		}
+		view := body["flowLimit"].(map[string]any)
+		return view["defaultC"], view["circuits"].([]any)[0].(map[string]any)
+	}
+	if def, c := flow(); def != nil || c["servedC"] != nil {
+		t.Errorf("unset: defaultC=%v servedC=%v, want null and null", def, c["servedC"])
+	}
+	var resp map[string]any
+	if code := postJSON(t, http.MethodPost, a.base+"/api/boiler/flow", map[string]any{"tempC": 46}, &resp); code != http.StatusOK {
+		t.Fatalf("a manual limit: %d %v, want 200", code, resp)
+	}
+	if def, c := flow(); def != nil || c["servedC"] != float64(46) {
+		t.Errorf("manual: defaultC=%v servedC=%v, want null and 46", def, c["servedC"])
+	}
+	a.mutate(http.MethodPatch, "/api/install", map[string]any{"flow_limit_c": 52})
+	if got := a.get("/api/install")["flow_limit_c"]; got != float64(52) {
+		t.Errorf("flow_limit_c = %v after the patch, want 52", got)
+	}
+	if def, _ := flow(); def != float64(52) {
+		t.Errorf("defaultC = %v after the patch, want 52", def)
+	}
+}
+
 // TestInstallAPIPatchesFlowOptions: the flow limit options round-trip through
 // the install table, a curve on an undeclared circuit is refused and a null
 // curve removes it.
 func TestInstallAPIPatchesFlowOptions(t *testing.T) {
 	a := newInstallAPIOn(t, windowInstall(t, nil))
 	view := a.get("/api/install")
+	if view["flow_limit_c"] != nil {
+		t.Errorf("default flow_limit_c = %v, want null", view["flow_limit_c"])
+	}
 	for key, want := range map[string]float64{
-		"flow_limit_c": 48, "outdoor_max_age_sec": 3600, "flow_hysteresis_c": 1, "flow_min_interval_sec": 1800,
+		"outdoor_max_age_sec": 3600, "flow_hysteresis_c": 1, "flow_min_interval_sec": 1800,
 	} {
 		if view[key] != want {
 			t.Errorf("default %s = %v, want %g", key, view[key], want)
@@ -187,7 +226,7 @@ func TestInstallAPIPatchesFlowOptions(t *testing.T) {
 		t.Fatal(err)
 	}
 	o := stored.Options
-	if o.FlowLimit() != 50 || o.OutdoorMaxAge() != 15*time.Minute || o.FlowHysteresis() != 2 || o.FlowMinInterval() != time.Hour {
+	if limit, _ := o.FlowLimit(); limit != 50 || o.OutdoorMaxAge() != 15*time.Minute || o.FlowHysteresis() != 2 || o.FlowMinInterval() != time.Hour {
 		t.Errorf("stored options = %+v", o)
 	}
 	if c, ok := o.EnabledFlowCurve(1); !ok || c != testCurve {
@@ -199,7 +238,7 @@ func TestInstallAPIPatchesFlowOptions(t *testing.T) {
 	if a.lastRev, err = a.store.ReplaceInstall(context.Background(), stored); err != nil {
 		t.Fatal(err)
 	}
-	if again, _, err := a.store.LoadInstall(context.Background()); err != nil || again.Options.FlowLimit() != 50 || again.Options.FlowCurves[1] != testCurve {
+	if again, _, err := a.store.LoadInstall(context.Background()); err != nil || again.Options.FlowLimitC == nil || *again.Options.FlowLimitC != 50 || again.Options.FlowCurves[1] != testCurve {
 		t.Errorf("options after a rewrite = %+v %v", again.Options, err)
 	}
 

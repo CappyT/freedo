@@ -268,7 +268,7 @@ func installView(in *tado.Install, rev uint64) map[string]any {
 		"room_temp_max_age_sec":    int(in.Options.RoomTempMaxAge() / time.Second),
 		"low_battery_cell_mv":      in.Options.LowBatteryCell(),
 		"offline_after_sec":        int(in.Options.OfflineAfter() / time.Second),
-		"flow_limit_c":             in.Options.FlowLimit(),
+		"flow_limit_c":             nil,
 		"outdoor_max_age_sec":      int(in.Options.OutdoorMaxAge() / time.Second),
 		"flow_hysteresis_c":        in.Options.FlowHysteresis(),
 		"flow_min_interval_sec":    int(in.Options.FlowMinInterval() / time.Second),
@@ -293,6 +293,9 @@ func installView(in *tado.Install, rev uint64) map[string]any {
 	}
 	if maxKW, minKW, ok := in.Options.BoilerPower(); ok {
 		out["boiler_max_power_kw"], out["boiler_min_power_kw"] = maxKW, minKW
+	}
+	if limit, ok := in.Options.FlowLimit(); ok {
+		out["flow_limit_c"] = limit
 	}
 	if v := in.Options.BoilerMaxGasM3H; v != nil {
 		out["boiler_max_gas_m3h"] = *v

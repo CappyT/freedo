@@ -1010,16 +1010,17 @@ func (e *EmuState) handleCoAP(f *Frame, m *CoAPMessage, class FrameClass, srcLbl
 		// endpoints) is served its own answer; every other direct GET/PUT gets
 		// the bare 2.04/2.05.
 		if cid, ok := servedFlowCircuit(m); ok {
-			tempC := e.servedFlowC(cid)
-			payload := flowSetpointPayload(tempC)
-			if etag, present := m.Option(4); present && bytes.Equal(etag.Val, FlowSetpointETag(payload)) {
-				code = "2.03"
-				pkt, err = e.validAnswer(m, dst, etag.Val)
-			} else {
-				pkt, err = BuildFlowSetpointCoAP(cid, tempC, m.MID, m.Token, e.selfEUI, dst)
+			if tempC, served := e.servedFlowC(cid); served {
+				payload := flowSetpointPayload(tempC)
+				if etag, present := m.Option(4); present && bytes.Equal(etag.Val, FlowSetpointETag(payload)) {
+					code = "2.03"
+					pkt, err = e.validAnswer(m, dst, etag.Val)
+				} else {
+					pkt, err = BuildFlowSetpointCoAP(cid, tempC, m.MID, m.Token, e.selfEUI, dst)
+				}
+				delete(e.flowFresh, cid)
+				break
 			}
-			delete(e.flowFresh, cid)
-			break
 		}
 		if p, sc, handled, serveErr := e.servedZoneConfig(m, dst); handled {
 			pkt, code, err = p, sc, serveErr
@@ -3200,35 +3201,40 @@ func (e *EmuState) EnqueueFlowSetpoint(target string, id int, tempC float64) err
 }
 
 // ClearFlowSetpoint drops the flow setpoint of circuit id, which then gets
-// options.flow_limit_c.
+// options.flow_limit_c, or none while that is unset.
 func (e *EmuState) ClearFlowSetpoint(id int) {
 	old, ok := e.flowC[id]
 	if !ok {
 		return
 	}
 	delete(e.flowC, id)
-	if old != e.servedFlowC(id) {
+	if now, served := e.servedFlowC(id); !served {
+		delete(e.flowFresh, id)
+	} else if old != now {
 		e.flowFresh[id] = true
 	}
 	e.refreshThermostatDocuments()
 }
 
 // ServedFlow returns the flow limit circuit id is served and whether the wall
-// thermostat has fetched it.
-func (e *EmuState) ServedFlow(id int) (tempC float64, fetched bool) {
-	return e.servedFlowC(id), !e.flowFresh[id]
+// thermostat has fetched it. served is false while the circuit has no limit:
+// it is served none.
+func (e *EmuState) ServedFlow(id int) (tempC float64, served, fetched bool) {
+	tempC, served = e.servedFlowC(id)
+	return tempC, served, !e.flowFresh[id]
 }
 
-func (e *EmuState) servedFlowC(id int) float64 {
+func (e *EmuState) servedFlowC(id int) (float64, bool) {
 	if v, ok := e.flowC[id]; ok {
-		return v
+		return v, true
 	}
-	return float64(e.defaultFlowC())
+	def, ok := e.defaultFlowC()
+	return float64(def), ok
 }
 
-func (e *EmuState) defaultFlowC() int {
+func (e *EmuState) defaultFlowC() (int, bool) {
 	if e.inst == nil {
-		return DefaultFlowLimitC
+		return 0, false
 	}
 	return e.inst.Options.FlowLimit()
 }
@@ -3237,12 +3243,15 @@ func (e *EmuState) defaultFlowC() int {
 // document. The thermostat GETs c/<N>/config only after a d/config 2.05, and
 // its hourly d/config GET is conditional, so a served flow limit reaches it
 // only when this ETag moves. The input is the served flow limits: the default
-// and each circuit value that differs from it.
+// when set and each circuit value that differs from it.
 func (e *EmuState) flowETagInput() []byte {
-	def := e.defaultFlowC()
-	out := binary.BigEndian.AppendUint16([]byte(flowTag), uint16(def*100))
+	def, hasDef := e.defaultFlowC()
+	out := []byte(flowTag)
+	if hasDef {
+		out = binary.BigEndian.AppendUint16(out, uint16(def*100))
+	}
 	for _, id := range slices.Sorted(maps.Keys(e.flowC)) {
-		if v := e.flowC[id]; v != float64(def) {
+		if v := e.flowC[id]; !hasDef || v != float64(def) {
 			out = binary.BigEndian.AppendUint16(out, uint16(id))
 			out = binary.BigEndian.AppendUint16(out, uint16(v*100+0.5))
 		}

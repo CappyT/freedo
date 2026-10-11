@@ -11,9 +11,10 @@ import (
 	"time"
 )
 
-// DefaultFlowLimitC is the flow limit the commercial coordinator serves on
-// this installation (2040 = 0x12c0). A thermostat that gets no 2040 applies
-// MaxTSet 70 C when its boiler interface starts.
+// DefaultFlowLimitC is the flow limit a circuit follows when a curve has no
+// fresh outdoor reading or the adaptation starts, and options.flow_limit_c is
+// unset. A circuit that nothing manages is served no 2040 then: the thermostat
+// applies MaxTSet 70 C when its boiler interface starts.
 const DefaultFlowLimitC = 48
 
 const (
@@ -63,12 +64,13 @@ func (c FlowCurve) Validate() error {
 	return nil
 }
 
-// FlowLimit is the flow limit of a circuit that nothing else sets.
-func (o Options) FlowLimit() int {
+// FlowLimit is the flow limit of a circuit that nothing else sets. ok is false
+// while the option is unset: the circuit is then served no limit.
+func (o Options) FlowLimit() (limit int, ok bool) {
 	if o.FlowLimitC == nil {
-		return DefaultFlowLimitC
+		return 0, false
 	}
-	return *o.FlowLimitC
+	return *o.FlowLimitC, true
 }
 
 // EnabledFlowCurve returns the curve of circuit id when it is enabled.

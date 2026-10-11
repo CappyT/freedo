@@ -18,15 +18,18 @@ func flowGET(t *testing.T, in *Install, e *EmuState, dev []byte, mid uint16, eta
 	return synthAnswer(t, in, e.OnFrame(synthDeviceUplink(t, in, dev, r)), mid)
 }
 
-// TestServedFlowDefault: a circuit nothing sets is served options.flow_limit_c,
-// 48 C when unset, never an empty 2.05.
-func TestServedFlowDefault(t *testing.T) {
+// TestServedFlowWithoutLimit: a circuit nothing sets is served no 2040 while
+// options.flow_limit_c is unset, and the option once it is set.
+func TestServedFlowWithoutLimit(t *testing.T) {
 	in := synthInstall(t)
 	ru, _ := synthDevices(t, in)
 	e := NewEmu(in.EmuConfig(), nil)
 	m := flowGET(t, in, e, ru, 0x7401, nil)
-	if got := hex.EncodeToString(m.Payload); m.Code != "2.05" || got != "20400212c0" {
-		t.Fatalf("c/1/config = %s %s, want 2.05 20400212c0", m.Code, got)
+	if m.Code != "2.05" || len(m.Payload) != 0 {
+		t.Fatalf("c/1/config = %s %x, want an empty 2.05", m.Code, m.Payload)
+	}
+	if _, served, _ := e.ServedFlow(1); served {
+		t.Error("a circuit without a limit reads as served")
 	}
 
 	limit := 55
@@ -35,15 +38,65 @@ func TestServedFlowDefault(t *testing.T) {
 	if _, _, err := e.SetInstall(next); err != nil {
 		t.Fatal(err)
 	}
-	if _, fetched := e.ServedFlow(1); fetched {
-		t.Error("a new default reads as fetched")
+	if _, served, fetched := e.ServedFlow(1); !served || fetched {
+		t.Errorf("a new default reads served=%v fetched=%v, want true and false", served, fetched)
 	}
 	m = flowGET(t, in, e, ru, 0x7402, nil)
 	if got := hex.EncodeToString(m.Payload); got != "204002157c" {
 		t.Errorf("c/1/config after flow_limit_c=55 = %s, want 2040 02 157c", got)
 	}
-	if _, fetched := e.ServedFlow(1); !fetched {
+	if _, _, fetched := e.ServedFlow(1); !fetched {
 		t.Error("the GET did not mark the value fetched")
+	}
+
+	if _, _, err := e.SetInstall(synthInstall(t)); err != nil {
+		t.Fatal(err)
+	}
+	if m = flowGET(t, in, e, ru, 0x7403, nil); len(m.Payload) != 0 {
+		t.Errorf("c/1/config after the limit left = %x, want an empty 2.05", m.Payload)
+	}
+	if n := e.FlowPending(); n != 0 {
+		t.Errorf("FlowPending = %d with no limit served, want 0", n)
+	}
+}
+
+// TestThermostatConfigETagWithoutFlowLimit: with options.flow_limit_c unset the
+// ETag hashes no default. A circuit value moves it, clearing the value restores
+// it and leaves no pending fetch, and a reload that sets the limit moves it.
+func TestThermostatConfigETagWithoutFlowLimit(t *testing.T) {
+	in := synthInstall(t)
+	ru, _ := synthDevices(t, in)
+	e := NewEmu(in.EmuConfig(), nil)
+	e.OnFrame(moduleReport(t, in, ru, 71, 0x7601))
+	etag := func() []byte { return append([]byte(nil), e.cfgDoc[hexEUI(ru)].etag...) }
+	base := etag()
+	if len(base) == 0 {
+		t.Fatal("no thermostat document after the module report")
+	}
+
+	if err := e.EnqueueFlowSetpoint(hexEUI(ru), 1, DefaultFlowLimitC); err != nil {
+		t.Fatal(err)
+	}
+	moved := etag()
+	if bytes.Equal(moved, base) {
+		t.Error("a first circuit value left the ETag")
+	}
+	e.ClearFlowSetpoint(1)
+	if !bytes.Equal(etag(), base) {
+		t.Error("after the clear, the ETag differs from the first one")
+	}
+	if n := e.FlowPending(); n != 0 {
+		t.Errorf("FlowPending = %d after the clear, want 0", n)
+	}
+
+	limit := DefaultFlowLimitC
+	next := synthInstall(t)
+	next.Options.FlowLimitC = &limit
+	if _, _, err := e.SetInstall(next); err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Equal(etag(), base) {
+		t.Error("a reload that sets flow_limit_c left the ETag")
 	}
 }
 
@@ -123,7 +176,8 @@ func TestThermostatConfigETagFollowsFlowLimit(t *testing.T) {
 		in.Options.FlowLimitC = limit
 		return in
 	}
-	in := install(nil)
+	def := 48
+	in := install(&def)
 	ru, va := synthDevices(t, in)
 	e := NewEmu(in.EmuConfig(), nil)
 	e.OnFrame(moduleReport(t, in, ru, 71, 0x7501))
@@ -153,7 +207,7 @@ func TestThermostatConfigETagFollowsFlowLimit(t *testing.T) {
 	if !bytes.Equal(etag(), base) {
 		t.Error("serving the default as an explicit value moved the ETag")
 	}
-	if _, _, err := e.SetInstall(install(nil)); err != nil {
+	if _, _, err := e.SetInstall(install(&def)); err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(etag(), base) {

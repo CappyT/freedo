@@ -59,6 +59,8 @@ func wantOptions(t *testing.T, what string, m *CoAPMessage, nums ...int) {
 // d/lock 2.05 (etag + blk2=0/0/128 + child_lock=0).
 func TestGetAnswersMatchCapturedOptions(t *testing.T) {
 	in := synthInstall(t)
+	limit := 48
+	in.Options.FlowLimitC = &limit
 	e := NewEmu(in.EmuConfig(), nil)
 	ru, va := synthDevices(t, in)
 	e.OnFrame(moduleReport(t, in, ru, 71, 0x7000))

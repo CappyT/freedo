@@ -69,7 +69,7 @@ func newAdaptRig(t *testing.T, store *stateStore, edit func(*tado.Install)) *ada
 	}
 	d.flowEpoch = clock.now()
 	r := &adaptRig{t: t, d: d, in: in, clock: clock}
-	r.served, _ = emu.ServedFlow(1)
+	r.served, _, _ = emu.ServedFlow(1)
 	return r
 }
 
@@ -121,7 +121,7 @@ func (r *adaptRig) run(span time.Duration, step func(elapsed time.Duration)) {
 			step(elapsed)
 		}
 		r.d.tickFlowLimits(r.d.emu)
-		if served, _ := r.d.emu.ServedFlow(1); served != r.served {
+		if served, _, _ := r.d.emu.ServedFlow(1); served != r.served {
 			r.served = served
 			r.writes = append(r.writes, adaptWrite{r.clock.now(), served})
 		}
@@ -147,7 +147,7 @@ func (r *adaptRig) wantAdapted(step string, adapted int, served float64) {
 	if got := r.adapted(); got != adapted {
 		r.t.Errorf("%s: adapted %d, want %d", step, got, adapted)
 	}
-	if got, _ := r.d.emu.ServedFlow(1); got != served {
+	if got, _, _ := r.d.emu.ServedFlow(1); got != served {
 		r.t.Errorf("%s: served %g, want %g", step, got, served)
 	}
 }
@@ -420,6 +420,17 @@ func TestFlowAdaptSurvivesRestart(t *testing.T) {
 	again.wantAdapted("12 hours after the last move", 50, 50)
 }
 
+// TestFlowAdaptWithoutLimit: the adaptation of a circuit with no
+// options.flow_limit_c starts from the default limit, and serves it.
+func TestFlowAdaptWithoutLimit(t *testing.T) {
+	r := newAdaptRig(t, nil, func(in *tado.Install) { in.Options.FlowLimitC = nil })
+	if _, served, _ := r.d.emu.ServedFlow(1); served {
+		t.Fatal("a circuit with no limit starts served")
+	}
+	r.satisfied(time.Hour)
+	r.wantAdapted("an hour after the start", tado.DefaultFlowLimitC, tado.DefaultFlowLimitC)
+}
+
 // TestFlowAdaptAPI: flow_auto_adapt is an install setting, the circuit view
 // reports the adaptation next to the computed and served values, and a manual
 // value is refused while the adaptation runs.
@@ -476,7 +487,7 @@ func TestFlowAdaptAPI(t *testing.T) {
 	}
 
 	a.mutate(http.MethodPatch, "/api/install", map[string]any{"flow_auto_adapt": false})
-	if c := circuit(); c["adapt"] != false || c["adaptedC"] != nil || c["computedC"] != nil || c["servedC"] != float64(48) {
-		t.Errorf("off again: %v, want the default 48 C and no adaptation", c)
+	if c := circuit(); c["adapt"] != false || c["adaptedC"] != nil || c["computedC"] != nil || c["servedC"] != nil {
+		t.Errorf("off again: %v, want no limit served and no adaptation", c)
 	}
 }

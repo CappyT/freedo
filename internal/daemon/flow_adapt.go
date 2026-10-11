@@ -109,8 +109,11 @@ func (d *daemon) adaptFlow(e *tado.EmuState, inst *tado.Install, id int, now tim
 	ceiling := d.flowCeiling(o, id, now)
 	a := d.flowAdapt[id]
 	if a == nil {
-		served, _ := e.ServedFlow(id)
-		a = &flowAdapt{c: min(int(served), ceiling), at: now, reason: adaptStart, rooms: map[int]shortRoom{}}
+		start := ceiling
+		if served, isServed, _ := e.ServedFlow(id); isServed {
+			start = min(int(served), ceiling)
+		}
+		a = &flowAdapt{c: start, at: now, reason: adaptStart, rooms: map[int]shortRoom{}}
 		d.flowAdapt[id] = a
 		d.saveFlowAdapt()
 	}

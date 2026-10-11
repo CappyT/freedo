@@ -2,7 +2,9 @@ package daemon
 
 // flow_limit: the heating flow limit (tag 2040) each circuit is served. A
 // circuit with an enabled curve follows the outdoor temperature Home Assistant
-// pushes, and falls back to options.flow_limit_c when the reading is stale.
+// pushes, and falls back to options.flow_limit_c when the reading is stale. A
+// circuit that no curve and no adaptation manages is served options.flow_limit_c
+// when it is set, and no limit otherwise.
 // With options.flow_auto_adapt the room feedback trims that limit, see
 // flow_adapt.go. The thermostat applies a new value only by re-opening its
 // OpenTherm session, so a change needs a minimum step and a minimum interval.
@@ -27,11 +29,20 @@ type outdoorReading struct {
 // outdoorBoundC bounds a pushed outdoor temperature.
 const outdoorBoundC = 60
 
-// flowTarget is the flow limit a curve asks for now: options.flow_limit_c
-// without a fresh outdoor reading.
+// flowBase is the limit a managed circuit falls back to: options.flow_limit_c,
+// or the default while that is unset.
+func flowBase(o tado.Options) int {
+	if limit, ok := o.FlowLimit(); ok {
+		return limit
+	}
+	return tado.DefaultFlowLimitC
+}
+
+// flowTarget is the flow limit a curve asks for now: flowBase without a fresh
+// outdoor reading.
 func (d *daemon) flowTarget(o tado.Options, curve tado.FlowCurve, now time.Time) int {
 	if d.outdoor == nil || now.Sub(d.outdoor.at) > o.OutdoorMaxAge() {
-		return o.FlowLimit()
+		return flowBase(o)
 	}
 	return curve.FlowAt(d.outdoor.tempC)
 }
@@ -42,7 +53,7 @@ func (d *daemon) flowCeiling(o tado.Options, id int, now time.Time) int {
 	if curve, ok := o.EnabledFlowCurve(id); ok {
 		return d.flowTarget(o, curve, now)
 	}
-	return o.FlowLimit()
+	return flowBase(o)
 }
 
 // flowManaged says whether a curve or the adaptation sets the flow limit of
@@ -85,8 +96,8 @@ func (d *daemon) tickFlowLimits(e *tado.EmuState) bool {
 		if !ok {
 			continue
 		}
-		served, _ := e.ServedFlow(c.ID)
-		if math.Abs(float64(target)-served) < float64(inst.Options.FlowHysteresis()) {
+		served, isServed, _ := e.ServedFlow(c.ID)
+		if isServed && math.Abs(float64(target)-served) < float64(inst.Options.FlowHysteresis()) {
 			continue
 		}
 		last, ok := d.flowChanged[c.ID]
@@ -178,7 +189,10 @@ func (d *daemon) flowLimitView(e *tado.EmuState) map[string]any {
 		return out
 	}
 	now := d.retryNow()
-	out["defaultC"] = inst.Options.FlowLimit()
+	out["defaultC"] = nil
+	if limit, ok := inst.Options.FlowLimit(); ok {
+		out["defaultC"] = limit
+	}
 	if r := d.outdoor; r != nil {
 		age := now.Sub(r.at)
 		out["outdoor"] = map[string]any{
@@ -191,11 +205,14 @@ func (d *daemon) flowLimitView(e *tado.EmuState) map[string]any {
 	circuits := make([]map[string]any, 0, len(inst.Circuits))
 	for i := range inst.Circuits {
 		id := inst.Circuits[i].ID
-		served, fetched := e.ServedFlow(id)
+		served, isServed, fetched := e.ServedFlow(id)
 		view := map[string]any{
-			"id": id, "curve": false, "computedC": nil, "servedC": served,
+			"id": id, "curve": false, "computedC": nil, "servedC": nil,
 			"changedAt": nil, "fetched": fetched,
 			"adapt": inst.Options.FlowAutoAdaptEnabled(), "adaptedC": nil, "adaptedAt": nil, "adaptReason": nil,
+		}
+		if isServed {
+			view["servedC"] = served
 		}
 		if _, ok := inst.Options.EnabledFlowCurve(id); ok {
 			view["curve"] = true
