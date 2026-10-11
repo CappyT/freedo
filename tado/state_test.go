@@ -104,6 +104,7 @@ func TestSnapshotBoiler(t *testing.T) {
 	e.cacheTLVs(ns, []TLV{
 		{Tag: "044c", Val: []byte{0x0f, 0xa0}}, // 40.00 C
 		{Tag: "045a", Val: []byte{0x13, 0x88}}, // 50.00 C
+		{Tag: "045b", Val: []byte{0x14, 0xb4}}, // hot water setpoint 53.00 C
 		{Tag: "0452", Val: []byte{0x00, 35}},
 		{Tag: "0457", Val: []byte{1}},
 		{Tag: "0167", Val: []byte{1}},
@@ -125,8 +126,8 @@ func TestSnapshotBoiler(t *testing.T) {
 	if !b.Present {
 		t.Fatal("boiler not marked present")
 	}
-	if !isPtr(b.FlowC, 40) || !isPtr(b.DHWC, 50) {
-		t.Errorf("flow=%v dhw=%v, want 40 and 50", b.FlowC, b.DHWC)
+	if !isPtr(b.FlowC, 40) || !isPtr(b.DHWC, 50) || !isPtr(b.DHWSetpointC, 53) {
+		t.Errorf("flow=%v dhw=%v dhwSetpoint=%v, want 40, 50 and 53", b.FlowC, b.DHWC, b.DHWSetpointC)
 	}
 	if !isPtr(b.ModulationPct, 35) || !b.Active || !isPtr(b.BusDetect, 1) {
 		t.Errorf("mod=%v active=%v detect=%v, want 35 true 1", b.ModulationPct, b.Active, b.BusDetect)

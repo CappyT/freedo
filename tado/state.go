@@ -85,6 +85,7 @@ type BoilerView struct {
 	BusDetect     *int     `json:"BusDetect"`
 	FlowC         *float64 `json:"FlowC"`
 	DHWC          *float64 `json:"DHWC"`
+	DHWSetpointC  *float64 `json:"DHWSetpointC"` // tag 045b: reported by the thermostat, never set by the daemon
 	ModulationPct *int     `json:"ModulationPct"`
 	Active        bool     `json:"Active"`
 	HeatActive    bool     `json:"HeatActive"`
@@ -444,6 +445,7 @@ func (b *BoilerView) deriveLegacy() {
 	b.ModulationPct = intAttr(b.Mon["boiler_mod"])
 	b.Active = b.Mon["boiler_flag"] != nil && *b.Mon["boiler_flag"] != 0
 	b.DHWC = b.DHW["dhw_temp_C"]
+	b.DHWSetpointC = b.DHW["dhw_setpoint_C"]
 	b.DhwFlowLmin = b.DHW["dhw_flow_lmin"]
 	b.ChPressureBar = b.Maintenance["ch_pressure_bar"]
 	b.BurnerStarts = u32Attr(b.Maintenance["burner_starts"])

@@ -629,6 +629,14 @@ thermostat or from a `d/config` document of the thermostat, and stores it.
 `POST /api/zones/{n}/setpoint` (`durationSec` included). It writes the wall thermostat. It
 answers `503` while the installation has no hot water zone.
 
+`GET /api/boiler` shows the hot water temperature as `DHWC` and the hot water setpoint as
+`DHWSetpointC` (tag `045b` of `hvac/mon/dhw`). `DHWSetpointC` is the value that the wall
+thermostat reports, in C. The daemon does not set it and it is not a target: the target of
+the hot water zone is `declared[].target` in `GET /api/zones`. It is `null` until the
+thermostat reports it, and while the boiler lists it as unsupported. One capture shows
+53.00 C 19 s after a write of 53.00 C. No capture shows the value of a zone that follows a
+program, so it is not verified that it follows the program.
+
 ### Boiler thermostat
 
 The boiler thermostat is the wall thermostat wired to the boiler: the thermostat of the hot

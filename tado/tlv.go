@@ -487,7 +487,9 @@ var hvacTags = []hvacTag{
 	hvacRaw("0499", resHVACMon, "boiler", 4),
 
 	hvacC("045a", resHVACDHW, "dhw_temp_C"),
-	hvacRaw("045b", resHVACDHW, "boiler", 2),
+	// The hot water setpoint (OpenTherm TdhwSet) as the thermostat reports it. One
+	// capture shows 14b4 (53.00 C) 19 s after a write of 53.00 C.
+	hvacC("045b", resHVACDHW, "dhw_setpoint_C"),
 	hvacRaw("045c", resHVACDHW, "dhw", 1),
 	hvacRaw("045d", resHVACDHW, "dhw", 1),
 	{tag: "045e", res: resHVACDHW, name: "dhw_flow_lmin", size: 1, scale: 10, unit: "l/min"},

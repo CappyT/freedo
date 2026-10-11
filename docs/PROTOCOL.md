@@ -222,6 +222,10 @@ temperature for hot water. The away burst restates the overlay. A hot-water bloc
 change waits for the return home. The return home writes the block in force with
 the overlay (`TestHotWaterFollowsAway`, `TestHotWaterOverlayHoldsThroughAway`).
 
+The thermostat reports the hot water setpoint as tag `045b` on `h/<home>/hvac/mon/dhw`, in
+centi-degrees. The capture of the 53.00 C write shows `14b4` 19 s later. freedo shows the
+value as `DHWSetpointC` of `GET /api/boiler` and never writes it.
+
 A valve that is resyncing its configuration answers `5.03` to a `z/s` write, and
 the coordinator retries. `5.03` is a device-busy answer. The answer closes the
 CoAP exchange. So freedo retries every write after a 5.xx under a new MID and
