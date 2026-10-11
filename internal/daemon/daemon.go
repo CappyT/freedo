@@ -78,6 +78,12 @@ type liveRadioRegister interface {
 	FSCTRL0() byte
 }
 
+// liveSerialErrors counts the serial replies the link to the bridge lost. Only a
+// live radio has a serial link, so health omits the field in the other modes.
+type liveSerialErrors interface {
+	SerialErrors() uint64
+}
+
 type daemon struct {
 	emu *tado.EmuState
 	// inst is read on the HTTP goroutines and replaced on the engine one, so it
@@ -1925,6 +1931,9 @@ func (d *daemon) healthBase() (map[string]any, bool) {
 	}
 	if radio, ok := d.radio.(liveRadioRegister); ok {
 		health["fsctrl0"] = fmt.Sprintf("%#02x", radio.FSCTRL0())
+	}
+	if radio, ok := d.radio.(liveSerialErrors); ok {
+		health["serialErrors"] = radio.SerialErrors()
 	}
 	// calibrated says the register came from a passive measurement. Only a live
 	// radio has one.

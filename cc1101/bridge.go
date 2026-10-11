@@ -8,15 +8,31 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"go.bug.st/serial"
 )
 
+// ErrLinkFault wraps every error of a request or reply that the serial link
+// lost or cut: no answer by the deadline, a reply that stops before its length,
+// a reply of the wrong shape. The framing is restored before the next request,
+// so the caller may issue the next request. The lost reply stays lost.
+var ErrLinkFault = errors.New("serial link fault")
+
 var (
-	errSerialDeadline  = errors.New("serial response deadline exceeded")
-	errUnexpectedReply = errors.New("serial reply does not answer the request")
+	errSerialDeadline  = fmt.Errorf("%w: deadline exceeded", ErrLinkFault)
+	errReplyTruncated  = fmt.Errorf("%w: reply truncated", ErrLinkFault)
+	errUnexpectedReply = fmt.Errorf("%w: reply does not answer the request", ErrLinkFault)
 )
+
+// replyStall bounds a reply once its first byte arrived. The firmware writes a
+// reply in one go, at most 1028 bytes, which takes 45 ms at 230400 baud. A reply
+// that has not ended after replyStall lost its tail for good.
+const replyStall = 250 * time.Millisecond
+
+// replyQuiet is the silence that ends the discard of a lost reply.
+const replyQuiet = 30 * time.Millisecond
 
 // serialStaleMax bounds the replies one request reads past before its own. A
 // reply carries no command echo, so a reply of the wrong shape is the late
@@ -75,7 +91,12 @@ type Bridge struct {
 	// late holds the CSL queue events that arrived as the reply of a poll that
 	// missed its deadline. The next polls return them first.
 	late []*CSLQueueEvent
+	// serialErrors counts the requests whose reply the link lost, since Open.
+	serialErrors atomic.Uint64
 }
+
+// SerialErrors is the number of requests whose reply did not arrive whole.
+func (b *Bridge) SerialErrors() uint64 { return b.serialErrors.Load() }
 
 // Open connects to the ESP32 bridge on the given serial port. The ESP32
 // auto-resets when the port opens, so this waits for it to boot.
@@ -158,8 +179,14 @@ func (b *Bridge) req(cmd byte, payload []byte, valid replyCheck) (byte, []byte, 
 // answers every request once and in request order, so a reply that valid
 // rejects is the late reply of an earlier request, and the reply to this
 // request follows it. A request that misses its deadline leaves its reply
-// owed: the next request resyncs first and hands that reply to late.
-func (b *Bridge) reqUntil(cmd byte, payload []byte, deadline time.Time, valid replyCheck, late lateReply) (byte, []byte, error) {
+// owed: the next request resyncs first and hands that reply to late. A reply
+// that starts and stops short is lost, and nothing is owed for it.
+func (b *Bridge) reqUntil(cmd byte, payload []byte, deadline time.Time, valid replyCheck, late lateReply) (status byte, data []byte, err error) {
+	defer func() {
+		if errors.Is(err, ErrLinkFault) {
+			b.serialErrors.Add(1)
+		}
+	}()
 	if err := b.resync(deadline); err != nil {
 		return 0, nil, err
 	}
@@ -169,7 +196,9 @@ func (b *Bridge) reqUntil(cmd byte, payload []byte, deadline time.Time, valid re
 	for skipped := 0; ; skipped++ {
 		status, data, err := b.readReply(deadline)
 		if err != nil {
-			b.owed = append(b.owed, late)
+			if !errors.Is(err, errReplyTruncated) {
+				b.owed = append(b.owed, late)
+			}
 			return 0, nil, err
 		}
 		if parserReject(status) || valid(status, data) {
@@ -234,22 +263,40 @@ func (b *Bridge) readReply(deadline time.Time) (byte, []byte, error) {
 			break
 		}
 	}
-	head, err := b.readExactUntil(3, deadline)
+	end := time.Now().Add(replyStall)
+	if end.After(deadline) {
+		end = deadline
+	}
+	head, err := b.readExactUntil(3, end)
 	if err != nil {
-		return 0, nil, err
+		return 0, nil, b.lostReply(err)
 	}
 	status := head[0]
 	rlen := int(head[1])<<8 | int(head[2])
 	if err := responsePayloadLength(rlen); err != nil {
-		return 0, nil, err
+		return 0, nil, b.lostReply(err)
 	}
 	var data []byte
 	if rlen > 0 {
-		if data, err = b.readExactUntil(rlen, deadline); err != nil {
-			return 0, nil, err
+		if data, err = b.readExactUntil(rlen, end); err != nil {
+			return 0, nil, b.lostReply(err)
 		}
 	}
 	return status, data, nil
+}
+
+// lostReply turns a read error inside a reply into errReplyTruncated and
+// discards what is left of the reply, so the next request reads from a quiet
+// line. An error of the port itself comes back as it is.
+func (b *Bridge) lostReply(cause error) error {
+	if !errors.Is(cause, ErrLinkFault) {
+		return cause
+	}
+	err := fmt.Errorf("%w: %s", errReplyTruncated, strings.TrimPrefix(cause.Error(), ErrLinkFault.Error()+": "))
+	if derr := b.drain(replyQuiet, serialDrainLimit); derr != nil {
+		return fmt.Errorf("%w; %v", err, derr)
+	}
+	return err
 }
 
 // parserReject reports the status the firmware parser answers a request it
@@ -269,7 +316,7 @@ func okLen(n int) replyCheck {
 
 func responsePayloadLength(n int) error {
 	if n > maxReqPayload {
-		return fmt.Errorf("serial response length %d exceeds %d", n, maxReqPayload)
+		return fmt.Errorf("%w: length %d exceeds %d", ErrLinkFault, n, maxReqPayload)
 	}
 	return nil
 }

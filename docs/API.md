@@ -523,6 +523,12 @@ report adds a sample with `4060`, `40a0`, `4160` and the fresh outdoor temperatu
   the engine is busy (`"engine": "busy"`) or when the live radio loop ended (`radioError`).
   It reports `fsctrl0` and `calibrated` in live mode, and a `warning` that names the
   calibration command when none is stored.
+- `serialErrors` in `GET /api/health` is the number of serial replies that the link to the
+  bridge lost since the daemon started. It exists in live mode. A reply that stops short is
+  discarded and the daemon reads the next one, so the radio frame inside it is lost. The live
+  radio loop ends only when one kind of exchange, the queue poll or the receive window, failed
+  every time for 30 s. A count that keeps growing points to the USB link: see
+  [Serial link faults](OPERATION.md#serial-link-faults).
 
 ### Child lock, identify and calibration
 

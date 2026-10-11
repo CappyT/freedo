@@ -1727,6 +1727,7 @@ func TestLiveRadioStopsAfterStalledCSLQueuePoll(t *testing.T) {
 		cslGroups:      make(map[uint16]*liveCSLGroup),
 		cslDone:        make(chan CSLCompletion, 1),
 		cslPollTimeout: 10 * time.Millisecond,
+		linkDeadAfter:  50 * time.Millisecond,
 		stop:           make(chan struct{}),
 		ended:          make(chan struct{}),
 	}

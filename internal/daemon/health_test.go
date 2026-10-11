@@ -28,6 +28,7 @@ type healthResp struct {
 	TransmitAllowed bool   `json:"transmitAllowed"`
 	RadioError      string `json:"radioError"`
 	FSCTRL0         string `json:"fsctrl0"`
+	SerialErrors    *int   `json:"serialErrors"`
 	Calibrated      *bool  `json:"calibrated"`
 	Warning         string `json:"warning"`
 	StartedAt       string `json:"startedAt"`
@@ -156,6 +157,50 @@ func TestHealthReportsTheRegister(t *testing.T) {
 			}
 			if health.FSCTRL0 != tt.fsctrl0 {
 				t.Errorf("fsctrl0=%q want %q", health.FSCTRL0, tt.fsctrl0)
+			}
+		})
+	}
+}
+
+// linkRadio is a mock radio that also counts the serial replies it lost, like
+// the live one.
+type linkRadio struct {
+	*radio.Mock
+	lost uint64
+}
+
+func (r *linkRadio) SerialErrors() uint64 { return r.lost }
+
+// Health carries the serial error counter of a live radio, and nothing in the
+// other modes: an operator reads there a link that loses replies without
+// reading the log.
+func TestHealthReportsSerialErrors(t *testing.T) {
+	tests := []struct {
+		name  string
+		radio radio.Radio
+		want  *int
+	}{
+		{name: "mock radio", radio: radio.NewMock(nil)},
+		{name: "radio that lost replies", radio: &linkRadio{Mock: radio.NewMock(nil), lost: 7}, want: new(7)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			emu := tado.NewEmu(defaultInstall.EmuConfig(), tado.NewUnhandledLogger(io.Discard))
+			d := newDaemon(defaultInstall, emu, tt.radio, true, "mock")
+			d.ulog = tado.NewUnhandledLogger(io.Discard)
+			ctx, cancel := context.WithCancel(context.Background())
+			go d.run(ctx)
+			srv := httptest.NewServer(d.mux())
+			t.Cleanup(func() {
+				srv.Close()
+				cancel()
+			})
+			var health healthResp
+			if code := getBounded(t, srv.URL+"/api/health", &health); code != http.StatusOK {
+				t.Fatalf("status=%d, want 200", code)
+			}
+			if (health.SerialErrors == nil) != (tt.want == nil) || (tt.want != nil && *health.SerialErrors != *tt.want) {
+				t.Errorf("serialErrors=%v want %v", health.SerialErrors, tt.want)
 			}
 		})
 	}

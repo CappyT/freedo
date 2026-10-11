@@ -2,6 +2,7 @@ package radio
 
 import (
 	"errors"
+	"fmt"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -10,21 +11,28 @@ import (
 	"freedo/tado"
 )
 
-// flakyPollBridge fails its first CSL queue polls, like a poll that read the
-// late reply of an earlier request.
+// flakyPollBridge fails its first CSL queue polls with err, like a poll whose
+// reply the serial link cut. It counts the failures like the cc1101 bridge.
 type flakyPollBridge struct {
 	*queuedLiveBridge
 	fails atomic.Int32
 	polls atomic.Int32
+	err   error
 }
 
 func (b *flakyPollBridge) PollCSLQueue() (*cc1101.CSLQueueEvent, error) {
 	b.polls.Add(1)
 	if b.fails.Add(-1) >= 0 {
-		return nil, errors.New("CSL queue event is malformed")
+		return nil, b.err
 	}
 	return b.queuedLiveBridge.PollCSLQueue()
 }
+
+func (b *flakyPollBridge) SerialErrors() uint64 {
+	return uint64(max(b.polls.Load()-3, 0))
+}
+
+var errTruncatedReply = fmt.Errorf("%w: reply truncated", cc1101.ErrLinkFault)
 
 func (b *orderedLiveBridge) receives() int {
 	b.mu.Lock()
@@ -115,21 +123,21 @@ func TestLiveRadioCSLDeadlineAddsJobGuards(t *testing.T) {
 	}
 }
 
-// One failed poll, a late reply or a malformed event, must not end the owner:
-// it retries once after the bridge resynced its input.
-func TestLiveRadioRetriesOneFailedCSLQueuePoll(t *testing.T) {
-	bridge := &flakyPollBridge{queuedLiveBridge: &queuedLiveBridge{orderedLiveBridge: &orderedLiveBridge{}}}
-	bridge.fails.Store(1)
+// A reply that the serial link cut or lost must not end the owner, however
+// often it happens: the owner polls again and the lost event stays lost.
+func TestLiveRadioSurvivesLostCSLQueuePolls(t *testing.T) {
+	bridge := &flakyPollBridge{queuedLiveBridge: &queuedLiveBridge{orderedLiveBridge: &orderedLiveBridge{}}, err: errTruncatedReply}
+	bridge.fails.Store(5)
 	radio, err := StartLive(bridge, defaultInstall.CoordinatorEUI(), 0, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer radio.Close()
-	deadline := time.Now().Add(time.Second)
-	for bridge.polls.Load() < 3 || bridge.receives() < 2 {
+	deadline := time.Now().Add(3 * time.Second)
+	for bridge.polls.Load() < 8 || bridge.receives() < 2 {
 		select {
 		case <-radio.ended:
-			t.Fatalf("owner ended on one failed poll: %v", radio.RadioError())
+			t.Fatalf("owner ended on lost polls: %v", radio.RadioError())
 		default:
 		}
 		if time.Now().After(deadline) {
@@ -140,12 +148,72 @@ func TestLiveRadioRetriesOneFailedCSLQueuePoll(t *testing.T) {
 	if err := radio.RadioError(); err != nil {
 		t.Fatalf("radio error=%v", err)
 	}
+	if got := radio.SerialErrors(); got != 5 {
+		t.Fatalf("serial errors=%d, want 5", got)
+	}
 }
 
-// Two failed polls in a row still end the owner.
-func TestLiveRadioStopsAfterTwoFailedCSLQueuePolls(t *testing.T) {
-	bridge := &flakyPollBridge{queuedLiveBridge: &queuedLiveBridge{orderedLiveBridge: &orderedLiveBridge{}}}
-	bridge.fails.Store(2)
+// A link that loses every reply ends the owner once nothing worked for
+// linkDeadAfter, and not before.
+func TestLiveRadioStopsWhenTheLinkStaysDead(t *testing.T) {
+	bridge := &flakyPollBridge{queuedLiveBridge: &queuedLiveBridge{orderedLiveBridge: &orderedLiveBridge{}}, err: errTruncatedReply}
+	bridge.fails.Store(1 << 20)
+	radio, err := buildLiveRadio(bridge, defaultInstall.CoordinatorEUI(), 0, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	radio.linkDeadAfter = 400 * time.Millisecond
+	started := time.Now()
+	go radio.loop()
+	defer radio.Close()
+	select {
+	case <-radio.ended:
+	case <-time.After(5 * time.Second):
+		t.Fatal("owner kept running on a dead link")
+	}
+	if elapsed := time.Since(started); elapsed < radio.linkDeadAfter {
+		t.Fatalf("owner ended after %s, before linkDeadAfter", elapsed)
+	}
+	if err := radio.RadioError(); !errors.Is(err, errLiveEnded) || !errors.Is(err, cc1101.ErrLinkFault) {
+		t.Fatalf("radio error=%v", err)
+	}
+}
+
+// deadRXBridge loses the reply of every receive window.
+type deadRXBridge struct{ *queuedLiveBridge }
+
+func (b *deadRXBridge) RecvAutoAck(time.Duration, []byte, uint16) (*cc1101.AutoAckResult, error) {
+	return nil, errTruncatedReply
+}
+
+func TestLiveRadioStopsWhenReceiveWindowsStayDead(t *testing.T) {
+	bridge := &deadRXBridge{&queuedLiveBridge{orderedLiveBridge: &orderedLiveBridge{}}}
+	radio, err := buildLiveRadio(bridge, defaultInstall.CoordinatorEUI(), 0, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	radio.linkDeadAfter = 400 * time.Millisecond
+	started := time.Now()
+	go radio.loop()
+	defer radio.Close()
+	select {
+	case <-radio.ended:
+	case <-time.After(5 * time.Second):
+		t.Fatal("owner kept running with every receive window lost")
+	}
+	if elapsed := time.Since(started); elapsed < radio.linkDeadAfter {
+		t.Fatalf("owner ended after %s, before linkDeadAfter", elapsed)
+	}
+	if err := radio.RadioError(); !errors.Is(err, errLiveEnded) || !errors.Is(err, cc1101.ErrLinkFault) {
+		t.Fatalf("radio error=%v", err)
+	}
+}
+
+// An error that is not a lost reply, a port that failed, still ends the owner
+// at once.
+func TestLiveRadioStopsOnPortErrorOfCSLQueuePoll(t *testing.T) {
+	bridge := &flakyPollBridge{queuedLiveBridge: &queuedLiveBridge{orderedLiveBridge: &orderedLiveBridge{}}, err: errors.New("input/output error")}
+	bridge.fails.Store(1)
 	radio, err := StartLive(bridge, defaultInstall.CoordinatorEUI(), 0, true)
 	if err != nil {
 		t.Fatal(err)
@@ -154,7 +222,7 @@ func TestLiveRadioStopsAfterTwoFailedCSLQueuePolls(t *testing.T) {
 	select {
 	case <-radio.ended:
 	case <-time.After(time.Second):
-		t.Fatal("owner kept running after two failed polls")
+		t.Fatal("owner kept running after a port error")
 	}
 	if !errors.Is(radio.RadioError(), errLiveEnded) {
 		t.Fatalf("radio error=%v", radio.RadioError())

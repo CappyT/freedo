@@ -82,6 +82,9 @@ type Live struct {
 	fsctrl0         byte
 	clock           func() time.Time
 	cslPollTimeout  time.Duration
+	linkDeadAfter   time.Duration // zero: liveLinkDeadAfter
+	pollOKAt        time.Time     // the last CSL queue poll that worked; the loop goroutine only
+	rxOKAt          time.Time     // the last receive window that worked; the loop goroutine only
 	txBlocked       atomic.Bool
 	bridgeClosed    atomic.Bool
 	ownerEnding     atomic.Bool
@@ -160,6 +163,12 @@ const liveCSLTxAckTimeout = 50 * time.Millisecond
 const liveCSLTxTimeout = time.Second
 const liveCloseGrace = 250 * time.Millisecond
 const liveCSLPollTimeout = 2 * time.Second
+
+// liveLinkDeadAfter is how long a kind of serial exchange, the queue poll or
+// the receive window, may fail every time before the loop ends. A reply that the link cut is a routine fault: the loop discards it and
+// goes on. A link that answers nothing for this long is dead, and the daemon
+// restarts. It is far longer than a poll timeout and than the longest CSL job.
+const liveLinkDeadAfter = 30 * time.Second
 const liveCSLBootstrapGlobalCooldown = 2 * time.Second
 const liveCSLBootstrapRetryCooldown = 30 * time.Second
 const liveCSLBootstrapTargetCooldown = 10 * time.Minute
@@ -232,6 +241,7 @@ func (r *Live) loop() {
 	var loopErr error
 	defer r.finishLoop(&loopErr)
 	errs, quiet := 0, 0
+	r.pollOKAt, r.rxOKAt = r.now(), r.now()
 	for {
 		select {
 		case <-r.stop:
@@ -303,6 +313,7 @@ func (r *Live) loop() {
 			r.tuneDebugFrame(frame, "recv")
 		}
 		errs = 0
+		r.rxOKAt = r.now()
 		if frame == nil || !frame.CRCOK {
 			if quiet++; quiet >= liveConfigCheckWindows {
 				quiet = 0
@@ -398,6 +409,15 @@ func (r *Live) markTX() {
 	r.txLastAt = r.now()
 }
 
+// SerialErrors counts the serial replies the link lost since start. A bridge
+// that does not count reports zero.
+func (r *Live) SerialErrors() uint64 {
+	if br, ok := r.br.(interface{ SerialErrors() uint64 }); ok {
+		return br.SerialErrors()
+	}
+	return 0
+}
+
 func (r *Live) RadioError() error {
 	err := r.endedErr()
 	if errors.Is(err, errLiveEnded) {
@@ -407,6 +427,9 @@ func (r *Live) RadioError() error {
 }
 
 func (r *Live) rxError(mode string, err error, errs *int) bool {
+	if isLinkFault(err) {
+		return r.survivesLinkFault("rx "+mode, &r.rxOKAt, err)
+	}
 	limit := r.receiveErrorLimit()
 	*errs = *errs + 1
 	if *errs == 1 || *errs == limit {
@@ -445,6 +468,35 @@ func (r *Live) checkConfigured(errs *int) error {
 		return errBridgeUnconfigured
 	}
 	return nil
+}
+
+// isLinkFault tells a reply the serial link lost from an error of the port.
+func isLinkFault(err error) bool {
+	return errors.Is(err, cc1101.ErrLinkFault) || errors.Is(err, cc1101.ErrCSLPollTimeout)
+}
+
+// survivesLinkFault reports whether the loop goes on after a serial exchange
+// lost its reply. The frame in that reply stays lost. The loop gives up when
+// none of its kind worked since okAt for linkDeadAfter.
+func (r *Live) survivesLinkFault(path string, okAt *time.Time, err error) bool {
+	limit := r.linkDeadAfter
+	if limit <= 0 {
+		limit = liveLinkDeadAfter
+	}
+	if okAt.IsZero() {
+		*okAt = r.now()
+	}
+	if silent := r.now().Sub(*okAt); silent >= limit {
+		log.Printf("%s: %v: none worked for %s, stopping", path, err, silent.Round(time.Millisecond))
+		return false
+	}
+	log.Printf("%s: %v", path, err)
+	select {
+	case <-time.After(liveRXErrorBackoff):
+		return true
+	case <-r.stop:
+		return false
+	}
 }
 
 func (r *Live) receiveErrorLimit() int {
@@ -652,8 +704,12 @@ func (r *Live) drainCSL() (bool, error) {
 	}
 	event, err := r.pollCSLQueue(br)
 	if err != nil {
+		if isLinkFault(err) && r.survivesLinkFault("CSL queue poll", &r.pollOKAt, err) {
+			return false, nil
+		}
 		return false, err
 	}
+	r.pollOKAt = r.now()
 	if event == nil {
 		return false, nil
 	}
@@ -707,23 +763,7 @@ func (r *Live) drainCSL() (bool, error) {
 	return true, nil
 }
 
-// pollCSLQueue retries one failed poll. A late reply or a malformed event is a
-// one-off after the bridge resyncs its input; a second failure in a row is not.
 func (r *Live) pollCSLQueue(br queuedCSLBridge) (*cc1101.CSLQueueEvent, error) {
-	event, err := r.pollCSLQueueOnce(br)
-	if err == nil {
-		return event, nil
-	}
-	log.Printf("CSL queue poll: %v, retrying once", err)
-	select {
-	case <-r.stop:
-		return nil, err
-	default:
-	}
-	return r.pollCSLQueueOnce(br)
-}
-
-func (r *Live) pollCSLQueueOnce(br queuedCSLBridge) (*cc1101.CSLQueueEvent, error) {
 	timeout := r.cslPollTimeout
 	if timeout <= 0 {
 		timeout = liveCSLPollTimeout

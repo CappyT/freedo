@@ -149,12 +149,13 @@ func (b *Bridge) pollCSLQueueUntil(deadline time.Time) (*CSLQueueEvent, error) {
 		status, data, err := b.reqUntil(cmdCSLQueue, []byte{cslQueuePoll}, deadline, validCSLQueueEvent, b.keepLateEvent)
 		if err != nil {
 			if errors.Is(err, errSerialDeadline) {
-				return nil, fmt.Errorf("%w: %v", ErrCSLPollTimeout, err)
+				return nil, fmt.Errorf("%w: %w", ErrCSLPollTimeout, err)
 			}
 			return nil, err
 		}
+		// The firmware knows the poll, so a parser reject means the request lost bytes.
 		if parserReject(status) {
-			return nil, fmt.Errorf("CSL queue poll status 0x%02x", status)
+			return nil, fmt.Errorf("%w: CSL queue poll status 0x%02x", ErrLinkFault, status)
 		}
 		// The resync of this request can put late events ahead of this reply.
 		b.keepLateEvent(status, data)

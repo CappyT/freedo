@@ -168,6 +168,36 @@ The calibration runs in receive only, with the daemon stopped. The tool is a dev
 the hardware frequency offset compensation absorbs up to 21 units of residual offset. The
 measurements are in [PROTOCOL.md](PROTOCOL.md#freqest-and-autotune).
 
+## Serial link faults
+
+Symptom: the log shows lines like these, and `serialErrors` in `GET /api/health` grows.
+
+```text
+rx autoack: serial link fault: reply truncated: deadline exceeded after 89/113 bytes
+CSL queue poll: serial link fault: reply truncated: deadline exceeded after 98/119 bytes
+```
+
+Before version 0.3.1 the daemon ended with `radio loop ended: live radio owner ended`
+within minutes, and the supervisor restarted it.
+
+Cause: the CH340 adapter of the ESP32 board lost bytes of replies of about 80 to 120 bytes at
+921600 baud. The board has no flow control line, and the CH340 datasheet advises flow control
+or a lower rate from 500 kbaud in both directions. It showed on a Raspberry Pi 5 with a
+second full-speed USB device on the same bus, and not on an x86 host. The point of loss inside
+the USB stack is not measured.
+
+What the daemon does with a lost reply:
+
+- It discards the reply, restores the framing and goes on. It reads the next reply within
+  about 0.3 s, and does not wait for the deadline.
+- The frame in the lost reply is lost. A lost queue event is a completion or an uplink that the
+  bridge already acknowledged. A lost completion makes the job fail at its deadline, and the
+  daemon sends it again. A lost uplink is not sent again.
+- It counts the loss in `serialErrors`.
+- It ends the radio loop only when one kind of exchange, the queue poll or the receive window,
+  failed every time for 30 s. A failed port ends the loop at once. The supervisor then
+  restarts the daemon.
+
 ## Pairing a device
 
 Pairing moves a device from the network of the commercial coordinator to the network of
