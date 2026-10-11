@@ -1,0 +1,54 @@
+import { describe, expect, it } from 'vitest';
+import * as format from '../src/lib/format.ts';
+import { de } from '../src/lib/i18n/de.ts';
+import { en } from '../src/lib/i18n/en.ts';
+import { fr } from '../src/lib/i18n/fr.ts';
+import { it as italian } from '../src/lib/i18n/it.ts';
+
+const placeholders = (text: string) => [...text.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
+
+describe('dictionaries', () => {
+	for (const [name, dictionary] of Object.entries({ it: italian, de, fr })) {
+		it(`${name} has the keys of English and no other`, () => {
+			expect(Object.keys(dictionary).sort()).toEqual(Object.keys(en).sort());
+		});
+
+		it(`${name} fills the same values as English`, () => {
+			for (const [key, text] of Object.entries(en)) {
+				expect(placeholders((dictionary as Record<string, string>)[key] ?? ''), key).toEqual(placeholders(text));
+			}
+		});
+
+		it(`${name} leaves no text empty`, () => {
+			for (const [key, text] of Object.entries(dictionary)) expect(text.trim(), key).not.toBe('');
+		});
+	}
+});
+
+describe('formats', () => {
+	it('write a temperature and a percentage in the language', () => {
+		expect(format.temp(21.5, 'en')).toBe('21.5 °C');
+		expect(format.temp(21.5, 'de')).toBe('21,5 °C');
+		expect(format.temp(null, 'en')).toBe('-');
+		expect(format.percent(43, 'en')).toBe('43 %');
+	});
+
+	it('write a duration', () => {
+		expect(format.duration(5400)).toBe('1 h 30 min');
+		expect(format.duration(1800)).toBe('30 min');
+		expect(format.duration(7200)).toBe('2 h');
+	});
+
+	it('name the days from Monday', () => {
+		expect(format.dayName('mon', 'en')).toBe('Mon');
+		expect(format.dayName('sun', 'en', 'long')).toBe('Sunday');
+		expect(format.dayName('mon', 'it', 'long')).toBe('lunedì');
+	});
+
+	it('say how long ago a time was', () => {
+		const now = 1_700_000_000_000;
+		expect(format.ago(0, 'en', now)).toBe('-');
+		expect(format.ago(now / 1000 - 600, 'en', now)).toBe('10 minutes ago');
+		expect(format.ago(now / 1000 - 7200, 'en', now)).toBe('2 hours ago');
+	});
+});
