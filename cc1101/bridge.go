@@ -41,8 +41,13 @@ const replyStall = 250 * time.Millisecond
 // replyQuiet is the silence that ends the discard of a lost reply.
 const replyQuiet = 30 * time.Millisecond
 
-// probeWait bounds the PING that tells which rate the firmware talks.
-const probeWait = time.Second
+// probeWait bounds one PING that tells which rate the firmware talks. A rate
+// gets probeAttempts of them: on a link that cuts replies, the banner of the
+// right rate can be the reply that is lost.
+const (
+	probeWait     = 500 * time.Millisecond
+	probeAttempts = 3
+)
 
 // serialStaleMax bounds the replies one request reads past before its own. A
 // reply carries no command echo, so a reply of the wrong shape is the late
@@ -156,15 +161,17 @@ func (b *Bridge) probe() error {
 		if err := b.drain(400*time.Millisecond, serialDrainLimit); err != nil {
 			return err
 		}
-		_, banner, err := b.reqUntil(cmdPing, nil, time.Now().Add(probeWait), isBanner, nil)
-		b.owed = nil
-		if err == nil {
-			b.baud, b.banner = baud, string(banner)
-			b.serialErrors.Store(0)
-			return nil
-		}
-		if !errors.Is(err, ErrLinkFault) {
-			return err
+		for range probeAttempts {
+			_, banner, err := b.reqUntil(cmdPing, nil, time.Now().Add(probeWait), isBanner, nil)
+			b.owed = nil
+			if err == nil {
+				b.baud, b.banner = baud, string(banner)
+				b.serialErrors.Store(0)
+				return nil
+			}
+			if !errors.Is(err, ErrLinkFault) {
+				return err
+			}
 		}
 	}
 	return fmt.Errorf("the bridge does not answer at %d or %d baud: check the port, then flash firmware v2.10 or later from firmware/cc1101_bridge", DefaultBaud, LegacyBaud)

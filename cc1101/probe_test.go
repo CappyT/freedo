@@ -56,3 +56,33 @@ func TestOpenKeepsTheRateThatAnswers(t *testing.T) {
 		}
 	})
 }
+
+// A link that cuts replies can cut the banner of the right rate. The probe asks
+// again at that rate, and does not move on to a rate the firmware does not talk.
+func TestProbeAsksAgainWhenTheBannerIsCut(t *testing.T) {
+	t.Parallel()
+	const banner = "CC1101BRIDGE v2.10 (0.3.1)"
+	pings := 0
+	p := &linkPort{reply: func(p *linkPort, request []byte) {
+		if request[1] != cmdPing || p.currentBaud() != DefaultBaud {
+			return
+		}
+		pings++
+		full := autoAckResponse(0, []byte(banner))
+		if pings <= 2 {
+			p.feed(full[:len(full)-1]) // one byte short, as the CH340 delivered it
+			return
+		}
+		p.feed(full)
+	}}
+	b, err := start(p, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.Baud() != DefaultBaud || b.Banner() != banner || pings != 3 {
+		t.Fatalf("baud=%d banner=%q pings=%d, want %d, the banner and 3 pings", b.Baud(), b.Banner(), pings, DefaultBaud)
+	}
+	if b.SerialErrors() != 0 {
+		t.Fatalf("serial errors=%d: the cut banners of the probe count as no error", b.SerialErrors())
+	}
+}
