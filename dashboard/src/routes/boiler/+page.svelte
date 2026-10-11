@@ -4,6 +4,7 @@
 	import { data } from '#lib/data.svelte.ts';
 	import { fmt, t, type Key } from '#lib/i18n.svelte.ts';
 	import Icon from '#lib/Icon.svelte';
+	import { typedNumber } from '#lib/numeric.ts';
 	import { api } from '#lib/session.ts';
 	import type { FlowCircuit } from '#lib/types.ts';
 
@@ -116,7 +117,8 @@
 									max={c.maxC}
 									step="1"
 									value={value(c)}
-									oninput={(e) => (wanted[c.id] = e.currentTarget.valueAsNumber)}
+									oninput={(e) => (wanted[c.id] = typedNumber(e.currentTarget.valueAsNumber, value(c), false))}
+									onchange={(e) => (wanted[c.id] = typedNumber(e.currentTarget.valueAsNumber, value(c), true))}
 									aria-invalid={!flowInRange(c, value(c))}
 								/>
 							</label>

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { fmt, t } from './i18n.svelte.ts';
 	import Icon from './Icon.svelte';
+	import { typedNumber } from './numeric.ts';
 	import {
 		DAYS,
 		addBlock,
@@ -35,9 +36,10 @@
 		if (minute !== null) groups = setBlock(groups, key, index, { minute });
 	}
 
-	function onTemp(key: number, index: number, event: Event) {
-		const value = (event.currentTarget as HTMLInputElement).valueAsNumber;
-		groups = setBlock(groups, key, index, { setpointC: Number.isNaN(value) ? Number.NaN : value });
+	function onTemp(key: number, index: number, event: Event, leaving: boolean) {
+		const stored = groups.find((g) => g.key === key)?.blocks[index]?.setpointC ?? Number.NaN;
+		const setpointC = typedNumber((event.currentTarget as HTMLInputElement).valueAsNumber, stored, leaving);
+		if (!Object.is(setpointC, stored)) groups = setBlock(groups, key, index, { setpointC });
 	}
 </script>
 
@@ -79,7 +81,8 @@
 								step={range.step}
 								value={block.setpointC}
 								aria-invalid={bad(g, i)}
-								oninput={(e) => onTemp(group.key, i, e)}
+								oninput={(e) => onTemp(group.key, i, e, false)}
+								onchange={(e) => onTemp(group.key, i, e, true)}
 							/>
 						</label>
 						<label class="off">
