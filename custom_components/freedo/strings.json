@@ -291,6 +291,8 @@
     "copy_across_kinds": { "message": "{entity_id} is a different kind of zone. A room zone and the hot water zone do not share a schedule: their temperature ranges differ." },
     "copy_to_itself": { "message": "A zone cannot copy its schedule to itself." },
     "no_zones": { "message": "No freedo zone is loaded." },
-    "zones_failed": { "message": "The daemon refused some zones: {failures}" }
+    "zones_failed": { "message": "The daemon refused some zones: {failures}" },
+    "hot_water_temperature_required": { "message": "The hot water zone has no target temperature. Set one with the temperature control. This also selects mode heat." },
+    "zone_temperature_required": { "message": "The zone has no target temperature. Set one with the temperature control. This also selects mode heat." }
   }
 }

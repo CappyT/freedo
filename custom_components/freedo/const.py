@@ -22,6 +22,12 @@ CONF_ROOM_TEMPS = "room_temperatures"
 # shows the requested value until the daemon reports it, or at most this long.
 PENDING_SEC = 15 * 60
 
+# The frontend draws the temperature control of a climate or water heater entity
+# only while the target is not null. A zone with no target at all shows the
+# lowest temperature of its range, and the attribute target_note says so.
+NOTE_NO_TARGET = "No target is set. The temperature control shows the lowest temperature as a starting point."
+NOTE_REPORTED_TARGET = "The temperature control shows the setpoint that the boiler reports. The daemon sets no target."
+
 SERVICE_BOOST = "boost"
 SERVICE_BOOST_ALL = "boost_all"
 SERVICE_RESUME_ALL = "resume_all"

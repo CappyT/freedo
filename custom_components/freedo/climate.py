@@ -20,11 +20,11 @@ from homeassistant.components.climate import (
 )
 from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv, entity_platform
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import DOMAIN, SERVICE_BOOST, SERVICE_SET_OVERLAY, SERVICE_SET_WINDOW
+from .const import DOMAIN, NOTE_NO_TARGET, SERVICE_BOOST, SERVICE_SET_OVERLAY, SERVICE_SET_WINDOW
 from .coordinator import FreedoConfigEntry, FreedoCoordinator
 from .entity import FreedoScheduleEntity, call_api
 from .model import (
@@ -36,6 +36,7 @@ from .model import (
     zone_boost,
     zone_current_humidity,
     zone_current_temperature,
+    zone_has_program,
     zone_heating,
     zone_mode,
     zone_operation,
@@ -159,10 +160,25 @@ class FreedoZoneClimate(FreedoScheduleEntity, ClimateEntity):
         zone = self._zone
         return zone_current_humidity(self.coordinator.data, zone) if zone else None
 
-    @property
-    def target_temperature(self) -> float | None:
+    def _known_target(self) -> float | None:
+        """The temperature that heat can write: the pending target, the
+        daemon target or the program temperature. None when no value exists."""
+        zone = self._zone
         if self._pending_target:
             return self._pending_target[0]
+        reported = self._reported_target()
+        if reported is None and zone is not None:
+            return zone_program_temperature(self.coordinator.data, zone)
+        return reported
+
+    @property
+    def target_temperature(self) -> float | None:
+        """The frontend draws the temperature control only for a target that is
+        not null, so a zone with no value at all shows the lowest temperature."""
+        if self._pending_target:
+            return self._pending_target[0]
+        if self._zone is not None and self._known_target() is None:
+            return self.min_temp
         return self._reported_target()
 
     @property
@@ -205,6 +221,8 @@ class FreedoZoneClimate(FreedoScheduleEntity, ClimateEntity):
             "overlay_rule": zone_overlay_rule(data, zone) if zone else None,
             "overlay_ends_at": zone_overlay_end(data, zone) if zone else None,
             "target_source": zone_target_source(data, zone) if zone else None,
+            "target_note": NOTE_NO_TARGET if zone and self._known_target() is None else None,
+            "has_program": zone_has_program(data, zone) if zone else None,
             "program_temperature": zone_program_temperature(data, zone) if zone else None,
             "members": list(zone.members) if zone else [],
         }
@@ -247,11 +265,11 @@ class FreedoZoneClimate(FreedoScheduleEntity, ClimateEntity):
             await call_api(client.zone_off(zone.number))
             self._pending_target = None
         else:
-            temp = self.target_temperature or zone_program_temperature(
-                self.coordinator.data, zone
-            )
+            temp = self._known_target()
             if temp is None:
-                raise HomeAssistantError("Set a target temperature first")
+                raise ServiceValidationError(
+                    translation_domain=DOMAIN, translation_key="zone_temperature_required"
+                )
             await call_api(client.zone_setpoint(zone.number, self._valid_target(temp)))
         self._pending_mode = (hvac_mode, time.monotonic() + PENDING_SEC)
         self.async_write_ha_state()

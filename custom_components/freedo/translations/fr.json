@@ -397,6 +397,12 @@
     },
     "zones_failed": {
       "message": "Le démon a refusé certaines zones : {failures}"
+    },
+    "hot_water_temperature_required": {
+      "message": "La zone d'eau chaude n'a pas de température cible. Définissez-la avec le réglage de température. Cela sélectionne aussi le mode heat."
+    },
+    "zone_temperature_required": {
+      "message": "La zone n'a pas de température cible. Définissez-la avec le réglage de température. Cela sélectionne aussi le mode Chauffage."
     }
   }
 }

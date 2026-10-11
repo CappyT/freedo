@@ -877,6 +877,137 @@ async def test_overlay_rule_follows_the_daemon(hass, client):
     assert hass.states.get(BEDROOM).attributes["overlay_rule"] is None
 
 
+# --- a zone with no target: the temperature control ---
+
+# The target of a zone that runs without a program and holds no 6200.
+NO_PROGRAM = {
+    "targetC": None, "source": "program", "programC": None, "programOff": False,
+    "hasProgram": False, "boost": False, "known": True, "on": True, "overlay": None,
+}
+# The declared zones of the fixture: living, bedroom, hot water.
+BEDROOM_ZONE, HOT_WATER_ZONE = 1, 2
+
+
+async def water_call(hass, service, data=None):
+    await hass.services.async_call(
+        "water_heater", service, {ATTR_ENTITY_ID: HOT_WATER, **(data or {})}, blocking=True
+    )
+    await hass.async_block_till_done()
+
+
+async def test_hot_water_with_no_target_offers_the_control(hass, client):
+    client.zones_json["declared"][HOT_WATER_ZONE]["target"] = dict(NO_PROGRAM)
+    await setup_entry(hass, client)
+
+    state = hass.states.get(HOT_WATER)
+    assert state.state == "auto"
+    # The frontend draws the control only for a target that is not null: the
+    # entity shows the lowest temperature and says that it is no target.
+    assert state.attributes[ATTR_TEMPERATURE] == 30.0
+    assert state.attributes["has_program"] is False
+    assert state.attributes["program_temperature"] is None
+    assert state.attributes["reported_setpoint"] is None
+    assert "No target is set" in state.attributes["target_note"]
+
+    # heat does not send the placeholder.
+    for service, data in (("set_operation_mode", {"operation_mode": "heat"}), ("turn_on", {})):
+        with pytest.raises(ServiceValidationError) as err:
+            await water_call(hass, service, data)
+        assert err.value.translation_domain == DOMAIN
+        assert err.value.translation_key == "hot_water_temperature_required"
+    assert client.calls == []
+
+    # A temperature on the control is written once and selects heat.
+    await water_call(hass, "set_temperature", {ATTR_TEMPERATURE: 45})
+    assert client.calls == [("setpoint", 9, 45.0)]
+    state = hass.states.get(HOT_WATER)
+    assert state.state == "heat"
+    assert state.attributes[ATTR_TEMPERATURE] == 45.0
+    assert state.attributes["target_note"] is None
+
+
+@pytest.mark.parametrize(
+    ("target", "reported", "want", "note"),
+    [
+        # The daemon target outranks the program temperature and the boiler.
+        (dict(NO_PROGRAM, targetC=48.0, programC=55.0, hasProgram=True, source="overlay",
+              overlay={"kind": "manual", "on": True, "setpointC": 48.0, "endsAt": None}),
+         52.0, 48.0, None),
+        # The program temperature outranks the boiler.
+        (dict(NO_PROGRAM, programC=55.0, hasProgram=True), 52.0, 55.0, None),
+        (dict(NO_PROGRAM), 52.0, 52.0, "boiler reports"),
+        (dict(NO_PROGRAM), None, 30.0, "No target is set"),
+        # A value outside the range of a setpoint, and a zone that is off, count
+        # as no value.
+        (dict(NO_PROGRAM), 70.0, 30.0, "No target is set"),
+        (dict(NO_PROGRAM, on=False), 52.0, 30.0, "No target is set"),
+    ],
+)
+async def test_hot_water_target_order(hass, client, target, reported, want, note):
+    client.zones_json["declared"][HOT_WATER_ZONE]["target"] = target
+    if reported is not None:
+        client.boiler_json["DHWSetpointC"] = reported
+    await setup_entry(hass, client)
+
+    attrs = hass.states.get(HOT_WATER).attributes
+    assert attrs[ATTR_TEMPERATURE] == want
+    if note is None:
+        assert attrs["target_note"] is None
+    else:
+        assert note in attrs["target_note"]
+
+
+async def test_hot_water_heat_keeps_the_setpoint_the_boiler_reports(hass, client):
+    client.zones_json["declared"][HOT_WATER_ZONE]["target"] = dict(NO_PROGRAM)
+    client.boiler_json["DHWSetpointC"] = 52.0
+    await setup_entry(hass, client)
+
+    attrs = hass.states.get(HOT_WATER).attributes
+    assert attrs["reported_setpoint"] == 52.0
+    await water_call(hass, "set_operation_mode", {"operation_mode": "heat"})
+    assert client.calls == [("setpoint", 9, 52.0)]
+
+
+async def test_room_with_no_target_offers_the_control(hass, client):
+    client.zones_json["declared"][BEDROOM_ZONE]["target"] = dict(NO_PROGRAM)
+    await setup_entry(hass, client)
+
+    state = hass.states.get(BEDROOM)
+    assert state.attributes[ATTR_TEMPERATURE] == 5.0
+    assert state.attributes["has_program"] is False
+    assert "No target is set" in state.attributes["target_note"]
+
+    with pytest.raises(ServiceValidationError) as err:
+        await call(hass, SERVICE_SET_HVAC_MODE, {ATTR_ENTITY_ID: BEDROOM, ATTR_HVAC_MODE: HVACMode.HEAT})
+    assert err.value.translation_domain == DOMAIN
+    assert err.value.translation_key == "zone_temperature_required"
+    assert client.calls == []
+
+    await call(hass, SERVICE_SET_TEMPERATURE, {ATTR_ENTITY_ID: BEDROOM, ATTR_TEMPERATURE: 21})
+    assert client.calls == [("setpoint", 2, 21.0)]
+    state = hass.states.get(BEDROOM)
+    assert state.state == "heat"
+    assert state.attributes[ATTR_TEMPERATURE] == 21.0
+    assert state.attributes["target_note"] is None
+
+
+async def test_room_with_a_program_shows_no_placeholder(hass, client):
+    # The zone is off for now. Its program holds 17 C, so heat has a value to
+    # write and the entity keeps the control hidden as before.
+    client.zones_json["declared"][BEDROOM_ZONE]["target"] = dict(
+        NO_PROGRAM, programC=17.0, hasProgram=True, source="overlay", on=False,
+        overlay={"kind": "until_next", "on": False, "setpointC": None, "endsAt": None},
+    )
+    await setup_entry(hass, client)
+
+    attrs = hass.states.get(BEDROOM).attributes
+    assert attrs.get(ATTR_TEMPERATURE) is None
+    assert attrs["target_note"] is None
+    assert attrs["has_program"] is True
+    await call(hass, SERVICE_SET_HVAC_MODE, {ATTR_ENTITY_ID: BEDROOM, ATTR_HVAC_MODE: HVACMode.HEAT})
+    assert client.calls == [("setpoint", 2, 17.0)]
+
+
 # --- device controls of a valve ---
 
 

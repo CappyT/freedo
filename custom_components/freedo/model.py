@@ -330,6 +330,25 @@ def zone_program_temperature(data: FreedoData, zone: Zone) -> float | None:
     return _float(_target(data, zone).get("programC"))
 
 
+def zone_has_program(data: FreedoData, zone: Zone) -> bool | None:
+    """Whether the daemon holds a weekly program for the zone. None on a daemon
+    that does not say."""
+    value = _target(data, zone).get("hasProgram")
+    return value if isinstance(value, bool) else None
+
+
+def zone_reported_setpoint(data: FreedoData, zone: Zone) -> float | None:
+    """The hot water setpoint the wall thermostat reports (GET /api/boiler
+    DHWSetpointC). None until it reports one, while the zone is off and when
+    the value lies outside the range the daemon accepts as a setpoint."""
+    if _target(data, zone).get("on") is False:
+        return None
+    value = _float(data.boiler.get("DHWSetpointC"))
+    if value is None or not HOT_WATER_MIN_C <= value <= HOT_WATER_MAX_C:
+        return None
+    return value
+
+
 def zone_mode(data: FreedoData, zone: Zone) -> str | None:
     """"auto" when the zone follows its program, the overlay kind ("manual",
     "until_next", "until_auto_change" or "boost") on an overlay, None when the

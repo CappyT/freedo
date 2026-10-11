@@ -397,6 +397,12 @@
     },
     "zones_failed": {
       "message": "Il daemon ha rifiutato alcune zone: {failures}"
+    },
+    "hot_water_temperature_required": {
+      "message": "La zona acqua calda non ha una temperatura target. Impostala con il controllo della temperatura. Questo seleziona anche la modalità heat."
+    },
+    "zone_temperature_required": {
+      "message": "La zona non ha una temperatura target. Impostala con il controllo della temperatura. Questo seleziona anche la modalità Riscaldamento."
     }
   }
 }

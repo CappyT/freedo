@@ -34,6 +34,7 @@ from model import (
     zone_boost,
     zone_current_temperature,
     zone_demand_pct,
+    zone_has_program,
     zone_heating,
     zone_mode,
     zone_offset_mode,
@@ -41,6 +42,7 @@ from model import (
     zone_overlay_end,
     zone_overlay_rule,
     zone_program_temperature,
+    zone_reported_setpoint,
     zone_target_source,
     zone_target_temperature,
 )
@@ -67,7 +69,7 @@ ZONES = {
          "window": {"open": True, "source": "external", "since": "2026-01-01T00:00:00Z",
                     "deadline": "2026-01-01T02:00:00Z", "undelivered": []},
          "target": {"targetC": 25.0, "source": "boost", "programC": 20.0, "programOff": False,
-                    "boost": True, "known": True,
+                    "hasProgram": True, "boost": True, "known": True,
                     "overlay": {"kind": "boost", "on": True, "setpointC": 25.0,
                                 "endsAt": "2026-01-01T00:30:00Z"}},
          "externalTemp": {"tempC": 21.4, "at": "2026-01-01T00:00:00Z", "ageSec": 120,
@@ -77,13 +79,15 @@ ZONES = {
          "window": {"open": False, "source": None, "since": None, "deadline": None,
                     "undelivered": []},
          "target": {"targetC": 17.0, "source": "program", "programC": 17.0,
-                    "programOff": False, "boost": False, "known": True, "overlay": None},
+                    "programOff": False, "hasProgram": True, "boost": False, "known": True,
+                    "overlay": None},
          "externalTemp": {"tempC": None, "at": None, "ageSec": None, "stale": False,
                           "inUse": False, "deviceC": None, "wantedC": None, "shiftC": 0.0,
                           "offsetC": 0.0}},
         {"number": 9, "name": "Hot water", "kind": "hotwater", "members": ["cccc"],
          "target": {"targetC": None, "source": "overlay", "programC": 55.0,
-                    "programOff": False, "boost": False, "known": True, "on": False,
+                    "programOff": False, "hasProgram": True, "boost": False, "known": True,
+                    "on": False,
                     "overlay": {"kind": "manual", "on": False, "setpointC": None,
                                 "endsAt": None}}},
     ],
@@ -371,6 +375,45 @@ def test_zone_operation():
         "targetC": 55.0, "source": "program", "programC": 55.0, "programOff": False,
         "boost": False, "known": True, "on": True, "overlay": None})
     assert zone_operation(d, d.hot_water_zone) == "auto"
+
+
+def test_zone_has_program():
+    d = data()
+    assert [zone_has_program(d, d.zones[n]) for n in (1, 2, 9)] == [True, True, True]
+    # A zone with no program reads false, and a daemon that sends no field reads
+    # unknown.
+    no_program = {"targetC": None, "source": "program", "programC": None,
+                  "programOff": False, "hasProgram": False, "boost": False, "known": True,
+                  "on": True, "overlay": None}
+    d = _with_hot_water_target(no_program)
+    assert zone_has_program(d, d.hot_water_zone) is False
+    assert zone_target_temperature(d, d.hot_water_zone) is None
+    assert zone_program_temperature(d, d.hot_water_zone) is None
+    del no_program["hasProgram"]
+    d = _with_hot_water_target(no_program)
+    assert zone_has_program(d, d.hot_water_zone) is None
+
+
+def test_zone_reported_setpoint():
+    def setpoint(value, on=True):
+        target = {"targetC": None, "source": "program", "programC": None, "programOff": False,
+                  "hasProgram": False, "boost": False, "known": True, "on": on, "overlay": None}
+        zones = dict(ZONES)
+        zones["declared"] = [dict(z) for z in ZONES["declared"]]
+        zones["declared"][2]["target"] = target
+        boiler = dict(BOILER) if value is None else dict(BOILER, DHWSetpointC=value)
+        d = parse(HEALTH, zones, NODES, boiler, HOME)
+        return zone_reported_setpoint(d, d.hot_water_zone)
+
+    assert setpoint(52.0) == 52.0
+    # Nothing reported, a zone that is off and a value outside the range the
+    # daemon accepts as a hot water setpoint.
+    assert setpoint(None) is None
+    assert setpoint(52.0, on=False) is None
+    assert setpoint(29.9) is None
+    assert setpoint(65.1) is None
+    assert setpoint(30.0) == 30.0
+    assert setpoint(65.0) == 65.0
 
 
 def test_room_off_operation():

@@ -397,6 +397,12 @@
     },
     "zones_failed": {
       "message": "Der Daemon hat einige Zonen abgelehnt: {failures}"
+    },
+    "hot_water_temperature_required": {
+      "message": "Die Warmwasserzone hat keine Zieltemperatur. Lege sie mit dem Temperaturregler fest. Das wählt auch den Modus heat."
+    },
+    "zone_temperature_required": {
+      "message": "Die Zone hat keine Zieltemperatur. Lege sie mit dem Temperaturregler fest. Das wählt auch den Modus Heizen."
     }
   }
 }

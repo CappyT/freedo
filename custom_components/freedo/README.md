@@ -55,7 +55,7 @@ The integration and the options of the add-on have English, Italian, German and 
 | Entity | Per | API source |
 |---|---|---|
 | climate | heating zone | `/api/zones` demand (4060 temperature, 40a0 demand) and `declared[].target`, `/api/nodes` `TempC`, `/api/install/zones` `setpoint_offset_c`; writes the zone routes |
-| water_heater | hot-water zone | `/api/zones` `declared[].target`, `/api/boiler` `DHWC`; writes the zone routes |
+| water_heater | hot-water zone | `/api/zones` `declared[].target`, `/api/boiler` `DHWC` and `DHWSetpointC`; writes the zone routes |
 | binary_sensor Window | heating zone | `/api/zones` `declared[].window` |
 | binary_sensor Heating | heating zone | `/api/zones` `demand` `DemandPct` above 0 |
 | binary_sensor Fallback | zone | `/api/health` `zoneFallback` |
@@ -395,6 +395,18 @@ daemon answers. They exist only while the daemon holds an installation.
   HVAC mode `heat` sets a manual overlay at the current target, else at the
   program setpoint. HVAC mode `off` sets a manual off overlay
   (`POST /api/zones/{n}/off`). Turn on is HVAC mode `auto`.
+- A zone with no target and no program setpoint, as a zone with no program is
+  (`has_program` is false and `program_temperature` is empty), has nothing to
+  show as a target.
+  The frontend draws the temperature control only for a target that is not
+  empty. So the entity shows the lowest temperature of its range, 5 C, as a
+  starting position, and the attribute `target_note` says that no target is set.
+  That value is a placeholder: the integration never sends it to the daemon.
+  HVAC mode `heat` in this state sends nothing and raises an error that tells
+  you to choose a temperature. A temperature chosen on the control is written
+  as a manual overlay and selects `heat`. A zone that has a program setpoint
+  keeps the control hidden while its target is empty (off, open window, away),
+  as before.
 - A new target temperature sends `POST /api/zones/{n}/setpoint` with
   `{"setpointC": t, "mode": "manual"}`. The daemon writes the zone to its
   demand reporter, as the commercial coordinator does. A target outside
@@ -440,7 +452,7 @@ daemon answers. They exist only while the daemon holds an installation.
 - Attributes: the window state (`window_open`, `window_source`,
   `window_since`, `window_deadline`), demand, fallback, overlay, its end rule
   (`overlay_rule`) and its end (`overlay_ends_at`), `target_source`,
-  `program_temperature` and members.
+  `target_note`, `has_program`, `program_temperature` and members.
   - `overlay` is the kind of the overlay: `auto` (no overlay), `manual`,
     `until_next`, `until_auto_change` or `boost`. The daemon reports a timer as
     `until_next`.
@@ -451,6 +463,14 @@ daemon answers. They exist only while the daemon holds an installation.
   - `overlay_ends_at` is the instant the daemon ends the overlay. It is empty
     without a deadline: a manual overlay, and `until_auto_change` without a
     program. The remaining time is `overlay_ends_at` minus now.
+  - `has_program` is true while the daemon holds a weekly program for the zone
+    (`declared[].target.hasProgram`). It is false for a zone with no program,
+    and empty on a daemon that does not report it. `target_source` reads
+    `program` in both cases. `program_temperature` of a zone with no program is
+    the `6200` of the zone cache, empty when the cache holds none.
+  - `target_note` is empty while the target is a value of the daemon or the
+    program. It holds a sentence when the entity shows a placeholder: see the
+    paragraph about a zone with no target.
 
 ### Weekly schedule
 
@@ -511,8 +531,26 @@ programs:
   turns the hot water off (`POST /api/zones/{n}/off`).
 - The target and the operation come from `declared[].target` of `/api/zones`.
   The current temperature is the boiler DHW temperature.
+- The target shown is, in this order: the target of the daemon, the program
+  temperature, the hot water setpoint that the wall thermostat reports
+  (`DHWSetpointC` of `/api/boiler`, attribute `reported_setpoint`). The reported
+  setpoint counts only while the zone is on and when it lies in 30..65 C. The
+  daemon does not set it. In this case `target_note` says that the boiler
+  reports the value.
+- A hot water zone with no weekly program and no override has none of the three
+  values (`has_program` is false). The frontend draws the temperature control
+  only for a target that is not empty, so the entity shows 30 C, the lowest
+  temperature of the range, as a starting position, and `target_note` says that
+  no target is set. That value is a placeholder: the integration never sends it
+  to the daemon. Operation `heat` in this state sends nothing and raises an error
+  that tells you to choose a temperature. A temperature chosen on the control is
+  written as a manual overlay and selects `heat`. To keep 30 C itself, move the
+  control away and back, or use the action `water_heater.set_temperature`.
 - The attributes `overlay`, `overlay_rule` and `overlay_ends_at` are the ones of
-  the climate entity. The water heater has no service to set an end rule.
+  the climate entity, with `has_program` and `target_note`. The attribute
+  `program_temperature` is the setpoint of the program block, and
+  `reported_setpoint` the one the boiler reports. The water heater has no
+  service to set an end rule.
 - The hot water follows the home and away state of switch Away, as in the
   commercial cloud. On its program, the hot water turns off while the home is
   away and resumes the current program block when the home returns. The

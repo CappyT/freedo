@@ -72,6 +72,14 @@ def test_integration_translation_matches_english(language):
     assert differences(source, translated) == []
 
 
+@pytest.mark.parametrize("language", ("en", *LANGUAGES))
+@pytest.mark.parametrize("key", ["hot_water_temperature_required", "zone_temperature_required"])
+def test_entity_errors_are_translated(language, key):
+    """The entities raise these keys when heat has no temperature to write."""
+    exceptions = json.loads((INTEGRATION / f"{language}.json").read_text())["exceptions"]
+    assert exceptions[key]["message"]
+
+
 @pytest.mark.parametrize("language", LANGUAGES)
 def test_addon_translation_matches_english(language):
     yaml = pytest.importorskip("yaml")
