@@ -32,6 +32,7 @@ AWAY = "switch.freedo_away"
 ALICE = "person.alice"
 BOB = "device_tracker.bob"
 GUEST = "input_boolean.guest_mode"
+APPROACH = {"approach_zone": "zone.approach"}
 
 
 def track(hass, entity_id, where, **attrs):
@@ -42,6 +43,12 @@ def track(hass, entity_id, where, **attrs):
         hass.states.async_set(entity_id, "not_home", {"in_zones": [], **attrs})
     else:
         hass.states.async_set(entity_id, where, {"in_zones": [f"zone.{where}"], **attrs})
+
+
+def nested_home(hass, entity_id):
+    """A person at home when the approach zone contains the home: in_zones
+    lists every zone that holds the person, the smallest first."""
+    track(hass, entity_id, "home", in_zones=["zone.home", "zone.approach"])
 
 
 async def flush(hass):
@@ -230,3 +237,163 @@ async def test_start_turns_away_off(hass):
     hass.bus.async_fire(EVENT_HOMEASSISTANT_STARTED)
     await flush(hass)
     assert len(turn_off) == 1
+
+
+async def test_in_zones_lists_the_overlapping_zones(hass):
+    """The fact the approach zone logic relies on, from the zone integration."""
+    from homeassistant.components.zone import async_in_zones
+
+    assert await async_setup_component(
+        hass,
+        "zone",
+        {
+            "zone": [
+                {
+                    "name": "approach",
+                    "latitude": hass.config.latitude,
+                    "longitude": hass.config.longitude,
+                    "radius": 2000,
+                }
+            ]
+        },
+    )
+    await hass.async_block_till_done()
+    lat, lon = hass.config.latitude, hass.config.longitude
+    active, zones = async_in_zones(hass, lat, lon)
+    assert active.entity_id == "zone.home"
+    assert zones == ["zone.home", "zone.approach"]
+    active, zones = async_in_zones(hass, lat + 0.009, lon)  # about 1 km north
+    assert active.entity_id == "zone.approach"
+    assert zones == ["zone.approach"]
+
+
+async def test_approach_zone_turns_away_off_at_once(hass):
+    _, turn_off = await start(hass, away="on", alice="away", bob="away", **APPROACH)
+    track(hass, ALICE, "approach")
+    await flush(hass)
+    assert [c.data["entity_id"] for c in turn_off] == [[AWAY]]
+
+
+async def test_approach_zone_ignores_the_home_delay(hass):
+    _, turn_off = await start(
+        hass, away="on", alice="away", bob="away", home_delay={"minutes": 2}, **APPROACH
+    )
+    track(hass, ALICE, "approach")
+    await flush(hass)
+    assert len(turn_off) == 1
+
+
+async def test_home_delay_still_applies_inside_the_approach_zone(hass, freezer):
+    _, turn_off = await start(
+        hass, away="on", alice="away", bob="away", home_delay={"minutes": 2}, **APPROACH
+    )
+    nested_home(hass, ALICE)
+    await settle(hass, freezer, minutes=1)
+    assert not turn_off
+    await settle(hass, freezer, minutes=2)
+    assert len(turn_off) == 1
+
+
+async def test_the_home_zone_counts_when_a_smaller_zone_is_the_state(hass, freezer):
+    # The state names the smallest zone only. The membership decides.
+    _, turn_off = await start(
+        hass, away="on", alice="away", bob="away", home_delay={"minutes": 2}, **APPROACH
+    )
+    track(hass, ALICE, "approach", in_zones=["zone.approach", "zone.home"])
+    await settle(hass, freezer, minutes=1)
+    assert not turn_off
+    await settle(hass, freezer, minutes=2)
+    assert len(turn_off) == 1
+
+
+async def test_leaving_the_approach_zone_turns_away_on_again(hass, freezer):
+    turn_on, turn_off = await start(hass, away="on", alice="away", bob="away", **APPROACH)
+    track(hass, ALICE, "approach")
+    await flush(hass)
+    assert len(turn_off) == 1
+    hass.states.async_set(AWAY, "off")
+    track(hass, ALICE, "away")
+    await settle(hass, freezer, minutes=9)
+    assert not turn_on
+    await settle(hass, freezer, minutes=2)
+    assert len(turn_on) == 1
+
+
+async def test_reentering_the_approach_zone_cancels_the_pending_away(hass, freezer):
+    turn_on, _ = await start(hass, alice="approach", bob="away", **APPROACH)
+    track(hass, ALICE, "away")
+    await settle(hass, freezer, minutes=5)
+    track(hass, ALICE, "approach")
+    await settle(hass, freezer, minutes=30)
+    assert not turn_on
+
+
+async def test_leaving_home_inside_the_approach_zone_keeps_the_home(hass, freezer):
+    turn_on, _ = await start(hass, alice="home", bob="away", **APPROACH)
+    track(hass, ALICE, "approach")
+    await settle(hass, freezer, minutes=30)
+    assert not turn_on
+    track(hass, ALICE, "away")
+    await settle(hass, freezer, minutes=9)
+    assert not turn_on
+    await settle(hass, freezer, minutes=2)
+    assert len(turn_on) == 1
+
+
+async def test_a_person_in_the_approach_zone_blocks_away(hass, freezer):
+    turn_on, _ = await start(hass, alice="approach", bob="home", **APPROACH)
+    track(hass, BOB, "away")
+    await settle(hass, freezer, minutes=30)
+    assert not turn_on
+
+
+async def test_approach_zone_with_an_unavailable_tracker(hass, freezer):
+    turn_on, _ = await start(hass, alice="away", **APPROACH)
+    track(hass, BOB, "unavailable")
+    await settle(hass, freezer, minutes=30)
+    assert not turn_on
+
+
+async def test_unavailable_tracker_does_not_stop_the_approach(hass):
+    _, turn_off = await start(
+        hass, away="on", alice="away", bob="unavailable", **APPROACH
+    )
+    track(hass, ALICE, "approach")
+    await flush(hass)
+    assert len(turn_off) == 1
+
+
+async def test_approach_zone_with_a_blocking_entity(hass):
+    _, turn_off = await start(
+        hass, away="on", alice="away", bob="away", block_entities=[GUEST], **APPROACH
+    )
+    hass.states.async_set(GUEST, "on")
+    track(hass, ALICE, "approach")
+    await flush(hass)
+    assert not turn_off
+    # Switching the blocker off applies the presence again.
+    hass.states.async_set(GUEST, "off")
+    await flush(hass)
+    assert len(turn_off) == 1
+
+
+async def test_start_applies_the_approach_zone(hass):
+    _, turn_off = await start(hass, away="on", alice="approach", bob="away", **APPROACH)
+    hass.bus.async_fire(EVENT_HOMEASSISTANT_STARTED)
+    await flush(hass)
+    assert len(turn_off) == 1
+
+
+async def test_without_an_approach_zone_the_approach_is_outside_the_home(hass, freezer):
+    turn_on, turn_off = await start(hass, alice="approach", bob="home")
+    track(hass, BOB, "approach")
+    await settle(hass, freezer, minutes=11)
+    assert len(turn_on) == 1
+    assert not turn_off
+
+
+async def test_without_an_approach_zone_the_approach_does_not_turn_away_off(hass):
+    _, turn_off = await start(hass, away="on", alice="away", bob="away")
+    track(hass, ALICE, "approach")
+    await flush(hass)
+    assert not turn_off

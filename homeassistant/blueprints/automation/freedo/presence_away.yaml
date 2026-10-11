@@ -5,10 +5,13 @@ blueprint:
 
 
     - Away turns on when all selected people have been outside the home zone
-    for the away delay.
+    and the optional approach zone for the away delay.
 
     - Away turns off when one selected person is in the home zone, after the
     optional home delay.
+
+    - Away turns off at once when one selected person is in the optional
+    approach zone, so the rooms are warm on arrival.
 
     - A person or tracker that is unavailable or unknown never turns Away on.
 
@@ -68,6 +71,19 @@ blueprint:
         seconds: 0
       selector:
         duration:
+    approach_zone:
+      name: Approach zone
+      description: >-
+        Optional. A zone around the home, larger than the home zone, for
+        example a radius of 2 km. Away turns off at once when one selected
+        person is in this zone, and turns on again only after all selected
+        people are outside it. Keep the default to turn the feature off: it
+        names a zone that does not exist.
+      default: zone.freedo_approach_unset
+      selector:
+        entity:
+          filter:
+            - domain: zone
     block_entities:
       name: Blocking entities
       description: >-
@@ -124,12 +140,36 @@ actions:
           - action: switch.turn_off
             target:
               entity_id: !input away_switch
+      # This option comes after the home option on purpose. The in_zones
+      # attribute lists every zone that contains the person, so a person at
+      # home is also in a larger approach zone: the home option takes that
+      # person first and keeps the home delay.
+      - conditions:
+          - condition: zone.in_zone
+            target:
+              entity_id: !input people
+            options:
+              zone: !input approach_zone
+              behavior: any
+          - condition: state
+            entity_id: !input away_switch
+            state: "on"
+        sequence:
+          - action: switch.turn_off
+            target:
+              entity_id: !input away_switch
       - conditions:
           - condition: zone.not_in_zone
             target:
               entity_id: !input people
             options:
               zone: !input home_zone
+              behavior: all
+          - condition: zone.not_in_zone
+            target:
+              entity_id: !input people
+            options:
+              zone: !input approach_zone
               behavior: all
           # The zone condition skips unavailable and unknown entities, and
           # passes when no entity is left.
