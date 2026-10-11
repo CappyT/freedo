@@ -1,0 +1,32 @@
+{
+	"name": "freedo-dashboard",
+	"private": true,
+	"version": "0.0.0",
+	"type": "module",
+	"engines": {
+		"node": ">=22.17"
+	},
+	"scripts": {
+		"predev": "node scripts/brand.mjs",
+		"dev": "vite dev",
+		"prebuild": "node scripts/brand.mjs",
+		"build": "vite build && node scripts/relocate.mjs",
+		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+		"test": "vitest run",
+		"embed": "node scripts/embed.mjs",
+		"prefix-check": "node scripts/prefix-check.mjs"
+	},
+	"imports": {
+		"#lib/*": "./src/lib/*"
+	},
+	"devDependencies": {
+		"@sveltejs/adapter-static": "^4.0.0",
+		"@sveltejs/kit": "^3.0.1",
+		"@sveltejs/vite-plugin-svelte": "^7.3.1",
+		"svelte": "^5.57.2",
+		"svelte-check": "^4.7.6",
+		"typescript": "^6.0.3",
+		"vite": "^8.3.4",
+		"vitest": "^5.0.3"
+	}
+}
