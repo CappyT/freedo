@@ -221,6 +221,50 @@ func TestZoneConfigEtagSurvivesRestart(t *testing.T) {
 	}
 }
 
+// TestBuildZoneConfigDocumentWithoutCircuit: a heating zone bound to no circuit
+// builds the document of a bound one without tag 6060 and without the heat
+// source as a member.
+func TestBuildZoneConfigDocumentWithoutCircuit(t *testing.T) {
+	in := synthInstall(t)
+	bound, err := BuildZoneConfigDocument(in, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in.Zones[1].Circuit = nil
+	in.Circuits = nil
+	if err := in.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := BuildZoneConfigDocument(in, 4)
+	if err != nil {
+		t.Fatalf("a heating zone with no circuit: %v", err)
+	}
+	have := parseTLVList(doc.Body)
+	if _, ok := zoneConfigTestFind(have, "6060"); ok {
+		t.Error("the document carries the circuit tag 6060")
+	}
+	for _, tag := range []string{"6020", "63a0", "6040", "6080", "60e0", "6380"} {
+		if _, ok := zoneConfigTestFind(have, tag); !ok {
+			t.Errorf("the document lacks tag %s", tag)
+		}
+	}
+	members := func(body []byte) int {
+		n := 0
+		for _, t := range parseTLVList(body) {
+			if t.Tag == "8000" {
+				n++
+			}
+		}
+		return n
+	}
+	if got, want := members(doc.Body), members(bound.Body)-1; got != want {
+		t.Errorf("member entries = %d, want %d: the heat source leaves the membership", got, want)
+	}
+	if bytes.Equal(doc.ETag, bound.ETag) {
+		t.Error("the ETag of the two documents is the same")
+	}
+}
+
 func TestBuildZoneConfigDocumentErrors(t *testing.T) {
 	if _, err := BuildZoneConfigDocument(nil, 3); err == nil {
 		t.Error("nil install accepted")

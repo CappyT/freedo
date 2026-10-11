@@ -62,10 +62,7 @@ func BuildZoneConfigDocument(in *Install, zone int) (*ZoneConfigDocument, error)
 	owner := zoneConfigOwner(in, z, members)
 	endpointMembers := zoneConfigOrderMembers(owner, members)
 	membership := endpointMembers
-	if z.Kind == ZoneHeating {
-		if z.Circuit == nil {
-			return nil, fmt.Errorf("tado: zone config: heating zone %d has no circuit", zone)
-		}
+	if z.Kind == ZoneHeating && z.Circuit != nil {
 		heatSource, err := in.ZoneHeatSource(zone)
 		if err != nil {
 			return nil, err
@@ -100,8 +97,10 @@ func BuildZoneConfigDocument(in *Install, zone int) (*ZoneConfigDocument, error)
 
 	if z.Kind == ZoneHeating {
 		pid := in.Options.ZonePID(zone)
+		if z.Circuit != nil { // a zone with no circuit omits 6060 and the heat source: not verified on air
+			tls = append(tls, TLV{Tag: zoneConfigTagCircuit, Val: []byte{byte(*z.Circuit)}})
+		}
 		tls = append(tls,
-			TLV{Tag: zoneConfigTagCircuit, Val: []byte{byte(*z.Circuit)}},
 			TLV{Tag: zoneConfigTagMeasure, Val: []byte(zoneConfigEndpoint(owner, "p"))},
 			zoneConfigU16(zoneConfigTagKp, pid.Kp),
 			zoneConfigU16(zoneConfigTagKi, pid.Ki),
