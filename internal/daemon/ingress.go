@@ -27,6 +27,10 @@ import (
 // ingressGateway is the address of the Supervisor on the network of the apps.
 var ingressGateway = netip.MustParseAddr("172.30.32.2")
 
+// supervisorTokenEnv is set by the Supervisor in every app container. A process outside a
+// Supervisor has no gateway to trust: 172.30.32.2 is the address of some other host there.
+const supervisorTokenEnv = "SUPERVISOR_TOKEN"
+
 // ingressRoutesJSON lists the method and path pairs of the dashboard. dashboard/tests checks
 // that every call of dashboard/src/lib/api.ts is in it. A segment in braces matches one segment.
 //
@@ -34,6 +38,20 @@ var ingressGateway = netip.MustParseAddr("172.30.32.2")
 var ingressRoutesJSON []byte
 
 var ingressRoutes = mustRoutes(ingressRoutesJSON)
+
+// ingressEnabled reports whether the trust of the gateway applies. The flag alone is not
+// enough: the process must run under the Supervisor. The log line tells the operator why a
+// requested flag has no effect.
+func ingressEnabled(requested bool, lookupEnv func(string) (string, bool)) bool {
+	if !requested {
+		return false
+	}
+	if v, ok := lookupEnv(supervisorTokenEnv); !ok || v == "" {
+		log.Printf("WARNING: --ingress is ignored: %s is not set, so this process does not run under the Home Assistant Supervisor", supervisorTokenEnv)
+		return false
+	}
+	return true
+}
 
 // accessHandler puts the API behind its access rules: the bearer token, and with ingress
 // the gateway of Home Assistant as a second way in for the routes of the dashboard.

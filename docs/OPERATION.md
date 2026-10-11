@@ -158,7 +158,8 @@ connections from that address only and to treat the user as authenticated. The d
   request from that address needs the token. [SECURITY.md](../SECURITY.md#home-assistant-ingress) lists
   the pairs and what a user can do with them.
 - Only `addon/run.sh` sets the flag. The bootstrap file and the environment have no such setting, and
-  the container image does not set it.
+  the container image does not set it. The daemon ignores the flag and logs a warning unless the
+  variable `SUPERVISOR_TOKEN` is set, which only the Supervisor does.
 - Every other source still needs the token: other apps, the host, the LAN, and the published port 18080.
 - The daemon compares the method and the exact path, and reads the address of the TCP connection. A
   header such as `X-Forwarded-For` or `X-Ingress-Path` has no effect.

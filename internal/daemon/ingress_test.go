@@ -1,9 +1,11 @@
 package daemon
 
 import (
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"os"
 	"strings"
 	"testing"
 )
@@ -204,6 +206,56 @@ func TestIngressRoutesAreDaemonRoutes(t *testing.T) {
 	}
 }
 
+// Outside the Supervisor the address 172.30.32.2 belongs to some other host, so the flag alone
+// grants nothing.
+func TestIngressNeedsTheSupervisor(t *testing.T) {
+	env := func(set map[string]string) func(string) (string, bool) {
+		return func(key string) (string, bool) { v, ok := set[key]; return v, ok }
+	}
+	for _, tc := range []struct {
+		name      string
+		requested bool
+		env       map[string]string
+		want      bool
+		logged    bool
+	}{
+		{"not requested", false, map[string]string{supervisorTokenEnv: "t"}, false, false},
+		{"not requested outside the Supervisor", false, nil, false, false},
+		{"requested under the Supervisor", true, map[string]string{supervisorTokenEnv: "t"}, true, false},
+		{"requested with no variable", true, nil, false, true},
+		{"requested with an empty variable", true, map[string]string{supervisorTokenEnv: ""}, false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var out strings.Builder
+			log.SetOutput(&out)
+			t.Cleanup(func() { log.SetOutput(os.Stderr) })
+			if got := ingressEnabled(tc.requested, env(tc.env)); got != tc.want {
+				t.Fatalf("ingressEnabled = %v, want %v", got, tc.want)
+			}
+			line := out.String()
+			if tc.logged != strings.Contains(line, "--ingress is ignored") {
+				t.Fatalf("log line = %q, want a line about the ignored flag: %v", line, tc.logged)
+			}
+			if tc.logged && !strings.Contains(line, supervisorTokenEnv) {
+				t.Errorf("the log line does not name %s: %q", supervisorTokenEnv, line)
+			}
+		})
+	}
+}
+
+// The server reads the environment: the flag without the Supervisor leaves the gateway as a
+// source like any other.
+func TestServerIgnoresIngressOutsideTheSupervisor(t *testing.T) {
+	t.Setenv(supervisorTokenEnv, "")
+	h := serverHandler(testAPIToken, false, true, okHandler())
+	if got := request(h, gatewayPeer, "/api/zones"); got != http.StatusUnauthorized {
+		t.Fatalf("gateway outside the Supervisor: status %d, want 401", got)
+	}
+	if got := request(h, gatewayPeer, "/api/zones", "Authorization", "Bearer "+testAPIToken); got != http.StatusOK {
+		t.Fatalf("gateway with the token: status %d, want 200", got)
+	}
+}
+
 // The caller controls every header. Only the address of the connection counts.
 func TestIngressIgnoresForgedHeaders(t *testing.T) {
 	h := accessHandler(testAPIToken, false, true, okHandler())
@@ -245,6 +297,7 @@ func TestIngressKeepsTheOtherAccessRules(t *testing.T) {
 // The dashboard and the API of one server: a page needs no token from anyone, and the
 // gateway reaches the routes of the dashboard through the same handler.
 func TestServerWithIngress(t *testing.T) {
+	t.Setenv(supervisorTokenEnv, "supervisor-token")
 	h := serverHandler(testAPIToken, false, true, okHandler())
 	if got := request(h, "192.0.2.10:50000", "/"); got == http.StatusUnauthorized {
 		t.Errorf("a page asked for a token")

@@ -22,8 +22,8 @@ the routes. For the radio facts behind a rule, see [PROTOCOL.md](PROTOCOL.md).
   health check. The default is off.
 - `--ingress` makes the daemon accept the calls of the dashboard from the connection address
   `172.30.32.2`, the Home Assistant ingress gateway, without a token. It covers 17 method and path
-  pairs only. Only the add-on start script sets it. Every other request needs the token. See
-  [Access](OPERATION.md#access).
+  pairs only. Only the add-on start script sets it, and it has no effect unless `SUPERVISOR_TOKEN` is
+  set. Every other request needs the token. See [Access](OPERATION.md#access).
 - With no token, the daemon accepts a loopback address only and warns at start. An address
   that is not loopback stops the start. `--insecure-no-auth` removes this limit. With it,
   every host that reaches the port controls the plant.

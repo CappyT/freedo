@@ -44,7 +44,9 @@ schedules, switch zones off, switch the home between home and away, set the flow
 identify a valve. Every other request from that address needs the token. This includes pairing, the
 installation and the network key, factory reset, reboot, calibration and firmware, the raw device reads and
 the debug routes. The daemon compares the method and the exact path. It reads the address of the TCP
-connection and no header.
+connection and no header. It ignores `--ingress`, and logs a warning, unless the process runs under the
+Supervisor: the variable `SUPERVISOR_TOKEN` must be set. Outside the Supervisor the address
+`172.30.32.2` belongs to some other host.
 
 The API uses plain HTTP. There is no TLS, so the token and all data cross the network in clear
 text. Run the daemon on a trusted network, or put a TLS proxy in front. Without a token the daemon
