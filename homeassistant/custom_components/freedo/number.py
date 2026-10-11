@@ -1,5 +1,6 @@
 """Numbers: the temperature correction of each heating zone, its open window
-detection time and the timer of a change made on a device."""
+detection time and the timer of a change made on a device, and the flow limit
+of each circuit."""
 
 from __future__ import annotations
 
@@ -11,11 +12,14 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from .coordinator import FreedoConfigEntry, FreedoCoordinator
 from .entity import FreedoEntity, FreedoZoneSettingEntity, call_api
 from .model import (
+    FLOW_LIMIT_MAX_C,
+    FLOW_LIMIT_MIN_C,
     OFFSET_LIMIT_C,
     OFFSET_MODE_SETPOINT,
     OPEN_WINDOW_MAX_SEC,
     OVERLAY_END_MAX_SEC,
     Zone,
+    flow_circuit,
     zone_offset_mode,
     zone_setting,
 )
@@ -38,6 +42,9 @@ async def async_setup_entry(
             entities.append(OpenWindowDurationNumber(coordinator, zone))
         if zone_setting(data, zone, "device_overlay_end") is not None:
             entities.append(DeviceOverlayTimerNumber(coordinator, zone))
+    for circuit in sorted(data.circuit_sources):
+        if flow_circuit(data, circuit) is not None:
+            entities.append(FlowLimitNumber(coordinator, circuit))
     async_add_entities(entities)
 
 
@@ -129,3 +136,49 @@ class DeviceOverlayTimerNumber(_MinutesNumber):
     @property
     def available(self) -> bool:
         return super().available and (self._setting or {}).get("device_overlay_end") == "timer"
+
+
+class FlowLimitNumber(FreedoEntity, NumberEntity):
+    """POST /api/boiler/flow: the flow limit (tag 2040) the wall thermostat
+    that drives the circuit is served. The thermostat takes a new value by
+    re-opening its OpenTherm session, at its next poll. A circuit that follows
+    its weather curve takes no value from here: the number is unavailable."""
+
+    _attr_device_class = NumberDeviceClass.TEMPERATURE
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_translation_key = "flow_limit"
+    _attr_native_min_value = FLOW_LIMIT_MIN_C
+    _attr_native_max_value = FLOW_LIMIT_MAX_C
+    _attr_native_step = 1
+    _attr_mode = NumberMode.BOX
+
+    def __init__(self, coordinator: FreedoCoordinator, circuit: int) -> None:
+        super().__init__(coordinator, f"circuit{circuit}_flow_limit")
+        self._circuit = circuit
+        self._attr_translation_placeholders = {"circuit": str(circuit)}
+        self._attr_device_info = self.hub_device()
+
+    @property
+    def _view(self):
+        return flow_circuit(self.coordinator.data, self._circuit)
+
+    @property
+    def available(self) -> bool:
+        view = self._view
+        return (
+            super().available
+            and view is not None
+            and not view.get("curve")
+            and self._circuit in self.coordinator.data.circuit_sources
+        )
+
+    @property
+    def native_value(self) -> float | None:
+        # servedC is 0 until the circuit is served a value.
+        return (self._view or {}).get("servedC") or None
+
+    async def async_set_native_value(self, value: float) -> None:
+        source = self.coordinator.data.circuit_sources[self._circuit]
+        await call_api(self.coordinator.client.set_flow_limit(self._circuit, value, source))
+        await self.coordinator.async_request_refresh()

@@ -7,6 +7,7 @@ import pytest
 
 from model import (
     boiler_unsupported,
+    flow_circuit,
     node_calibration,
     node_child_lock,
     node_display,
@@ -119,6 +120,11 @@ INSTALL_ZONES = {
          "device_overlay_end_sec": None},
     ],
 }
+
+# GET /api/install/circuits and the flow limit view of GET /api/boiler for circuit 1.
+CIRCUITS = {"rev": 7, "circuits": [{"id": 1, "name": "Heating", "heat_source": "0000000000000001"}]}
+FLOW_CIRCUIT = {"id": 1, "curve": False, "computedC": None, "servedC": 45, "changedAt": None,
+                "fetched": True}
 
 # GET /api/zones/{n}/schedule of zone 1.
 SCHEDULE = {
@@ -473,3 +479,14 @@ def test_device_readings():
     assert node_humidity(d, "bbbb") == 48.5
     # A device that never sent 0135 has no humidity, not 0 %.
     assert node_humidity(d, "aaaa") is None
+
+
+def test_circuit_sources_and_flow_view():
+    boiler = {**BOILER, "flowLimit": {"circuits": [FLOW_CIRCUIT], "defaultC": 48}}
+    d = parse(HEALTH, ZONES, NODES, boiler, HOME, INSTALL_ZONES, INSTALL, CIRCUITS)
+    assert d.circuit_sources == {1: "0000000000000001"}
+    assert flow_circuit(d, 1)["servedC"] == 45
+    assert flow_circuit(d, 2) is None
+    # No installation (503 read as {}): no source.
+    assert parse(HEALTH, ZONES, NODES, boiler, HOME, None, None, {}).circuit_sources == {}
+    assert flow_circuit(data(), 1) is None

@@ -44,6 +44,8 @@ import custom_components.freedo  # noqa: E402,F401  # the target of the client p
 from custom_components.freedo.api import FreedoApiError, FreedoConnectionError  # noqa: E402
 from test_model import (  # noqa: E402
     BOILER,
+    CIRCUITS,
+    FLOW_CIRCUIT,
     HEALTH,
     HOME,
     INSTALL,
@@ -71,6 +73,7 @@ class FakeClient:
         self.home_json = copy.deepcopy(HOME)
         self.install_json = copy.deepcopy(INSTALL_ZONES)
         self.settings_json = copy.deepcopy(INSTALL)
+        self.circuits_json = copy.deepcopy(CIRCUITS)
         # GET /api/zones/{n}/schedule by zone: zone 1 holds a schedule, zone 2 none.
         self.schedules = {1: copy.deepcopy(SCHEDULE)}
         # The error GET /api/install raises, None to answer settings_json.
@@ -101,6 +104,9 @@ class FakeClient:
 
     async def install_zones(self):
         return copy.deepcopy(self.install_json)
+
+    async def install_circuits(self):
+        return copy.deepcopy(self.circuits_json)
 
     async def install(self):
         if self.settings_error is not None:
@@ -166,6 +172,10 @@ class FakeClient:
     async def set_zone_schedule(self, zone, programs):
         self.calls.append(("set_schedule", zone, programs))
         return {"zone": zone, "programs": programs}
+
+    async def set_flow_limit(self, circuit, temp_c, target):
+        self.calls.append(("flow", circuit, temp_c, target))
+        return {"queued": True}
 
     async def push_window(self, zone, is_open):
         if self.window_errors:
@@ -890,3 +900,73 @@ async def test_no_comms_warning_sensor_without_the_field(hass, client):
     entry = await setup_entry(hass, client)
     assert not has_entity(hass, entry, "binary_sensor", "aaaa_commsWarnings")
     assert has_entity(hass, entry, "binary_sensor", "aaaa_fault")
+
+
+# --- boiler flow limit ---
+
+
+def with_flow_circuit(client, **change):
+    client.boiler_json["flowLimit"]["circuits"] = [dict(FLOW_CIRCUIT, **change)]
+
+
+async def test_flow_limit_number(hass, client):
+    with_flow_circuit(client)
+    entry = await setup_entry(hass, client)
+    flow = entity_id(hass, entry, "number", "circuit1_flow_limit")
+    state = hass.states.get(flow)
+    assert float(state.state) == 45
+    assert state.attributes["device_class"] == "temperature"
+
+    await hass.services.async_call(
+        "number", "set_value", {ATTR_ENTITY_ID: flow, "value": 52}, blocking=True
+    )
+    # The write names the thermostat that drives the circuit.
+    assert client.calls == [("flow", 1, 52.0, "0000000000000001")]
+
+    for value in (29, 76):
+        with pytest.raises(ServiceValidationError):
+            await hass.services.async_call(
+                "number", "set_value", {ATTR_ENTITY_ID: flow, "value": value}, blocking=True
+            )
+    assert len(client.calls) == 1
+
+
+async def test_flow_limit_number_follows_the_curve(hass, client):
+    with_flow_circuit(client, curve=True, computedC=41)
+    entry = await setup_entry(hass, client)
+    flow = entity_id(hass, entry, "number", "circuit1_flow_limit")
+    # The daemon refuses a value on a circuit with a curve (409).
+    assert hass.states.get(flow).state == "unavailable"
+
+    client.boiler_json["flowLimit"]["circuits"][0]["curve"] = False
+    await refresh(hass, entry)
+    assert float(hass.states.get(flow).state) == 45
+
+
+async def test_flow_limit_unknown_until_served(hass, client):
+    with_flow_circuit(client, servedC=0)
+    entry = await setup_entry(hass, client)
+    assert hass.states.get(entity_id(hass, entry, "number", "circuit1_flow_limit")).state == "unknown"
+
+
+async def test_flow_limit_needs_a_heat_source(hass, client):
+    with_flow_circuit(client)
+    # The daemon holds no installation (503 on GET /api/install/circuits).
+    client.circuits_json = {}
+    entry = await setup_entry(hass, client)
+    assert not has_entity(hass, entry, "number", "circuit1_flow_limit")
+
+
+async def test_flow_limit_error_is_a_home_assistant_error(hass, client):
+    with_flow_circuit(client)
+    entry = await setup_entry(hass, client)
+    flow = entity_id(hass, entry, "number", "circuit1_flow_limit")
+
+    async def refuse(circuit, temp_c, target):
+        raise FreedoApiError(409, "circuit 1 follows its weather curve")
+
+    client.set_flow_limit = refuse
+    with pytest.raises(HomeAssistantError, match="weather curve"):
+        await hass.services.async_call(
+            "number", "set_value", {ATTR_ENTITY_ID: flow, "value": 50}, blocking=True
+        )

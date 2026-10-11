@@ -31,7 +31,7 @@ type FreedoConfigEntry = ConfigEntry[FreedoRuntime]
 
 class FreedoCoordinator(DataUpdateCoordinator[FreedoData]):
     """Reads health, zones, nodes, boiler, home state, the installation
-    options and the zone installation in one poll."""
+    options, the zone installation and the circuits in one poll."""
 
     config_entry: FreedoConfigEntry
 
@@ -49,7 +49,7 @@ class FreedoCoordinator(DataUpdateCoordinator[FreedoData]):
 
     async def _async_update_data(self) -> FreedoData:
         try:
-            health, zones, nodes, boiler, home, install, settings = await asyncio.gather(
+            health, zones, nodes, boiler, home, install, settings, circuits = await asyncio.gather(
                 self.client.health(),
                 self.client.zones(),
                 self.client.nodes(),
@@ -57,12 +57,13 @@ class FreedoCoordinator(DataUpdateCoordinator[FreedoData]):
                 self.client.home(),
                 self._install_zones(),
                 self._install(),
+                self._install_circuits(),
             )
         except FreedoAuthError as err:
             raise ConfigEntryAuthFailed(str(err)) from err
         except FreedoError as err:
             raise UpdateFailed(str(err)) from err
-        return parse(health, zones, nodes, boiler, home, install, settings)
+        return parse(health, zones, nodes, boiler, home, install, settings, circuits)
 
     async def _install_zones(self) -> dict:
         """GET /api/install/zones, for the setpoint offset of each zone."""
@@ -71,6 +72,10 @@ class FreedoCoordinator(DataUpdateCoordinator[FreedoData]):
     async def _install(self) -> dict:
         """GET /api/install, for options.offline_schedule."""
         return await _without_install(self.client.install())
+
+    async def _install_circuits(self) -> dict:
+        """GET /api/install/circuits, for the heat source of each circuit."""
+        return await _without_install(self.client.install_circuits())
 
 
 async def _without_install(request) -> dict:

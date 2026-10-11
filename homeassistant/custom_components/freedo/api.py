@@ -103,6 +103,9 @@ class FreedoClient:
     async def install_zones(self) -> dict[str, Any]:
         return await self._request("GET", "/api/install/zones")
 
+    async def install_circuits(self) -> dict[str, Any]:
+        return await self._request("GET", "/api/install/circuits")
+
     # --- writes ---
 
     async def set_away(self, away: bool) -> dict[str, Any]:
@@ -160,6 +163,13 @@ class FreedoClient:
     ) -> dict[str, Any]:
         return await self._request(
             "PUT", f"/api/zones/{int(zone)}/schedule", {"programs": programs}
+        )
+
+    async def set_flow_limit(self, circuit: int, temp_c: float, target: str) -> dict[str, Any]:
+        """Serve a flow limit to a circuit. target is the wall thermostat that
+        drives it: without one the daemon takes the hot-water thermostat."""
+        return await self._request(
+            "POST", "/api/boiler/flow", {"tempC": temp_c, "id": int(circuit), "target": target}
         )
 
     async def push_outdoor(self, temp_c: float) -> dict[str, Any]:

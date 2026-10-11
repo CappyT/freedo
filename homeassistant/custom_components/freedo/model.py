@@ -22,6 +22,10 @@ KIND_VALVE = "valve"
 # The values of GET /api/nodes Display.orientation that a write accepts.
 ORIENTATIONS = ("horizontal", "vertical")
 
+# The daemon rejects a flow limit outside this range with 400 (tag 2040).
+FLOW_LIMIT_MIN_C = 30.0
+FLOW_LIMIT_MAX_C = 75.0
+
 # The daemon rejects a room setpoint outside this range with 400.
 ZONE_MIN_C = 5.0
 ZONE_MAX_C = 25.0
@@ -81,6 +85,9 @@ class FreedoData:
     devices: dict[str, dict[str, Any]] = field(default_factory=dict)
     # GET /api/health "zoneFallback": active fallbacks by zone number.
     fallback: dict[int, dict[str, Any]] = field(default_factory=dict)
+    # GET /api/install/circuits circuits[] heat_source: the wall thermostat that
+    # drives each circuit, by circuit id.
+    circuit_sources: dict[int, str] = field(default_factory=dict)
     # GET /api/install/zones zones[]: the installation row by zone number.
     zone_settings: dict[int, dict[str, Any]] = field(default_factory=dict)
     boiler: dict[str, Any] = field(default_factory=dict)
@@ -111,15 +118,22 @@ def parse(
     home: Mapping[str, Any],
     install: Mapping[str, Any] | None = None,
     settings: Mapping[str, Any] | None = None,
+    circuits: Mapping[str, Any] | None = None,
 ) -> FreedoData:
     """Build the model from the read endpoints. install is the body of
-    GET /api/install/zones, settings the body of GET /api/install."""
+    GET /api/install/zones, settings the body of GET /api/install, circuits the
+    body of GET /api/install/circuits."""
     data = FreedoData(boiler=dict(boiler or {}), away=bool((home or {}).get("away")))
     offline = (settings or {}).get("offline_schedule")
     if isinstance(offline, bool):
         data.offline_schedule = offline
     rows = {int(z["number"]): dict(z) for z in (install or {}).get("zones") or []}
     data.zone_settings = rows
+    data.circuit_sources = {
+        int(c["id"]): c["heat_source"]
+        for c in (circuits or {}).get("circuits") or []
+        if c.get("heat_source")
+    }
     shifts = {n: float(row.get("setpoint_offset_c") or 0) for n, row in rows.items()}
     for z in zones.get("declared") or []:
         number = int(z["number"])
@@ -314,6 +328,14 @@ def zone_setting(data: FreedoData, zone: Zone, key: str) -> Any:
 def zone_offset_mode(data: FreedoData, zone: Zone) -> str | None:
     """GET /api/install/zones offset_mode: config, dbg2 or setpoint."""
     return (data.zone_settings.get(zone.number) or {}).get("offset_mode")
+
+
+def flow_circuit(data: FreedoData, circuit: int) -> Mapping[str, Any] | None:
+    """GET /api/boiler flowLimit.circuits[] of one circuit."""
+    for view in (data.boiler.get("flowLimit") or {}).get("circuits") or []:
+        if view.get("id") == circuit:
+            return view
+    return None
 
 
 def boiler_unsupported(data: FreedoData) -> set[str]:

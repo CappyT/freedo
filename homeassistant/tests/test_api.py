@@ -246,3 +246,17 @@ def test_zone_schedule():
     assert run(client.set_zone_schedule(1, programs)) == view
     assert session.calls[-1]["method"] == "PUT"
     assert session.calls[-1]["json"] == {"programs": programs}
+
+
+def test_flow_limit_payload():
+    circuits = {"rev": 7, "circuits": [{"id": 1, "name": "Heating", "heat_source": "0000000000000001"}]}
+    session = FakeSession(
+        {
+            ("GET", "/api/install/circuits"): (200, circuits),
+            ("POST", "/api/boiler/flow"): (200, {"queued": True}),
+        }
+    )
+    client = FreedoClient(session, "h", 8080)
+    assert run(client.install_circuits()) == circuits
+    run(client.set_flow_limit(1, 52, "0000000000000001"))
+    assert session.calls[-1]["json"] == {"tempC": 52, "id": 1, "target": "0000000000000001"}

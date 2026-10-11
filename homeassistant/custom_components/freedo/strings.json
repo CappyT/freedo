@@ -93,7 +93,8 @@
     "number": {
       "temperature_offset": { "name": "Temperature offset" },
       "open_window_duration": { "name": "Open window duration" },
-      "device_overlay_timer": { "name": "Device change timer" }
+      "device_overlay_timer": { "name": "Device change timer" },
+      "flow_limit": { "name": "Circuit {circuit} flow limit" }
     },
     "select": {
       "orientation": {
