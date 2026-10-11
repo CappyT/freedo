@@ -47,6 +47,10 @@ OVERLAY_END_RULES = ("manual", "until_next", "timer")
 OVERLAY_END_MAX_SEC = 7 * 24 * 3600
 # The timer a zone gets when its rule changes to timer.
 OVERLAY_END_DEFAULT_SEC = 3600
+# The end rules of a zone overlay (POST /api/zones/{n}/setpoint and /off).
+# until_auto_change ends at the next program block or the next home or away
+# change, the tado app rule "until the next automatic change".
+ZONE_OVERLAY_RULES = (*OVERLAY_END_RULES, "until_auto_change")
 # The daemon bounds the open window detection time at 16 bits of seconds.
 OPEN_WINDOW_MAX_SEC = 0xFFFF
 
@@ -305,8 +309,8 @@ def zone_program_temperature(data: FreedoData, zone: Zone) -> float | None:
 
 def zone_mode(data: FreedoData, zone: Zone) -> str | None:
     """"auto" when the zone follows its program, the overlay kind ("manual",
-    "until_next" or "boost") on an overlay, None when the daemon holds no
-    block of the zone."""
+    "until_next", "until_auto_change" or "boost") on an overlay, None when the
+    daemon holds no block of the zone."""
     if not _target(data, zone).get("known"):
         return None
     overlay = _overlay(data, zone)
@@ -321,6 +325,19 @@ def zone_overlay_end(data: FreedoData, zone: Zone) -> str | None:
     """The instant the daemon ends the overlay, RFC 3339, None without one."""
     overlay = _overlay(data, zone)
     return overlay.get("endsAt") if overlay else None
+
+
+def zone_overlay_rule(data: FreedoData, zone: Zone) -> str | None:
+    """The end rule the active overlay runs under, None without an overlay. A
+    daemon that sends no rule gets the overlay kind when that names a rule."""
+    overlay = _overlay(data, zone)
+    if not overlay:
+        return None
+    rule = overlay.get("rule")
+    if rule is not None:
+        return rule
+    kind = overlay.get("kind")
+    return kind if kind in ZONE_OVERLAY_RULES else None
 
 
 def zone_target_source(data: FreedoData, zone: Zone) -> str | None:

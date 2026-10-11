@@ -39,6 +39,7 @@ set_overlay:
             - manual
             - timer
             - until_next
+            - until_auto_change
           translation_key: overlay_end_rule
     duration:
       selector:

@@ -27,6 +27,7 @@ from .model import (
     zone_mode,
     zone_operation,
     zone_overlay_end,
+    zone_overlay_rule,
     zone_program_temperature,
     zone_target_temperature,
 )
@@ -117,6 +118,7 @@ class FreedoHotWater(FreedoScheduleEntity, WaterHeaterEntity):
         return {
             "zone": self._zone.number,
             "overlay": zone_mode(data, self._zone),
+            "overlay_rule": zone_overlay_rule(data, self._zone),
             "overlay_ends_at": zone_overlay_end(data, self._zone),
             "program_temperature": zone_program_temperature(data, self._zone),
         }

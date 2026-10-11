@@ -179,7 +179,7 @@
         },
         "end_rule": {
           "name": "End rule",
-          "description": "Manual lasts until the next command, timer lasts for the duration, until next time block lasts until the next block of the weekly program."
+          "description": "Manual lasts until the next command, timer lasts for the duration, until next time block lasts until the next block of the weekly program, until next automatic change lasts until the next block of the weekly program or the next switch between home and away, whichever comes first."
         },
         "duration": {
           "name": "Duration",
@@ -247,7 +247,8 @@
       "options": {
         "manual": "Manual",
         "timer": "Timer",
-        "until_next": "Until next time block"
+        "until_next": "Until next time block",
+        "until_auto_change": "Until next automatic change"
       }
     }
   },

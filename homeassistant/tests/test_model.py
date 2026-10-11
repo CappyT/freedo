@@ -3,6 +3,8 @@
 The fixtures are synthetic and follow the JSON the daemon writes.
 """
 
+import copy
+
 import pytest
 
 from model import (
@@ -31,6 +33,7 @@ from model import (
     zone_offset_mode,
     zone_operation,
     zone_overlay_end,
+    zone_overlay_rule,
     zone_program_temperature,
     zone_target_source,
     zone_target_temperature,
@@ -206,6 +209,21 @@ def test_offline_schedule():
     # No installation (503 read as {}) or a field of another type: unknown.
     assert parse(HEALTH, ZONES, NODES, BOILER, HOME, INSTALL_ZONES, {}).offline_schedule is None
     assert parse(HEALTH, ZONES, NODES, BOILER, HOME, None, {"offline_schedule": 1}).offline_schedule is None
+
+
+def test_zone_overlay_rule():
+    d = data()
+    living, bedroom, hot_water = d.zones[1], d.zones[2], d.zones[9]
+    # No overlay: no rule. A daemon that sends no rule: the kind stands in when
+    # it names a rule, and a boost has none.
+    assert zone_overlay_rule(d, bedroom) is None
+    assert zone_overlay_rule(d, living) is None
+    assert zone_overlay_rule(d, hot_water) == "manual"
+    # The rule the daemon sends wins over the kind.
+    for rule in ("manual", "timer", "until_next", "until_auto_change"):
+        zones = copy.deepcopy(ZONES)
+        zones["declared"][0]["target"]["overlay"]["rule"] = rule
+        assert zone_overlay_rule(parse(HEALTH, zones, NODES, BOILER, HOME), living) == rule
 
 
 def test_zone_values():

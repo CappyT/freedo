@@ -29,9 +29,9 @@ from .coordinator import FreedoConfigEntry, FreedoCoordinator
 from .entity import FreedoScheduleEntity, call_api
 from .model import (
     OVERLAY_END_MAX_SEC,
-    OVERLAY_END_RULES,
     ZONE_MAX_C,
     ZONE_MIN_C,
+    ZONE_OVERLAY_RULES,
     Zone,
     zone_boost,
     zone_current_humidity,
@@ -40,6 +40,7 @@ from .model import (
     zone_mode,
     zone_operation,
     zone_overlay_end,
+    zone_overlay_rule,
     zone_program_temperature,
     zone_target_source,
     zone_target_temperature,
@@ -81,7 +82,7 @@ async def async_setup_entry(
             vol.Optional(ATTR_TEMPERATURE): vol.All(
                 vol.Coerce(float), vol.Range(min=ZONE_MIN_C, max=ZONE_MAX_C)
             ),
-            vol.Optional("end_rule", default="manual"): vol.In(OVERLAY_END_RULES),
+            vol.Optional("end_rule", default="manual"): vol.In(ZONE_OVERLAY_RULES),
             vol.Optional("duration"): vol.All(
                 cv.time_period, vol.Range(min=timedelta(seconds=1), max=MAX_OVERLAY)
             ),
@@ -201,6 +202,7 @@ class FreedoZoneClimate(FreedoScheduleEntity, ClimateEntity):
             "heat_pct": report.get("HeatPct"),
             "fallback": fallback.get("name") if fallback else None,
             "overlay": zone_mode(data, zone) if zone else None,
+            "overlay_rule": zone_overlay_rule(data, zone) if zone else None,
             "overlay_ends_at": zone_overlay_end(data, zone) if zone else None,
             "target_source": zone_target_source(data, zone) if zone else None,
             "program_temperature": zone_program_temperature(data, zone) if zone else None,

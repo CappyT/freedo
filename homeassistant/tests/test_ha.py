@@ -6,6 +6,7 @@ They run only with pytest-homeassistant-custom-component installed.
 
 import asyncio
 import copy
+import json
 import pathlib
 from datetime import timedelta
 from unittest.mock import patch
@@ -43,6 +44,7 @@ from pytest_homeassistant_custom_component.common import (  # noqa: E402
 
 import custom_components.freedo  # noqa: E402,F401  # the target of the client patch
 from custom_components.freedo.api import FreedoApiError, FreedoConnectionError  # noqa: E402
+from custom_components.freedo.model import ZONE_OVERLAY_RULES  # noqa: E402
 from test_model import (  # noqa: E402
     BOILER,
     CIRCUITS,
@@ -500,6 +502,14 @@ async def call_freedo(hass, service, data):
             ("off", 2, "timer", 2700),
         ),
         ({"hvac_mode": "off", "end_rule": "until_next"}, ("off", 2, "until_next", None)),
+        (
+            {"temperature": 21, "end_rule": "until_auto_change"},
+            ("setpoint", 2, "until_auto_change", None),
+        ),
+        (
+            {"hvac_mode": "off", "end_rule": "until_auto_change"},
+            ("off", 2, "until_auto_change", None),
+        ),
     ],
 )
 async def test_set_overlay_end_rule(hass, client, data, expected):
@@ -523,6 +533,8 @@ async def test_set_overlay_end_rule(hass, client, data, expected):
         {"temperature": 21, "duration": {"hours": 1}},
         {"temperature": 21, "end_rule": "timer", "duration": {"hours": 0}},
         {"temperature": 21, "end_rule": "timer", "duration": {"days": 8}},
+        {"temperature": 21, "end_rule": "until_auto_change", "duration": {"hours": 1}},
+        {"hvac_mode": "off", "end_rule": "until_auto_change", "duration": {"hours": 1}},
         {"temperature": 30},
         {"temperature": 4},
         {"temperature": 21, "end_rule": "tomorrow"},
@@ -543,6 +555,43 @@ async def test_overlay_attributes_show_the_end_rule(hass, client):
     assert attrs["overlay"] == "boost"
     assert attrs["overlay_ends_at"] == "2026-01-01T00:30:00Z"
     assert hass.states.get(BEDROOM).attributes["overlay"] == "auto"
+
+
+async def test_overlay_rule_attribute(hass, client):
+    await setup_entry(hass, client)
+    # The fixture is the view of a daemon that sends no rule: the kind stands
+    # in when it names a rule, and a boost has none.
+    assert hass.states.get(LIVING).attributes["overlay_rule"] is None
+    assert hass.states.get(BEDROOM).attributes["overlay_rule"] is None
+    assert hass.states.get(HOT_WATER).attributes["overlay_rule"] == "manual"
+
+
+async def test_overlay_rule_follows_the_daemon(hass, client):
+    entry = await setup_entry(hass, client)
+    living, bedroom, hot_water = (z["target"] for z in client.zones_json["declared"])
+    living["overlay"]["rule"] = "timer"
+    bedroom["overlay"] = {
+        "kind": "until_auto_change", "rule": "until_auto_change", "on": True,
+        "setpointC": 21.0, "endsAt": None,
+    }
+    hot_water["overlay"]["rule"] = "until_next"
+    await refresh(hass, entry)
+
+    assert hass.states.get(LIVING).attributes["overlay_rule"] == "timer"
+    # kind keeps its meaning, endsAt is null without a deadline.
+    bedroom_attrs = hass.states.get(BEDROOM).attributes
+    assert bedroom_attrs["overlay"] == "until_auto_change"
+    assert bedroom_attrs["overlay_rule"] == "until_auto_change"
+    assert bedroom_attrs["overlay_ends_at"] is None
+    assert "overlay_remaining" not in bedroom_attrs
+    water_attrs = hass.states.get(HOT_WATER).attributes
+    assert water_attrs["overlay"] == "manual"
+    assert water_attrs["overlay_rule"] == "until_next"
+
+    # The overlay ends: the rule goes with it.
+    bedroom["overlay"] = None
+    await refresh(hass, entry)
+    assert hass.states.get(BEDROOM).attributes["overlay_rule"] is None
 
 
 # --- device controls of a valve ---
@@ -1696,3 +1745,14 @@ def test_service_selectors_are_valid():
     # set_overlay takes a timer of up to 7 days.
     duration = services["set_overlay"]["fields"]["duration"]["selector"]["duration"]
     assert duration["enable_day"] is True
+    # The end rule options are the zone overlay rules, and each has a label.
+    options = services["set_overlay"]["fields"]["end_rule"]["selector"]["select"]["options"]
+    assert set(options) == set(ZONE_OVERLAY_RULES)
+    assert "until_auto_change" in options
+
+
+def test_translations_match_strings():
+    folder = pathlib.Path(custom_components.freedo.__file__).parent
+    strings = json.loads((folder / "strings.json").read_text())
+    assert json.loads((folder / "translations" / "en.json").read_text()) == strings
+    assert set(strings["selector"]["overlay_end_rule"]["options"]) == set(ZONE_OVERLAY_RULES)
