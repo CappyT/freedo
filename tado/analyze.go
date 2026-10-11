@@ -171,7 +171,7 @@ func (a *Analyzer) Add(raw []byte) {
 		} else {
 			a.stats.Malformed++
 		}
-		a.log.Log(class.String(), "", "", reason, hex.EncodeToString(raw))
+		a.log.Log(class.String(), "", "", reason, loggedFrameHex(raw))
 		return
 	}
 

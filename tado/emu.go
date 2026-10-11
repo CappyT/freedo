@@ -826,7 +826,7 @@ func (e *EmuState) onData(class FrameClass, raw []byte) []Action {
 		if len(raw) >= headerLen {
 			dst, src = e.name(raw[3:11]), e.name(append(append([]byte{}, raw[11:16]...), EUISuffix...))
 		}
-		e.log.Log(class.String(), src, dst, reason, hex.EncodeToString(raw))
+		e.log.Log(class.String(), src, dst, reason, loggedFrameHex(raw))
 		return nil
 	}
 
@@ -1266,7 +1266,7 @@ func (e *EmuState) queueAuthReply(m *CoAPMessage, dst []byte, class FrameClass, 
 	// The payload is a CoAP body, not an on-air frame: the frame column stays
 	// empty so a replay of this log never feeds it back as a frame.
 	e.log.Log("Data", srcLbl, "self",
-		rsnAuthAccepted+" "+m.URI()+" payload="+hex.EncodeToString(m.Payload), "")
+		rsnAuthAccepted+" "+m.URI()+" payload="+redactedPayload(m.Payload), "")
 	sid := sessionID(dst)
 	body, err := BuildAuthTokenBody(sid)
 	if err != nil {
@@ -1800,7 +1800,7 @@ func (e *EmuState) observeSession(ns *NodeState, m *CoAPMessage, class FrameClas
 	case !bytes.Equal(ns.SessionID, o.Val):
 		if ns.sessionDrift != "mismatch" || changed {
 			ns.SessionAdopted, ns.sessionDrift = false, "mismatch"
-			e.log.Log(class.String(), srcLbl, dstLbl, rsnSessionMismatch+"="+hex.EncodeToString(o.Val), hexFrame)
+			e.log.Log(class.String(), srcLbl, dstLbl, rsnSessionMismatch+"="+redacted(len(o.Val)), hexFrame)
 		}
 	case !ns.SessionAdopted:
 		ns.SessionAdopted, ns.sessionDrift = true, ""

@@ -190,7 +190,7 @@ func (e *EmuState) notePairingData(class FrameClass, raw []byte) bool {
 		return false
 	}
 	e.notePairingFrame(class.String(), f.SrcEUI())
-	e.log.Log(class.String(), e.name(f.SrcEUI()), e.name(f.DstEUI), rsnPairingKey, f.Hex())
+	e.log.Log(class.String(), e.name(f.SrcEUI()), e.name(f.DstEUI), rsnPairingKey, loggedFrameHex(raw))
 	return true
 }
 
