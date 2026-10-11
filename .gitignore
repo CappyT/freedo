@@ -68,3 +68,13 @@ tado_capture/extflash/
 tado_capture/flow-watch/data/
 tado_capture/flow-watch/.token.json*
 .claude/
+
+# developer run outputs
+docker-compose.yml
+.pytest_cache/
+.venv/
+coverage.out
+*.prof
+freedo-state.db.bak-*
+freedo-state.db-journal
+tado_capture/capture-*-marks.txt
