@@ -43,8 +43,10 @@ Tested only with automated tests and synthetic fixtures:
 - Early start, the weather curves (your own and the default curve), automatic flow adaptation, the
   external room temperature and the controller gain suggestion.
 - The energy and gas estimate. No comparison with a gas meter exists.
-- The web dashboard. A headless browser drove it against the daemon with a replayed synthetic capture. It
-  has not run against a real plant, and the Home Assistant ingress path has not run inside Home Assistant.
+- The web dashboard. `npm test` covers the API client and the schedule editor logic. `npm run prefix-check`
+  starts the daemon with no radio and a seeded synthetic installation, and opens each page in headless
+  Chrome under a path prefix. It has not run against a real plant, and the Home Assistant ingress path
+  has not run inside Home Assistant.
 - The Home Assistant integration and the presence blueprint. The repository documents automated tests only.
 
 freedo has not run for several days as the only coordinator of a plant.

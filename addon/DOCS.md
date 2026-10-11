@@ -59,8 +59,8 @@ token once. See [Dashboard](https://github.com/CappyT/freedo/blob/main/docs/OPER
 
 The HTTP API listens on port 18080. The Network tab changes the host port. Clear the host port to
 keep the API inside Home Assistant: the integration reaches the add-on by its host name and does
-not need the host port. Every API request needs `Authorization: Bearer <token>`. Only the requests of
-the [web interface](#web-interface) through Home Assistant need none.
+not need the host port. Every API request needs `Authorization: Bearer <token>`. The only exceptions
+are the calls of the [web interface](#web-interface) through Home Assistant, which are listed there.
 
 With an empty `api_token`, the add-on creates a random token on the first start and keeps it in its
 data folder. The add-on gives that token to Home Assistant through discovery, so the integration

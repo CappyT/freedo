@@ -4111,11 +4111,14 @@ database without one gets a fresh key and coordinator identity on the first
 start. A flag given on the command line wins over the bootstrap file; what the
 command line leaves alone takes the bootstrap value, then the built-in default.
 
-Every API request carries "Authorization: Bearer <token>". The token comes from
+Every request under /api carries "Authorization: Bearer <token>". The files of
+the dashboard, served at every other path, need no token. The token comes from
 --api-token-file, then the FREEDO_API_TOKEN environment variable, then the
 bootstrap api_token_file. With no token the API is open and binds a loopback
 address alone; --insecure-no-auth lifts that limit. --health-public leaves
-GET /api/health open for a container health check.
+GET /api/health open for a container health check. --ingress, set by the Home
+Assistant add-on, lets the gateway of Home Assistant make the calls of the
+dashboard without a token.
 
 The bench and development tools are the freedo-dev binary.
 

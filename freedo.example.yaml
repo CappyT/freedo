@@ -21,7 +21,8 @@ serial_port: /dev/ttyUSB0
 http_listen: "127.0.0.1:8080"
 
 # File holding the bearer token of the API; surrounding whitespace is trimmed.
-# Every request then needs "Authorization: Bearer <token>". --api-token-file and
+# Every request under /api then needs "Authorization: Bearer <token>". The files
+# of the dashboard, served at every other path, need none. --api-token-file and
 # FREEDO_API_TOKEN take precedence over this key. Unset means no token.
 # api_token_file: /run/secrets/freedo_api_token
 
