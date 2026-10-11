@@ -236,12 +236,13 @@ func loadBoilerOptions(kv map[string]string, o *tado.Options) error {
 	return nil
 }
 
-// flowIntOptions maps the install keys of the integer flow limit options to
-// their fields.
+// flowIntOptions maps the install keys of the integer flow limit options, and
+// of the age limit of the temperatures pushed over HTTP, to their fields.
 func flowIntOptions(o *tado.Options) map[string]**int {
 	return map[string]**int{
 		"flow_limit_c":          &o.FlowLimitC,
 		"outdoor_max_age_sec":   &o.OutdoorMaxAgeSec,
+		"room_temp_max_age_sec": &o.RoomTempMaxAgeSec,
 		"flow_hysteresis_c":     &o.FlowHysteresisC,
 		"flow_min_interval_sec": &o.FlowMinIntervalSec,
 	}

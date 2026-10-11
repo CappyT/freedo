@@ -137,6 +137,11 @@ type daemon struct {
 	// window.go.
 	windows    map[int]zoneWindow
 	windowOwed map[windowWrite]*windowOwed
+	// roomTemps holds the external room temperature of each zone that has one
+	// and roomUnsaved says whether the applied shifts moved since the last save.
+	// Both belong to the engine goroutine; see room_temp.go.
+	roomTemps   map[int]*roomTemp
+	roomUnsaved bool
 	// outdoor is the last outdoor temperature pushed, flowChanged when a curve
 	// or the adaptation last changed each circuit's flow limit, flowEpoch the
 	// engine start and flowAdapt the adaptation of each circuit. All four
@@ -252,6 +257,7 @@ func newDaemon(in *tado.Install, emu *tado.EmuState, radio radio.Radio, dryRun b
 		programOwed:      make(map[programWrite]uint64),
 		windows:          make(map[int]zoneWindow),
 		windowOwed:       make(map[windowWrite]*windowOwed),
+		roomTemps:        make(map[int]*roomTemp),
 		flowChanged:      make(map[int]time.Time),
 		flowAdapt:        make(map[int]*flowAdapt),
 		thermal:          make(map[int]*thermalModel),
@@ -288,6 +294,7 @@ func (d *daemon) setInstall(in *tado.Install) (added, removed []string, err erro
 		d.restateShiftedZones(d.emu, before, in)
 		d.restateAwayZones(d.emu, before, in)
 		d.forgetRemovedZones(before, in)
+		d.dropRoomTemps(in)
 	}
 	return added, removed, nil
 }
@@ -395,6 +402,7 @@ func (d *daemon) run(ctx context.Context) {
 			}
 			d.tickCounters(d.emu)
 			d.tickHomeState(d.emu)
+			d.tickRoomTemps(d.emu)
 			d.tickWindows(d.emu)
 			d.tickPairWindow(d.emu)
 			d.tickEnergy()
@@ -1749,6 +1757,8 @@ func (d *daemon) mux() *http.ServeMux {
 	m.HandleFunc("GET /api/zones/{number}/schedule", d.getZoneSchedule)
 	m.HandleFunc("PUT /api/zones/{number}/schedule", d.putZoneSchedule)
 	m.HandleFunc("POST /api/zones/{number}/window", d.postZoneWindow)
+	m.HandleFunc("POST /api/zones/{number}/temperature", d.postZoneTemperature)
+	m.HandleFunc("DELETE /api/zones/{number}/temperature", d.deleteZoneTemperature)
 	m.HandleFunc("POST /api/zones/{number}/setpoint", d.postZoneSetpoint)
 	m.HandleFunc("POST /api/zones/{number}/auto", d.postZoneAuto)
 	m.HandleFunc("POST /api/zones/{number}/off", d.postZoneOff)
@@ -2183,7 +2193,7 @@ func (d *daemon) getZones(w http.ResponseWriter, r *http.Request) {
 		return map[string]any{
 			"zones":    e.ZoneDirectory(),
 			"declared": d.declaredZones(e),
-			"demand":   correctedZoneViews(d.inst.Load(), e.Snapshot().Zones),
+			"demand":   d.correctedZoneViews(e.Snapshot().Zones),
 		}, nil
 	})
 	write(w, v, err)
@@ -2225,6 +2235,9 @@ func (d *daemon) declaredZones(e *tado.EmuState) []map[string]any {
 			zone["writer"] = w.Short()
 		}
 		zone["target"] = d.zoneTargetView(e, z)
+		if z.Kind == tado.ZoneHeating {
+			zone["externalTemp"] = d.roomTempView(e, z.Number)
+		}
 		out = append(out, zone)
 	}
 	return out
@@ -2271,7 +2284,7 @@ func (d *daemon) zoneScheduledBlock(e *tado.EmuState, inst *tado.Install, zone i
 		return block, true, ok
 	}
 	c, ok := e.ZoneSchedC(zone)
-	return scheduledBlock{c: correctedC(inst, zone, c)}, false, ok
+	return scheduledBlock{c: d.correctedC(inst, zone, c)}, false, ok
 }
 
 // zonePrograms returns the weekly program of zone: the daemon's own on the
@@ -2340,14 +2353,14 @@ func (d *daemon) applyHomeState(e *tado.EmuState) []int {
 		for i := range inst.Zones {
 			zone := inst.Zones[i].Number
 			if c, ok := inst.Options.AwayTemperature(zone); ok {
-				away[zone] = rawSetpointC(inst, zone, c)
+				away[zone] = d.rawSetpointC(inst, zone, c)
 			}
 			block, program, ok := d.zoneScheduledBlock(e, inst, zone, now)
 			if !ok {
 				continue
 			}
 			block = d.earlyBlock(e, inst, zone, block, now)
-			blocks[zone], sched[zone], off[zone] = block, rawSetpointC(inst, zone, block.c), block.off
+			blocks[zone], sched[zone], off[zone] = block, d.rawSetpointC(inst, zone, block.c), block.off
 			if program {
 				programs = append(programs, zone)
 			}
@@ -2513,10 +2526,10 @@ func (d *daemon) tickHomeState(e *tado.EmuState) {
 
 // restoreHomeState loads the home state the engine keeps in the database: the
 // away flag, the hot-water program, the windows, the heat-up models, the
-// adapted flow limits, the block each zone last took, the zone rewrites still
-// owed and the early starts running. With that baseline the first tick writes
-// each zone whose program moved while the daemon was down, and each owed write,
-// and no other.
+// adapted flow limits, the room shifts, the block each zone last took, the
+// zone rewrites still owed and the early starts running. With that baseline the
+// first tick writes each zone whose program moved while the daemon was down, and
+// each owed write, and no other.
 func (d *daemon) restoreHomeState(e *tado.EmuState) error {
 	if d.state == nil {
 		return nil
@@ -2536,6 +2549,9 @@ func (d *daemon) restoreHomeState(e *tado.EmuState) error {
 		return err
 	}
 	if err := d.restoreFlowAdapt(); err != nil {
+		return err
+	}
+	if err := d.restoreRoomShifts(); err != nil {
 		return err
 	}
 	blocks, stored, err := d.state.ProgramBlocks(ctx)

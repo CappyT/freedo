@@ -485,6 +485,7 @@ func patchFlowOptions(ctx context.Context, tx querier, p installPatch) error {
 	for key, v := range map[string]*int{
 		"flow_limit_c":          p.FlowLimitC,
 		"outdoor_max_age_sec":   p.OutdoorMaxAgeSec,
+		"room_temp_max_age_sec": p.RoomTempMaxAgeSec,
 		"flow_hysteresis_c":     p.FlowHysteresisC,
 		"flow_min_interval_sec": p.FlowMinIntervalSec,
 	} {

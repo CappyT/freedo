@@ -478,6 +478,24 @@ func (s *stateStore) SetFlowAdapt(ctx context.Context, stored map[int]storedFlow
 	return err
 }
 
+// RoomShifts returns the setpoint shift in centi-degrees that an external room
+// temperature holds on each zone, see room_temp.go.
+func (s *stateStore) RoomShifts(ctx context.Context) (map[int]int, error) {
+	var stored map[int]int
+	err := s.metaJSON(ctx, "room_shift", &stored)
+	return stored, err
+}
+
+// SetRoomShifts replaces the stored room shifts.
+func (s *stateStore) SetRoomShifts(ctx context.Context, stored map[int]int) error {
+	raw, err := json.Marshal(stored)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `INSERT OR REPLACE INTO meta (key, value) VALUES ('room_shift', ?)`, string(raw))
+	return err
+}
+
 // DeleteThermalModel forgets the heat-up model of zone.
 func (s *stateStore) DeleteThermalModel(ctx context.Context, zone int) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM meta WHERE key = ?`, thermalModelPrefix+strconv.Itoa(zone))

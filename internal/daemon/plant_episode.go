@@ -109,7 +109,7 @@ func (d *daemon) plantSample(e *tado.EmuState, inst *tado.Install, zone int, now
 		return plantSample{}, time.Time{}, false
 	}
 	return plantSample{
-		AtMs: updated.UnixMilli(), TempC: correctedC(inst, zone, tempC), DemandPct: demand, HeatPct: heat,
+		AtMs: updated.UnixMilli(), TempC: d.roomTempC(inst, zone, tempC), DemandPct: demand, HeatPct: heat,
 		OutdoorC: d.freshOutdoor(inst.Options, now),
 	}, updated, true
 }

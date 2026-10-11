@@ -185,6 +185,9 @@ type Options struct {
 	// so a lost close event cannot leave a zone at frost protection. Unset takes
 	// DefaultExternalWindowMaxSec.
 	ExternalWindowMaxSec *int `yaml:"external_window_max_sec"`
+	// RoomTempMaxAgeSec is how long an external room temperature drives a
+	// zone. Unset takes DefaultRoomTempMaxAgeSec.
+	RoomTempMaxAgeSec *int `yaml:"room_temp_max_age_sec"`
 	// LowBatteryCellMV is the per-cell voltage under which a device reports a
 	// low battery. Unset takes DefaultLowBatteryCellMV.
 	LowBatteryCellMV *int `yaml:"low_battery_cell_mv"`
@@ -755,6 +758,9 @@ func (in *Install) checkOptions(c *issues) {
 	}
 	if o := in.Options.ExternalWindowMaxSec; o != nil && *o <= 0 {
 		c.errf("options.external_window_max_sec", "%d is not a positive number of seconds", *o)
+	}
+	if o := in.Options.RoomTempMaxAgeSec; o != nil && *o <= 0 {
+		c.errf("options.room_temp_max_age_sec", "%d is not a positive number of seconds", *o)
 	}
 	if o := in.Options.LowBatteryCellMV; o != nil && *o <= 0 {
 		c.errf("options.low_battery_cell_mv", "%d is not a positive voltage", *o)

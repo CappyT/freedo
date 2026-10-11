@@ -39,6 +39,9 @@ type installPatch struct {
 	OfflineSchedule *bool `json:"offline_schedule"`
 	// ExternalWindowMaxSec ends an external open window that no close follows.
 	ExternalWindowMaxSec *int `json:"external_window_max_sec"`
+	// RoomTempMaxAgeSec ends the correction a room temperature pushed to
+	// POST /api/zones/{n}/temperature drives, when no new reading comes.
+	RoomTempMaxAgeSec *int `json:"room_temp_max_age_sec"`
 	// LowBatteryCellMV and OfflineAfterSec are the thresholds of the device
 	// alerts in /api/health.
 	LowBatteryCellMV   *int `json:"low_battery_cell_mv"`
@@ -257,6 +260,7 @@ func installView(in *tado.Install, rev uint64) map[string]any {
 		"utc_push_spacing_sec":     int(in.Options.UTCPushSpacing() / time.Second),
 		"offline_schedule":         in.Options.OfflineScheduleEnabled(),
 		"external_window_max_sec":  int(in.Options.ExternalWindowMax() / time.Second),
+		"room_temp_max_age_sec":    int(in.Options.RoomTempMaxAge() / time.Second),
 		"low_battery_cell_mv":      in.Options.LowBatteryCell(),
 		"offline_after_sec":        int(in.Options.OfflineAfter() / time.Second),
 		"flow_limit_c":             in.Options.FlowLimit(),

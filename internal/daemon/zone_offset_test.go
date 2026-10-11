@@ -290,6 +290,7 @@ func TestSetpointShiftScale(t *testing.T) {
 	in := windowInstall(t, func(in *tado.Install) {
 		in.Options.ZoneOffsets = map[int]tado.ZoneOffset{3: {Mode: tado.OffsetModeSetpoint, SetpointCenti: -70}}
 	})
+	d, _ := newWindowDaemon(t, in, newTestClock(windowStart), nil)
 	for _, tc := range []struct {
 		zone     int
 		c, raw   float64
@@ -299,14 +300,14 @@ func TestSetpointShiftScale(t *testing.T) {
 		{3, 24.5, 25, 23.8},
 		{5, 21, 21, 21},
 	} {
-		if got := rawSetpointC(in, tc.zone, tc.c); got != tc.raw {
+		if got := d.rawSetpointC(in, tc.zone, tc.c); got != tc.raw {
 			t.Errorf("zone %d: raw of %v = %v, want %v", tc.zone, tc.c, got, tc.raw)
 		}
-		if got := correctedC(in, tc.zone, tc.c); got != tc.reported {
+		if got := d.correctedC(in, tc.zone, tc.c); got != tc.reported {
 			t.Errorf("zone %d: corrected of %v = %v, want %v", tc.zone, tc.c, got, tc.reported)
 		}
 	}
-	views := correctedZoneViews(in, []tado.ZoneView{{Number: 3, TempC: 22}, {Number: 5, TempC: 22}})
+	views := d.correctedZoneViews([]tado.ZoneView{{Number: 3, TempC: 22}, {Number: 5, TempC: 22}})
 	if views[0].TempC != 21.3 || views[1].TempC != 22 {
 		t.Errorf("zone views = %+v, want 21.3 on zone 3 and 22 on zone 5", views)
 	}

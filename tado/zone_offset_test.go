@@ -3,7 +3,9 @@ package tado
 import (
 	"bytes"
 	"encoding/hex"
+	"strings"
 	"testing"
+	"time"
 )
 
 // servedConfigAnswer GETs d/config as the device does, with etag as option 4 when
@@ -162,5 +164,27 @@ func TestZoneOffsetCheck(t *testing.T) {
 	o.ZoneOffsets = map[int]ZoneOffset{3: {Mode: OffsetModeSetpoint, SetpointCenti: -70}}
 	if got := o.SetpointShiftC(3); got != -0.7 {
 		t.Errorf("setpoint shift = %v, want -0.7", got)
+	}
+}
+
+// TestRoomTempMaxAge: the age limit of an external room temperature defaults
+// to half an hour and takes a positive number of seconds only.
+func TestRoomTempMaxAge(t *testing.T) {
+	in := synthInstall(t)
+	if got := in.Options.RoomTempMaxAge(); got != 30*time.Minute {
+		t.Errorf("default = %v, want 30m", got)
+	}
+	sec := 900
+	in.Options.RoomTempMaxAgeSec = &sec
+	if got := in.Options.RoomTempMaxAge(); got != 15*time.Minute {
+		t.Errorf("set = %v, want 15m", got)
+	}
+	if err := in.Validate(); err != nil {
+		t.Errorf("900 s refused: %v", err)
+	}
+	sec = 0
+	err := in.Validate()
+	if err == nil || !strings.Contains(err.Error(), "options.room_temp_max_age_sec") {
+		t.Errorf("0 s: err = %v, want options.room_temp_max_age_sec refused", err)
 	}
 }

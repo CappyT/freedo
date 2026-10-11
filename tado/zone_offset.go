@@ -5,6 +5,7 @@ import (
 	"maps"
 	"slices"
 	"strconv"
+	"time"
 )
 
 // The modes of the room temperature correction of a heating zone.
@@ -46,6 +47,17 @@ func (o Options) ZoneOffset(zone int) ZoneOffset {
 		return off
 	}
 	return DefaultZoneOffset
+}
+
+// DefaultRoomTempMaxAgeSec is how long an external room temperature drives
+// a zone. A room changes faster than the weather, so the limit is half the one
+// of the outdoor temperature.
+const DefaultRoomTempMaxAgeSec = 30 * 60
+
+// RoomTempMaxAge is how long an external room temperature drives a zone
+// without a new reading.
+func (o Options) RoomTempMaxAge() time.Duration {
+	return optSeconds(o.RoomTempMaxAgeSec, DefaultRoomTempMaxAgeSec)
 }
 
 // SetpointShiftC is the correction in degrees the coordinator applies to zone
