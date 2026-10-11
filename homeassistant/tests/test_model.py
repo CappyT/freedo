@@ -10,6 +10,9 @@ from model import (
     node_calibration,
     node_child_lock,
     node_display,
+    node_firmware,
+    node_humidity,
+    node_temperature,
     outdoor_payload,
     parse,
     schedule_payload,
@@ -33,10 +36,11 @@ HEALTH = {
     "devices": [
         {"device": "VA0000000001", "short": "aaaa", "kind": "valve", "label": "Living",
          "batteryMV": 2100, "lowBattery": True, "fault": False, "faultWord": 0,
-         "offline": False, "lastSeen": "2026-01-01T00:00:00Z", "fallbackMode": 0},
+         "offline": False, "lastSeen": "2026-01-01T00:00:00Z", "fallbackMode": 0,
+         "commsWarnings": ["noConfigAnswer"]},
         {"device": "RU0000000001", "short": "cccc", "kind": "thermostat", "label": "",
          "batteryMV": 0, "lowBattery": False, "fault": True, "faultWord": 4,
-         "offline": True, "lastSeen": None, "fallbackMode": 0},
+         "offline": True, "lastSeen": None, "fallbackMode": 0, "commsWarnings": None},
     ],
     "zoneFallback": [{"zone": 2, "mode": 3, "name": "frost", "source": "cccc",
                       "since": "2026-01-01T00:00:00Z"}],
@@ -76,7 +80,8 @@ ZONES = {
 NODES = [
     {"Short": "aaaa", "TempC": 20.9, "SetpointC": 21, "Mode": "manual",
      "HumidityPct": 0, "BatteryMV": 2100, "BatteryPct": 20, "LastSeenUnix": 1700000000,
-     "Telemetry": {"temp_C": "20.90C", "calib_state": "2", "calib_error": "0"},
+     "Telemetry": {"temp_C": "20.90C", "calib_state": "2", "calib_error": "0",
+                   "fw_run_version": "2.5"},
      "Display": {"orientation": "vertical", "notification": False}, "ChildLock": False},
     {"Short": "bbbb", "TempC": 20.7, "SetpointC": 0, "Mode": "",
      "HumidityPct": 48.5, "BatteryMV": 2900, "BatteryPct": 90, "LastSeenUnix": 1700000000,
@@ -455,3 +460,16 @@ def _week(**change):
 def test_schedule_payload_refuses(programs, message):
     with pytest.raises(ValueError, match=message):
         schedule_payload(programs)
+
+
+def test_device_readings():
+    d = data()
+    assert node_firmware(d, "aaaa") == "2.5"
+    assert node_firmware(d, "bbbb") is None
+    # The wire scale: no zone correction.
+    assert node_temperature(d, "aaaa") == 20.9
+    assert node_temperature(d, "eeee") is None
+    assert node_temperature(d, "zzzz") is None
+    assert node_humidity(d, "bbbb") == 48.5
+    # A device that never sent 0135 has no humidity, not 0 %.
+    assert node_humidity(d, "aaaa") is None

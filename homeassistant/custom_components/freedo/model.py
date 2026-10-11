@@ -170,6 +170,26 @@ def _node_temperature(node: Mapping[str, Any]) -> float | None:
     return float(node["TempC"])
 
 
+def node_temperature(data: FreedoData, short: str) -> float | None:
+    """The 012d reading of a device on the wire scale, None until it sends one."""
+    node = data.nodes.get(short)
+    return _node_temperature(node) if node else None
+
+
+def node_humidity(data: FreedoData, short: str) -> float | None:
+    """The 0135 reading of a device, None on a device that never sent one."""
+    node = data.nodes.get(short) or {}
+    if "humidity_pct" not in (node.get("Telemetry") or {}):
+        return None
+    return float(node["HumidityPct"])
+
+
+def node_firmware(data: FreedoData, short: str) -> str | None:
+    """The running firmware version, major.minor, from the fw/state the device
+    reports (Telemetry fw_run_version)."""
+    return ((data.nodes.get(short) or {}).get("Telemetry") or {}).get("fw_run_version")
+
+
 def zone_current_temperature(data: FreedoData, zone: Zone) -> float | None:
     """Tag 4060 of the zone report, else the first zone device with a 012d,
     both on the corrected scale."""

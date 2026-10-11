@@ -60,7 +60,8 @@
       "zone_window": { "name": "Window" },
       "zone_fallback": { "name": "Fallback" },
       "low_battery": { "name": "Low battery" },
-      "fault": { "name": "Fault" }
+      "fault": { "name": "Fault" },
+      "comms_warning": { "name": "Communication warning" }
     },
     "sensor": {
       "flow_temperature": { "name": "Flow temperature" },
@@ -74,6 +75,8 @@
       "flow_limit_served": { "name": "Circuit {circuit} flow limit served" },
       "flow_limit_computed": { "name": "Circuit {circuit} flow limit computed" },
       "battery_voltage": { "name": "Battery voltage" },
+      "firmware_version": { "name": "Firmware version" },
+      "heating_demand": { "name": "Heating demand" },
       "calibration": {
         "name": "Calibration",
         "state": {

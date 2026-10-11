@@ -803,3 +803,90 @@ async def test_copy_schedule_refuses(hass, client, source, targets, message):
     with pytest.raises(ServiceValidationError, match=message):
         await call_freedo(hass, "copy_schedule", {ATTR_ENTITY_ID: source, "to": targets})
     assert not [c for c in client.calls if c[0] == "set_schedule"]
+
+
+# --- diagnostics ---
+
+
+async def test_device_diagnostic_sensors(hass, client):
+    entry = await setup_entry(hass, client)
+    registry = er.async_get(hass)
+    firmware = entity_id(hass, entry, "sensor", "aaaa_firmware")
+    assert hass.states.get(firmware).state == "2.5"
+    assert registry.async_get(firmware).entity_category == "diagnostic"
+    # A device that has not reported a firmware has none.
+    del client.nodes_json[0]["Telemetry"]["fw_run_version"]
+    await refresh(hass, entry)
+    assert hass.states.get(firmware).state == "unknown"
+
+    # The device readings are diagnostic and off by default, as the climate
+    # entity shows the zone values.
+    temperature = registry.async_get(entity_id(hass, entry, "sensor", "aaaa_temperature"))
+    assert temperature.disabled_by is er.RegistryEntryDisabler.INTEGRATION
+    assert temperature.entity_category == "diagnostic"
+    assert temperature.original_device_class == "temperature"
+
+
+async def test_device_temperature_sensor_state(hass, client):
+    entry = await setup_entry(hass, client)
+    registry = er.async_get(hass)
+    sensor = entity_id(hass, entry, "sensor", "aaaa_temperature")
+    registry.async_update_entity(sensor, disabled_by=None)
+    with patch("custom_components.freedo.FreedoClient", return_value=client):
+        await hass.config_entries.async_reload(entry.entry_id)
+        await hass.async_block_till_done()
+    # Zone 1 corrects its temperature by +0.5 C: the device reading is the wire one.
+    assert float(hass.states.get(sensor).state) == 20.9
+
+
+async def test_humidity_sensor_appears_with_the_first_report(hass, client):
+    # Only bbbb reports a humidity, and it is no declared device: none is created.
+    entry = await setup_entry(hass, client)
+    assert not has_entity(hass, entry, "sensor", "aaaa_humidity")
+    assert not has_entity(hass, entry, "sensor", "bbbb_humidity")
+
+    # The valve reports a humidity later: its sensor is added on the next poll.
+    client.nodes_json[0]["HumidityPct"] = 41.5
+    client.nodes_json[0]["Telemetry"]["humidity_pct"] = "41.50%"
+    await refresh(hass, entry)
+    humidity = er.async_get(hass).async_get(entity_id(hass, entry, "sensor", "aaaa_humidity"))
+    assert humidity.original_device_class == "humidity"
+    assert humidity.disabled_by is er.RegistryEntryDisabler.INTEGRATION
+    # A later poll does not add it again.
+    await refresh(hass, entry)
+    assert len([e for e in er.async_entries_for_config_entry(er.async_get(hass), entry.entry_id)
+                if e.unique_id.endswith("aaaa_humidity")]) == 1
+
+
+async def test_zone_demand_sensor(hass, client):
+    entry = await setup_entry(hass, client)
+    assert float(hass.states.get(entity_id(hass, entry, "sensor", "zone1_demand")).state) == 40
+    # Zone 2 has not reported a zone report.
+    assert hass.states.get(entity_id(hass, entry, "sensor", "zone2_demand")).state == "unknown"
+    assert not has_entity(hass, entry, "sensor", "zone9_demand")
+
+
+async def test_comms_warning_binary_sensor(hass, client):
+    entry = await setup_entry(hass, client)
+    warning = entity_id(hass, entry, "binary_sensor", "aaaa_commsWarnings")
+    state = hass.states.get(warning)
+    assert state.state == "on"
+    assert state.attributes["warnings"] == ["noConfigAnswer"]
+    assert state.attributes["device_class"] == "problem"
+    assert er.async_get(hass).async_get(warning).entity_category == "diagnostic"
+    # The communication warnings are no fault.
+    assert hass.states.get(entity_id(hass, entry, "binary_sensor", "aaaa_fault")).state == "off"
+
+    client.health_json["devices"][0]["commsWarnings"] = None
+    await refresh(hass, entry)
+    state = hass.states.get(warning)
+    assert (state.state, state.attributes["warnings"]) == ("off", [])
+
+
+async def test_no_comms_warning_sensor_without_the_field(hass, client):
+    # A daemon older than the link bits of the fault word sends no list.
+    for dev in client.health_json["devices"]:
+        del dev["commsWarnings"]
+    entry = await setup_entry(hass, client)
+    assert not has_entity(hass, entry, "binary_sensor", "aaaa_commsWarnings")
+    assert has_entity(hass, entry, "binary_sensor", "aaaa_fault")

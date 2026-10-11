@@ -34,6 +34,9 @@ async def async_setup_entry(
             continue
         entities.append(DeviceAlert(coordinator, short, "lowBattery"))
         entities.append(DeviceAlert(coordinator, short, "fault"))
+        # A daemon older than the link bits of the fault word sends no list.
+        if "commsWarnings" in dev:
+            entities.append(DeviceAlert(coordinator, short, "commsWarnings"))
         entities.append(DeviceConnectivity(coordinator, short))
     async_add_entities(entities)
 
@@ -100,6 +103,7 @@ class ZoneFallback(FreedoEntity, BinarySensorEntity):
 _ALERTS = {
     "lowBattery": (BinarySensorDeviceClass.BATTERY, "low_battery"),
     "fault": (BinarySensorDeviceClass.PROBLEM, "fault"),
+    "commsWarnings": (BinarySensorDeviceClass.PROBLEM, "comms_warning"),
 }
 
 
@@ -119,7 +123,9 @@ class _DeviceEntity(FreedoEntity):
 
 
 class DeviceAlert(_DeviceEntity, BinarySensorEntity):
-    """GET /api/health devices[].lowBattery or .fault."""
+    """GET /api/health devices[].lowBattery, .fault or .commsWarnings. The
+    communication warnings are the link bits of the fault word, which a missed
+    answer sets and the next one clears: they are not a device fault."""
 
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
@@ -138,6 +144,8 @@ class DeviceAlert(_DeviceEntity, BinarySensorEntity):
         dev = self._device or {}
         if self._field == "fault":
             return {"fault_word": dev.get("faultWord"), "fallback_mode": dev.get("fallbackMode")}
+        if self._field == "commsWarnings":
+            return {"warnings": dev.get("commsWarnings") or []}
         return {"battery_mv": dev.get("batteryMV")}
 
 

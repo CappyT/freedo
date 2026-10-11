@@ -20,7 +20,7 @@ from homeassistant.const import (
     UnitOfTemperature,
     UnitOfTime,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import FreedoConfigEntry, FreedoCoordinator
@@ -30,8 +30,13 @@ from .model import (
     KIND_BRIDGE,
     KIND_VALVE,
     FreedoData,
+    Zone,
     boiler_unsupported,
     node_calibration,
+    node_firmware,
+    node_humidity,
+    node_temperature,
+    zone_demand_pct,
 )
 
 
@@ -135,9 +140,31 @@ async def async_setup_entry(
             continue
         entities.append(BatterySensor(coordinator, short))
         entities.append(BatteryVoltageSensor(coordinator, short))
+        entities.append(FirmwareSensor(coordinator, short))
+        entities.append(DeviceTemperatureSensor(coordinator, short))
         if dev.get("kind") == KIND_VALVE:
             entities.append(CalibrationSensor(coordinator, short))
+    entities.extend(ZoneDemandSensor(coordinator, zone) for zone in data.heating_zones())
     async_add_entities(entities)
+
+    # A device that reports a humidity gets its sensor once it has: the node
+    # view carries the reading only after the first report.
+    humidity: set[str] = set()
+
+    @callback
+    def add_humidity() -> None:
+        new = [
+            short
+            for short, dev in sorted(coordinator.data.devices.items())
+            if short not in humidity
+            and dev.get("kind") != KIND_BRIDGE
+            and node_humidity(coordinator.data, short) is not None
+        ]
+        humidity.update(new)
+        async_add_entities(DeviceHumiditySensor(coordinator, short) for short in new)
+
+    add_humidity()
+    entry.async_on_unload(coordinator.async_add_listener(add_humidity))
 
 
 class BoilerSensor(FreedoEntity, SensorEntity):
@@ -264,3 +291,71 @@ class CalibrationSensor(FreedoNodeEntity, SensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         return {"error_code": node_calibration(self.coordinator.data, self._short)[1]}
+
+
+class FirmwareSensor(FreedoNodeEntity, SensorEntity):
+    """The running firmware of a device: Telemetry fw_run_version of
+    GET /api/nodes, from the fw/state the device reports."""
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_translation_key = "firmware_version"
+
+    def __init__(self, coordinator: FreedoCoordinator, short: str) -> None:
+        super().__init__(coordinator, short, "firmware")
+
+    @property
+    def native_value(self) -> str | None:
+        return node_firmware(self.coordinator.data, self._short)
+
+
+class DeviceTemperatureSensor(FreedoNodeEntity, SensorEntity):
+    """The temperature one device reads (tag 012d), on the wire scale: without
+    the correction of the zone. The climate entity shows the zone temperature."""
+
+    _attr_device_class = SensorDeviceClass.TEMPERATURE
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(self, coordinator: FreedoCoordinator, short: str) -> None:
+        super().__init__(coordinator, short, "temperature")
+
+    @property
+    def native_value(self) -> float | None:
+        return node_temperature(self.coordinator.data, self._short)
+
+
+class DeviceHumiditySensor(FreedoNodeEntity, SensorEntity):
+    """The relative humidity one device reads (tag 0135)."""
+
+    _attr_device_class = SensorDeviceClass.HUMIDITY
+    _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(self, coordinator: FreedoCoordinator, short: str) -> None:
+        super().__init__(coordinator, short, "humidity")
+
+    @property
+    def native_value(self) -> float | None:
+        return node_humidity(self.coordinator.data, self._short)
+
+
+class ZoneDemandSensor(FreedoEntity, SensorEntity):
+    """The heat demand of a zone, 0..100 (tag 40a0 of the zone report)."""
+
+    _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_translation_key = "heating_demand"
+
+    def __init__(self, coordinator: FreedoCoordinator, zone: Zone) -> None:
+        super().__init__(coordinator, f"zone{zone.number}_demand")
+        self._number = zone.number
+        self._attr_device_info = self.zone_device(zone)
+
+    @property
+    def native_value(self) -> int | None:
+        zone = self.coordinator.data.zones.get(self._number)
+        return zone_demand_pct(self.coordinator.data, zone) if zone else None
