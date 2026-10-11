@@ -1,12 +1,14 @@
 <script lang="ts">
 	import { auth } from '#lib/auth.svelte.ts';
 	import { data } from '#lib/data.svelte.ts';
+	import { serialLink } from '#lib/health.ts';
 	import { fmt, t } from '#lib/i18n.svelte.ts';
 	import Icon from '#lib/Icon.svelte';
 	import { LOCALES, prefs, type LocalePref, type Theme } from '#lib/prefs.svelte.ts';
 	import { toasts } from '#lib/toast.svelte.ts';
 
 	const health = $derived(data.health);
+	const link = $derived(serialLink(health));
 	let token = $state('');
 
 	const themes: Theme[] = ['system', 'light', 'dark'];
@@ -87,6 +89,11 @@
 			{#if health.warning}
 				<p class="notice tone-warning" role="status"><Icon name="warning" /><span>{health.warning}</span></p>
 			{/if}
+			{#if link === 'warning'}
+				<p class="notice tone-warning" role="status">
+					<Icon name="warning" /><span>{t('settings.serialErrors.notice', { n: fmt.number(health.serialErrors, 0) })}</span>
+				</p>
+			{/if}
 			{#if health.timezone?.fallback}
 				<p class="notice tone-warning" role="status"><Icon name="warning" /><span>{t('settings.timezoneFallback')}</span></p>
 			{/if}
@@ -94,6 +101,17 @@
 				<div><dt>{t('settings.mode')}</dt><dd class="text">{t(`mode.${health.mode}`)}</dd></div>
 				<div><dt>{t('settings.transmit')}</dt><dd class="text">{health.transmitAllowed ? t('settings.transmit.on') : health.tx ? t('settings.transmit.blocked') : t('settings.transmit.dryRun')}</dd></div>
 				<div><dt>{t('settings.radio')}</dt><dd class="text">{health.radioError ?? t('settings.radio.ok')}</dd></div>
+				{#if link !== 'none'}
+					<div>
+						<dt>{t('settings.serialErrors')}</dt>
+						<dd class="text">
+							<span class="mono">{fmt.number(health.serialErrors, 0)}</span>
+							<span class="badge tone-{link === 'warning' ? 'warning' : 'idle'}">
+								{link === 'warning' ? t('settings.serialErrors.warn') : t('settings.serialErrors.ok')}
+							</span>
+						</dd>
+					</div>
+				{/if}
 				<div><dt>{t('settings.bridge')}</dt><dd class="text">{health.bridgePresent ? t('state.yes') : t('state.no')}</dd></div>
 				{#if health.calibrated !== undefined}
 					<div><dt>{t('settings.calibrated')}</dt><dd class="text">{health.calibrated ? t('state.yes') : t('state.no')} ({health.fsctrl0})</dd></div>

@@ -48,6 +48,8 @@ export interface Health {
 	rxQueue: number;
 	radioError?: string;
 	fsctrl0?: string;
+	/** Serial replies of the bridge lost since the start. Live mode only. */
+	serialErrors?: number;
 	calibrated?: boolean;
 	warning?: string;
 	frames: number;
