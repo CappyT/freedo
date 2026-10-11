@@ -1,0 +1,381 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Se connecter à freedo",
+        "data": {
+          "host": "Hôte",
+          "port": "Port",
+          "token": "Jeton d'API"
+        },
+        "data_description": {
+          "host": "Adresse du démon freedo.",
+          "port": "Port de l'API HTTP de freedo (http_listen).",
+          "token": "Jeton Bearer de l'API. Laissez vide si le démon n'a pas de jeton."
+        }
+      },
+      "hassio_confirm": {
+        "title": "Application freedo",
+        "description": "Home Assistant a trouvé l'application freedo. Voulez-vous configurer l'intégration pour cette application ?"
+      },
+      "reauth_confirm": {
+        "title": "Mettre à jour le jeton d'API de freedo",
+        "data": {
+          "token": "Jeton d'API"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Le démon ne répond pas.",
+      "invalid_auth": "Le démon rejette le jeton d'API.",
+      "unknown": "Le démon donne une réponse inattendue."
+    },
+    "abort": {
+      "already_configured": "Ce démon est déjà configuré.",
+      "reauth_successful": "Le jeton d'API est mis à jour."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Données d'environnement",
+        "description": "Home Assistant envoie ces états à freedo.",
+        "data": {
+          "outdoor_entity": "Capteur de température extérieure",
+          "window_entities": "Capteurs de fenêtres et de portes"
+        },
+        "data_description": {
+          "outdoor_entity": "Envoyé au démon à chaque changement et toutes les 15 minutes. Il pilote les courbes de chauffe de la température de départ maximale.",
+          "window_entities": "À l'étape suivante, vous sélectionnez la zone de chaque capteur."
+        }
+      },
+      "windows": {
+        "title": "Zone de chaque capteur de fenêtre",
+        "description": "Sélectionnez la zone de chauffage de chaque capteur. Une zone est ouverte quand l'un de ses capteurs est ouvert."
+      }
+    },
+    "abort": {
+      "not_loaded": "L'intégration n'est pas chargée. Chargez-la, puis rouvrez les options.",
+      "no_heating_zone": "L'installation ne déclare aucune zone de chauffage."
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "zone_window": {
+        "name": "Fenêtre"
+      },
+      "zone_heating": {
+        "name": "Chauffage"
+      },
+      "zone_fallback": {
+        "name": "Repli"
+      },
+      "low_battery": {
+        "name": "Batterie faible"
+      },
+      "fault": {
+        "name": "Défaut"
+      },
+      "comms_warning": {
+        "name": "Avertissement de communication"
+      }
+    },
+    "sensor": {
+      "flow_temperature": {
+        "name": "Température de départ"
+      },
+      "return_temperature": {
+        "name": "Température de retour"
+      },
+      "dhw_temperature": {
+        "name": "Température de l'eau chaude"
+      },
+      "modulation": {
+        "name": "Modulation"
+      },
+      "ch_pressure": {
+        "name": "Pression de chauffage"
+      },
+      "outdoor_temperature": {
+        "name": "Température extérieure"
+      },
+      "outdoor_age": {
+        "name": "Âge de la température extérieure"
+      },
+      "flow_limit_default": {
+        "name": "Température de départ maximale par défaut"
+      },
+      "heat_energy": {
+        "name": "Énergie thermique fournie"
+      },
+      "heat_power": {
+        "name": "Puissance thermique fournie"
+      },
+      "energy_estimate": {
+        "name": "Estimation de l'énergie",
+        "state": {
+          "running": "En cours",
+          "no_max_power": "Aucune puissance maximale définie",
+          "no_report": "Aucun rapport du thermostat",
+          "stale": "Rapport trop ancien",
+          "no_burner_flag": "Aucun état du brûleur signalé",
+          "no_modulation": "Aucune modulation signalée"
+        }
+      },
+      "gas_volume": {
+        "name": "Volume de gaz"
+      },
+      "gas_flow": {
+        "name": "Débit de gaz"
+      },
+      "gas_estimate": {
+        "name": "Estimation du gaz",
+        "state": {
+          "running": "En cours",
+          "no_gas_flow": "Aucune plage de débit de gaz définie",
+          "no_report": "Aucun rapport du thermostat",
+          "stale": "Rapport trop ancien",
+          "no_burner_flag": "Aucun état du brûleur signalé",
+          "no_modulation": "Aucune modulation signalée"
+        }
+      },
+      "flow_limit_served": {
+        "name": "Circuit {circuit} température de départ maximale fournie"
+      },
+      "flow_limit_computed": {
+        "name": "Circuit {circuit} température de départ maximale calculée"
+      },
+      "battery_voltage": {
+        "name": "Tension de la batterie"
+      },
+      "firmware_version": {
+        "name": "Version du micrologiciel"
+      },
+      "heating_demand": {
+        "name": "Demande de chauffage"
+      },
+      "calibration": {
+        "name": "Calibration",
+        "state": {
+          "none": "Aucune",
+          "started": "Démarrée",
+          "done": "Terminée",
+          "failed": "Échec"
+        }
+      }
+    },
+    "button": {
+      "calibrate": {
+        "name": "Calibrer le moteur"
+      }
+    },
+    "number": {
+      "temperature_offset": {
+        "name": "Décalage de température"
+      },
+      "open_window_duration": {
+        "name": "Durée de fenêtre ouverte"
+      },
+      "device_overlay_timer": {
+        "name": "Minuteur de modification sur l'appareil"
+      },
+      "away_temperature": {
+        "name": "Température d'absence"
+      },
+      "flow_limit": {
+        "name": "Circuit {circuit} température de départ maximale"
+      },
+      "boiler_max_power": {
+        "name": "Puissance maximale de la chaudière"
+      },
+      "boiler_min_power": {
+        "name": "Puissance minimale de la chaudière"
+      },
+      "boiler_max_gas": {
+        "name": "Débit de gaz maximal de la chaudière"
+      },
+      "boiler_min_gas": {
+        "name": "Débit de gaz minimal de la chaudière"
+      }
+    },
+    "select": {
+      "orientation": {
+        "name": "Orientation de l'affichage",
+        "state": {
+          "horizontal": "Horizontale",
+          "vertical": "Verticale"
+        }
+      },
+      "device_overlay_end": {
+        "name": "Règle de fin d'une modification sur l'appareil",
+        "state": {
+          "manual": "Manuel",
+          "until_next": "Jusqu'au prochain bloc horaire",
+          "timer": "Minuteur"
+        }
+      }
+    },
+    "switch": {
+      "away": {
+        "name": "Absent"
+      },
+      "offline_schedule": {
+        "name": "Planification hors ligne"
+      },
+      "flow_default_curve": {
+        "name": "Courbe de chauffe par défaut de la température de départ maximale"
+      },
+      "flow_auto_adapt": {
+        "name": "Adaptation de la température de départ maximale"
+      },
+      "pairing_mode": {
+        "name": "Mode d'association"
+      },
+      "notification": {
+        "name": "Notification de modification"
+      },
+      "child_lock": {
+        "name": "Sécurité enfant"
+      },
+      "early_start": {
+        "name": "Démarrage anticipé"
+      },
+      "open_window_detection": {
+        "name": "Détection de fenêtre ouverte"
+      }
+    }
+  },
+  "services": {
+    "boost": {
+      "name": "Boost",
+      "description": "Démarre ou arrête le boost d'une zone de chauffage.",
+      "fields": {
+        "on": {
+          "name": "Activé",
+          "description": "Vrai démarre le boost, faux l'arrête."
+        }
+      }
+    },
+    "set_overlay": {
+      "name": "Définir une surcharge",
+      "description": "Chauffe une zone à une température ou l'éteint, et définit quand la modification se termine.",
+      "fields": {
+        "hvac_mode": {
+          "name": "Mode",
+          "description": "Avec Chauffage, la zone atteint la température. Avec Éteint, la zone est éteinte."
+        },
+        "temperature": {
+          "name": "Température",
+          "description": "Température cible. Obligatoire avec le mode Chauffage, interdite avec le mode Éteint."
+        },
+        "end_rule": {
+          "name": "Règle de fin",
+          "description": "Manuel dure jusqu'à la commande suivante, Minuteur dure pendant la durée indiquée, Jusqu'au prochain bloc horaire dure jusqu'au prochain bloc du programme hebdomadaire, Jusqu'au prochain changement automatique dure jusqu'au prochain bloc du programme hebdomadaire ou jusqu'au prochain passage entre présence et absence, selon ce qui arrive en premier."
+        },
+        "duration": {
+          "name": "Durée",
+          "description": "Durée du minuteur, jusqu'à 7 jours. Obligatoire avec la règle de fin Minuteur, interdite avec les autres règles de fin."
+        }
+      }
+    },
+    "set_window": {
+      "name": "Définir une fenêtre ouverte",
+      "description": "Active ou réinitialise l'état de fenêtre ouverte d'une zone de chauffage. Une réinitialisation met fin à l'état défini depuis Home Assistant. Elle ne met pas fin à un état détecté par les vannes.",
+      "fields": {
+        "open": {
+          "name": "Ouverte",
+          "description": "Vrai active l'état de fenêtre ouverte, faux le réinitialise."
+        }
+      }
+    },
+    "boost_all": {
+      "name": "Boost de toutes les zones",
+      "description": "Démarre ou arrête le boost de chaque zone de chauffage.",
+      "fields": {
+        "on": {
+          "name": "Activé",
+          "description": "Vrai démarre le boost, faux l'arrête."
+        }
+      }
+    },
+    "resume_all": {
+      "name": "Reprendre toutes les planifications",
+      "description": "Remet chaque zone de chauffage et l'eau chaude sur leur planification hebdomadaire."
+    },
+    "get_schedule": {
+      "name": "Lire la planification",
+      "description": "Renvoie la planification hebdomadaire d'une zone de chauffage ou de la zone d'eau chaude : des programmes avec les jours où ils s'exécutent et leurs blocs horaires. Une zone sans planification n'a aucun programme."
+    },
+    "set_schedule": {
+      "name": "Définir la planification",
+      "description": "Remplace la planification hebdomadaire d'une zone de chauffage ou de la zone d'eau chaude. Les programmes couvrent chacun des sept jours une seule fois. Chaque programme commence à 00:00 et ses heures sont croissantes.",
+      "fields": {
+        "programs": {
+          "name": "Programmes",
+          "description": "Une liste de programmes. Chacun a `days` (mon à sun) et `entries`. Chaque entrée a `time` (HH:MM), `temperature` (5 à 25 C pour une zone de chauffage, 30 à 65 C pour la zone d'eau chaude) et `enabled` (true par défaut, false éteint la zone)."
+        }
+      }
+    },
+    "copy_schedule": {
+      "name": "Copier la planification",
+      "description": "Copie la planification hebdomadaire d'une zone vers d'autres zones du même type. Une zone de pièce et la zone d'eau chaude ne partagent pas de planification.",
+      "fields": {
+        "to": {
+          "name": "Copier vers",
+          "description": "Les zones qui reçoivent la planification."
+        }
+      }
+    }
+  },
+  "selector": {
+    "overlay_hvac_mode": {
+      "options": {
+        "heat": "Chauffage",
+        "off": "Éteint"
+      }
+    },
+    "overlay_end_rule": {
+      "options": {
+        "manual": "Manuel",
+        "timer": "Minuteur",
+        "until_next": "Jusqu'au prochain bloc horaire",
+        "until_auto_change": "Jusqu'au prochain changement automatique"
+      }
+    }
+  },
+  "exceptions": {
+    "overlay_temperature_required": {
+      "message": "Définissez une température avec le mode Chauffage."
+    },
+    "overlay_temperature_not_allowed": {
+      "message": "Une température n'est pas autorisée avec le mode Éteint."
+    },
+    "overlay_duration_required": {
+      "message": "Définissez une durée avec la règle de fin Minuteur."
+    },
+    "overlay_duration_not_allowed": {
+      "message": "Une durée nécessite la règle de fin Minuteur."
+    },
+    "invalid_schedule": {
+      "message": "La planification n'est pas valide : {reason}"
+    },
+    "no_schedule": {
+      "message": "La zone {zone} n'a aucune planification à copier."
+    },
+    "not_a_zone": {
+      "message": "{entity_id} n'est pas une zone freedo."
+    },
+    "copy_across_kinds": {
+      "message": "{entity_id} est une zone d'un autre type. Une zone de pièce et la zone d'eau chaude ne partagent pas de planification : leurs plages de température diffèrent."
+    },
+    "copy_to_itself": {
+      "message": "Une zone ne peut pas copier sa planification vers elle-même."
+    },
+    "no_zones": {
+      "message": "Aucune zone freedo n'est chargée."
+    },
+    "zones_failed": {
+      "message": "Le démon a refusé certaines zones : {failures}"
+    }
+  }
+}

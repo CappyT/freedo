@@ -1,0 +1,16 @@
+configuration:
+  serial_port:
+    name: Port série
+    description: >-
+      Le port série USB du pont radio ESP32. Laissez-le vide pour exécuter le
+      démon sans radio.
+  api_token:
+    name: Jeton d'API
+    description: >-
+      Le jeton Bearer de l'API HTTP. Si vous le laissez vide, l'application crée
+      un jeton et le conserve dans son dossier de données.
+  transmit:
+    name: Émission
+    description: >-
+      Envoie des trames par radio. Désactivé signifie dry-run. Éteignez la
+      passerelle commerciale avant d'activer cette option.

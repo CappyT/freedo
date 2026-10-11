@@ -48,6 +48,8 @@ The integration polls the daemon every 30 seconds. One poll reads
 Entities are created from the zones and devices present at setup: reload the
 integration after you add a zone or a device.
 
+The integration and the options of the add-on have English, Italian, German and French translations.
+
 ## Entities
 
 | Entity | Per | API source |

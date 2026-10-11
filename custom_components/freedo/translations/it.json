@@ -1,0 +1,381 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connetti a freedo",
+        "data": {
+          "host": "Host",
+          "port": "Porta",
+          "token": "Token API"
+        },
+        "data_description": {
+          "host": "Indirizzo del daemon freedo.",
+          "port": "Porta dell'API HTTP di freedo (http_listen).",
+          "token": "Token bearer dell'API. Lascia vuoto se il daemon non ha un token."
+        }
+      },
+      "hassio_confirm": {
+        "title": "Componente aggiuntivo freedo",
+        "description": "Home Assistant ha trovato il componente aggiuntivo freedo. Vuoi configurare l'integrazione per questo componente?"
+      },
+      "reauth_confirm": {
+        "title": "Aggiorna il token API di freedo",
+        "data": {
+          "token": "Token API"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Il daemon non risponde.",
+      "invalid_auth": "Il daemon rifiuta il token API.",
+      "unknown": "Il daemon ha dato una risposta inattesa."
+    },
+    "abort": {
+      "already_configured": "Questo daemon è già configurato.",
+      "reauth_successful": "Il token API è stato aggiornato."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Ingressi ambientali",
+        "description": "Home Assistant invia questi stati a freedo.",
+        "data": {
+          "outdoor_entity": "Sensore di temperatura esterna",
+          "window_entities": "Sensori di finestre e porte"
+        },
+        "data_description": {
+          "outdoor_entity": "Inviato al daemon a ogni variazione e ogni 15 minuti. Guida le curve climatiche della temperatura massima di mandata.",
+          "window_entities": "Nel passo successivo selezioni la zona di ciascun sensore."
+        }
+      },
+      "windows": {
+        "title": "Zona di ciascun sensore di finestra",
+        "description": "Seleziona la zona di riscaldamento di ciascun sensore. Una zona è aperta quando uno dei suoi sensori è aperto."
+      }
+    },
+    "abort": {
+      "not_loaded": "L'integrazione non è caricata. Caricala, poi apri di nuovo le opzioni.",
+      "no_heating_zone": "L'installazione non dichiara nessuna zona di riscaldamento."
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "zone_window": {
+        "name": "Finestra"
+      },
+      "zone_heating": {
+        "name": "Riscaldamento"
+      },
+      "zone_fallback": {
+        "name": "Modalità di ripiego"
+      },
+      "low_battery": {
+        "name": "Batteria scarica"
+      },
+      "fault": {
+        "name": "Guasto"
+      },
+      "comms_warning": {
+        "name": "Avviso di comunicazione"
+      }
+    },
+    "sensor": {
+      "flow_temperature": {
+        "name": "Temperatura di mandata"
+      },
+      "return_temperature": {
+        "name": "Temperatura di ritorno"
+      },
+      "dhw_temperature": {
+        "name": "Temperatura dell'acqua calda"
+      },
+      "modulation": {
+        "name": "Modulazione"
+      },
+      "ch_pressure": {
+        "name": "Pressione di riscaldamento"
+      },
+      "outdoor_temperature": {
+        "name": "Temperatura esterna"
+      },
+      "outdoor_age": {
+        "name": "Età del dato di temperatura esterna"
+      },
+      "flow_limit_default": {
+        "name": "Temperatura massima di mandata predefinita"
+      },
+      "heat_energy": {
+        "name": "Energia termica erogata"
+      },
+      "heat_power": {
+        "name": "Potenza termica erogata"
+      },
+      "energy_estimate": {
+        "name": "Stima dell'energia",
+        "state": {
+          "running": "In funzione",
+          "no_max_power": "Potenza massima non impostata",
+          "no_report": "Nessun rapporto dal termostato",
+          "stale": "Rapporto troppo vecchio",
+          "no_burner_flag": "Nessuno stato del bruciatore segnalato",
+          "no_modulation": "Nessuna modulazione segnalata"
+        }
+      },
+      "gas_volume": {
+        "name": "Volume di gas"
+      },
+      "gas_flow": {
+        "name": "Portata del gas"
+      },
+      "gas_estimate": {
+        "name": "Stima del gas",
+        "state": {
+          "running": "In funzione",
+          "no_gas_flow": "Intervallo di portata del gas non impostato",
+          "no_report": "Nessun rapporto dal termostato",
+          "stale": "Rapporto troppo vecchio",
+          "no_burner_flag": "Nessuno stato del bruciatore segnalato",
+          "no_modulation": "Nessuna modulazione segnalata"
+        }
+      },
+      "flow_limit_served": {
+        "name": "Circuito {circuit} temperatura massima di mandata applicata"
+      },
+      "flow_limit_computed": {
+        "name": "Circuito {circuit} temperatura massima di mandata calcolata"
+      },
+      "battery_voltage": {
+        "name": "Tensione della batteria"
+      },
+      "firmware_version": {
+        "name": "Versione firmware"
+      },
+      "heating_demand": {
+        "name": "Domanda di riscaldamento"
+      },
+      "calibration": {
+        "name": "Calibrazione",
+        "state": {
+          "none": "Nessuna",
+          "started": "Avviata",
+          "done": "Completata",
+          "failed": "Non riuscita"
+        }
+      }
+    },
+    "button": {
+      "calibrate": {
+        "name": "Calibra motore"
+      }
+    },
+    "number": {
+      "temperature_offset": {
+        "name": "Compensazione della temperatura"
+      },
+      "open_window_duration": {
+        "name": "Durata finestra aperta"
+      },
+      "device_overlay_timer": {
+        "name": "Timer della modifica sul dispositivo"
+      },
+      "away_temperature": {
+        "name": "Temperatura fuori casa"
+      },
+      "flow_limit": {
+        "name": "Circuito {circuit} temperatura massima di mandata"
+      },
+      "boiler_max_power": {
+        "name": "Potenza massima della caldaia"
+      },
+      "boiler_min_power": {
+        "name": "Potenza minima della caldaia"
+      },
+      "boiler_max_gas": {
+        "name": "Portata massima del gas della caldaia"
+      },
+      "boiler_min_gas": {
+        "name": "Portata minima del gas della caldaia"
+      }
+    },
+    "select": {
+      "orientation": {
+        "name": "Orientamento del display",
+        "state": {
+          "horizontal": "Orizzontale",
+          "vertical": "Verticale"
+        }
+      },
+      "device_overlay_end": {
+        "name": "Regola di fine della modifica sul dispositivo",
+        "state": {
+          "manual": "Manuale",
+          "until_next": "Fino al blocco orario successivo",
+          "timer": "Timer"
+        }
+      }
+    },
+    "switch": {
+      "away": {
+        "name": "Fuori casa"
+      },
+      "offline_schedule": {
+        "name": "Programma offline"
+      },
+      "flow_default_curve": {
+        "name": "Curva climatica predefinita della temperatura massima di mandata"
+      },
+      "flow_auto_adapt": {
+        "name": "Adattamento della temperatura massima di mandata"
+      },
+      "pairing_mode": {
+        "name": "Modalità di abbinamento"
+      },
+      "notification": {
+        "name": "Notifica di modifica"
+      },
+      "child_lock": {
+        "name": "Blocco bambini"
+      },
+      "early_start": {
+        "name": "Inizio anticipato"
+      },
+      "open_window_detection": {
+        "name": "Rilevamento finestra aperta"
+      }
+    }
+  },
+  "services": {
+    "boost": {
+      "name": "Boost",
+      "description": "Avvia o ferma il boost di una zona di riscaldamento.",
+      "fields": {
+        "on": {
+          "name": "Attivo",
+          "description": "Vero avvia il boost, falso lo ferma."
+        }
+      }
+    },
+    "set_overlay": {
+      "name": "Imposta sovrascrittura",
+      "description": "Riscalda una zona a una temperatura o la spegne, e imposta quando termina la modifica.",
+      "fields": {
+        "hvac_mode": {
+          "name": "Modalità",
+          "description": "Con Riscaldamento la zona raggiunge la temperatura, con Spento la zona si spegne."
+        },
+        "temperature": {
+          "name": "Temperatura",
+          "description": "Temperatura desiderata. Obbligatoria con la modalità Riscaldamento, non consentita con la modalità Spento."
+        },
+        "end_rule": {
+          "name": "Regola di fine",
+          "description": "Manuale dura fino al comando successivo, Timer dura per la durata indicata, Fino al blocco orario successivo dura fino al prossimo blocco del programma settimanale, Fino al prossimo cambio automatico dura fino al prossimo blocco del programma settimanale o al prossimo passaggio tra casa e fuori casa, quello che avviene per primo."
+        },
+        "duration": {
+          "name": "Durata",
+          "description": "Durata del timer, fino a 7 giorni. Obbligatoria con la regola di fine Timer, non consentita con le altre regole di fine."
+        }
+      }
+    },
+    "set_window": {
+      "name": "Imposta finestra aperta",
+      "description": "Attiva o reimposta lo stato di finestra aperta di una zona di riscaldamento. Un reset termina lo stato impostato da Home Assistant. Non termina uno stato rilevato dalle valvole.",
+      "fields": {
+        "open": {
+          "name": "Aperta",
+          "description": "Vero attiva lo stato di finestra aperta, falso lo reimposta."
+        }
+      }
+    },
+    "boost_all": {
+      "name": "Boost su tutte le zone",
+      "description": "Avvia o ferma il boost di ogni zona di riscaldamento.",
+      "fields": {
+        "on": {
+          "name": "Attivo",
+          "description": "Vero avvia il boost, falso lo ferma."
+        }
+      }
+    },
+    "resume_all": {
+      "name": "Riprendi tutti i programmi",
+      "description": "Riporta ogni zona di riscaldamento e l'acqua calda al rispettivo programma settimanale."
+    },
+    "get_schedule": {
+      "name": "Leggi programma",
+      "description": "Restituisce il programma settimanale di una zona di riscaldamento o della zona acqua calda: i programmi, con i giorni in cui sono attivi e i loro blocchi orari. Una zona senza programma settimanale non ha programmi."
+    },
+    "set_schedule": {
+      "name": "Imposta programma",
+      "description": "Sostituisce il programma settimanale di una zona di riscaldamento o della zona acqua calda. I programmi coprono ciascuno dei sette giorni una sola volta. Ogni programma inizia alle 00:00 e i suoi orari sono crescenti.",
+      "fields": {
+        "programs": {
+          "name": "Programmi",
+          "description": "Un elenco di programmi. Ognuno ha `days` (da mon a sun) e `entries`. Ogni voce ha `time` (HH:MM), `temperature` (da 5 a 25 C per una zona di riscaldamento, da 30 a 65 C per la zona acqua calda) e `enabled` (predefinito true, false spegne la zona)."
+        }
+      }
+    },
+    "copy_schedule": {
+      "name": "Copia programma",
+      "description": "Copia il programma settimanale di una zona in altre zone dello stesso tipo. Una zona ambiente e la zona acqua calda non condividono un programma.",
+      "fields": {
+        "to": {
+          "name": "Copia in",
+          "description": "Le zone che ricevono il programma."
+        }
+      }
+    }
+  },
+  "selector": {
+    "overlay_hvac_mode": {
+      "options": {
+        "heat": "Riscaldamento",
+        "off": "Spento"
+      }
+    },
+    "overlay_end_rule": {
+      "options": {
+        "manual": "Manuale",
+        "timer": "Timer",
+        "until_next": "Fino al blocco orario successivo",
+        "until_auto_change": "Fino al prossimo cambio automatico"
+      }
+    }
+  },
+  "exceptions": {
+    "overlay_temperature_required": {
+      "message": "Imposta una temperatura con la modalità Riscaldamento."
+    },
+    "overlay_temperature_not_allowed": {
+      "message": "Con la modalità Spento non è consentita una temperatura."
+    },
+    "overlay_duration_required": {
+      "message": "Imposta una durata con la regola di fine Timer."
+    },
+    "overlay_duration_not_allowed": {
+      "message": "Una durata richiede la regola di fine Timer."
+    },
+    "invalid_schedule": {
+      "message": "Il programma non è valido: {reason}"
+    },
+    "no_schedule": {
+      "message": "La zona {zone} non ha un programma da copiare."
+    },
+    "not_a_zone": {
+      "message": "{entity_id} non è una zona freedo."
+    },
+    "copy_across_kinds": {
+      "message": "{entity_id} è una zona di tipo diverso. Una zona ambiente e la zona acqua calda non condividono un programma: i loro intervalli di temperatura sono diversi."
+    },
+    "copy_to_itself": {
+      "message": "Una zona non può copiare il proprio programma su se stessa."
+    },
+    "no_zones": {
+      "message": "Nessuna zona freedo è caricata."
+    },
+    "zones_failed": {
+      "message": "Il daemon ha rifiutato alcune zone: {failures}"
+    }
+  }
+}
