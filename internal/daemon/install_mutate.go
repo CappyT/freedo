@@ -83,6 +83,27 @@ func (o *optInt) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+// optFloat is optInt for a number with a fraction.
+type optFloat struct {
+	set   bool
+	value *float64
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (o *optFloat) UnmarshalJSON(b []byte) error {
+	o.set = true
+	if string(bytes.TrimSpace(b)) == "null" {
+		o.value = nil
+		return nil
+	}
+	var v float64
+	if err := json.Unmarshal(b, &v); err != nil {
+		return err
+	}
+	o.value = &v
+	return nil
+}
+
 // optPID is optInt for the gains of a zone.
 type optPID struct {
 	set   bool
@@ -395,6 +416,23 @@ func (s *stateStore) PatchInstall(ctx context.Context, p installPatch) (installR
 		}
 		if p.OfflineAfterSec != nil {
 			if err := setInstallValue(ctx, tx, "offline_after_sec", strconv.Itoa(*p.OfflineAfterSec)); err != nil {
+				return err
+			}
+		}
+		for key, v := range map[string]optFloat{
+			"boiler_max_power_kw": p.BoilerMaxPowerKW,
+			"boiler_min_power_kw": p.BoilerMinPowerKW,
+		} {
+			if !v.set {
+				continue
+			}
+			var err error
+			if v.value == nil {
+				err = clearInstallValue(ctx, tx, key)
+			} else {
+				err = setInstallValue(ctx, tx, key, strconv.FormatFloat(*v.value, 'g', -1, 64))
+			}
+			if err != nil {
 				return err
 			}
 		}

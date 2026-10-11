@@ -174,6 +174,31 @@ func TestInstallRoundTrip(t *testing.T) {
 	}
 }
 
+// TestInstallRoundTripKeepsBoilerPower: the output of the boiler survives the
+// database, and an installation that states none loads none.
+func TestInstallRoundTripKeepsBoilerPower(t *testing.T) {
+	in, err := tado.Parse([]byte(fixtureInstallYAML + "  boiler_max_power_kw: 24.5\n  boiler_min_power_kw: 2.5\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, _ := storeWithInstall(t, in)
+	got, _, err := store.LoadInstall(context.Background())
+	if err != nil {
+		t.Fatalf("LoadInstall: %v", err)
+	}
+	if maxKW, minKW, ok := got.Options.BoilerPower(); !ok || maxKW != 24.5 || minKW != 2.5 {
+		t.Errorf("loaded output = %v, %v, %v, want 24.5, 2.5, true", maxKW, minKW, ok)
+	}
+	bare, _ := storeWithInstall(t, defaultInstall)
+	got, _, err = bare.LoadInstall(context.Background())
+	if err != nil {
+		t.Fatalf("LoadInstall: %v", err)
+	}
+	if _, _, ok := got.Options.BoilerPower(); ok {
+		t.Error("an installation without a boiler output loaded one")
+	}
+}
+
 // compareInstalls checks the resolved values, not the reference spellings: the
 // database keeps a wire EUI where the config held a serial or a label.
 func compareInstalls(t *testing.T, got, want *tado.Install) {

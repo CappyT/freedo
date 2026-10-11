@@ -184,6 +184,8 @@ type NodeState struct {
 	// lists. faultCodes holds the 0460 codes of the last hvac/codes report.
 	unsupported map[string][]string
 	faultCodes  []uint32
+	// hvacMonAt is when the last hvac/mon report arrived, zero before one.
+	hvacMonAt time.Time
 
 	// battery holds the tag 0162 readings of the last BatteryWindow.
 	battery    []batteryReading
@@ -1934,7 +1936,7 @@ func (e *EmuState) cacheTLVs(ns *NodeState, tlvs []TLV, uri string, class FrameC
 		}
 		ns.Telemetry[info.name] = info.decode(t.Val)
 	}
-	ns.noteHVAC(tlvs, uri)
+	ns.noteHVAC(tlvs, uri, e.cfg.Now())
 	ns.refreshLastKnown()
 }
 

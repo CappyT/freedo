@@ -153,7 +153,10 @@ type daemon struct {
 	early         map[int]earlyStart
 	// plant holds the plant episode each zone records now. It belongs to the
 	// engine goroutine; see plant_episode.go.
-	plant   map[int]*plantRun
+	plant map[int]*plantRun
+	// energy integrates the boiler heat output. It belongs to the engine
+	// goroutine; see boiler_energy.go.
+	energy  energyMeter
 	started time.Time
 	// calibrated says whether the database held a passive receiver calibration
 	// when the radio opened, and calPort is the serial port health names in the
@@ -390,6 +393,7 @@ func (d *daemon) run(ctx context.Context) {
 			d.tickHomeState(d.emu)
 			d.tickWindows(d.emu)
 			d.tickPairWindow(d.emu)
+			d.tickEnergy()
 			flowChanged := d.tickFlowLimits(d.emu)
 			utcChanged := d.tickUTCOffset(d.emu)
 			targets, err := d.emu.ExpireBoosts(d.retryNow())
@@ -814,6 +818,7 @@ func (d *daemon) handleFrame(fr []byte, paired bool) {
 	defer d.logFallbackEvents(d.emu)
 	defer d.logZoneStateReports(d.emu)
 	defer d.saveLearned(d.emu)
+	defer d.noteBoiler(d.emu)
 	d.noteLinkMaintenanceInbound()
 	batcher, live := d.radio.(immediateBatchRadio)
 	if !live || d.dryRun {
@@ -2137,13 +2142,14 @@ func (d *daemon) getNode(w http.ResponseWriter, r *http.Request) {
 	write(w, v, err)
 }
 
-// getBoiler adds the flow limit state to the boiler view.
+// getBoiler adds the flow limit state and the energy estimate to the boiler view.
 func (d *daemon) getBoiler(w http.ResponseWriter, r *http.Request) {
 	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		return struct {
 			tado.BoilerView
 			FlowLimit map[string]any `json:"flowLimit"`
-		}{e.Snapshot().Boiler, d.flowLimitView(e)}, nil
+			Energy    map[string]any `json:"energy"`
+		}{e.Snapshot().Boiler, d.flowLimitView(e), d.energyView(d.retryNow())}, nil
 	})
 	write(w, v, err)
 }
@@ -4145,6 +4151,10 @@ flags:
 		closeStore(store)
 		die("frame counters: %v", err)
 	}
+	if err := d.restoreEnergy(); err != nil {
+		closeStore(store)
+		die("boiler energy: %v", err)
+	}
 	d.applyHomeState(emu)
 	unknownModules := emu.UnknownInterfaceModules()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -4217,6 +4227,9 @@ flags:
 	_ = srv.Shutdown(shutdownCtx)
 	if err := d.saveDesiredStateBefore(time.Now().Add(stateSaveBudget)); err != nil {
 		fmt.Fprintf(os.Stderr, "WARNING: persist desired state on shutdown: %v\n", err)
+	}
+	if err := d.saveEnergyBefore(time.Now().Add(stateSaveBudget)); err != nil {
+		fmt.Fprintf(os.Stderr, "WARNING: persist boiler energy on shutdown: %v\n", err)
 	}
 	cancel()
 	closeWithin("the radio", radioCloseBudget, link.Close)

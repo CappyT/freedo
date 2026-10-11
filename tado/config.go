@@ -227,6 +227,12 @@ type Options struct {
 	// ZonePIDs holds the zone controller gains, per heating zone. A zone
 	// outside the map takes DefaultZonePID.
 	ZonePIDs map[int]ZonePID `yaml:"zone_pid"`
+	// BoilerMaxPowerKW is the heat output of the boiler at 100 % modulation, in
+	// kW. Without it the daemon does not estimate the boiler energy.
+	BoilerMaxPowerKW *float64 `yaml:"boiler_max_power_kw"`
+	// BoilerMinPowerKW is the heat output at 0 % modulation with the burner on.
+	// Unset takes 0.
+	BoilerMinPowerKW *float64 `yaml:"boiler_min_power_kw"`
 }
 
 // DefaultOfflineSchedule is tag 02b3 for an installation that states no
@@ -745,6 +751,7 @@ func (in *Install) checkOptions(c *issues) {
 	}
 	in.checkFlowOptions(c)
 	in.checkEarlyStartOptions(c)
+	in.checkBoilerPower(c)
 	in.checkDeviceOverlayEnds(c)
 	in.checkZoneOffsets(c)
 	in.checkZonePIDs(c)

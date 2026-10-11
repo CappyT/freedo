@@ -54,6 +54,10 @@ type installPatch struct {
 	// program block. The per-zone switch is the zone's early_start.
 	EarlyStartMaxLeadSec  *int `json:"early_start_max_lead_sec"`
 	EarlyStartMinEpisodes *int `json:"early_start_min_episodes"`
+	// BoilerMaxPowerKW and BoilerMinPowerKW size the boiler energy estimate;
+	// null removes a value.
+	BoilerMaxPowerKW optFloat `json:"boiler_max_power_kw"`
+	BoilerMinPowerKW optFloat `json:"boiler_min_power_kw"`
 }
 
 // networkKeyPut carries the PAN key as 32 hex characters. The field travels in
@@ -249,6 +253,8 @@ func installView(in *tado.Install, rev uint64) map[string]any {
 		"flow_curves":              flowCurvesView(in.Options.FlowCurves),
 		"early_start_max_lead_sec": int(in.Options.EarlyStartMaxLead() / time.Second),
 		"early_start_min_episodes": in.Options.EarlyStartMinEpisodeCount(),
+		"boiler_max_power_kw":      nil,
+		"boiler_min_power_kw":      0.0,
 		"counts": map[string]any{
 			"devices":  len(in.Devices),
 			"zones":    len(in.Zones),
@@ -257,6 +263,9 @@ func installView(in *tado.Install, rev uint64) map[string]any {
 	}
 	if o := in.Options.UTCOffsetMin; o != nil {
 		out["utc_offset_min"] = *o
+	}
+	if maxKW, minKW, ok := in.Options.BoilerPower(); ok {
+		out["boiler_max_power_kw"], out["boiler_min_power_kw"] = maxKW, minKW
 	}
 	return out
 }

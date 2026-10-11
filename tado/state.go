@@ -4,6 +4,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 )
 
 // Derived view model: the emulator's raw TLV cache turned into the numbers a UI
@@ -476,10 +477,15 @@ var hvacResources = map[string]bool{
 // the 0481 list of each resource, which every resource carries under the same
 // tag, and the repeated 0460 fault codes. Each hvac/codes report replaces the
 // fault list, so a report without 0460 clears it. A body with no request URI
-// takes the resource of the attributes its 0481 names.
-func (ns *NodeState) noteHVAC(tlvs []TLV, uri string) {
+// takes the resource of the attributes its 0481 names. at stamps an hvac/mon
+// report, even one with no attribute the boiler view reads: it shows the
+// thermostat alive.
+func (ns *NodeState) noteHVAC(tlvs []TLV, uri string, at time.Time) {
 	path, _, _ := strings.Cut(uri, "?")
 	res := normalizeResource(path)
+	if res == resHVACMon {
+		ns.hvacMonAt = at
+	}
 	var unsupported []string
 	manifest, codes := false, res == resHVACCodes
 	for _, t := range tlvs {
