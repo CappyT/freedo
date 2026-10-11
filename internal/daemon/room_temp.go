@@ -5,8 +5,9 @@ package daemon
 // own sensor and the daemon cannot change what it measures, so the daemon moves
 // the setpoint it writes: the zone shift (zone_offset.go) becomes the external
 // temperature minus the one the zone reports, and the zone reports the external
-// temperature as its own while the reading is fresh. Mode config and dbg2 write
-// tag 0140 instead, which makes a valve home its motor, so they take no reading.
+// temperature as its own while the reading is fresh. Mode config and dbg2 keep
+// the correction in tag 0140 on the valve, so they take no reading. Mode config
+// also makes a valve home its motor on each write. Mode dbg2 does not.
 //
 // It is a slow outer correction on the regulation of the valve:
 //   - the wanted shift is that difference, within roomShiftMaxC of the manual
@@ -68,7 +69,7 @@ const (
 var (
 	errRoomTempZone = errors.New("only a heating zone takes an external room temperature")
 	errRoomTempMode = errors.New("an external room temperature needs offset_mode setpoint: " +
-		"the other modes write tag 0140, which makes a valve home its motor")
+		"the other modes keep the correction in tag 0140 on the valve, and mode config also makes a valve home its motor")
 )
 
 // roomTemp is the external room temperature of one zone and the correction it
