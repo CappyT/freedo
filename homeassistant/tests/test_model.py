@@ -6,7 +6,9 @@ The fixtures are synthetic and follow the JSON the daemon writes.
 import pytest
 
 from model import (
+    boiler_energy,
     boiler_unsupported,
+    energy_state,
     flow_circuit,
     node_calibration,
     node_child_lock,
@@ -140,9 +142,16 @@ SCHEDULE = {
     ],
 }
 
-# GET /api/install: the installation options the integration reads.
+# GET /api/install: the installation options the integration reads. The boiler
+# power is unset: the maximum is null and the minimum 0.
 INSTALL = {"rev": 7, "home_id": 1234567, "offline_schedule": True,
-           "utc_offset_min": None, "timezone": ""}
+           "utc_offset_min": None, "timezone": "",
+           "boiler_max_power_kw": None, "boiler_min_power_kw": 0.0}
+
+# The energy view of GET /api/boiler, with the boiler power set.
+ENERGY = {"running": True, "reason": None, "powerKW": 12.4, "totalKWh": 1234.567,
+          "maxPowerKW": 24.0, "minPowerKW": 3.0, "holdSec": 300,
+          "reportedAt": "2026-01-01T00:00:00Z", "updatedAt": "2026-01-01T00:00:00Z"}
 
 
 def data():
@@ -524,3 +533,33 @@ def test_circuit_sources_and_flow_view():
     # No installation (503 read as {}): no source.
     assert parse(HEALTH, ZONES, NODES, boiler, HOME, None, None, {}).circuit_sources == {}
     assert flow_circuit(data(), 1) is None
+
+
+def test_boiler_energy_state():
+    boiler = {**BOILER, "energy": ENERGY}
+    d = parse(HEALTH, ZONES, NODES, boiler, HOME)
+    assert boiler_energy(d)["totalKWh"] == 1234.567
+    assert energy_state(d) == "running"
+    for reason, state in (
+        ("noMaxPower", "no_max_power"),
+        ("noReport", "no_report"),
+        ("stale", "stale"),
+        ("noBurnerFlag", "no_burner_flag"),
+        ("noModulation", "no_modulation"),
+        # A reason of a newer daemon is unknown, not an error.
+        ("noSuchReason", None),
+    ):
+        stopped = {**BOILER, "energy": {**ENERGY, "running": False, "reason": reason}}
+        assert energy_state(parse(HEALTH, ZONES, NODES, stopped, HOME)) == state
+    # A daemon that does not serve the estimate.
+    assert boiler_energy(data()) is None
+    assert energy_state(data()) is None
+
+
+def test_install_settings():
+    d = parse(HEALTH, ZONES, NODES, BOILER, HOME, None, INSTALL)
+    assert d.settings["boiler_max_power_kw"] is None
+    assert d.settings["boiler_min_power_kw"] == 0.0
+    # No installation (503 read as {}): no settings.
+    assert parse(HEALTH, ZONES, NODES, BOILER, HOME, None, {}).settings == {}
+    assert data().settings == {}

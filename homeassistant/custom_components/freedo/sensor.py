@@ -1,4 +1,5 @@
-"""Sensors: device battery, boiler values and the flow limit state."""
+"""Sensors: device battery, boiler values, the boiler energy estimate and the
+flow limit state."""
 
 from __future__ import annotations
 
@@ -16,6 +17,8 @@ from homeassistant.const import (
     PERCENTAGE,
     EntityCategory,
     UnitOfElectricPotential,
+    UnitOfEnergy,
+    UnitOfPower,
     UnitOfPressure,
     UnitOfTemperature,
     UnitOfTime,
@@ -27,11 +30,15 @@ from .coordinator import FreedoConfigEntry, FreedoCoordinator
 from .entity import FreedoEntity, FreedoNodeEntity
 from .model import (
     CALIBRATION_STATES,
+    ENERGY_REASONS,
+    ENERGY_RUNNING,
     KIND_BRIDGE,
     KIND_VALVE,
     FreedoData,
     Zone,
+    boiler_energy,
     boiler_unsupported,
+    energy_state,
     node_calibration,
     node_firmware,
     node_humidity,
@@ -53,6 +60,21 @@ def _outdoor(key: str) -> Callable[[FreedoData], Any]:
         return outdoor.get(key) if outdoor else None
 
     return value
+
+
+def _energy(key: str) -> Callable[[FreedoData], Any]:
+    def value(data: FreedoData) -> Any:
+        energy = boiler_energy(data)
+        return energy.get(key) if energy else None
+
+    return value
+
+
+def _energy_power(data: FreedoData) -> Any:
+    """The output now. Unknown while the estimate does not run: the daemon
+    sends 0 then."""
+    energy = boiler_energy(data)
+    return energy.get("powerKW") if energy and energy.get("running") else None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -120,6 +142,37 @@ BOILER_SENSORS = (
     ),
 )
 
+# GET /api/boiler energy: an estimate of the heat the boiler delivers, from the
+# modulation and the boiler power of the installation. The two sensors need the
+# maximum power: the estimate cannot run without it.
+ENERGY_SENSORS = (
+    FreedoSensorDescription(
+        key="heat_energy",
+        translation_key="heat_energy",
+        device_class=SensorDeviceClass.ENERGY,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        value_fn=_energy("totalKWh"),
+    ),
+    FreedoSensorDescription(
+        key="heat_power",
+        translation_key="heat_power",
+        device_class=SensorDeviceClass.POWER,
+        native_unit_of_measurement=UnitOfPower.KILO_WATT,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=_energy_power,
+    ),
+)
+
+ENERGY_STATUS = FreedoSensorDescription(
+    key="energy_estimate",
+    translation_key="energy_estimate",
+    device_class=SensorDeviceClass.ENUM,
+    options=[ENERGY_RUNNING, *ENERGY_REASONS.values()],
+    entity_category=EntityCategory.DIAGNOSTIC,
+    value_fn=energy_state,
+)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -132,6 +185,8 @@ async def async_setup_entry(
     entities: list[SensorEntity] = [
         BoilerSensor(coordinator, d) for d in BOILER_SENSORS if d.boiler_attr not in unsupported
     ]
+    if boiler_energy(data) is not None:
+        entities.append(BoilerSensor(coordinator, ENERGY_STATUS))
     for circuit in (data.boiler.get("flowLimit") or {}).get("circuits") or []:
         entities.append(FlowLimitSensor(coordinator, int(circuit["id"]), "servedC"))
         entities.append(FlowLimitSensor(coordinator, int(circuit["id"]), "computedC"))
@@ -165,6 +220,21 @@ async def async_setup_entry(
 
     add_humidity()
     entry.async_on_unload(coordinator.async_add_listener(add_humidity))
+
+    # The energy sensors appear once the installation holds the boiler power.
+    estimate = False
+
+    @callback
+    def add_estimate() -> None:
+        nonlocal estimate
+        energy = boiler_energy(coordinator.data)
+        if estimate or not energy or energy.get("maxPowerKW") is None:
+            return
+        estimate = True
+        async_add_entities(BoilerSensor(coordinator, d) for d in ENERGY_SENSORS)
+
+    add_estimate()
+    entry.async_on_unload(coordinator.async_add_listener(add_estimate))
 
 
 class BoilerSensor(FreedoEntity, SensorEntity):

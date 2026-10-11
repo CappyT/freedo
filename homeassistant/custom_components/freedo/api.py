@@ -116,6 +116,11 @@ class FreedoClient:
             "PATCH", "/api/install", {"offline_schedule": enabled}
         )
 
+    async def patch_install(self, **fields: Any) -> dict[str, Any]:
+        """Write installation options. The daemon answers with the whole view
+        of GET /api/install."""
+        return await self._request("PATCH", "/api/install", fields)
+
     async def set_display(
         self,
         node: str,

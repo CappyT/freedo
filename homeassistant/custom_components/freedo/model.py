@@ -48,6 +48,21 @@ OPEN_WINDOW_MAX_SEC = 0xFFFF
 # The daemon rejects an outdoor temperature outside -60..60 C with 400.
 OUTDOOR_BOUND_C = 60.0
 
+# The daemon rejects a boiler power above this with 400 (a larger value is a
+# typo in W).
+BOILER_POWER_MAX_KW = 500.0
+
+# GET /api/boiler energy.reason, the cause of an estimate that does not run, by
+# the state of the energy estimate sensor.
+ENERGY_REASONS = {
+    "noMaxPower": "no_max_power",
+    "noReport": "no_report",
+    "stale": "stale",
+    "noBurnerFlag": "no_burner_flag",
+    "noModulation": "no_modulation",
+}
+ENERGY_RUNNING = "running"
+
 # The device stores one day program in at most this many bytes of its protobuf
 # encoding, and the daemon rejects a longer one with 400.
 SCHEDULE_DAY_BYTES_MAX = 255
@@ -95,6 +110,9 @@ class FreedoData:
     # GET /api/install/zones zones[]: the installation row by zone number.
     zone_settings: dict[int, dict[str, Any]] = field(default_factory=dict)
     boiler: dict[str, Any] = field(default_factory=dict)
+    # GET /api/install: the installation options. Empty when the daemon holds
+    # no installation.
+    settings: dict[str, Any] = field(default_factory=dict)
     away: bool = False
     # GET /api/install offline_schedule: d/config tag 02b3 of every device
     # without a per-device value. None when the daemon holds no installation.
@@ -127,7 +145,11 @@ def parse(
     """Build the model from the read endpoints. install is the body of
     GET /api/install/zones, settings the body of GET /api/install, circuits the
     body of GET /api/install/circuits."""
-    data = FreedoData(boiler=dict(boiler or {}), away=bool((home or {}).get("away")))
+    data = FreedoData(
+        boiler=dict(boiler or {}),
+        settings=dict(settings or {}),
+        away=bool((home or {}).get("away")),
+    )
     offline = (settings or {}).get("offline_schedule")
     if isinstance(offline, bool):
         data.offline_schedule = offline
@@ -347,6 +369,24 @@ def flow_circuit(data: FreedoData, circuit: int) -> Mapping[str, Any] | None:
         if view.get("id") == circuit:
             return view
     return None
+
+
+def boiler_energy(data: FreedoData) -> Mapping[str, Any] | None:
+    """GET /api/boiler energy: the heat output estimate, None on a daemon that
+    does not serve it."""
+    energy = data.boiler.get("energy")
+    return energy if isinstance(energy, Mapping) else None
+
+
+def energy_state(data: FreedoData) -> str | None:
+    """"running", or the cause the estimate does not run, None when the daemon
+    names a cause this version does not know."""
+    energy = boiler_energy(data)
+    if energy is None:
+        return None
+    if energy.get("running"):
+        return ENERGY_RUNNING
+    return ENERGY_REASONS.get(energy.get("reason"))
 
 
 def boiler_unsupported(data: FreedoData) -> set[str]:

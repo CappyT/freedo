@@ -268,3 +268,12 @@ def test_flow_limit_payload():
     assert run(client.install_circuits()) == circuits
     run(client.set_flow_limit(1, 52, "0000000000000001"))
     assert session.calls[-1]["json"] == {"tempC": 52, "id": 1, "target": "0000000000000001"}
+
+
+def test_patch_install_payload():
+    view = {"rev": 8, "boiler_max_power_kw": 24.0, "boiler_min_power_kw": 3.0}
+    session = FakeSession({("PATCH", "/api/install"): (200, view)})
+    client = FreedoClient(session, "h", 8080)
+    assert run(client.patch_install(boiler_max_power_kw=24.0)) == view
+    assert session.calls[-1]["method"] == "PATCH"
+    assert session.calls[-1]["json"] == {"boiler_max_power_kw": 24.0}

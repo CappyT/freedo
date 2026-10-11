@@ -1,8 +1,10 @@
 """Numbers: the temperature correction of each heating zone, its open window
-detection time and the timer of a change made on a device, and the flow limit
-of each circuit."""
+detection time and the timer of a change made on a device, the flow limit of
+each circuit and the power of the boiler."""
 
 from __future__ import annotations
+
+from collections.abc import Mapping
 
 from homeassistant.components.number import (
     NumberDeviceClass,
@@ -10,13 +12,14 @@ from homeassistant.components.number import (
     NumberMode,
     RestoreNumber,
 )
-from homeassistant.const import EntityCategory, UnitOfTemperature, UnitOfTime
+from homeassistant.const import EntityCategory, UnitOfPower, UnitOfTemperature, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import FreedoConfigEntry, FreedoCoordinator
 from .entity import FreedoEntity, FreedoZoneSettingEntity, call_api
 from .model import (
+    BOILER_POWER_MAX_KW,
     FLOW_LIMIT_MAX_C,
     FLOW_LIMIT_MIN_C,
     OFFSET_LIMIT_C,
@@ -50,6 +53,13 @@ async def async_setup_entry(
     for circuit in sorted(data.circuit_sources):
         if flow_circuit(data, circuit) is not None:
             entities.append(FlowLimitNumber(coordinator, circuit))
+    # GET /api/install serves the boiler power while the daemon holds an
+    # installation.
+    entities.extend(
+        number(coordinator)
+        for number in (BoilerMaxPowerNumber, BoilerMinPowerNumber)
+        if number.field in data.settings
+    )
     async_add_entities(entities)
 
 
@@ -193,3 +203,51 @@ class FlowLimitNumber(FreedoEntity, NumberEntity):
         source = self.coordinator.data.circuit_sources[self._circuit]
         await call_api(self.coordinator.client.set_flow_limit(self._circuit, value, source))
         await self.coordinator.async_request_refresh()
+
+
+class _BoilerPowerNumber(FreedoEntity, NumberEntity):
+    """The boiler power of the installation (GET and PATCH /api/install), which
+    sizes the energy estimate. The daemon keeps the minimum below the maximum
+    and answers 400 otherwise."""
+
+    _attr_device_class = NumberDeviceClass.POWER
+    _attr_native_unit_of_measurement = UnitOfPower.KILO_WATT
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_native_max_value = BOILER_POWER_MAX_KW
+    _attr_native_step = 0.1
+    _attr_mode = NumberMode.BOX
+    field: str
+
+    def __init__(self, coordinator: FreedoCoordinator) -> None:
+        super().__init__(coordinator, self._attr_translation_key)
+        self._attr_device_info = self.hub_device()
+
+    @property
+    def native_value(self) -> float | None:
+        return self.coordinator.data.settings.get(self.field)
+
+    @property
+    def available(self) -> bool:
+        return super().available and self.field in self.coordinator.data.settings
+
+    async def async_set_native_value(self, value: float) -> None:
+        view = await call_api(self.coordinator.client.patch_install(**{self.field: round(value, 2)}))
+        if isinstance(view, Mapping):
+            self.coordinator.data.settings.update(view)
+            self.coordinator.async_update_listeners()
+
+
+class BoilerMaxPowerNumber(_BoilerPowerNumber):
+    """The output of the boiler at 100 % modulation."""
+
+    _attr_translation_key = "boiler_max_power"
+    _attr_native_min_value = 0.1
+    field = "boiler_max_power_kw"
+
+
+class BoilerMinPowerNumber(_BoilerPowerNumber):
+    """The output of the boiler at 0 % modulation."""
+
+    _attr_translation_key = "boiler_min_power"
+    _attr_native_min_value = 0
+    field = "boiler_min_power_kw"
