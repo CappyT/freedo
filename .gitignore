@@ -55,3 +55,12 @@ tado_capture/memory/
 .vscode/
 .mcp.json
 tado_capture/ota-watch/
+
+# local tooling and build outputs that hold installation values
+tado_capture/ota-fetch/
+tado_capture/cc1101_bridge/firmware/*/build/
+tado_capture/internet_bridge/
+tado_capture/thermostat_ru/
+tado_capture/valve_nrf52/
+tado_capture/extflash/
+.claude/
