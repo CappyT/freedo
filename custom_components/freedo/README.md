@@ -86,6 +86,7 @@ The integration and the options of the add-on have English, Italian, German and 
 | select Device change end rule, number Device change timer | heating zone | `/api/install/zones` `device_overlay_end`, `device_overlay_end_sec`; writes `PATCH /api/install/zones/{n}` |
 | number Away temperature | heating zone | `/api/install/zones` `away_temperature_c`; writes `PATCH /api/install/zones/{n}` |
 | number Temperature offset | heating zone | `/api/install/zones` `setpoint_offset_c`; writes `POST /api/zones/{n}/offset` |
+| sensor External room sensor | heating zone | `/api/zones` `declared[].externalTemp`, `/api/install/zones` `offset_mode` |
 
 ### Valve display
 
@@ -247,6 +248,16 @@ difference with the difference of Gas volume over the same period.
   is unknown until the zone reports. The attribute `hvac_action` of the climate
   entity follows the same rule. Reports count the state of this sensor: see
   Reports.
+- Sensor External room sensor shows whether a heating zone regulates on the
+  reading of its room temperature sensor. The state is `active`, or the cause:
+  `wrong_offset_mode` (the offset mode is not `setpoint`), `no_reading` (the
+  daemon holds no reading) or `stale` (the last reading is older than
+  `room_temp_max_age_sec`). It is unknown while the daemon serves no offset
+  mode. The attributes are `offset_mode`, `temperature_c` and `age_sec` (the
+  reading), `device_temperature_c` (the temperature of the valve), `shift_c`
+  (the shift applied to the setpoints) and `wanted_shift_c` (the shift it moves
+  toward). The sensor needs a daemon that serves `externalTemp` in
+  `GET /api/zones`.
 - Binary sensor Communication warning is on while the device shows a radio link
   warning. The attribute `warnings` lists them: `noNeighbour` and
   `noConfigAnswer`. These are the link bits of the fault word. They clear
@@ -509,6 +520,8 @@ Open the integration options to map Home Assistant entities to the daemon:
   starts. When the daemon does not answer or answers 5xx, the integration
   sends the current state of the zone again every 30 seconds until the daemon
   takes it. A 4xx answer is not sent again.
+- Room temperature sensors. The last options step selects an optional
+  temperature sensor for each heating zone. See Room temperature of a zone.
 
 The window sensors and the service `freedo.set_window` write the same hold of a
 zone. A sensor pushes its zone when its state changes, when the integration
@@ -518,6 +531,47 @@ closed while a sensor stays open, until a sensor of the zone changes state.
 
 A state that is `unavailable`, `unknown` or not a number is not sent. An outdoor
 temperature outside -60..60 C is not sent, because the daemon rejects it.
+
+### Room temperature of a zone
+
+A heating zone regulates on the sensor of its valve. With a room temperature
+sensor, the daemon corrects the setpoints it writes, so the room reaches the
+target on the reading of that sensor.
+
+- Select a sensor with the device class temperature for each heating zone. A
+  sensor can serve several zones. The hot water zone has no field. The step
+  lists the zones only while the integration is loaded. Otherwise it keeps the
+  saved sensors.
+- On each state change and every 15 minutes, the integration sends
+  `POST /api/zones/{n}/temperature` with `{"tempC": n}`. It also sends the
+  current state when it starts. A value in degrees Fahrenheit or kelvin is
+  converted. A state that is `unavailable`, `unknown` or not a number is not
+  sent. A value outside -10..50 C is not sent, because the daemon rejects it.
+  The integration logs the first failed push of a zone and stays silent until a
+  push succeeds.
+- The zone needs the offset mode `setpoint`. In the modes `config` and `dbg2`
+  the daemon answers 409, because those modes write tag `0140` and make a valve
+  home its motor. Home Assistant has no entity or service for the offset mode.
+  Set it on the daemon with `PATCH /api/install/zones/{n}` and
+  `{"offset_mode": "setpoint"}`.
+- The correction is slow by design, because a valve next to a radiator swings
+  by several degrees. The daemon cannot change what the valve measures, so it
+  filters the difference with a time constant of 2 hours, shifts the setpoints
+  by 0.2 C at a time and waits at least 15 minutes between two shifts. A
+  difference of 2 C needs about 4 hours. These values are design estimates. No
+  test on air verifies them.
+- While the reading is fresh, the shift replaces the number Temperature offset,
+  and the climate entity shows the sensor temperature as the current
+  temperature.
+- The daemon keeps the reading in memory. A reading older than
+  `room_temp_max_age_sec` (30 minutes by default) ends the correction, and the
+  shift returns to the manual offset at the same slow pace. A sensor that stays
+  unavailable ends the correction in this way.
+- When you remove the sensor of a zone in the options, the integration sends
+  `DELETE /api/zones/{n}/temperature`. The release starts at once and runs at
+  the same pace. If the call fails, the age limit ends the correction.
+- Sensor External room sensor shows whether the zone uses the reading, and the
+  cause when it does not. See Diagnostics.
 
 ## Presence blueprint
 
