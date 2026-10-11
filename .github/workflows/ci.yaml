@@ -18,8 +18,7 @@ jobs:
           go-version-file: go.mod
       - run: go build ./...
       - run: go vet ./...
-      # TestScratchCapturedFlowOptions fails on purpose: it prints a decoded capture.
-      - run: go test ./... -skip TestScratchCapturedFlowOptions
+      - run: go test ./...
 
   integration:
     runs-on: ubuntu-latest
