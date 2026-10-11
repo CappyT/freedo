@@ -1,0 +1,16 @@
+configuration:
+  serial_port:
+    name: Serial port
+    description: >-
+      The USB serial port of the ESP32 radio bridge. Leave it empty to run the
+      daemon without a radio.
+  api_token:
+    name: API token
+    description: >-
+      The bearer token of the HTTP API. Leave it empty and the add-on creates a
+      token and keeps it in its data folder.
+  transmit:
+    name: Transmit
+    description: >-
+      Send frames on air. Off means dry-run. Switch the commercial bridge off
+      before you turn this on.

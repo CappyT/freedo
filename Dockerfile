@@ -1,6 +1,10 @@
 # syntax=docker/dockerfile:1
 
-FROM golang:1.26-alpine AS build
+# The build stage runs on the build host and cross-compiles: the daemon is pure
+# Go (CGO_ENABLED=0, the sqlite driver is modernc), so no emulation is needed.
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS build
+ARG TARGETOS
+ARG TARGETARCH
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
@@ -11,14 +15,28 @@ COPY cc1101 ./cc1101
 ARG VERSION=dev
 ARG COMMIT=unknown
 ARG DATE=unknown
-RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w \
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags "-s -w \
       -X freedo/internal/buildinfo.Version=${VERSION} \
       -X freedo/internal/buildinfo.Commit=${COMMIT} \
       -X freedo/internal/buildinfo.Date=${DATE}" \
     -o /out/freedo ./cmd/freedo
 
+# The Home Assistant add-on image: build it with --target addon. The Supervisor
+# starts the CMD as root and reads io.hass.version to match the image to the
+# version in addon/config.yaml. No io.hass.arch: one manifest serves both
+# platforms and the Supervisor takes the platform from the image itself.
+FROM alpine:3.24 AS addon
+RUN apk add --no-cache jq curl
+COPY --from=build /out/freedo /usr/local/bin/freedo
+COPY --chmod=755 addon/run.sh /run.sh
+ARG VERSION=dev
+LABEL io.hass.type="app" io.hass.version="${VERSION}"
+CMD ["/run.sh"]
+
+# The standalone daemon image. It is the last stage, so a plain docker build
+# produces it.
 # alpine instead of a distroless image: busybox wget runs the health check.
-FROM alpine:3.24
+FROM alpine:3.24 AS daemon
 RUN adduser -D -H -u 10001 freedo && mkdir /data && chown freedo:freedo /data
 COPY --from=build /out/freedo /usr/local/bin/freedo
 USER 10001:10001
