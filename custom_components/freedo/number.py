@@ -18,15 +18,15 @@ from homeassistant.const import (
     UnitOfPower,
     UnitOfTemperature,
     UnitOfTime,
-    UnitOfVolumeFlowRate,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import FreedoConfigEntry, FreedoCoordinator
-from .entity import FreedoEntity, FreedoZoneSettingEntity, call_api
+from .entity import FUEL_FLOW_UNITS, FreedoEntity, FreedoZoneSettingEntity, call_api
 from .model import (
     BOILER_GAS_MAX_M3H,
+    FUEL_KG,
     BOILER_POWER_MAX_KW,
     FLOW_LIMIT_MAX_C,
     FLOW_LIMIT_MIN_C,
@@ -38,6 +38,7 @@ from .model import (
     ZONE_MIN_C,
     Zone,
     flow_circuit,
+    fuel_unit,
     zone_offset_mode,
     zone_setting,
 )
@@ -297,13 +298,20 @@ class _BoilerPowerNumber(_BoilerRangeNumber):
 
 
 class _BoilerGasNumber(_BoilerRangeNumber):
-    """The gas flow at the burner, which sizes the gas estimate. Both flows are
-    needed: the minimum has no default."""
+    """The fuel flow at the burner, which sizes the gas estimate, in the unit of
+    options.fuel_unit per hour. Both flows are needed: the minimum has no
+    default."""
 
-    _attr_device_class = NumberDeviceClass.VOLUME_FLOW_RATE
-    _attr_native_unit_of_measurement = UnitOfVolumeFlowRate.CUBIC_METERS_PER_HOUR
     _attr_native_max_value = BOILER_GAS_MAX_M3H
     _attr_native_step = 0.01
+
+    @property
+    def device_class(self) -> NumberDeviceClass | None:
+        return None if fuel_unit(self.coordinator.data) == FUEL_KG else NumberDeviceClass.VOLUME_FLOW_RATE
+
+    @property
+    def native_unit_of_measurement(self) -> str:
+        return FUEL_FLOW_UNITS[fuel_unit(self.coordinator.data)]
 
 
 class BoilerMaxPowerNumber(_BoilerPowerNumber):

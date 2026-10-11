@@ -137,6 +137,7 @@ func ReadInstall(ctx context.Context, q Querier) (*tado.Install, uint64, error) 
 	in.Options.Timezone = kv["timezone"]
 	in.Options.RouterGateway = kv["router_gateway"]
 	in.Options.RouterDNS = kv["router_dns"]
+	in.Options.FuelUnit = kv["fuel_unit"]
 	if raw, ok := kv["utc_push_spacing_sec"]; ok {
 		sec, err := strconv.Atoi(raw)
 		if err != nil {
@@ -630,6 +631,9 @@ func (s *Store) ReplaceInstall(ctx context.Context, in *tado.Install) (uint64, e
 	}
 	if o := in.Options.RouterDNS; o != "" {
 		values = append(values, [2]string{"router_dns", o})
+	}
+	if o := in.Options.FuelUnit; o != "" {
+		values = append(values, [2]string{"fuel_unit", o})
 	}
 	if o := in.Options.UTCPushSpacingSec; o != nil {
 		values = append(values, [2]string{"utc_push_spacing_sec", strconv.Itoa(*o)})

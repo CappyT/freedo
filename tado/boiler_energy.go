@@ -11,8 +11,33 @@ import "time"
 const BoilerMaxPowerLimitKW = 500
 
 // BoilerMaxGasLimitM3H bounds options.boiler_max_gas_m3h: 500 kW burns about
-// 53 m3/h of natural gas, so a larger value is a typo in l/h.
+// 53 m3/h of natural gas, 50 l/h of heating oil and 40 kg/h of propane, so a
+// larger value is a typo in a smaller unit.
 const BoilerMaxGasLimitM3H = 60
+
+// The units of options.fuel_unit.
+const (
+	FuelM3    = "m3"
+	FuelLitre = "l"
+	FuelKg    = "kg"
+)
+
+// Fuel returns the unit of the fuel flow and counter, m3 while the option is
+// unset.
+func (o Options) Fuel() string {
+	if o.FuelUnit == "" {
+		return FuelM3
+	}
+	return o.FuelUnit
+}
+
+func (in *Install) checkFuelUnit(c *issues) {
+	switch in.Options.Fuel() {
+	case FuelM3, FuelLitre, FuelKg:
+	default:
+		c.errf("options.fuel_unit", "%q is not one of %s, %s, %s", in.Options.FuelUnit, FuelM3, FuelLitre, FuelKg)
+	}
+}
 
 // BoilerPower returns the output of the boiler at 100 % and at 0 % modulation,
 // in kW. ok is false while no maximum is configured.
@@ -26,8 +51,8 @@ func (o Options) BoilerPower() (maxKW, minKW float64, ok bool) {
 	return *o.BoilerMaxPowerKW, minKW, true
 }
 
-// BoilerGas returns the gas flow at the burner at 100 % and at 0 % modulation,
-// in m3/h. ok is false until both are configured: unlike the output, the
+// BoilerGas returns the fuel flow at the burner at 100 % and at 0 % modulation,
+// in Fuel per hour. ok is false until both are configured: unlike the output, the
 // minimum has no safe default, because a data sheet minimum is never 0.
 func (o Options) BoilerGas() (maxM3H, minM3H float64, ok bool) {
 	if o.BoilerMaxGasM3H == nil || o.BoilerMinGasM3H == nil {
@@ -39,7 +64,7 @@ func (o Options) BoilerGas() (maxM3H, minM3H float64, ok bool) {
 func (in *Install) checkBoilerPower(c *issues) {
 	o := in.Options
 	checkBoilerRange(c, "power_kw", "a power in kW", o.BoilerMaxPowerKW, o.BoilerMinPowerKW, BoilerMaxPowerLimitKW)
-	checkBoilerRange(c, "gas_m3h", "a gas flow in m3/h", o.BoilerMaxGasM3H, o.BoilerMinGasM3H, BoilerMaxGasLimitM3H)
+	checkBoilerRange(c, "gas_m3h", "a fuel flow in "+o.Fuel()+"/h", o.BoilerMaxGasM3H, o.BoilerMinGasM3H, BoilerMaxGasLimitM3H)
 }
 
 // checkBoilerRange checks a maximum and a minimum option of the boiler: the

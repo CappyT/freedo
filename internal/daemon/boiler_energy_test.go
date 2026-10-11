@@ -849,3 +849,54 @@ func TestInstallAPIPatchesBoilerGas(t *testing.T) {
 		t.Errorf("view after null = %v, %v, want null and null", view["boiler_max_gas_m3h"], view["boiler_min_gas_m3h"])
 	}
 }
+
+// TestInstallAPIPatchesFuelUnit: the fuel unit reads m3 by default, the install
+// patch stores l or kg, the energy view names it in the gas object, and an
+// unknown unit is refused. null returns it to m3. The flow limit stays one
+// value per hour in any unit.
+func TestInstallAPIPatchesFuelUnit(t *testing.T) {
+	a := newInstallAPI(t)
+	unit := func() any {
+		t.Helper()
+		var boiler struct {
+			Energy struct {
+				Gas map[string]any `json:"gas"`
+			} `json:"energy"`
+		}
+		if code := getJSON(t, a.base+"/api/boiler", &boiler); code != http.StatusOK {
+			t.Fatalf("GET /api/boiler: code=%d", code)
+		}
+		if view := a.get("/api/install")["fuel_unit"]; view != boiler.Energy.Gas["unit"] {
+			t.Errorf("install fuel_unit = %v, gas unit = %v, want the same", view, boiler.Energy.Gas["unit"])
+		}
+		return boiler.Energy.Gas["unit"]
+	}
+	if got := unit(); got != "m3" {
+		t.Errorf("default unit = %v, want m3", got)
+	}
+	for _, want := range []string{"l", "kg", "m3"} {
+		a.mutate(http.MethodPatch, "/api/install", map[string]any{"fuel_unit": want, "boiler_max_gas_m3h": 2.4, "boiler_min_gas_m3h": 0.5})
+		if got := unit(); got != want {
+			t.Errorf("unit after the patch = %v, want %s", got, want)
+		}
+	}
+	a.mutate(http.MethodPatch, "/api/install", map[string]any{"fuel_unit": "kg"})
+	stored, _, err := a.store.LoadInstall(context.Background())
+	if err != nil || stored.Options.Fuel() != "kg" {
+		t.Errorf("stored unit = %q (%v), want kg", stored.Options.Fuel(), err)
+	}
+	for what, body := range map[string]map[string]any{
+		"unknown unit":  {"fuel_unit": "gallon"},
+		"upper case":    {"fuel_unit": "KG"},
+		"a number":      {"fuel_unit": 1},
+		"flow too high": {"boiler_max_gas_m3h": 61},
+	} {
+		if code, resp := a.call(http.MethodPatch, "/api/install", body); code != http.StatusBadRequest {
+			t.Errorf("%s: code=%d %v, want 400", what, code, resp)
+		}
+	}
+	a.mutate(http.MethodPatch, "/api/install", map[string]any{"fuel_unit": nil})
+	if got := unit(); got != "m3" {
+		t.Errorf("unit after null = %v, want m3", got)
+	}
+}

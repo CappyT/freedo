@@ -258,6 +258,25 @@ func TestInstallRoundTripKeepsRouterIPv4(t *testing.T) {
 	}
 }
 
+// TestInstallRoundTripKeepsFuelUnit: the fuel unit survives the database, and
+// an installation that states none loads none and reads m3.
+func TestInstallRoundTripKeepsFuelUnit(t *testing.T) {
+	in, err := tado.Parse([]byte(fixtureInstallYAML + "  fuel_unit: l\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, _ := storeWithInstall(t, in)
+	got, _, err := store.LoadInstall(context.Background())
+	if err != nil || got.Options.Fuel() != "l" {
+		t.Errorf("loaded unit = %q (%v), want l", got.Options.Fuel(), err)
+	}
+	bare, _ := storeWithInstall(t, defaultInstall)
+	got, _, err = bare.LoadInstall(context.Background())
+	if err != nil || got.Options.FuelUnit != "" || got.Options.Fuel() != "m3" {
+		t.Errorf("an installation without a unit loaded %q (%v), want none and m3", got.Options.FuelUnit, err)
+	}
+}
+
 // compareInstalls checks the resolved values, not the reference spellings: the
 // database keeps a wire EUI where the config held a serial or a label.
 func compareInstalls(t *testing.T, got, want *tado.Install) {

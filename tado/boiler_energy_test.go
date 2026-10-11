@@ -1,6 +1,7 @@
 package tado
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -129,5 +130,32 @@ func TestBoilerGasOptions(t *testing.T) {
 		if err := in.Validate(); err != nil {
 			t.Errorf("%s: refused: %v", name, err)
 		}
+	}
+}
+
+// TestFuelUnit: the unit reads m3 while unset, only m3, l and kg are valid, and
+// the flow limit stays one value per hour in any of them.
+func TestFuelUnit(t *testing.T) {
+	if got := (Options{}).Fuel(); got != FuelM3 {
+		t.Errorf("default unit = %q, want m3", got)
+	}
+	for _, unit := range []string{"m3", "l", "kg"} {
+		in := synthInstall(t)
+		in.Options.FuelUnit, in.Options.BoilerMaxGasM3H = unit, f64(BoilerMaxGasLimitM3H)
+		if err := in.Validate(); err != nil {
+			t.Errorf("%s: refused: %v", unit, err)
+		}
+	}
+	for _, unit := range []string{"gallon", "L", "m^3", " kg"} {
+		in := synthInstall(t)
+		in.Options.FuelUnit = unit
+		if err := in.Validate(); err == nil {
+			t.Errorf("%q: accepted", unit)
+		}
+	}
+	in := synthInstall(t)
+	in.Options.FuelUnit, in.Options.BoilerMaxGasM3H = "kg", f64(BoilerMaxGasLimitM3H+1)
+	if err := in.Validate(); err == nil || !strings.Contains(err.Error(), "kg/h") {
+		t.Errorf("a flow over the limit: %v, want a refusal in kg/h", err)
 	}
 }

@@ -462,6 +462,7 @@ func (s *stateStore) PatchInstall(ctx context.Context, p installPatch) (installR
 			"timezone":       p.Timezone,
 			"router_gateway": p.RouterGateway,
 			"router_dns":     p.RouterDNS,
+			"fuel_unit":      p.FuelUnit,
 		} {
 			if !v.set {
 				continue

@@ -13,6 +13,7 @@ from model import (
     boiler_unsupported,
     energy_state,
     flow_circuit,
+    fuel_unit,
     gas_state,
     node_calibration,
     node_child_lock,
@@ -647,6 +648,19 @@ def test_boiler_gas_state():
     assert gas_state(old) is None
     assert boiler_gas(data()) is None
     assert gas_state(data()) is None
+
+
+def test_fuel_unit():
+    # A daemon that serves no unit counts natural gas in m3.
+    assert fuel_unit(data()) == "m3"
+    energy = {**ENERGY, "gas": {**GAS, "unit": "l"}}
+    from_view = parse(HEALTH, ZONES, NODES, {**BOILER, "energy": energy}, HOME)
+    assert fuel_unit(from_view) == "l"
+    # The install settings come first, and an unknown unit is no unit.
+    both = parse(HEALTH, ZONES, NODES, {**BOILER, "energy": energy}, HOME, settings={"fuel_unit": "kg"})
+    assert fuel_unit(both) == "kg"
+    unknown = parse(HEALTH, ZONES, NODES, BOILER, HOME, settings={"fuel_unit": "gallon"})
+    assert fuel_unit(unknown) == "m3"
 
 
 def test_install_settings():

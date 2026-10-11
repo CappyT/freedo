@@ -1,6 +1,6 @@
 package daemon
 
-// boiler_energy: an estimate of the heat the boiler delivers and of the gas it
+// boiler_energy: an estimate of the heat the boiler delivers and of the fuel it
 // burns, integrated from the hvac/mon reports of the wall thermostat. Home
 // Assistant turns the counters into an energy sensor and a gas sensor and
 // prices them. The estimate has three error sources: the modulation is
@@ -207,7 +207,9 @@ func (m *energyMeter) rateAt(now time.Time, o tado.Options, of func(tado.Options
 // energyView renders the estimate for GET /api/boiler: whether it runs and, if
 // not, why; the output now; the counter; and the times of the last report and
 // of the last stretch integrated. The gas count sits in its own object, with
-// the same fields, because it runs on its own settings.
+// the same fields, because it runs on its own settings. Its field names keep
+// the m3 of the first unit: the flow is in unit per hour and the total in unit,
+// the unit being options.fuel_unit.
 func (d *daemon) energyView(now time.Time) map[string]any {
 	m := &d.energy
 	var o tado.Options
@@ -219,7 +221,7 @@ func (d *daemon) energyView(now time.Time) map[string]any {
 	flow, gasWhy := m.rateAt(now, o, boilerGas, energyNoGasFlow)
 	gas := map[string]any{
 		"running": gasWhy == "", "reason": nil, "flowM3H": round3(flow), "totalM3": round3(m.shownM3),
-		"maxFlowM3H": nil, "minFlowM3H": nil,
+		"maxFlowM3H": nil, "minFlowM3H": nil, "unit": o.Fuel(),
 	}
 	if gasWhy != "" {
 		gas["reason"] = gasWhy

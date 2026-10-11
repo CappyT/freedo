@@ -18,22 +18,25 @@ from homeassistant.const import (
     EntityCategory,
     UnitOfElectricPotential,
     UnitOfEnergy,
+    UnitOfMass,
     UnitOfPower,
     UnitOfPressure,
     UnitOfTemperature,
     UnitOfTime,
     UnitOfVolume,
-    UnitOfVolumeFlowRate,
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import FreedoConfigEntry, FreedoCoordinator
-from .entity import FreedoEntity, FreedoNodeEntity
+from .entity import FUEL_FLOW_UNITS, FreedoEntity, FreedoNodeEntity
 from .model import (
     CALIBRATION_STATES,
     ENERGY_REASONS,
     ENERGY_RUNNING,
+    FUEL_KG,
+    FUEL_LITRE,
+    FUEL_M3,
     GAS_REASONS,
     KIND_BRIDGE,
     KIND_VALVE,
@@ -43,6 +46,7 @@ from .model import (
     boiler_gas,
     boiler_unsupported,
     energy_state,
+    fuel_unit,
     gas_state,
     node_calibration,
     node_firmware,
@@ -193,27 +197,32 @@ ENERGY_STATUS = FreedoSensorDescription(
     value_fn=energy_state,
 )
 
-# GET /api/boiler energy.gas: an estimate of the gas the boiler burns, from the
-# modulation and the gas flow range of the installation. The two sensors need
-# both flows: the estimate cannot run without them.
+# GET /api/boiler energy.gas: an estimate of the fuel the boiler burns, from the
+# modulation and the flow range of the installation. The two sensors need both
+# flows: the estimate cannot run without them. The unit of both follows
+# options.fuel_unit, see GasSensor.
 GAS_SENSORS = (
     FreedoSensorDescription(
         key="gas_volume",
         translation_key="gas_volume",
-        device_class=SensorDeviceClass.GAS,
-        native_unit_of_measurement=UnitOfVolume.CUBIC_METERS,
         state_class=SensorStateClass.TOTAL_INCREASING,
         value_fn=_gas("totalM3"),
     ),
     FreedoSensorDescription(
         key="gas_flow",
         translation_key="gas_flow",
-        device_class=SensorDeviceClass.VOLUME_FLOW_RATE,
-        native_unit_of_measurement=UnitOfVolumeFlowRate.CUBIC_METERS_PER_HOUR,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=_gas_flow,
     ),
 )
+
+# The device class and unit of the fuel counter by options.fuel_unit: natural
+# gas counts as gas, oil as a volume and LPG or pellets as a weight.
+FUEL_TOTALS = {
+    FUEL_M3: (SensorDeviceClass.GAS, UnitOfVolume.CUBIC_METERS),
+    FUEL_LITRE: (SensorDeviceClass.VOLUME, UnitOfVolume.LITERS),
+    FUEL_KG: (SensorDeviceClass.WEIGHT, UnitOfMass.KILOGRAMS),
+}
 
 GAS_STATUS = FreedoSensorDescription(
     key="gas_estimate",
@@ -299,7 +308,7 @@ async def async_setup_entry(
         if gas_estimate or not gas or gas.get("maxFlowM3H") is None or gas.get("minFlowM3H") is None:
             return
         gas_estimate = True
-        async_add_entities(BoilerSensor(coordinator, d) for d in GAS_SENSORS)
+        async_add_entities(GasSensor(coordinator, d) for d in GAS_SENSORS)
 
     add_gas_estimate()
     entry.async_on_unload(coordinator.async_add_listener(add_gas_estimate))
@@ -323,6 +332,24 @@ class BoilerSensor(FreedoEntity, SensorEntity):
             return None
         outdoor = (self.coordinator.data.boiler.get("flowLimit") or {}).get("outdoor") or {}
         return {"at": outdoor.get("at"), "stale": outdoor.get("stale")}
+
+
+class GasSensor(BoilerSensor):
+    """The fuel counter or flow, in the unit of options.fuel_unit."""
+
+    @property
+    def device_class(self) -> SensorDeviceClass | None:
+        unit = fuel_unit(self.coordinator.data)
+        if self.entity_description.key == "gas_volume":
+            return FUEL_TOTALS[unit][0]
+        return None if unit == FUEL_KG else SensorDeviceClass.VOLUME_FLOW_RATE
+
+    @property
+    def native_unit_of_measurement(self) -> str:
+        unit = fuel_unit(self.coordinator.data)
+        if self.entity_description.key == "gas_volume":
+            return FUEL_TOTALS[unit][1]
+        return FUEL_FLOW_UNITS[unit]
 
 
 class FlowLimitSensor(FreedoEntity, SensorEntity):

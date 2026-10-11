@@ -1620,6 +1620,46 @@ async def test_gas_sensors(hass, client):
     assert hass.states.get(status_id).state == "stale"
 
 
+@pytest.mark.parametrize(
+    ("unit", "volume_class", "volume_unit", "flow_class", "flow_unit"),
+    [
+        ("m3", "gas", "m³", "volume_flow_rate", "m³/h"),
+        ("l", "volume", "L", "volume_flow_rate", "L/h"),
+        ("kg", "weight", "kg", None, "kg/h"),
+    ],
+)
+async def test_fuel_unit_sets_the_sensor_classes_and_units(
+    hass, client, unit, volume_class, volume_unit, flow_class, flow_unit
+):
+    client.settings_json["fuel_unit"] = unit
+    with_gas(client, unit=unit)
+    entry = await setup_entry(hass, client)
+
+    volume = hass.states.get(entity_id(hass, entry, "sensor", "boiler_gas_volume"))
+    assert volume.attributes["device_class"] == volume_class
+    assert volume.attributes["unit_of_measurement"] == volume_unit
+    assert volume.attributes["state_class"] == "total_increasing"
+
+    flow = hass.states.get(entity_id(hass, entry, "sensor", "boiler_gas_flow"))
+    assert flow.attributes.get("device_class") == flow_class
+    assert flow.attributes["unit_of_measurement"] == flow_unit
+    assert flow.attributes["state_class"] == "measurement"
+
+    for key in ("boiler_max_gas", "boiler_min_gas"):
+        number = hass.states.get(entity_id(hass, entry, "number", key))
+        assert number.attributes.get("device_class") == flow_class
+        assert number.attributes["unit_of_measurement"] == flow_unit
+
+
+async def test_fuel_unit_defaults_to_m3_on_a_daemon_without_it(hass, client):
+    # Neither the install settings nor the gas view carry a unit.
+    with_gas(client)
+    entry = await setup_entry(hass, client)
+    assert hass.states.get(entity_id(hass, entry, "sensor", "boiler_gas_volume")).attributes["unit_of_measurement"] == "m³"
+    number = hass.states.get(entity_id(hass, entry, "number", "boiler_max_gas"))
+    assert number.attributes["unit_of_measurement"] == "m³/h"
+
+
 async def test_gas_sensors_wait_for_both_flows(hass, client):
     unset = {"running": False, "reason": "noGasFlow", "flowM3H": 0.0, "maxFlowM3H": None}
     with_gas(client, minFlowM3H=None, **unset)

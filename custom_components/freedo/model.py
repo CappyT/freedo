@@ -66,8 +66,15 @@ PAIR_WINDOW_MAX_SEC = 600
 # typo in W).
 BOILER_POWER_MAX_KW = 500.0
 
-# The daemon rejects a boiler gas flow above this with 400.
+# The daemon rejects a boiler gas flow above this with 400. The flow is in
+# options.fuel_unit per hour, and the limit holds for each unit.
 BOILER_GAS_MAX_M3H = 60.0
+
+# options.fuel_unit, the unit of the fuel flow and counter: natural gas in m3,
+# heating oil in litres, LPG or pellets in kg.
+FUEL_M3 = "m3"
+FUEL_LITRE = "l"
+FUEL_KG = "kg"
 
 # GET /api/boiler energy.reason, the cause of an estimate that does not run, by
 # the state of the energy estimate sensor.
@@ -446,6 +453,15 @@ def boiler_gas(data: FreedoData) -> Mapping[str, Any] | None:
     that does not serve it."""
     gas = (boiler_energy(data) or {}).get("gas")
     return gas if isinstance(gas, Mapping) else None
+
+
+def fuel_unit(data: FreedoData) -> str:
+    """The unit of the fuel flow and counter: options.fuel_unit, else the unit
+    of the gas view, m3 on a daemon that serves neither."""
+    for unit in (data.settings.get("fuel_unit"), (boiler_gas(data) or {}).get("unit")):
+        if unit in (FUEL_M3, FUEL_LITRE, FUEL_KG):
+            return unit
+    return FUEL_M3
 
 
 def gas_state(data: FreedoData) -> str | None:

@@ -6,6 +6,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from functools import partial
 from typing import Any
 
+from homeassistant.const import UnitOfVolumeFlowRate
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import async_get_platforms
@@ -14,7 +15,15 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .api import FreedoError
 from .const import DOMAIN
 from .coordinator import FreedoCoordinator
-from .model import Zone, node_display, schedule_payload, schedule_programs
+from .model import FUEL_KG, FUEL_LITRE, FUEL_M3, Zone, node_display, schedule_payload, schedule_programs
+
+# The unit of the fuel flow by options.fuel_unit. A mass flow has no device
+# class.
+FUEL_FLOW_UNITS = {
+    FUEL_M3: UnitOfVolumeFlowRate.CUBIC_METERS_PER_HOUR,
+    FUEL_LITRE: UnitOfVolumeFlowRate.LITERS_PER_HOUR,
+    FUEL_KG: "kg/h",
+}
 
 _MODELS = {"valve": "Smart Radiator Thermostat", "thermostat": "Wired Smart Thermostat"}
 

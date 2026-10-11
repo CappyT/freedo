@@ -61,8 +61,8 @@ type installPatch struct {
 	EarlyStartMaxLeadSec  *int `json:"early_start_max_lead_sec"`
 	EarlyStartMinEpisodes *int `json:"early_start_min_episodes"`
 	// BoilerMaxPowerKW and BoilerMinPowerKW size the boiler energy estimate,
-	// BoilerMaxGasM3H and BoilerMinGasM3H the gas volume count; null removes a
-	// value.
+	// BoilerMaxGasM3H and BoilerMinGasM3H the fuel count in FuelUnit per hour;
+	// null removes a value.
 	BoilerMaxPowerKW optFloat `json:"boiler_max_power_kw"`
 	BoilerMinPowerKW optFloat `json:"boiler_min_power_kw"`
 	BoilerMaxGasM3H  optFloat `json:"boiler_max_gas_m3h"`
@@ -71,6 +71,8 @@ type installPatch struct {
 	// advertisement; null or "" takes the unspecified address.
 	RouterGateway optString `json:"router_gateway"`
 	RouterDNS     optString `json:"router_dns"`
+	// FuelUnit is m3, l or kg; null or "" takes m3.
+	FuelUnit optString `json:"fuel_unit"`
 }
 
 // networkKeyPut carries the PAN key as 32 hex characters. The field travels in
@@ -280,6 +282,7 @@ func installView(in *tado.Install, rev uint64) map[string]any {
 		"boiler_min_power_kw":      0.0,
 		"boiler_max_gas_m3h":       nil,
 		"boiler_min_gas_m3h":       nil,
+		"fuel_unit":                in.Options.Fuel(),
 		"router_gateway":           gateway.String(),
 		"router_dns":               dns.String(),
 		"counts": map[string]any{

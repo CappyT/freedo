@@ -244,11 +244,15 @@ type Options struct {
 	// BoilerMinPowerKW is the heat output at 0 % modulation with the burner on.
 	// Unset takes 0.
 	BoilerMinPowerKW *float64 `yaml:"boiler_min_power_kw"`
-	// BoilerMaxGasM3H and BoilerMinGasM3H are the gas flow at the burner at
-	// 100 % and at 0 % modulation, in m3/h. Without both the daemon does not
-	// count the gas volume.
+	// BoilerMaxGasM3H and BoilerMinGasM3H are the fuel flow at the burner at
+	// 100 % and at 0 % modulation, in FuelUnit per hour (m3/h by default).
+	// Without both the daemon does not count the fuel. The names keep the m3
+	// of the first unit.
 	BoilerMaxGasM3H *float64 `yaml:"boiler_max_gas_m3h"`
 	BoilerMinGasM3H *float64 `yaml:"boiler_min_gas_m3h"`
+	// FuelUnit is the unit of the fuel flow and of its counter: m3, l or kg.
+	// Unset takes m3.
+	FuelUnit string `yaml:"fuel_unit"`
 	// RouterGateway and RouterDNS are the IPv4 addresses, as dotted quads, that
 	// the router advertisement carries in its option 25. Unset takes the
 	// unspecified address.
@@ -776,6 +780,7 @@ func (in *Install) checkOptions(c *issues) {
 	in.checkFlowOptions(c)
 	in.checkEarlyStartOptions(c)
 	in.checkBoilerPower(c)
+	in.checkFuelUnit(c)
 	in.checkRouterIPv4(c)
 	in.checkDeviceOverlayEnds(c)
 	in.checkZoneOffsets(c)
