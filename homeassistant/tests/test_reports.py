@@ -27,7 +27,7 @@ from test_ha import (  # noqa: E402,F401
     with_gas,
 )
 
-README = pathlib.Path(__file__).resolve().parents[1] / "custom_components" / "freedo" / "README.md"
+README = pathlib.Path(__file__).resolve().parents[2] / "custom_components" / "freedo" / "README.md"
 # The zone Living and the device Living (VA0000000001) of the test fixtures.
 PLACEHOLDERS = {"<zone>": "living", "<device>": "living_va0000000001"}
 # The options of the statistics graph card in the dashboard documentation.

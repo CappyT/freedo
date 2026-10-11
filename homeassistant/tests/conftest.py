@@ -8,6 +8,6 @@ custom_components.freedo.
 import pathlib
 import sys
 
-_ROOT = pathlib.Path(__file__).resolve().parents[1]
+_ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT / "custom_components" / "freedo"))
 sys.path.append(str(_ROOT))
