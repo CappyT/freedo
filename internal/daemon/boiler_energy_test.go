@@ -27,6 +27,10 @@ func kwOpt(maxKW float64, minKW ...float64) tado.Options {
 	return o
 }
 
+func gasOpt(maxM3H, minM3H float64) tado.Options {
+	return tado.Options{BoilerMaxGasM3H: &maxM3H, BoilerMinGasM3H: &minM3H}
+}
+
 func burnerSample(at time.Time, modPct int, on bool) tado.BoilerSample {
 	return tado.BoilerSample{At: at, ModulationPct: &modPct, Burner: &on}
 }
@@ -368,12 +372,17 @@ func TestEnergySurvivesRestart(t *testing.T) {
 // stops the start instead of restarting from zero.
 func TestEnergyStoreRefusesACorruptCounter(t *testing.T) {
 	store := newTestStore(t, filepath.Join(t.TempDir(), "state.db"))
-	for _, raw := range []string{"abc", "-1", "NaN", "+Inf"} {
-		if _, err := store.db.Exec(`INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)`, boilerEnergyKey, raw); err != nil {
-			t.Fatal(err)
-		}
-		if kwh, err := store.BoilerEnergy(context.Background()); err == nil {
-			t.Errorf("stored %q read as %v, want an error", raw, kwh)
+	for key, read := range map[string]func(context.Context) (float64, error){
+		boilerEnergyKey: store.BoilerEnergy,
+		boilerGasKey:    store.BoilerGas,
+	} {
+		for _, raw := range []string{"abc", "-1", "NaN", "+Inf"} {
+			if _, err := store.db.Exec(`INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)`, key, raw); err != nil {
+				t.Fatal(err)
+			}
+			if v, err := read(context.Background()); err == nil {
+				t.Errorf("%s: stored %q read as %v, want an error", key, raw, v)
+			}
 		}
 	}
 }
@@ -399,14 +408,24 @@ func TestEnergyMigratesFromVersionSix(t *testing.T) {
 	if kwh, err := store.BoilerEnergy(ctx); err != nil || kwh != 0 {
 		t.Fatalf("counter of a migrated database = %v, %v, want 0", kwh, err)
 	}
+	if m3, err := store.BoilerGas(ctx); err != nil || m3 != 0 {
+		t.Fatalf("gas counter of a migrated database = %v, %v, want 0", m3, err)
+	}
 	if err := store.SetBoilerEnergy(ctx, 1234.5678); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetBoilerGas(ctx, 98.7654); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if kwh, err := newTestStore(t, path).BoilerEnergy(ctx); err != nil || kwh != 1234.5678 {
+	reopened := newTestStore(t, path)
+	if kwh, err := reopened.BoilerEnergy(ctx); err != nil || kwh != 1234.5678 {
 		t.Errorf("counter after a reopen = %v, %v, want 1234.5678", kwh, err)
+	}
+	if m3, err := reopened.BoilerGas(ctx); err != nil || m3 != 98.7654 {
+		t.Errorf("gas counter after a reopen = %v, %v, want 98.7654", m3, err)
 	}
 }
 
@@ -445,6 +464,10 @@ func TestEnergyAPI(t *testing.T) {
 	if boiler.ModulationPct == nil || *boiler.ModulationPct != 50 || !boiler.Active {
 		t.Errorf("boiler view = %+v, want modulation 50 and active", boiler)
 	}
+	if _, ok := boiler.Energy["gas"].(map[string]any); !ok {
+		t.Errorf("energy.gas = %v, want an object", boiler.Energy["gas"])
+	}
+	delete(boiler.Energy, "gas")
 	want := map[string]any{
 		"running": true, "reason": nil, "powerKW": 12.0, "totalKWh": 0.2,
 		"maxPowerKW": 24.0, "minPowerKW": 0.0, "holdSec": 300.0,
@@ -526,5 +549,303 @@ func TestInstallAPIPatchesBoilerPower(t *testing.T) {
 	}
 	if e := boilerEnergy(); e["reason"] != energyNoMaxPower {
 		t.Errorf("energy after null = %v, want %q", e, energyNoMaxPower)
+	}
+}
+
+func installWithGas(t *testing.T, maxM3H, minM3H float64) *tado.Install {
+	return windowInstall(t, func(in *tado.Install) { in.Options.BoilerMaxGasM3H, in.Options.BoilerMinGasM3H = &maxM3H, &minM3H })
+}
+
+// gasView returns the gas object of the energy view.
+func gasView(d *daemon, now time.Time) map[string]any {
+	return d.energyView(now)["gas"].(map[string]any)
+}
+
+// TestGasSteadyModulation: an hour at 50 % of a 0.3..2.7 m3/h range is 1.5 m3,
+// the burner on at 0 % burns the minimum, and the heat counter of the same
+// samples keeps its own figures.
+func TestGasSteadyModulation(t *testing.T) {
+	both := kwOpt(24, 4)
+	both.BoilerMaxGasM3H, both.BoilerMinGasM3H = new(2.7), new(0.3)
+	var m energyMeter
+	feedEvery(&m, both, energyStart, time.Hour, 10*time.Second, 50, true)
+	near(t, "gas at 50 % of 0.3..2.7 m3/h", m.totalM3, 1.5)
+	near(t, "heat of the same hour", m.totalKWh, 14)
+
+	var atMin energyMeter
+	feedEvery(&atMin, gasOpt(2.7, 0.3), energyStart, time.Hour, 10*time.Second, 0, true)
+	near(t, "gas with the burner on at 0 %", atMin.totalM3, 0.3)
+
+	var clamped energyMeter
+	feedEvery(&clamped, gasOpt(2.7, 0.3), energyStart, time.Hour, 10*time.Second, 250, true)
+	near(t, "gas at an impossible 250 %", clamped.totalM3, 2.7)
+
+	var zeroMin energyMeter
+	feedEvery(&zeroMin, gasOpt(2.7, 0), energyStart, time.Hour, 10*time.Second, 50, true)
+	near(t, "gas at 50 % of 0..2.7 m3/h", zeroMin.totalM3, 1.35)
+}
+
+// TestGasIndependentOfPower: each counter runs on its own settings. A gas flow
+// without an output counts gas only, an output without a gas flow counts heat
+// only, and a maximum gas flow without a minimum counts nothing.
+func TestGasIndependentOfPower(t *testing.T) {
+	var gasOnly energyMeter
+	feedEvery(&gasOnly, gasOpt(2.7, 0.3), energyStart, time.Hour, 10*time.Second, 50, true)
+	near(t, "heat without an output", gasOnly.totalKWh, 0)
+	near(t, "gas without an output", gasOnly.totalM3, 1.5)
+
+	var heatOnly energyMeter
+	feedEvery(&heatOnly, kwOpt(24), energyStart, time.Hour, 10*time.Second, 50, true)
+	near(t, "gas without a gas flow", heatOnly.totalM3, 0)
+	near(t, "heat without a gas flow", heatOnly.totalKWh, 12)
+
+	maxOnly := tado.Options{BoilerMaxGasM3H: new(2.7)}
+	var half energyMeter
+	feedEvery(&half, maxOnly, energyStart, time.Hour, 10*time.Second, 50, true)
+	near(t, "gas with a maximum alone", half.totalM3, 0)
+	if _, why := boilerGas(maxOnly, burnerSample(energyStart, 50, true)); why != energyNoGasFlow {
+		t.Errorf("reason with a maximum alone = %q, want %q", why, energyNoGasFlow)
+	}
+}
+
+// TestGasFollowsTheHeatStretches: the gas count integrates the same stretches
+// as the heat count. The burner off, a gap over the hold, a repeat and an older
+// sample add nothing to either, and a stretch of exactly the hold counts.
+func TestGasFollowsTheHeatStretches(t *testing.T) {
+	o := kwOpt(24)
+	o.BoilerMaxGasM3H, o.BoilerMinGasM3H = new(3.0), new(0.0)
+	var m energyMeter
+	m.observe(burnerSample(energyStart, 100, true), o)
+	m.observe(burnerSample(energyStart.Add(energyHold+time.Second), 100, true), o)
+	near(t, "gas of a gap over the hold", m.totalM3, 0)
+	near(t, "heat of a gap over the hold", m.totalKWh, 0)
+	m.observe(burnerSample(energyStart.Add(energyHold+31*time.Second), 100, true), o)
+	near(t, "gas of 30 s after the gap", m.totalM3, 3.0*30/3600)
+	near(t, "heat of 30 s after the gap", m.totalKWh, 24.0*30/3600)
+
+	var edge energyMeter
+	edge.observe(burnerSample(energyStart, 100, true), o)
+	edge.observe(burnerSample(energyStart.Add(energyHold), 100, true), o)
+	near(t, "gas of a gap of exactly the hold", edge.totalM3, 3*energyHold.Hours())
+
+	var order energyMeter
+	order.observe(burnerSample(energyStart, 100, true), o)
+	order.observe(burnerSample(energyStart, 100, true), o)
+	near(t, "gas after a repeat", order.totalM3, 0)
+	order.observe(burnerSample(energyStart.Add(time.Minute), 100, false), o)
+	one := order.totalM3
+	near(t, "gas of the first minute", one, 3.0/60)
+	order.observe(burnerSample(energyStart.Add(30*time.Second), 100, true), o)
+	order.observe(burnerSample(energyStart.Add(10*time.Minute), 100, false), o)
+	near(t, "gas after an older sample and a burner off stretch", order.totalM3, one)
+	near(t, "heat after the same samples", order.totalKWh, 24.0/60)
+}
+
+// TestGasUnknownState: the gas count adds nothing while the burner flag or,
+// with the burner on, the modulation is unknown, and names the reason.
+func TestGasUnknownState(t *testing.T) {
+	on, mod := true, 50
+	o := gasOpt(2.7, 0.3)
+	for name, tc := range map[string]struct {
+		o    tado.Options
+		s    tado.BoilerSample
+		want string
+	}{
+		"no gas flow":    {tado.Options{}, tado.BoilerSample{ModulationPct: &mod, Burner: &on}, energyNoGasFlow},
+		"no burner flag": {o, tado.BoilerSample{ModulationPct: &mod}, energyNoBurnerFlag},
+		"no modulation":  {o, tado.BoilerSample{Burner: &on}, energyNoModulation},
+	} {
+		tc.s.At = energyStart
+		var m energyMeter
+		m.observe(tc.s, tc.o)
+		tc.s.At = energyStart.Add(time.Minute)
+		m.observe(tc.s, tc.o)
+		if m.totalM3 != 0 {
+			t.Errorf("%s: gas = %v, want 0", name, m.totalM3)
+		}
+		if _, why := boilerGas(tc.o, tc.s); why != tc.want {
+			t.Errorf("%s: reason = %q, want %q", name, why, tc.want)
+		}
+	}
+	off := false
+	if flow, why := boilerGas(o, tado.BoilerSample{Burner: &off}); flow != 0 || why != "" {
+		t.Errorf("burner off without modulation = %v, %q, want 0 and known", flow, why)
+	}
+}
+
+// TestGasFromFrames: hvac/mon frames drive the gas view with no output set.
+// The heat view stays off with its own reason, and the gas view follows the
+// report and the hold.
+func TestGasFromFrames(t *testing.T) {
+	clock := newTestClock(energyStart)
+	d := newEnergyDaemon(t, installWithGas(t, 2.7, 0.3), clock, nil)
+
+	if g := gasView(d, clock.now()); g["running"] != false || g["reason"] != energyNoReport || g["maxFlowM3H"] != 2.7 || g["minFlowM3H"] != 0.3 {
+		t.Errorf("gas before a report = %v, want not running with %q", g, energyNoReport)
+	}
+	boilerReport(t, d, 1, modFlag(50, 1)...)
+	g := gasView(d, clock.now())
+	if g["running"] != true || g["reason"] != nil || g["flowM3H"] != 1.5 || g["totalM3"] != 0.0 {
+		t.Errorf("gas after the first report = %v, want running at 1.5 m3/h with 0 m3", g)
+	}
+
+	clock.advance(time.Minute)
+	boilerReport(t, d, 2, flameCurrent)
+	d.tickEnergy()
+	v := d.energyView(clock.now())
+	g = v["gas"].(map[string]any)
+	if g["totalM3"] != 0.025 || g["flowM3H"] != 1.5 || g["running"] != true {
+		t.Errorf("gas after a minute = %v, want 0.025 m3 at 1.5 m3/h", g)
+	}
+	if v["running"] != false || v["reason"] != energyNoMaxPower || v["totalKWh"] != 0.0 {
+		t.Errorf("heat with no output set = %v, want off with %q and 0 kWh", v, energyNoMaxPower)
+	}
+	if v["updatedAt"] != clock.now().Format(time.RFC3339) {
+		t.Errorf("updatedAt = %v, want the time of the gas stretch", v["updatedAt"])
+	}
+
+	clock.advance(time.Minute)
+	boilerReport(t, d, 3, modFlag(0, 0)...)
+	d.tickEnergy()
+	if g := gasView(d, clock.now()); g["totalM3"] != 0.05 || g["flowM3H"] != 0.0 || g["running"] != true {
+		t.Errorf("gas with the burner off = %v, want 0.05 m3 at 0 m3/h and running", g)
+	}
+
+	clock.advance(10 * time.Minute)
+	if g := gasView(d, clock.now()); g["running"] != false || g["reason"] != energyStale || g["flowM3H"] != 0.0 || g["totalM3"] != 0.05 {
+		t.Errorf("gas after a silence = %v, want not running with %q and the total kept", g, energyStale)
+	}
+}
+
+// TestGasSurvivesRestart: the gas counter is written with the heat counter, the
+// API serves only what the database holds, and a new daemon on the same
+// database continues from it without adding the downtime.
+func TestGasSurvivesRestart(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.db")
+	store := newTestStore(t, path)
+	clock := newTestClock(energyStart)
+	in := windowInstall(t, func(in *tado.Install) {
+		in.Options.BoilerMaxPowerKW = new(24.0)
+		in.Options.BoilerMaxGasM3H, in.Options.BoilerMinGasM3H = new(3.0), new(0.0)
+	})
+	d := newEnergyDaemon(t, in, clock, store)
+	ctx := context.Background()
+
+	boilerReport(t, d, 1, modFlag(100, 1)...)
+	clock.advance(time.Minute)
+	boilerReport(t, d, 2, flameCurrent)
+	if got := gasView(d, clock.now())["totalM3"]; got != 0.0 {
+		t.Errorf("served gas before a write = %v, want 0: the API serves the stored part", got)
+	}
+	d.tickEnergy()
+	if got, err := store.BoilerGas(ctx); err != nil || got != 0.05 {
+		t.Errorf("stored gas after the first tick = %v, %v, want 0.05", got, err)
+	}
+	if got := gasView(d, clock.now())["totalM3"]; got != 0.05 {
+		t.Errorf("served gas after the first tick = %v, want 0.05", got)
+	}
+
+	// Gas that no write holds yet is flushed by saveEnergy, as on a shutdown.
+	clock.advance(30 * time.Second)
+	boilerReport(t, d, 3, flameCurrent)
+	d.tickEnergy()
+	if got, _ := store.BoilerGas(ctx); got != 0.05 {
+		t.Errorf("stored gas inside the write interval = %v, want 0.05", got)
+	}
+	if err := d.saveEnergy(); err != nil {
+		t.Fatal(err)
+	}
+	flushed, err := store.BoilerGas(ctx)
+	if err != nil || math.Abs(flushed-0.075) > 1e-9 {
+		t.Fatalf("stored gas after the flush = %v, %v, want 0.075", flushed, err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	restarted := newEnergyDaemon(t, in, clock, newTestStore(t, path))
+	if got := gasView(restarted, clock.now())["totalM3"]; got != round3(flushed) {
+		t.Errorf("served gas after the restart = %v, want %v", got, round3(flushed))
+	}
+	clock.advance(time.Hour)
+	boilerReport(t, restarted, 1, modFlag(100, 1)...)
+	if got := gasView(restarted, clock.now())["totalM3"]; got != round3(flushed) {
+		t.Errorf("served gas after the first report = %v, want %v", got, round3(flushed))
+	}
+	clock.advance(time.Minute)
+	boilerReport(t, restarted, 2, flameCurrent)
+	restarted.tickEnergy()
+	got := gasView(restarted, clock.now())["totalM3"].(float64)
+	if got < flushed || math.Abs(got-(flushed+0.05)) > 0.001 {
+		t.Errorf("served gas after a minute at 3 m3/h = %v, want %v", got, flushed+0.05)
+	}
+}
+
+// TestInstallAPIPatchesBoilerGas: the installation takes the gas flow of the
+// boiler, refuses a value that cannot be one, and null removes it. The count
+// follows without a restart and needs both values.
+func TestInstallAPIPatchesBoilerGas(t *testing.T) {
+	a := newInstallAPI(t)
+	view := a.get("/api/install")
+	if view["boiler_max_gas_m3h"] != nil || view["boiler_min_gas_m3h"] != nil {
+		t.Errorf("defaults = %v, %v, want null and null", view["boiler_max_gas_m3h"], view["boiler_min_gas_m3h"])
+	}
+	boilerGas := func() map[string]any {
+		t.Helper()
+		var boiler struct {
+			Energy struct {
+				Gas map[string]any `json:"gas"`
+			} `json:"energy"`
+		}
+		if code := getJSON(t, a.base+"/api/boiler", &boiler); code != http.StatusOK {
+			t.Fatalf("GET /api/boiler: code=%d", code)
+		}
+		return boiler.Energy.Gas
+	}
+	if g := boilerGas(); g["running"] != false || g["reason"] != energyNoGasFlow || g["totalM3"] != 0.0 ||
+		g["maxFlowM3H"] != nil || g["minFlowM3H"] != nil || g["flowM3H"] != 0.0 {
+		t.Errorf("gas without a flow = %v, want off with %q", g, energyNoGasFlow)
+	}
+
+	a.mutate(http.MethodPatch, "/api/install", map[string]any{"boiler_max_gas_m3h": 2.63})
+	if g := boilerGas(); g["reason"] != energyNoGasFlow || g["maxFlowM3H"] != 2.63 || g["minFlowM3H"] != nil {
+		t.Errorf("gas with a maximum alone = %v, want %q at 2.63 and null", g, energyNoGasFlow)
+	}
+
+	a.mutate(http.MethodPatch, "/api/install", map[string]any{"boiler_min_gas_m3h": 0.3})
+	if view := a.get("/api/install"); view["boiler_max_gas_m3h"] != 2.63 || view["boiler_min_gas_m3h"] != 0.3 {
+		t.Errorf("view = %v, %v, want 2.63 and 0.3", view["boiler_max_gas_m3h"], view["boiler_min_gas_m3h"])
+	}
+	stored, _, err := a.store.LoadInstall(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if maxM3H, minM3H, ok := stored.Options.BoilerGas(); !ok || maxM3H != 2.63 || minM3H != 0.3 {
+		t.Errorf("stored gas flow = %v, %v, %v, want 2.63, 0.3, true", maxM3H, minM3H, ok)
+	}
+	if g := boilerGas(); g["reason"] != energyNoReport || g["maxFlowM3H"] != 2.63 || g["minFlowM3H"] != 0.3 {
+		t.Errorf("gas with both = %v, want %q at 2.63 and 0.3", g, energyNoReport)
+	}
+
+	for what, body := range map[string]map[string]any{
+		"zero maximum":          {"boiler_max_gas_m3h": 0},
+		"maximum in l/h":        {"boiler_max_gas_m3h": 2630},
+		"negative minimum":      {"boiler_min_gas_m3h": -0.1},
+		"minimum above maximum": {"boiler_min_gas_m3h": 3},
+		"minimum at maximum":    {"boiler_min_gas_m3h": 2.63},
+		"a string":              {"boiler_max_gas_m3h": "2.63"},
+	} {
+		if code, resp := a.call(http.MethodPatch, "/api/install", body); code != http.StatusBadRequest {
+			t.Errorf("%s: code=%d %v, want 400", what, code, resp)
+		}
+	}
+
+	a.mutate(http.MethodPatch, "/api/install", map[string]any{"boiler_min_gas_m3h": nil})
+	if g := boilerGas(); g["reason"] != energyNoGasFlow || g["minFlowM3H"] != nil {
+		t.Errorf("gas after removing the minimum = %v, want %q", g, energyNoGasFlow)
+	}
+	a.mutate(http.MethodPatch, "/api/install", map[string]any{"boiler_max_gas_m3h": nil})
+	if view := a.get("/api/install"); view["boiler_max_gas_m3h"] != nil || view["boiler_min_gas_m3h"] != nil {
+		t.Errorf("view after null = %v, %v, want null and null", view["boiler_max_gas_m3h"], view["boiler_min_gas_m3h"])
 	}
 }

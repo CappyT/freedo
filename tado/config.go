@@ -236,6 +236,11 @@ type Options struct {
 	// BoilerMinPowerKW is the heat output at 0 % modulation with the burner on.
 	// Unset takes 0.
 	BoilerMinPowerKW *float64 `yaml:"boiler_min_power_kw"`
+	// BoilerMaxGasM3H and BoilerMinGasM3H are the gas flow at the burner at
+	// 100 % and at 0 % modulation, in m3/h. Without both the daemon does not
+	// count the gas volume.
+	BoilerMaxGasM3H *float64 `yaml:"boiler_max_gas_m3h"`
+	BoilerMinGasM3H *float64 `yaml:"boiler_min_gas_m3h"`
 }
 
 // DefaultOfflineSchedule is tag 02b3 for an installation that states no

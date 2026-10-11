@@ -1,17 +1,20 @@
 package daemon
 
-// boiler_energy: an estimate of the heat the boiler delivers, integrated from
-// the hvac/mon reports of the wall thermostat. Home Assistant turns the counter
-// into an energy sensor and prices it. The estimate has three error sources:
-// the modulation is relative to the boiler's own range, the efficiency is not
-// modelled (the counter is heat output, not gas energy), and the reports are
-// sparse, so a short burn or a change between two reports is approximated.
+// boiler_energy: an estimate of the heat the boiler delivers and of the gas it
+// burns, integrated from the hvac/mon reports of the wall thermostat. Home
+// Assistant turns the counters into an energy sensor and a gas sensor and
+// prices them. The estimate has three error sources: the modulation is
+// relative to the boiler's own range, the heat counter does not model the
+// efficiency (it is heat output, not gas energy), and the reports are sparse,
+// so a short burn or a change between two reports is approximated. The gas
+// counter reads the gas flow range of the boiler data sheet and needs no
+// efficiency.
 //
 // The thermostat reports only the attributes that changed. The estimate holds
 // the modulation and the burner flag of a report until the next report, and it
 // drops a stretch the thermostat left unreported for longer than energyHold.
 // The boiler status flags that split heating from hot water are not reported:
-// the counter is a total.
+// the counters are totals.
 
 import (
 	"context"
@@ -37,6 +40,7 @@ const (
 	energySaveEvery = time.Minute
 
 	boilerEnergyKey = "boiler_energy_kwh"
+	boilerGasKey    = "boiler_gas_m3"
 )
 
 // Reasons the estimate does not run, as the API names them.
@@ -46,30 +50,30 @@ const (
 	energyStale        = "stale"
 	energyNoBurnerFlag = "noBurnerFlag"
 	energyNoModulation = "noModulation"
+	energyNoGasFlow    = "noGasFlow"
 )
 
-// energyMeter integrates the heat output between two reports. It belongs to the
-// engine goroutine.
+// energyMeter integrates the heat output and the gas flow between two reports.
+// It belongs to the engine goroutine.
 type energyMeter struct {
-	// totalKWh counts every integrated stretch. shownKWh is the part the
-	// database holds, and the only part the API serves: a restart then never
-	// reads a counter below one a client has seen.
+	// totalKWh and totalM3 count every integrated stretch. shownKWh and shownM3
+	// are the part the database holds, and the only part the API serves: a
+	// restart then never reads a counter below one a client has seen.
 	totalKWh, shownKWh float64
+	totalM3, shownM3   float64
 	// prev is the last sample taken. updated is the time of the last stretch
 	// integrated, savedAt the time of the last write attempt.
 	prev           tado.BoilerSample
 	updated, saved time.Time
 }
 
-// boilerKW returns the heat output a sample implies. why names what is missing
-// when the output is unknown, and is empty otherwise. The modulation spans the
-// boiler's range from its minimum to its maximum output, so it is no plain
-// share of the maximum: the captures show the burner on at 0 % and 3 %.
-func boilerKW(o tado.Options, s tado.BoilerSample) (kw float64, why string) {
-	maxKW, minKW, ok := o.BoilerPower()
+// boilerRate returns the rate a sample implies on the range lo..hi of the
+// boiler: the output in kW or the gas flow in m3/h. why names what is missing
+// when the rate is unknown, and is empty otherwise. The modulation spans the
+// boiler's range from its minimum to its maximum, so it is no plain share of
+// the maximum: the captures show the burner on at 0 % and 3 %.
+func boilerRate(s tado.BoilerSample, hi, lo float64) (rate float64, why string) {
 	switch {
-	case !ok:
-		return 0, energyNoMaxPower
 	case s.Burner == nil:
 		return 0, energyNoBurnerFlag
 	case !*s.Burner:
@@ -78,7 +82,25 @@ func boilerKW(o tado.Options, s tado.BoilerSample) (kw float64, why string) {
 		return 0, energyNoModulation
 	}
 	mod := float64(min(max(*s.ModulationPct, 0), 100))
-	return minKW + (maxKW-minKW)*mod/100, ""
+	return lo + (hi-lo)*mod/100, ""
+}
+
+// boilerKW returns the heat output a sample implies, in kW.
+func boilerKW(o tado.Options, s tado.BoilerSample) (kw float64, why string) {
+	maxKW, minKW, ok := o.BoilerPower()
+	if !ok {
+		return 0, energyNoMaxPower
+	}
+	return boilerRate(s, maxKW, minKW)
+}
+
+// boilerGas returns the gas flow a sample implies, in m3/h.
+func boilerGas(o tado.Options, s tado.BoilerSample) (flow float64, why string) {
+	maxM3H, minM3H, ok := o.BoilerGas()
+	if !ok {
+		return 0, energyNoGasFlow
+	}
+	return boilerRate(s, maxM3H, minM3H)
 }
 
 // observe takes the sample a frame left in the engine. The stretch since the
@@ -94,6 +116,10 @@ func (m *energyMeter) observe(s tado.BoilerSample, o tado.Options) {
 			m.totalKWh += kw * dt.Hours()
 			m.updated = s.At
 		}
+		if flow, why := boilerGas(o, m.prev); why == "" {
+			m.totalM3 += flow * dt.Hours()
+			m.updated = s.At
+		}
 	}
 	m.prev = s
 }
@@ -107,7 +133,7 @@ func (d *daemon) noteBoiler(e *tado.EmuState) {
 	d.energy.observe(e.BoilerSample(), o)
 }
 
-// restoreEnergy loads the stored counter before the engine starts.
+// restoreEnergy loads the stored counters before the engine starts.
 func (d *daemon) restoreEnergy() error {
 	if d.state == nil {
 		return nil
@@ -116,15 +142,20 @@ func (d *daemon) restoreEnergy() error {
 	if err != nil {
 		return err
 	}
+	m3, err := d.state.BoilerGas(context.Background())
+	if err != nil {
+		return err
+	}
 	d.energy.totalKWh, d.energy.shownKWh = kwh, kwh
+	d.energy.totalM3, d.energy.shownM3 = m3, m3
 	return nil
 }
 
-// tickEnergy writes the counter when it moved and energySaveEvery has passed
+// tickEnergy writes the counters when one moved and energySaveEvery has passed
 // since the last write attempt. Without a database there is nothing to bound.
 func (d *daemon) tickEnergy() {
 	m := &d.energy
-	if m.totalKWh == m.shownKWh || d.state != nil && d.retryNow().Sub(m.saved) < energySaveEvery {
+	if m.totalKWh == m.shownKWh && m.totalM3 == m.shownM3 || d.state != nil && d.retryNow().Sub(m.saved) < energySaveEvery {
 		return
 	}
 	if err := d.saveEnergy(); err != nil {
@@ -132,7 +163,7 @@ func (d *daemon) tickEnergy() {
 	}
 }
 
-// saveEnergy writes the counter now.
+// saveEnergy writes the counters now.
 func (d *daemon) saveEnergy() error {
 	m := &d.energy
 	m.saved = d.retryNow()
@@ -140,12 +171,15 @@ func (d *daemon) saveEnergy() error {
 		if err := d.state.SetBoilerEnergy(context.Background(), m.totalKWh); err != nil {
 			return err
 		}
+		if err := d.state.SetBoilerGas(context.Background(), m.totalM3); err != nil {
+			return err
+		}
 	}
-	m.shownKWh = m.totalKWh
+	m.shownKWh, m.shownM3 = m.totalKWh, m.totalM3
 	return nil
 }
 
-// saveEnergyBefore writes the counter on the engine goroutine, for the shutdown.
+// saveEnergyBefore writes the counters on the engine goroutine, for the shutdown.
 func (d *daemon) saveEnergyBefore(deadline time.Time) error {
 	timeout := time.Until(deadline)
 	if timeout <= 0 {
@@ -155,9 +189,25 @@ func (d *daemon) saveEnergyBefore(deadline time.Time) error {
 	return err
 }
 
+// rateAt returns the rate the meter shows at now: the rate of the last sample,
+// or why it is unknown. unset is the reason of: an option the rate needs is
+// missing, which outranks the state of the reports.
+func (m *energyMeter) rateAt(now time.Time, o tado.Options, of func(tado.Options, tado.BoilerSample) (float64, string), unset string) (float64, string) {
+	rate, why := of(o, m.prev)
+	switch {
+	case why == unset:
+	case m.prev.At.IsZero():
+		return 0, energyNoReport
+	case now.Sub(m.prev.At) > energyHold:
+		return 0, energyStale
+	}
+	return rate, why
+}
+
 // energyView renders the estimate for GET /api/boiler: whether it runs and, if
 // not, why; the output now; the counter; and the times of the last report and
-// of the last stretch integrated.
+// of the last stretch integrated. The gas count sits in its own object, with
+// the same fields, because it runs on its own settings.
 func (d *daemon) energyView(now time.Time) map[string]any {
 	m := &d.energy
 	var o tado.Options
@@ -165,22 +215,25 @@ func (d *daemon) energyView(now time.Time) map[string]any {
 		o = in.Options
 	}
 	maxKW, minKW, hasMax := o.BoilerPower()
-	var kw float64
-	var why string
-	switch {
-	case !hasMax:
-		why = energyNoMaxPower
-	case m.prev.At.IsZero():
-		why = energyNoReport
-	case now.Sub(m.prev.At) > energyHold:
-		why = energyStale
-	default:
-		kw, why = boilerKW(o, m.prev)
+	kw, why := m.rateAt(now, o, boilerKW, energyNoMaxPower)
+	flow, gasWhy := m.rateAt(now, o, boilerGas, energyNoGasFlow)
+	gas := map[string]any{
+		"running": gasWhy == "", "reason": nil, "flowM3H": round3(flow), "totalM3": round3(m.shownM3),
+		"maxFlowM3H": nil, "minFlowM3H": nil,
+	}
+	if gasWhy != "" {
+		gas["reason"] = gasWhy
+	}
+	if v := o.BoilerMaxGasM3H; v != nil {
+		gas["maxFlowM3H"] = *v
+	}
+	if v := o.BoilerMinGasM3H; v != nil {
+		gas["minFlowM3H"] = *v
 	}
 	view := map[string]any{
 		"running": why == "", "reason": nil, "powerKW": round3(kw), "totalKWh": round3(m.shownKWh),
 		"maxPowerKW": nil, "minPowerKW": minKW, "holdSec": int(energyHold / time.Second),
-		"reportedAt": nil, "updatedAt": nil,
+		"reportedAt": nil, "updatedAt": nil, "gas": gas,
 	}
 	if why != "" {
 		view["reason"] = why
@@ -197,28 +250,46 @@ func (d *daemon) energyView(now time.Time) map[string]any {
 	return view
 }
 
-// round3 rounds to the Wh. A rounded counter stays monotonic.
+// round3 rounds to the Wh or the litre. A rounded counter stays monotonic.
 func round3(v float64) float64 { return math.Round(v*1000) / 1000 }
 
-// BoilerEnergy returns the stored counter in kWh, 0 when none is stored.
+// BoilerEnergy returns the stored heat counter in kWh, 0 when none is stored.
 func (s *stateStore) BoilerEnergy(ctx context.Context) (float64, error) {
+	return s.boilerCounter(ctx, boilerEnergyKey)
+}
+
+// SetBoilerEnergy stores the heat counter.
+func (s *stateStore) SetBoilerEnergy(ctx context.Context, kwh float64) error {
+	return s.setBoilerCounter(ctx, boilerEnergyKey, kwh)
+}
+
+// BoilerGas returns the stored gas volume counter in m3, 0 when none is stored.
+func (s *stateStore) BoilerGas(ctx context.Context) (float64, error) {
+	return s.boilerCounter(ctx, boilerGasKey)
+}
+
+// SetBoilerGas stores the gas volume counter.
+func (s *stateStore) SetBoilerGas(ctx context.Context, m3 float64) error {
+	return s.setBoilerCounter(ctx, boilerGasKey, m3)
+}
+
+func (s *stateStore) boilerCounter(ctx context.Context, key string) (float64, error) {
 	var raw string
-	switch err := s.db.QueryRowContext(ctx, `SELECT value FROM meta WHERE key = ?`, boilerEnergyKey).Scan(&raw); {
+	switch err := s.db.QueryRowContext(ctx, `SELECT value FROM meta WHERE key = ?`, key).Scan(&raw); {
 	case errors.Is(err, sql.ErrNoRows):
 		return 0, nil
 	case err != nil:
 		return 0, err
 	}
-	kwh, err := strconv.ParseFloat(raw, 64)
-	if err != nil || kwh < 0 || math.IsNaN(kwh) || math.IsInf(kwh, 0) {
-		return 0, fmt.Errorf("meta %s: %q is not a counter", boilerEnergyKey, raw)
+	v, err := strconv.ParseFloat(raw, 64)
+	if err != nil || v < 0 || math.IsNaN(v) || math.IsInf(v, 0) {
+		return 0, fmt.Errorf("meta %s: %q is not a counter", key, raw)
 	}
-	return kwh, nil
+	return v, nil
 }
 
-// SetBoilerEnergy stores the counter.
-func (s *stateStore) SetBoilerEnergy(ctx context.Context, kwh float64) error {
+func (s *stateStore) setBoilerCounter(ctx context.Context, key string, v float64) error {
 	_, err := s.db.ExecContext(ctx, `INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)`,
-		boilerEnergyKey, strconv.FormatFloat(kwh, 'f', -1, 64))
+		key, strconv.FormatFloat(v, 'f', -1, 64))
 	return err
 }

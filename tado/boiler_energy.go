@@ -3,12 +3,16 @@ package tado
 import "time"
 
 // What the boiler energy estimate reads of the engine: the two hvac/mon values
-// that decide the heat output, and the time of the report that carried the
-// last of them. The estimate itself is the daemon's (internal/daemon).
+// that decide the heat output and the gas flow, and the time of the report that
+// carried the last of them. The estimate itself is the daemon's (internal/daemon).
 
 // BoilerMaxPowerLimitKW bounds options.boiler_max_power_kw: no residential
 // boiler is above it, so a larger value is a typo in W.
 const BoilerMaxPowerLimitKW = 500
+
+// BoilerMaxGasLimitM3H bounds options.boiler_max_gas_m3h: 500 kW burns about
+// 53 m3/h of natural gas, so a larger value is a typo in l/h.
+const BoilerMaxGasLimitM3H = 60
 
 // BoilerPower returns the output of the boiler at 100 % and at 0 % modulation,
 // in kW. ok is false while no maximum is configured.
@@ -22,16 +26,35 @@ func (o Options) BoilerPower() (maxKW, minKW float64, ok bool) {
 	return *o.BoilerMaxPowerKW, minKW, true
 }
 
+// BoilerGas returns the gas flow at the burner at 100 % and at 0 % modulation,
+// in m3/h. ok is false until both are configured: unlike the output, the
+// minimum has no safe default, because a data sheet minimum is never 0.
+func (o Options) BoilerGas() (maxM3H, minM3H float64, ok bool) {
+	if o.BoilerMaxGasM3H == nil || o.BoilerMinGasM3H == nil {
+		return 0, 0, false
+	}
+	return *o.BoilerMaxGasM3H, *o.BoilerMinGasM3H, true
+}
+
 func (in *Install) checkBoilerPower(c *issues) {
 	o := in.Options
-	if v := o.BoilerMaxPowerKW; v != nil && !(*v > 0 && *v <= BoilerMaxPowerLimitKW) {
-		c.errf("options.boiler_max_power_kw", "%v is not a power in kW within 0..%d", *v, BoilerMaxPowerLimitKW)
+	checkBoilerRange(c, "power_kw", "a power in kW", o.BoilerMaxPowerKW, o.BoilerMinPowerKW, BoilerMaxPowerLimitKW)
+	checkBoilerRange(c, "gas_m3h", "a gas flow in m3/h", o.BoilerMaxGasM3H, o.BoilerMinGasM3H, BoilerMaxGasLimitM3H)
+}
+
+// checkBoilerRange checks a maximum and a minimum option of the boiler: the
+// maximum is above 0 and within limit, the minimum is within limit and below
+// the maximum when both are set.
+func checkBoilerRange(c *issues, name, what string, hi, lo *float64, limit float64) {
+	maxKey, minKey := "boiler_max_"+name, "boiler_min_"+name
+	if v := hi; v != nil && !(*v > 0 && *v <= limit) {
+		c.errf("options."+maxKey, "%v is not %s within 0..%v", *v, what, limit)
 	}
-	if v := o.BoilerMinPowerKW; v != nil && !(*v >= 0 && *v <= BoilerMaxPowerLimitKW) {
-		c.errf("options.boiler_min_power_kw", "%v is not a power in kW within 0..%d", *v, BoilerMaxPowerLimitKW)
+	if v := lo; v != nil && !(*v >= 0 && *v <= limit) {
+		c.errf("options."+minKey, "%v is not %s within 0..%v", *v, what, limit)
 	}
-	if o.BoilerMaxPowerKW != nil && o.BoilerMinPowerKW != nil && *o.BoilerMinPowerKW >= *o.BoilerMaxPowerKW {
-		c.errf("options.boiler_min_power_kw", "%v is not below boiler_max_power_kw %v", *o.BoilerMinPowerKW, *o.BoilerMaxPowerKW)
+	if hi != nil && lo != nil && *lo >= *hi {
+		c.errf("options."+minKey, "%v is not below %s %v", *lo, maxKey, *hi)
 	}
 }
 

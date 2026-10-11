@@ -422,6 +422,8 @@ func (s *stateStore) PatchInstall(ctx context.Context, p installPatch) (installR
 		for key, v := range map[string]optFloat{
 			"boiler_max_power_kw": p.BoilerMaxPowerKW,
 			"boiler_min_power_kw": p.BoilerMinPowerKW,
+			"boiler_max_gas_m3h":  p.BoilerMaxGasM3H,
+			"boiler_min_gas_m3h":  p.BoilerMinGasM3H,
 		} {
 			if !v.set {
 				continue

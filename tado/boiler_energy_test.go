@@ -88,3 +88,46 @@ func TestBoilerPowerOptions(t *testing.T) {
 		t.Errorf("a valid output is refused: %v", err)
 	}
 }
+
+// TestBoilerGasOptions: the gas flow turns the count on only with both values,
+// and a value outside the limits is refused.
+func TestBoilerGasOptions(t *testing.T) {
+	if _, _, ok := (Options{}).BoilerGas(); ok {
+		t.Error("an installation without a gas flow reports one")
+	}
+	if _, _, ok := (Options{BoilerMaxGasM3H: f64(2.7)}).BoilerGas(); ok {
+		t.Error("a maximum alone turns the gas count on")
+	}
+	if _, _, ok := (Options{BoilerMinGasM3H: f64(0.3)}).BoilerGas(); ok {
+		t.Error("a minimum alone turns the gas count on")
+	}
+	if maxM3H, minM3H, ok := (Options{BoilerMaxGasM3H: f64(2.7), BoilerMinGasM3H: f64(0)}).BoilerGas(); !ok || maxM3H != 2.7 || minM3H != 0 {
+		t.Errorf("both = %v, %v, %v, want 2.7, 0, true", maxM3H, minM3H, ok)
+	}
+	for name, edit := range map[string]func(*Options){
+		"zero maximum":          func(o *Options) { o.BoilerMaxGasM3H = f64(0) },
+		"negative maximum":      func(o *Options) { o.BoilerMaxGasM3H = f64(-1) },
+		"maximum in l/h":        func(o *Options) { o.BoilerMaxGasM3H = f64(2700) },
+		"negative minimum":      func(o *Options) { o.BoilerMinGasM3H = f64(-0.1) },
+		"minimum in l/h":        func(o *Options) { o.BoilerMinGasM3H = f64(300) },
+		"minimum at maximum":    func(o *Options) { o.BoilerMaxGasM3H, o.BoilerMinGasM3H = f64(2.7), f64(2.7) },
+		"minimum above maximum": func(o *Options) { o.BoilerMaxGasM3H, o.BoilerMinGasM3H = f64(2.7), f64(3) },
+	} {
+		in := synthInstall(t)
+		edit(&in.Options)
+		if err := in.Validate(); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	for name, edit := range map[string]func(*Options){
+		"both":         func(o *Options) { o.BoilerMaxGasM3H, o.BoilerMinGasM3H = f64(2.7), f64(0.3) },
+		"zero minimum": func(o *Options) { o.BoilerMaxGasM3H, o.BoilerMinGasM3H = f64(2.7), f64(0) },
+		"at the limit": func(o *Options) { o.BoilerMaxGasM3H = f64(BoilerMaxGasLimitM3H) },
+	} {
+		in := synthInstall(t)
+		edit(&in.Options)
+		if err := in.Validate(); err != nil {
+			t.Errorf("%s: refused: %v", name, err)
+		}
+	}
+}

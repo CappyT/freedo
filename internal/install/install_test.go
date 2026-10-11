@@ -201,10 +201,11 @@ func TestInstallRoundTripKeepsAwayTemperatures(t *testing.T) {
 	}
 }
 
-// TestInstallRoundTripKeepsBoilerPower: the output of the boiler survives the
-// database, and an installation that states none loads none.
+// TestInstallRoundTripKeepsBoilerPower: the output and the gas flow of the
+// boiler survive the database, and an installation that states none loads none.
 func TestInstallRoundTripKeepsBoilerPower(t *testing.T) {
-	in, err := tado.Parse([]byte(fixtureInstallYAML + "  boiler_max_power_kw: 24.5\n  boiler_min_power_kw: 2.5\n"))
+	in, err := tado.Parse([]byte(fixtureInstallYAML +
+		"  boiler_max_power_kw: 24.5\n  boiler_min_power_kw: 2.5\n  boiler_max_gas_m3h: 2.65\n  boiler_min_gas_m3h: 0.3\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,6 +217,9 @@ func TestInstallRoundTripKeepsBoilerPower(t *testing.T) {
 	if maxKW, minKW, ok := got.Options.BoilerPower(); !ok || maxKW != 24.5 || minKW != 2.5 {
 		t.Errorf("loaded output = %v, %v, %v, want 24.5, 2.5, true", maxKW, minKW, ok)
 	}
+	if maxM3H, minM3H, ok := got.Options.BoilerGas(); !ok || maxM3H != 2.65 || minM3H != 0.3 {
+		t.Errorf("loaded gas flow = %v, %v, %v, want 2.65, 0.3, true", maxM3H, minM3H, ok)
+	}
 	bare, _ := storeWithInstall(t, defaultInstall)
 	got, _, err = bare.LoadInstall(context.Background())
 	if err != nil {
@@ -223,6 +227,9 @@ func TestInstallRoundTripKeepsBoilerPower(t *testing.T) {
 	}
 	if _, _, ok := got.Options.BoilerPower(); ok {
 		t.Error("an installation without a boiler output loaded one")
+	}
+	if _, _, ok := got.Options.BoilerGas(); ok {
+		t.Error("an installation without a gas flow loaded one")
 	}
 }
 

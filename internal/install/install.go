@@ -170,7 +170,7 @@ func ReadInstall(ctx context.Context, q Querier) (*tado.Install, uint64, error) 
 		}
 		in.Options.OfflineAfterSec = &sec
 	}
-	if err := loadBoilerPower(kv, &in.Options); err != nil {
+	if err := loadBoilerOptions(kv, &in.Options); err != nil {
 		return nil, 0, err
 	}
 	if err := loadFlowOptions(kv, &in.Options); err != nil {
@@ -203,17 +203,19 @@ func ReadInstall(ctx context.Context, q Querier) (*tado.Install, uint64, error) 
 	return in, rev, nil
 }
 
-// boilerPowerOptions maps the install keys of the boiler output options to
-// their fields.
-func boilerPowerOptions(o *tado.Options) map[string]**float64 {
+// boilerOptions maps the install keys of the boiler output and gas flow
+// options to their fields.
+func boilerOptions(o *tado.Options) map[string]**float64 {
 	return map[string]**float64{
 		"boiler_max_power_kw": &o.BoilerMaxPowerKW,
 		"boiler_min_power_kw": &o.BoilerMinPowerKW,
+		"boiler_max_gas_m3h":  &o.BoilerMaxGasM3H,
+		"boiler_min_gas_m3h":  &o.BoilerMinGasM3H,
 	}
 }
 
-func loadBoilerPower(kv map[string]string, o *tado.Options) error {
-	for key, field := range boilerPowerOptions(o) {
+func loadBoilerOptions(kv map[string]string, o *tado.Options) error {
+	for key, field := range boilerOptions(o) {
 		raw, ok := kv[key]
 		if !ok {
 			continue
@@ -628,7 +630,7 @@ func (s *Store) ReplaceInstall(ctx context.Context, in *tado.Install) (uint64, e
 	if o := in.Options.OfflineAfterSec; o != nil {
 		values = append(values, [2]string{"offline_after_sec", strconv.Itoa(*o)})
 	}
-	for key, field := range boilerPowerOptions(&in.Options) {
+	for key, field := range boilerOptions(&in.Options) {
 		if *field != nil {
 			values = append(values, [2]string{key, strconv.FormatFloat(**field, 'g', -1, 64)})
 		}

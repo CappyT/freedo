@@ -54,10 +54,13 @@ type installPatch struct {
 	// program block. The per-zone switch is the zone's early_start.
 	EarlyStartMaxLeadSec  *int `json:"early_start_max_lead_sec"`
 	EarlyStartMinEpisodes *int `json:"early_start_min_episodes"`
-	// BoilerMaxPowerKW and BoilerMinPowerKW size the boiler energy estimate;
-	// null removes a value.
+	// BoilerMaxPowerKW and BoilerMinPowerKW size the boiler energy estimate,
+	// BoilerMaxGasM3H and BoilerMinGasM3H the gas volume count; null removes a
+	// value.
 	BoilerMaxPowerKW optFloat `json:"boiler_max_power_kw"`
 	BoilerMinPowerKW optFloat `json:"boiler_min_power_kw"`
+	BoilerMaxGasM3H  optFloat `json:"boiler_max_gas_m3h"`
+	BoilerMinGasM3H  optFloat `json:"boiler_min_gas_m3h"`
 }
 
 // networkKeyPut carries the PAN key as 32 hex characters. The field travels in
@@ -262,6 +265,8 @@ func installView(in *tado.Install, rev uint64) map[string]any {
 		"early_start_min_episodes": in.Options.EarlyStartMinEpisodeCount(),
 		"boiler_max_power_kw":      nil,
 		"boiler_min_power_kw":      0.0,
+		"boiler_max_gas_m3h":       nil,
+		"boiler_min_gas_m3h":       nil,
 		"counts": map[string]any{
 			"devices":  len(in.Devices),
 			"zones":    len(in.Zones),
@@ -273,6 +278,12 @@ func installView(in *tado.Install, rev uint64) map[string]any {
 	}
 	if maxKW, minKW, ok := in.Options.BoilerPower(); ok {
 		out["boiler_max_power_kw"], out["boiler_min_power_kw"] = maxKW, minKW
+	}
+	if v := in.Options.BoilerMaxGasM3H; v != nil {
+		out["boiler_max_gas_m3h"] = *v
+	}
+	if v := in.Options.BoilerMinGasM3H; v != nil {
+		out["boiler_min_gas_m3h"] = *v
 	}
 	return out
 }
