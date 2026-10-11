@@ -124,6 +124,8 @@ The daemon serves a web interface at the root of its HTTP address. It shows the 
 water, the boiler and the devices. It sets temperatures with the four end rules, switches a zone off,
 returns it to its program, switches the home between home and away, and edits the weekly schedules. It
 calls the routes of [API.md](API.md) and no other. Installation management stays in the API.
+Settings shows the health summary of the daemon. It marks `serialErrors` above zero with a warning:
+see [Serial link faults](#serial-link-faults).
 
 A `go build` on a machine without Node has no dashboard. The daemon then answers every page request
 with `404`, and the API works as before. To build the dashboard, see
@@ -158,9 +160,9 @@ connections from that address only and to treat the user as authenticated. The d
   `X-Ingress-Path` has no effect.
 
 The daemon cannot tell the Home Assistant users apart. Every user who can open the panel controls the
-plant. The add-on keeps `panel_admin` at its default `true`, so the sidebar entry shows for
-administrators only. Do not set `--ingress` in another setup. A reverse proxy on the host shows the
-daemon its own address, not the address of the client.
+plant, and the project accepts this. The add-on keeps `panel_admin` at its default `true`, so the
+sidebar entry shows for administrators only. Do not set `--ingress` in another setup. A reverse proxy
+on the host shows the daemon its own address, not the address of the client.
 
 ## Time zone
 

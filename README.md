@@ -180,6 +180,7 @@ what is not verified on air. The routes are in [`docs/API.md`](docs/API.md). The
 | Temperature correction | equal | Three modes. `config` homes the motor. `dbg2` ran on one valve and is in no capture. |
 | Room temperature from an outside sensor | extra | Only in mode `setpoint`. Filter and limits are design estimates. Not verified on air. |
 | Manage rooms and devices | partial | Through the API. Home Assistant creates entities at integration start, so reload it after a change. |
+| Interface | partial | A web dashboard on the daemon monitors and controls the zones, the hot water, the boiler and the devices. It has no installation management yet: use the API. Not tested on a real plant. |
 | Pair a device | partial | The pair window with firmware v2.9 is not verified on air. The integration opens the window and does not send the pair command. |
 | Remove a device | partial | The API reports the effects first. The delete sends no frame. The device leaves the network only after `factoryreset`. |
 | Firmware version and update | partial | A transfer route exists. No block was sent on air. freedo distributes no image. |
