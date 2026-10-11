@@ -280,3 +280,41 @@ func TestInstallAPIPatchesFlowOptions(t *testing.T) {
 		t.Errorf("flow_curves after null = %v, want none", curves)
 	}
 }
+
+// TestInstallAPIClearsFlowLimit: a null flow_limit_c clears the stored limit,
+// an absent field leaves it, and a value sets it. The limit is nullable, so
+// unlike the numeric options it must accept null as a reset.
+func TestInstallAPIClearsFlowLimit(t *testing.T) {
+	a := newInstallAPIOn(t, windowInstall(t, nil))
+	limit := func() (int, bool) {
+		stored, _, err := a.store.LoadInstall(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return stored.Options.FlowLimit()
+	}
+
+	// A value sets the limit.
+	a.mutate(http.MethodPatch, "/api/install", map[string]any{"flow_limit_c": 50})
+	if got := a.get("/api/install")["flow_limit_c"]; got != float64(50) {
+		t.Fatalf("flow_limit_c after a set = %v, want 50", got)
+	}
+	if v, ok := limit(); !ok || v != 50 {
+		t.Fatalf("stored flow limit after a set = %d %v, want 50 true", v, ok)
+	}
+
+	// An absent field leaves the limit alone.
+	a.mutate(http.MethodPatch, "/api/install", map[string]any{"flow_hysteresis_c": 2})
+	if got := a.get("/api/install")["flow_limit_c"]; got != float64(50) {
+		t.Errorf("flow_limit_c after an unrelated patch = %v, want 50", got)
+	}
+
+	// A null clears the limit.
+	a.mutate(http.MethodPatch, "/api/install", map[string]any{"flow_limit_c": nil})
+	if got := a.get("/api/install")["flow_limit_c"]; got != nil {
+		t.Errorf("flow_limit_c after a null = %v, want null", got)
+	}
+	if v, ok := limit(); ok {
+		t.Errorf("stored flow limit after a null = %d, want unset", v)
+	}
+}

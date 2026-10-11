@@ -44,12 +44,12 @@ type installPatch struct {
 	RoomTempMaxAgeSec *int `json:"room_temp_max_age_sec"`
 	// LowBatteryCellMV and OfflineAfterSec are the thresholds of the device
 	// alerts in /api/health.
-	LowBatteryCellMV   *int `json:"low_battery_cell_mv"`
-	OfflineAfterSec    *int `json:"offline_after_sec"`
-	FlowLimitC         *int `json:"flow_limit_c"`
-	OutdoorMaxAgeSec   *int `json:"outdoor_max_age_sec"`
-	FlowHysteresisC    *int `json:"flow_hysteresis_c"`
-	FlowMinIntervalSec *int `json:"flow_min_interval_sec"`
+	LowBatteryCellMV   *int   `json:"low_battery_cell_mv"`
+	OfflineAfterSec    *int   `json:"offline_after_sec"`
+	FlowLimitC         optInt `json:"flow_limit_c"`
+	OutdoorMaxAgeSec   *int   `json:"outdoor_max_age_sec"`
+	FlowHysteresisC    *int   `json:"flow_hysteresis_c"`
+	FlowMinIntervalSec *int   `json:"flow_min_interval_sec"`
 	// FlowAutoAdapt switches the adaptation of the flow limit to the room
 	// feedback, for every circuit.
 	FlowAutoAdapt *bool `json:"flow_auto_adapt"`
