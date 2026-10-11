@@ -45,7 +45,8 @@ csl_phase: 0
 
 # Seed of the frame counter we put in our downlinks. No device checks it on
 # receive - acceptance rests on the AES-CCM* MIC alone - so the seed is our own
-# bookkeeping and nonce hygiene. Every process starts from 0 by default.
+# bookkeeping and nonce hygiene. This value is a floor: the daemon resumes from
+# the stored counter when that is higher.
 tx_counter: 0
 
 # Forward a zone GET addressed to us to the member of that zone we heard from
