@@ -147,7 +147,9 @@
 					<div><dt>{t('card.target')}</dt><dd class="text">{targetText(model)}</dd></div>
 					<div><dt>{t('card.humidity')}</dt><dd>{fmt.percent(model.humidityPct)}</dd></div>
 					<div><dt>{t('zone.demand')}</dt><dd>{fmt.percent(model.demandPct)}</dd></div>
-					<div><dt>{t('zone.scheduled')}</dt><dd>{model.zone.target.programOff ? t('schedule.off') : fmt.temp(model.zone.target.programC)}</dd></div>
+					{#if model.zone.target.hasProgram !== false}
+						<div><dt>{t('zone.scheduled')}</dt><dd>{model.zone.target.programOff ? t('schedule.off') : fmt.temp(model.zone.target.programC)}</dd></div>
+					{/if}
 				</dl>
 
 				<h3>{t('window.title')}</h3>

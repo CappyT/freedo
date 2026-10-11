@@ -71,6 +71,7 @@ export const de: Record<Key, string> = {
 	'target.none': 'Kein Wert',
 
 	'mode.schedule': 'Folgt dem Zeitplan',
+	'mode.noProgram': 'Kein Zeitplan',
 	'mode.waiting': 'Wartet auf den ersten Bericht',
 	'mode.manual': 'Manuelle Änderung, bis du sie beendest',
 	'mode.until': 'Manuelle Änderung, bis {time}',
@@ -158,6 +159,7 @@ export const de: Record<Key, string> = {
 	'hotWater.on': 'Mit {temp} einschalten',
 	'hotWater.off': 'Ausschalten',
 	'hotWater.power': 'Zustand',
+	'hotWater.reported': 'Sollwert am Thermostat',
 	'hotWater.note': 'Der Daemon führt den Warmwasser-Zeitplan selbst aus und schreibt bei jedem Block das Thermostat.',
 
 	'boiler.title': 'Heizkessel',

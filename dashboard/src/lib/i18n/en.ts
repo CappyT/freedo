@@ -71,6 +71,7 @@ export const en = {
 	'target.none': 'No value',
 
 	'mode.schedule': 'Following the schedule',
+	'mode.noProgram': 'No schedule',
 	'mode.waiting': 'Waiting for the first report',
 	'mode.manual': 'Manual change, until you end it',
 	'mode.until': 'Manual change, until {time}',
@@ -158,6 +159,7 @@ export const en = {
 	'hotWater.on': 'Turn on at {temp}',
 	'hotWater.off': 'Turn off',
 	'hotWater.power': 'Power',
+	'hotWater.reported': 'Thermostat setpoint',
 	'hotWater.note': 'The daemon runs the hot water schedule itself and writes the thermostat at each block.',
 
 	'boiler.title': 'Boiler',

@@ -8,6 +8,8 @@ export function modeLine(target: Target): string {
 	if (o) return overlayLine(o, target.boost);
 	if (target.source === 'window') return t('mode.window');
 	if (target.source === 'away') return t('mode.away');
+	// source is "program" also for a zone with no program: hasProgram tells the two apart.
+	if (target.known && target.hasProgram === false) return t('mode.noProgram');
 	return target.known ? t('mode.schedule') : t('mode.waiting');
 }
 

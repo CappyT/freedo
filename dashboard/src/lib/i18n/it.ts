@@ -71,6 +71,7 @@ export const it: Record<Key, string> = {
 	'target.none': 'Nessun valore',
 
 	'mode.schedule': 'Segue il programma',
+	'mode.noProgram': 'Nessun programma',
 	'mode.waiting': 'In attesa del primo rapporto',
 	'mode.manual': 'Modifica manuale, fino a quando la termini',
 	'mode.until': 'Modifica manuale, fino alle {time}',
@@ -158,6 +159,7 @@ export const it: Record<Key, string> = {
 	'hotWater.on': 'Accendi a {temp}',
 	'hotWater.off': 'Spegni',
 	'hotWater.power': 'Stato',
+	'hotWater.reported': 'Setpoint del termostato',
 	'hotWater.note': 'Il demone esegue da solo il programma dell’acqua calda e scrive il termostato a ogni blocco.',
 
 	'boiler.title': 'Caldaia',

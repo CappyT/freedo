@@ -125,8 +125,11 @@
 				<dl class="facts">
 					<div><dt>{t('hotWater.power')}</dt><dd class="text">{model.zone.target.on ? t('state.on') : t('state.off')}</dd></div>
 					<div><dt>{t('card.target')}</dt><dd class="text">{model.zone.target.on ? fmt.temp(model.zone.target.targetC) : t('target.off')}</dd></div>
-					<div><dt>{t('zone.scheduled')}</dt><dd>{model.zone.target.programOff ? t('schedule.off') : fmt.temp(model.zone.target.programC)}</dd></div>
+					{#if model.zone.target.hasProgram !== false}
+						<div><dt>{t('zone.scheduled')}</dt><dd>{model.zone.target.programOff ? t('schedule.off') : fmt.temp(model.zone.target.programC)}</dd></div>
+					{/if}
 					<div><dt>{t('boiler.dhw')}</dt><dd>{fmt.temp(data.boiler?.DHWC)}</dd></div>
+					<div><dt>{t('hotWater.reported')}</dt><dd>{fmt.temp(data.boiler?.DHWSetpointC)}</dd></div>
 				</dl>
 				<p class="note">{t('hotWater.note')}</p>
 			</section>

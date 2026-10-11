@@ -165,6 +165,21 @@ try {
 	check((await rules()) === 'timer', 'a rule that the person chose stays after the next poll');
 	zonesPatch = null;
 
+	// The field of the daemon itself: Office has no schedule, and Living room got one above.
+	const declared = (await (await fetch(daemon.base + '/api/zones')).json()).declared;
+	if (declared.every((z) => z.kind === 'hotwater' || 'hasProgram' in z.target)) {
+		await zone(() => {});
+		zonesPatch = null;
+		check((await rules()) === 'manual' && (await hint()), 'the daemon says Office has no program: "until I end it" and the hint');
+		await open('#/zones/8', `document.querySelector('main h1')?.textContent === 'Living room'`);
+		await tab.waitFor(`document.querySelector('.ends input:checked')`);
+		check((await rules()) === 'until_next' && !(await hint()), 'the daemon says Living room has a program: the next block, no hint');
+		await open('#/zones/3', `document.querySelector('main h1')?.textContent === 'Office'`);
+		await tab.waitFor(`document.querySelector('.ends input:checked')`);
+	} else {
+		console.log('skipped: this daemon does not send target.hasProgram');
+	}
+
 	// 5. Turn off asks first.
 	requests.length = 0;
 	await click('.ends input[value="manual"]');

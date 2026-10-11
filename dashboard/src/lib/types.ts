@@ -192,6 +192,8 @@ export interface Boiler {
 	BusType: string;
 	FlowC: number | null;
 	DHWC: number | null;
+	/** The hot water setpoint that the thermostat reports. The daemon does not set it. */
+	DHWSetpointC?: number | null;
 	ModulationPct: number | null;
 	Active: boolean;
 	HeatActive: boolean;
