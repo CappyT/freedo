@@ -147,3 +147,51 @@ func TestNeighborSolicitationForOthersIgnored(t *testing.T) {
 		t.Errorf("actions %v, want none", reasons(actions))
 	}
 }
+
+// icmpNoiseFrame returns a Data frame from dev carrying packet, with an app
+// counter picked so that ParseApp's TLV heuristic accepts the ICMPv6 bytes. The
+// heuristic reads the app trailer too, so which counters it accepts varies with
+// the packet.
+func icmpNoiseFrame(t *testing.T, dev, packet []byte) []byte {
+	t.Helper()
+	for ctr := uint32(1); ctr < 4096; ctr++ {
+		f, err := BuildData(NetworkKey, 0x44, BridgeEUI, dev[:5], WrapAppPayload(packet, ctr, nil))
+		if err != nil {
+			t.Fatal(err)
+		}
+		p, err := ParseData(NetworkKey, f.Bytes())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if app := ParseApp(p.Plaintext); app != nil && app.CoAP == nil && len(app.TLVs) > 0 {
+			return f.Bytes()
+		}
+	}
+	t.Fatal("no app counter makes the TLV heuristic accept the packet")
+	return nil
+}
+
+// TestICMPv6BodyIsNotTelemetry: ICMPv6 carries no TLVs, but ParseApp's TLV
+// heuristic reads some of its bytes as tags. A valve's Neighbor Solicitation
+// holds its own EUI-64 in the source link-layer option, which reads as tag 1bc5
+// with a 7-byte value and an empty tag 0000. Its Echo Request holds the next
+// header and type bytes 3a80 and then the checksum. None of it is telemetry.
+func TestICMPv6BodyIsNotTelemetry(t *testing.T) {
+	dev := mustB("4433221107c51b00")
+	src, dst := linkLocalFromWire(dev), linkLocalFromWire(BridgeEUI)
+	echo := append([]byte{0x7a, 0x33, nhICMPv6}, icmpMsg(src, dst, []byte{icmpEchoRequest, 0, 0, 0})...)
+	for name, packet := range map[string][]byte{
+		"neighbor solicitation": neighborSolicit(dev, dst),
+		"echo request":          echo,
+	} {
+		e, _, _ := newTestEmu(t)
+		e.OnFrame(icmpNoiseFrame(t, dev, packet))
+		ns := e.node(dev)
+		if len(ns.Telemetry) != 0 || len(ns.raw) != 0 {
+			t.Errorf("%s: cached telemetry %v and %d raw tags, want none", name, ns.Telemetry, len(ns.raw))
+		}
+		if got := e.Stats().ICMPv6; got != 1 {
+			t.Errorf("%s: ICMPv6 counter = %d, want 1", name, got)
+		}
+	}
+}

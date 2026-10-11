@@ -847,7 +847,7 @@ func (e *EmuState) onData(class FrameClass, raw []byte) []Action {
 	_, icmp := UnicastICMPv6Type(f.Plaintext)
 	if app == nil && !icmp {
 		e.log.Log(class.String(), srcLbl, dstLbl, rsnAppParse, f.Hex())
-	} else if app != nil {
+	} else if app != nil && !icmp {
 		ns.RxCounter = app.Counter
 		if !frag {
 			// A fragment carries a 6LoWPAN fragment header where the CoAP packet
@@ -856,6 +856,8 @@ func (e *EmuState) onData(class FrameClass, raw []byte) []Action {
 			e.cacheBody(ns, srcEUI, app.CoAP, app.TLVs, class, srcLbl, dstLbl, f.Hex())
 		}
 	} else {
+		// An ICMPv6 body is no TLV list, even when ParseApp's TLV heuristic reads
+		// an address or a checksum in it as tags: nothing here is cached.
 		ns.RxCounter = binary.LittleEndian.Uint32(f.Plaintext[4:8])
 		e.stats.ICMPv6++
 	}
