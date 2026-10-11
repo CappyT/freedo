@@ -23,7 +23,7 @@ from .entity import (
     FreedoZoneSettingEntity,
     call_api,
 )
-from .model import KIND_VALVE, Zone, node_child_lock, zone_setting
+from .model import KIND_VALVE, Zone, in_zone, node_child_lock, zone_setting
 
 
 async def async_setup_entry(
@@ -37,7 +37,7 @@ async def async_setup_entry(
         OfflineScheduleSwitch(coordinator),
     ]
     for short, dev in sorted(coordinator.data.devices.items()):
-        if dev.get("kind") == KIND_VALVE:
+        if dev.get("kind") == KIND_VALVE and in_zone(coordinator.data, short):
             entities.append(NotificationSwitch(coordinator, short))
             # The node view serves ChildLock on a valve alone.
             if node_child_lock(coordinator.data, short) is not None:

@@ -4,7 +4,12 @@ of each circuit."""
 
 from __future__ import annotations
 
-from homeassistant.components.number import NumberDeviceClass, NumberEntity, NumberMode
+from homeassistant.components.number import (
+    NumberDeviceClass,
+    NumberEntity,
+    NumberMode,
+    RestoreNumber,
+)
 from homeassistant.const import EntityCategory, UnitOfTemperature, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
@@ -48,14 +53,16 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-class ZoneOffsetNumber(FreedoEntity, NumberEntity):
+class ZoneOffsetNumber(FreedoEntity, RestoreNumber):
     """POST /api/zones/{n}/offset: the correction of the room temperature.
 
     No device class: HA would convert a temperature difference as an absolute
     temperature. Only mode setpoint reports the value (GET /api/install/zones
     setpoint_offset_c). In mode config and dbg2 the correction goes to the
-    measuring device and the daemon reports nothing, so the entity shows the
-    last value set from Home Assistant.
+    measuring device and the daemon reports nothing: no captured device frame
+    carries tag 0140, so the node Telemetry calib_offset stays empty. The
+    entity shows the last value set from Home Assistant and restores it after
+    a restart.
     """
 
     _attr_translation_key = "temperature_offset"
@@ -79,6 +86,11 @@ class ZoneOffsetNumber(FreedoEntity, NumberEntity):
     @property
     def available(self) -> bool:
         return super().available and self._zone is not None
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        if (last := await self.async_get_last_number_data()) is not None:
+            self._written = last.native_value
 
     @property
     def native_value(self) -> float | None:
@@ -175,8 +187,7 @@ class FlowLimitNumber(FreedoEntity, NumberEntity):
 
     @property
     def native_value(self) -> float | None:
-        # servedC is 0 until the circuit is served a value.
-        return (self._view or {}).get("servedC") or None
+        return (self._view or {}).get("servedC")
 
     async def async_set_native_value(self, value: float) -> None:
         source = self.coordinator.data.circuit_sources[self._circuit]

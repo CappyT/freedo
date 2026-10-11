@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from functools import partial
 import time
 from typing import Any
 
@@ -32,7 +33,7 @@ from .const import (
     SERVICE_SET_SCHEDULE,
 )
 from .coordinator import FreedoConfigEntry, FreedoCoordinator
-from .entity import FreedoEntity, call_api
+from .entity import FreedoEntity, call_api, each
 from .model import (
     OVERLAY_END_MAX_SEC,
     OVERLAY_END_RULES,
@@ -349,8 +350,9 @@ class FreedoZoneClimate(FreedoEntity, ClimateEntity):
                 translation_placeholders={"zone": zone.name},
             )
         programs = _checked_schedule(schedule_programs(view))
-        for target in targets:
-            await target._put_schedule(target._zone, programs)
+        await each(
+            [(t.entity_id, partial(t._put_schedule, t._zone, programs)) for t in targets]
+        )
 
     async def _put_schedule(self, zone: Zone, programs: list[dict[str, Any]]) -> None:
         await call_api(self.coordinator.client.set_zone_schedule(zone.number, programs))

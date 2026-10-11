@@ -43,6 +43,7 @@ set_overlay:
     duration:
       selector:
         duration:
+          enable_day: true
 
 get_schedule:
   target:

@@ -150,11 +150,12 @@ class FreedoClient:
         return await self._request("PATCH", f"/api/install/zones/{int(zone)}", fields)
 
     async def zone_schedule(self, zone: int) -> dict[str, Any] | None:
-        """The weekly schedule of a zone, None when no member holds one."""
+        """The weekly schedule of a zone, None when no member holds one. Any
+        other error, a 404 for an unknown zone included, is raised."""
         try:
             return await self._request("GET", f"/api/zones/{int(zone)}/schedule")
         except FreedoApiError as err:
-            if err.status == 404:
+            if err.status == 404 and err.message == f"zone {int(zone)} has no schedule":
                 return None
             raise
 

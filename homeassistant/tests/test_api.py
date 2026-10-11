@@ -233,6 +233,8 @@ def test_zone_schedule():
             ("GET", "/api/zones/1/schedule"): (200, view),
             ("GET", "/api/zones/2/schedule"): (404, {"error": "zone 2 has no schedule"}),
             ("GET", "/api/zones/3/schedule"): (503, {"error": "no installation"}),
+            ("GET", "/api/zones/5/schedule"): (404, {"error": "tado: config: no zone 5"}),
+            ("GET", "/api/zones/12/schedule"): (404, {"error": "zone 2 has no schedule"}),
             ("PUT", "/api/zones/1/schedule"): (200, view),
         }
     )
@@ -242,6 +244,12 @@ def test_zone_schedule():
     assert run(client.zone_schedule(2)) is None
     with pytest.raises(FreedoApiError):
         run(client.zone_schedule(3))
+    # A 404 about another thing is an error: an unknown zone, a missing route,
+    # and the no-schedule message of another zone.
+    for zone in (5, 7, 12):
+        with pytest.raises(FreedoApiError) as err:
+            run(client.zone_schedule(zone))
+        assert err.value.status == 404
     programs = [{"days": ["mon"], "entries": [{"minute": 0, "setpoint_c": 17, "enabled": True}]}]
     assert run(client.set_zone_schedule(1, programs)) == view
     assert session.calls[-1]["method"] == "PUT"

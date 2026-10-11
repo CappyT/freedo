@@ -48,6 +48,10 @@ OPEN_WINDOW_MAX_SEC = 0xFFFF
 # The daemon rejects an outdoor temperature outside -60..60 C with 400.
 OUTDOOR_BOUND_C = 60.0
 
+# The device stores one day program in at most this many bytes of its protobuf
+# encoding, and the daemon rejects a longer one with 400.
+SCHEDULE_DAY_BYTES_MAX = 255
+
 _KNOWN_BINARY = {"on": True, "off": False}
 
 
@@ -292,6 +296,13 @@ def zone_demand_pct(data: FreedoData, zone: Zone) -> int | None:
     return int(report.get("DemandPct") or 0)
 
 
+def in_zone(data: FreedoData, short: str) -> bool:
+    """Whether a zone declares the device as a member. The daemon answers 400
+    "id required" to an identify, child lock or display write of a device
+    that belongs to no zone."""
+    return any(short in zone.members for zone in data.zones.values())
+
+
 def node_display(data: FreedoData, short: str) -> Mapping[str, Any] | None:
     """GET /api/nodes Display: the display settings the daemon serves a valve,
     None on any other device."""
@@ -426,6 +437,29 @@ def _entry_body(entry: Any, where: str) -> tuple[int, dict[str, Any]]:
     return minute, {"minute": minute, "setpoint_c": temp, "enabled": enabled}
 
 
+def _uvarint_size(value: int) -> int:
+    size = 1
+    while value >= 0x80:
+        value >>= 7
+        size += 1
+    return size
+
+
+def _day_program_size(entries: list[dict[str, Any]]) -> int:
+    """The bytes of a day program in the daemon encoding: the day mask field
+    (tag and a one-byte varint), then per entry its tag, length and body (minute,
+    setpoint in centi-degrees, enabled)."""
+    size = 2
+    for entry in entries:
+        body = (
+            1 + _uvarint_size(entry["minute"])
+            + 1 + _uvarint_size(round(entry["setpoint_c"] * 100))
+            + 2
+        )
+        size += 1 + _uvarint_size(body) + body
+    return size
+
+
 def schedule_payload(programs: Any) -> list[dict[str, Any]]:
     """Check a weekly schedule against the rules the daemon enforces and map it
     to the body of PUT /api/zones/{n}/schedule. Raises ValueError with the
@@ -434,7 +468,8 @@ def schedule_payload(programs: Any) -> list[dict[str, Any]]:
     A schedule is a list of programs, each with the days it runs on and its
     entries: {"days": ["mon", "tue"], "entries": [{"time": "00:00",
     "temperature": 17, "enabled": true}]}. The programs cover each of the seven
-    days once, and the entries of a program start at 00:00 and increase.
+    days once, the entries of a program start at 00:00 and increase, and a
+    program encodes to at most SCHEDULE_DAY_BYTES_MAX bytes.
     """
     if not isinstance(programs, list) or not programs:
         raise ValueError("programs must be a list with at least one program")
@@ -472,6 +507,12 @@ def schedule_payload(programs: Any) -> list[dict[str, Any]]:
                 raise ValueError(f"{where}.entries[{j}].time must be later than the entry before")
             previous = minute
             out.append(item)
+        size = _day_program_size(out)
+        if size > SCHEDULE_DAY_BYTES_MAX:
+            raise ValueError(
+                f"{where} encodes to {size} bytes, the device stores at most "
+                f"{SCHEDULE_DAY_BYTES_MAX} per day"
+            )
         body.append({"days": names, "entries": out})
     if len(seen) != len(DAYS):
         missing = ", ".join(d for d in DAYS if d not in seen)

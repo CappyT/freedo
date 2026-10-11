@@ -564,6 +564,32 @@ async def test_valve_buttons(hass, client):
     assert not has_entity(hass, entry, "button", "cccc_calibrate")
 
 
+async def test_valve_outside_a_zone_gets_no_controls_that_need_a_zone(hass, client):
+    # The daemon answers 400 "id required" to identify, child lock and display
+    # writes of a valve that belongs to no zone.
+    client.health_json["devices"].append(
+        {"device": "VA0000000009", "short": "ffff", "kind": "valve", "label": "",
+         "batteryMV": 2800, "lowBattery": False, "fault": False, "faultWord": 0,
+         "offline": False, "lastSeen": None, "fallbackMode": 0, "commsWarnings": None}
+    )
+    client.nodes_json.append(
+        {"Short": "ffff", "TempC": 0, "SetpointC": 0, "Mode": "", "LastSeenUnix": 0,
+         "Telemetry": {}, "Display": {"orientation": "vertical", "notification": False},
+         "ChildLock": False}
+    )
+    entry = await setup_entry(hass, client)
+    for platform, key in (
+        ("button", "identify"),
+        ("switch", "child_lock"),
+        ("switch", "notification"),
+        ("select", "orientation"),
+    ):
+        assert has_entity(hass, entry, platform, f"aaaa_{key}"), key
+        assert not has_entity(hass, entry, platform, f"ffff_{key}"), key
+    # The calibration route needs no id.
+    assert has_entity(hass, entry, "button", "ffff_calibrate")
+
+
 async def test_button_error_is_a_home_assistant_error(hass, client):
     entry = await setup_entry(hass, client)
     button = entity_id(hass, entry, "button", "aaaa_calibrate")
@@ -623,6 +649,21 @@ async def test_offset_number_in_config_mode(hass, client):
         "number", "set_value", {ATTR_ENTITY_ID: offset, "value": 0.3}, blocking=True
     )
     assert client.calls == [("offset", 2, 0.3)]
+    assert float(hass.states.get(offset).state) == 0.3
+
+
+async def test_offset_number_in_config_mode_survives_a_reload(hass, client):
+    # The daemon reports no correction in mode config: the entity restores the
+    # last value set from Home Assistant.
+    client.zones_json["declared"][1]["measuringDevice"] = "dddd"
+    entry = await setup_entry(hass, client)
+    offset = entity_id(hass, entry, "number", "zone2_offset")
+    await hass.services.async_call(
+        "number", "set_value", {ATTR_ENTITY_ID: offset, "value": 0.3}, blocking=True
+    )
+    with patch("custom_components.freedo.FreedoClient", return_value=client):
+        await hass.config_entries.async_reload(entry.entry_id)
+        await hass.async_block_till_done()
     assert float(hass.states.get(offset).state) == 0.3
 
 
@@ -781,6 +822,14 @@ async def test_set_schedule(hass, client):
         WEEK[:1],
         [{"days": ["mon"], "entries": [{"time": "06:00", "temperature": 21}]}],
         [dict(WEEK[0], entries=[{"time": "00:00", "temperature": 40}]), WEEK[1]],
+        # 29 entries encode to 263 bytes, above the 255 the device stores per day.
+        [
+            dict(
+                WEEK[0],
+                entries=[{"time": f"00:{m:02d}", "temperature": 17} for m in range(29)],
+            ),
+            WEEK[1],
+        ],
     ],
 )
 async def test_set_schedule_refuses_before_the_daemon(hass, client, programs):
@@ -798,6 +847,27 @@ async def test_copy_schedule(hass, client):
     assert body[0]["entries"][1] == {"minute": 390, "setpoint_c": 21.0, "enabled": True}
     assert body[0]["entries"][2]["enabled"] is False
     assert [p["days"] for p in body] == [p["days"] for p in SCHEDULE["programs"]]
+
+
+async def test_copy_schedule_goes_on_after_a_refused_zone(hass, client):
+    office = copy.deepcopy(client.zones_json["declared"][1])
+    office.update(number=3, name="Office", members=["eeee"])
+    client.zones_json["declared"].append(office)
+    await setup_entry(hass, client)
+    real = client.set_zone_schedule
+
+    async def refuse_zone_two(zone, programs):
+        if zone == 2:
+            raise FreedoApiError(400, "zone 2 declares no member")
+        return await real(zone, programs)
+
+    client.set_zone_schedule = refuse_zone_two
+    with pytest.raises(HomeAssistantError, match=r"climate\.bedroom: .*zone 2 declares no member"):
+        await call_freedo(
+            hass, "copy_schedule", {ATTR_ENTITY_ID: LIVING, "to": [BEDROOM, "climate.office"]}
+        )
+    # The zone after the refused one still got the schedule.
+    assert [c[:2] for c in client.calls if c[0] == "set_schedule"] == [("set_schedule", 3)]
 
 
 @pytest.mark.parametrize(
@@ -944,10 +1014,12 @@ async def test_flow_limit_number_follows_the_curve(hass, client):
     assert float(hass.states.get(flow).state) == 45
 
 
-async def test_flow_limit_unknown_until_served(hass, client):
-    with_flow_circuit(client, servedC=0)
+async def test_flow_limit_shows_the_default_until_a_value_is_set(hass, client):
+    # The daemon serves defaultC (48) to a circuit with no value of its own.
+    with_flow_circuit(client, servedC=48)
     entry = await setup_entry(hass, client)
-    assert hass.states.get(entity_id(hass, entry, "number", "circuit1_flow_limit")).state == "unknown"
+    assert float(hass.states.get(entity_id(hass, entry, "number", "circuit1_flow_limit")).state) == 48
+    assert float(hass.states.get(entity_id(hass, entry, "sensor", "circuit1_servedC")).state) == 48
 
 
 async def test_flow_limit_needs_a_heat_source(hass, client):
@@ -1042,3 +1114,6 @@ def test_service_selectors_are_valid():
     for spec in services.values():
         for field in ((spec or {}).get("fields") or {}).values():
             selector.validate_selector(field["selector"])
+    # set_overlay takes a timer of up to 7 days.
+    duration = services["set_overlay"]["fields"]["duration"]["selector"]["duration"]
+    assert duration["enable_day"] is True

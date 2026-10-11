@@ -468,6 +468,40 @@ def test_schedule_payload_refuses(programs, message):
         schedule_payload(programs)
 
 
+def _day_at(*minutes):
+    """One program for the whole week with an entry at each minute of the day."""
+    entries = [
+        {"time": f"{minute // 60:02d}:{minute % 60:02d}", "temperature": 17} for minute in minutes
+    ]
+    return [{"days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"], "entries": entries}]
+
+
+def test_schedule_day_size_limit():
+    # The daemon encodes a day as protobuf and refuses more than 255 bytes. An
+    # entry takes 9 bytes while its minute fits one varint byte (minute < 128)
+    # and 10 bytes after that, and the day mask field takes 2.
+    early_ok = _day_at(*range(28))
+    assert 2 + 9 * 28 == 254
+    assert schedule_payload(early_ok)[0]["entries"][-1]["minute"] == 27
+    # 7 early and 19 late entries are 255 bytes: the limit itself passes.
+    exact = _day_at(*range(7), *range(128, 147))
+    assert 2 + 7 * 9 + 19 * 10 == 255
+    assert len(schedule_payload(exact)[0]["entries"]) == 26
+
+
+@pytest.mark.parametrize(
+    ("minutes", "size"),
+    [
+        (range(29), 263),
+        ((*range(7), *range(128, 148)), 265),
+        ((0, *range(128, 153)), 261),
+    ],
+)
+def test_schedule_day_size_refused(minutes, size):
+    with pytest.raises(ValueError, match=rf"programs\[0\] encodes to {size} bytes.*255"):
+        schedule_payload(_day_at(*minutes))
+
+
 def test_device_readings():
     d = data()
     assert node_firmware(d, "aaaa") == "2.5"

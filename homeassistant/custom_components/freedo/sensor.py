@@ -214,11 +214,7 @@ class FlowLimitSensor(FreedoEntity, SensorEntity):
         view = self._view
         if view is None:
             return None
-        value = view.get(self._field)
-        # servedC is 0 until the circuit is served a value.
-        if self._field == "servedC" and not value:
-            return None
-        return value
+        return view.get(self._field)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:

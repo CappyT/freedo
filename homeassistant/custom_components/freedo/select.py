@@ -16,6 +16,7 @@ from .model import (
     OVERLAY_END_DEFAULT_SEC,
     OVERLAY_END_RULES,
     Zone,
+    in_zone,
     zone_setting,
 )
 
@@ -29,7 +30,7 @@ async def async_setup_entry(
     entities: list[SelectEntity] = [
         OrientationSelect(coordinator, short)
         for short, dev in sorted(coordinator.data.devices.items())
-        if dev.get("kind") == KIND_VALVE
+        if dev.get("kind") == KIND_VALVE and in_zone(coordinator.data, short)
     ]
     entities.extend(
         DeviceOverlayEndSelect(coordinator, zone)

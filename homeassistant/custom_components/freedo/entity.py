@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
 
 from homeassistant.exceptions import HomeAssistantError
@@ -139,3 +139,20 @@ async def call_api(coro) -> Any:
         return await coro
     except FreedoError as err:
         raise HomeAssistantError(f"freedo: {err}") from err
+
+
+async def each(calls: list[tuple[str, Callable[[], Awaitable[None]]]]) -> None:
+    """Run every call. A zone the daemon refuses does not stop the others: the
+    failures come back as one error."""
+    failures: list[str] = []
+    for entity_id, call in calls:
+        try:
+            await call()
+        except HomeAssistantError as err:
+            failures.append(f"{entity_id}: {err}")
+    if failures:
+        raise HomeAssistantError(
+            translation_domain=DOMAIN,
+            translation_key="zones_failed",
+            translation_placeholders={"failures": "; ".join(failures)},
+        )
