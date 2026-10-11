@@ -200,7 +200,7 @@ type SetpointParams struct {
 	// the 6200 of the write, and the one its delivery records, come from
 	// homeBlock, or from awayTemp in the away state.
 	Sched   float64
-	Overlay byte // 0 auto, 2 manual, 3 until_next
+	Overlay byte // 0 auto, 1 until the next automatic change, 2 manual, 3 timer or until_next
 	// OpenWindow 1 opens the window (62e0) of a zone the daemon does not
 	// drive. 0 keeps the 62e0 the zone holds: see zoneOpenWindow.
 	OpenWindow byte
@@ -214,7 +214,8 @@ type SetpointParams struct {
 	// schedule itself. Zero leaves the overlay running.
 	Duration time.Duration
 	// EndRule is the OverlayEnd* rule the overlay was set with, kept with the
-	// timer. OverlayEndHomeChange needs it: that overlay has no Duration.
+	// timer. OverlayEndUntilAutoChange needs it: the home switch ends that
+	// overlay whatever its Duration.
 	EndRule string
 	// Per-zone commissioning tags, written only when set and unobserved on air.
 	// Nothing in the daemon needs them: see SetpointCoAP.
@@ -414,7 +415,8 @@ type heatingBlock struct {
 // captured case; a setpoint write with a duration arms the same timer.
 type boostTimer struct {
 	id int
-	// expiresAt is zero while the rule has no deadline (OverlayEndHomeChange).
+	// expiresAt is zero while the rule has no deadline (OverlayEndUntilAutoChange
+	// on a zone with no program).
 	expiresAt time.Time
 	dhw       bool   // the restore is the hot-water block, 6020=2
 	boost     bool   // the overlay is the boost, not a timed setpoint
@@ -2877,11 +2879,12 @@ func overlayTimerNode(key string) string {
 // overlay zone id runs on target. A zero duration ends the deadline when the
 // node takes the write just queued, as a return to schedule does: until then
 // the node still runs the overlay, and a write the retry limit or a 4.xx drops
-// leaves the deadline due, so the next tick queues the return again. The rule
-// OverlayEndHomeChange arms a timer with no deadline instead.
+// leaves the deadline due, so the next tick queues the return again. With the
+// rule OverlayEndUntilAutoChange a zero duration arms a timer with no deadline
+// instead: only the switch between home and away ends it.
 func (e *EmuState) armOverlayTimer(wire []byte, id int, d time.Duration, dhw, boost bool, rule string) {
 	key := overlayTimerKey(hexEUI(wire), id)
-	if d <= 0 && rule != OverlayEndHomeChange {
+	if d <= 0 && rule != OverlayEndUntilAutoChange {
 		timer, ok := e.boostTimers[key]
 		q := e.queue[hexEUI(wire)]
 		if ok && len(q) > 0 {
@@ -3086,7 +3089,10 @@ func (e *EmuState) EnqueueDHWOverlay(target string, id int, temperatureC float64
 		setpoint = &temperatureC
 	}
 	overlay := byte(2)
-	if d > 0 {
+	switch {
+	case rule == OverlayEndUntilAutoChange:
+		overlay = overlayAutoChange
+	case d > 0:
 		overlay = 3
 	}
 	home, schedC, known := e.homeBlock(id)

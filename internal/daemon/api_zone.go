@@ -135,16 +135,20 @@ type zoneOverlayBody struct {
 
 // overlay maps the request to the 6240 value and the timer it arms: manual
 // (2) runs until the next command, until_next (3) until the next block of the
-// program, timer (3) for durationSec, until_home_change (2) until the home
-// switches to away or back. The last one has no deadline: the daemon ends it.
+// program, timer (3) for durationSec, until_auto_change (1) until the next
+// block of the program or the next switch between home and away, whichever
+// comes first. The 1 of the last one is the app's TADO_MODE as captured.
 func (b zoneOverlayBody) overlay() (byte, time.Duration, error) {
 	switch b.Mode {
-	case "manual", "", "until_next", tado.OverlayEndHomeChange:
+	case "manual", "", "until_next", tado.OverlayEndUntilAutoChange:
 		if b.DurationSec != nil {
 			return 0, 0, errors.New("durationSec needs mode timer")
 		}
-		if b.Mode == "until_next" {
+		switch b.Mode {
+		case "until_next":
 			return 3, 0, nil
+		case tado.OverlayEndUntilAutoChange:
+			return 1, 0, nil
 		}
 		return 2, 0, nil
 	case "timer":
@@ -157,14 +161,14 @@ func (b zoneOverlayBody) overlay() (byte, time.Duration, error) {
 		}
 		return 3, d, nil
 	}
-	return 0, 0, errors.New("bad mode " + b.Mode + ": want manual, until_next, timer or " + tado.OverlayEndHomeChange)
+	return 0, 0, errors.New("bad mode " + b.Mode + ": want manual, until_next, timer or " + tado.OverlayEndUntilAutoChange)
 }
 
 // endRule is the rule the daemon keeps with the overlay the request sets. A
 // manual overlay has none.
 func (b zoneOverlayBody) endRule() string {
 	switch b.Mode {
-	case tado.OverlayEndUntilNext, tado.OverlayEndTimer, tado.OverlayEndHomeChange:
+	case tado.OverlayEndUntilNext, tado.OverlayEndTimer, tado.OverlayEndUntilAutoChange:
 		return b.Mode
 	}
 	return ""
@@ -199,18 +203,19 @@ func (d *daemon) untilNext(e *tado.EmuState, zone int) (time.Duration, bool) {
 	return next.Sub(now), true
 }
 
-// overlayDuration is the coordinator timer of a zone overlay: an until_next
-// overlay lasts up to the next block of the program, which a hot-water overlay
-// needs. Every other mode keeps duration.
+// overlayDuration is the coordinator timer of a zone overlay: an until_next or
+// until_auto_change overlay lasts up to the next block of the program, which a
+// hot-water until_next overlay needs. Without a program until_auto_change has
+// no deadline. Every other mode keeps duration.
 func (d *daemon) overlayDuration(e *tado.EmuState, z *tado.Zone, mode string, duration time.Duration) (time.Duration, error) {
-	if mode != "until_next" {
+	if mode != "until_next" && mode != tado.OverlayEndUntilAutoChange {
 		return duration, nil
 	}
 	next, known := d.untilNext(e, z.Number)
 	switch {
 	case known:
 		return next, nil
-	case z.Kind == tado.ZoneHotWater:
+	case z.Kind == tado.ZoneHotWater && mode == "until_next":
 		return 0, errors.New("mode until_next needs a hot-water program")
 	}
 	return duration, nil
@@ -395,6 +400,8 @@ func overlayRule(overlay byte, timer tado.OverlayTimer, timed bool) string {
 	switch {
 	case timed && timer.Rule != "":
 		return timer.Rule
+	case overlay == 1:
+		return tado.OverlayEndUntilAutoChange
 	case timed || overlay == 3:
 		return tado.OverlayEndUntilNext
 	}
@@ -404,6 +411,8 @@ func overlayRule(overlay byte, timer tado.OverlayTimer, timed bool) string {
 // overlayKind names a 6240 overlay.
 func overlayKind(overlay byte) string {
 	switch overlay {
+	case 1:
+		return tado.OverlayEndUntilAutoChange
 	case 2:
 		return "manual"
 	case 3:
@@ -418,7 +427,7 @@ func overlayKind(overlay byte) string {
 // zone with no away temperature, an off overlay or a program block that is off.
 // Hot water follows the away state like the cloud: with no overlay it is off. On air a timer is an until_next
 // overlay: kind follows the 6240, rule is the end rule the overlay was set
-// with (manual, timer, until_next or until_home_change) and endsAt is the
+// with (manual, timer, until_next or until_auto_change) and endsAt is the
 // deadline the coordinator keeps, null while the rule has none.
 func (d *daemon) zoneTargetView(e *tado.EmuState, z *tado.Zone) map[string]any {
 	hotWater := z.Kind == tado.ZoneHotWater

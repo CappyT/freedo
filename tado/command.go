@@ -22,7 +22,7 @@ type SetpointCmd struct {
 	Counter    uint32  // must be bridge_counter+1 to beat anti-replay
 	Setpoint   float64 // active setpoint, degrees C; sent only with a manual overlay
 	Meta       []byte  // copied from a real capture to the same valve
-	Overlay    byte    // 0=auto, 2=manual, 3=until_next
+	Overlay    byte    // 0=auto, 1=until the next automatic change, 2=manual, 3=timer or until_next
 	OpenWindow byte    // 62e0 value
 	// Home, SchedC and NewOverlay carry the state of the whole home and the
 	// overlay marker, as in SetpointCoAP.

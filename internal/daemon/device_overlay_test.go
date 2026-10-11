@@ -234,7 +234,7 @@ func TestInstallAPIPatchesDeviceOverlayEnd(t *testing.T) {
 
 	for _, body := range []map[string]any{
 		{"device_overlay_end": "forever"},
-		{"device_overlay_end": tado.OverlayEndHomeChange},
+		{"device_overlay_end": tado.OverlayEndUntilAutoChange},
 		{"device_overlay_end": "manual", "device_overlay_end_sec": 60},
 		{"device_overlay_end_sec": 0},
 	} {

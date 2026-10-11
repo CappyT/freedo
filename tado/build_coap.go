@@ -251,6 +251,9 @@ const (
 	zoneCtlAway  = 0x02 // 6160 away; 61e0 = 0 unless the zone has an away temperature
 	roomZoneKind = 0x01 // 6020, room zone; hot water uses dhwZoneKind
 	overlayAuto  = 0x00 // 6240, follow the program
+	// overlayAutoChange is the 6240 of the app rule TADO_MODE, captured in
+	// capture-overlay-20261011: the overlay lasts until the next automatic change.
+	overlayAutoChange = 0x01
 )
 
 // zoneWrite holds the fields of one coordinator-authored "z/s?id=N" block. The
@@ -382,7 +385,7 @@ const (
 type SetpointCoAP struct {
 	ID         int     // CoAP query id=N (device logical id)
 	Setpoint   float64 // active setpoint C -> 6280, sent only with a manual overlay
-	Overlay    byte    // 6240: 0 auto, 2 manual, 3 until_next
+	Overlay    byte    // 6240: 0 auto, 1 until the next automatic change, 2 manual, 3 timer or until_next
 	OpenWindow byte    // 62e0
 	// Home is the state of the whole home: 6160=1 and 61e0=1 with SchedC in
 	// 6200, against 6160=2 when away, with AwayC in 6200 and 61e0=1.
@@ -507,7 +510,7 @@ type DHWSetpointCoAP struct {
 	ID       int      // CoAP query id=N: the hot-water zone (0 in every capture)
 	Setpoint *float64 // 6280, degrees C; nil for a disabled write and for overlay 0
 	Enabled  *bool    // 6260, nil => enabled
-	Overlay  byte     // 6240: 0 auto, 2 manual, 3 until_next
+	Overlay  byte     // 6240: 0 auto, 1 until the next automatic change, 2 manual, 3 timer or until_next
 	// Home, SchedC, NoSchedC and ProgramOff carry the state of the whole home
 	// and of the program block, as in SetpointCoAP, except that ProgramOff keeps
 	// 6200.

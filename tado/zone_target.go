@@ -8,7 +8,7 @@ import (
 // ZoneBlock is the z/s block the coordinator holds for one zone: the last one a
 // member reported on the zone plane, or took from a coordinator write.
 type ZoneBlock struct {
-	Overlay byte // 6240: 0 auto, 2 manual, 3 until_next
+	Overlay byte // 6240: 0 auto, 1 until the next automatic change, 2 manual, 3 timer or until_next
 	// Enabled is 6260 and SetpointC 6280, nil when the block omits the tag.
 	Enabled    *bool
 	SetpointC  *float64

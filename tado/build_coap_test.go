@@ -210,6 +210,18 @@ func TestBuildZoneWriteHomeAndAwayShapes(t *testing.T) {
 		want: "61600101" + "61800100" + "60200101" + "61e00101" +
 			"62000207d0" + "62400103" + "62600101" + "6280020708" + "62e00100" + "6440020001",
 	}, {
+		// The app rule "until the next automatic change" (TADO_MODE), as
+		// capture-overlay-20261011 holds it: 6240=1, the rest as a timer start.
+		name: "home until_auto_change start",
+		build: func() ([]byte, error) {
+			return BuildSetpointCoAP(SetpointCoAP{
+				ID: 10, Setpoint: 21.0, Overlay: overlayAutoChange,
+				Home: true, SchedC: 20.0, NewOverlay: true, DstEUI: room,
+			})
+		},
+		want: "61600101" + "61800100" + "60200101" + "61e00101" +
+			"62000207d0" + "62400101" + "62600101" + "6280020834" + "62e00100" + "6440020001",
+	}, {
 		// The same write on a zone that already runs an overlay: a timer re-arm,
 		// and the captured change of a running until_next overlay into a timer.
 		name: "home timer re-arm",

@@ -13,9 +13,11 @@ const (
 	OverlayEndManual    = "manual"
 	OverlayEndUntilNext = "until_next"
 	OverlayEndTimer     = "timer"
-	// OverlayEndHomeChange ends the overlay at the next switch between home and
-	// away, in either direction. It has no deadline.
-	OverlayEndHomeChange = "until_home_change"
+	// OverlayEndUntilAutoChange is the tado app rule "until the next automatic
+	// change" (termination TADO_MODE, 6240=1). The overlay ends at the next
+	// block of the program or at the next switch between home and away, whichever
+	// comes first. Without a program it has no deadline.
+	OverlayEndUntilAutoChange = "until_auto_change"
 )
 
 // OverlayMaxDuration bounds a timer overlay.
@@ -183,13 +185,14 @@ func (e *EmuState) SetZoneOverlayTimer(zone int, targets []string, d time.Durati
 }
 
 // EndHomeChangeOverlays takes the switch between home and away for every
-// overlay whose rule is OverlayEndHomeChange: its timer is due at now. The next
-// ExpireBoosts then queues the return to schedule, the write an elapsed
-// deadline gets. It returns the zones of those overlays in order.
+// overlay whose rule is OverlayEndUntilAutoChange: its timer is due at now,
+// whatever deadline it held. The next ExpireBoosts then queues the return to
+// schedule, the write an elapsed deadline gets. It returns the zones of those
+// overlays in order.
 func (e *EmuState) EndHomeChangeOverlays(now time.Time) []int {
 	var zones []int
 	for key, timer := range e.boostTimers {
-		if timer.rule == OverlayEndHomeChange {
+		if timer.rule == OverlayEndUntilAutoChange {
 			timer.expiresAt = now
 			e.boostTimers[key] = timer
 			zones = append(zones, timer.id)

@@ -531,6 +531,8 @@ func modeString(overlay byte) string {
 	switch overlay {
 	case 0:
 		return "auto"
+	case overlayAutoChange:
+		return OverlayEndUntilAutoChange
 	case 2:
 		return "manual"
 	case 3:

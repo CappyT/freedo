@@ -307,7 +307,7 @@ func TestModeString(t *testing.T) {
 	for _, c := range []struct {
 		v    byte
 		want string
-	}{{0, "auto"}, {2, "manual"}, {3, "until_next"}, {9, "unknown"}} {
+	}{{0, "auto"}, {1, "until_auto_change"}, {2, "manual"}, {3, "until_next"}, {9, "unknown"}} {
 		if got := modeString(c.v); got != c.want {
 			t.Errorf("modeString(%d)=%q, want %q", c.v, got, c.want)
 		}

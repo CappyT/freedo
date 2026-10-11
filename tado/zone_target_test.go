@@ -473,65 +473,101 @@ func TestThermostatBlockKeepsItsZone(t *testing.T) {
 	}
 }
 
-// TestHomeChangeOverlayTimer: an overlay set with OverlayEndHomeChange keeps a
-// timer with no deadline. No clock ends it, a store keeps it, and the switch
-// between home and away makes it due, so ExpireBoosts queues the return to
-// schedule of an elapsed timer. A timer with another rule and no deadline is
+// TestOverlayNameInLogs: the decoder names every captured 6240 value, 1
+// included, which only the app rule "until the next automatic change" writes.
+func TestOverlayNameInLogs(t *testing.T) {
+	for v, want := range map[byte]string{
+		0: "overlay=auto", 1: "overlay=until_auto_change", 2: "overlay=manual", 3: "overlay=until_next", 9: "overlay=9",
+	} {
+		if got := (TLV{Tag: "6240", Val: []byte{v}}).TagLabel(); got != want {
+			t.Errorf("6240=%d decodes as %q, want %q", v, got, want)
+		}
+	}
+}
+
+// TestAutoChangeOverlayTimer: an overlay set with OverlayEndUntilAutoChange is
+// the 6240=1 overlay, and its timer has no deadline on a zone with no program.
+// No clock ends it, a store keeps it, and the switch between home and away
+// makes every such timer due, a deadline too, so ExpireBoosts queues the return
+// to schedule of an elapsed timer. A timer of another rule with no deadline is
 // refused at restore.
-func TestHomeChangeOverlayTimer(t *testing.T) {
+func TestAutoChangeOverlayTimer(t *testing.T) {
 	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
 	cfg := fixtureInstall(t).EmuConfig()
 	cfg.Now = func() time.Time { return now }
 	e := NewEmu(cfg, nil)
-	if err := e.EnqueueSetpoint("bagno", SetpointParams{ID: 2, Setpoint: 21, Sched: 20, Overlay: 2, EndRule: OverlayEndHomeChange}); err != nil {
+	if err := e.EnqueueSetpoint("bagno", SetpointParams{ID: 2, Setpoint: 21, Sched: 20, Overlay: 1, EndRule: OverlayEndUntilAutoChange}); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.EnqueueDHWOverlay("RU1000000001", 0, 50, true, 0, OverlayEndHomeChange); err != nil {
+	if err := e.EnqueueDHWOverlay("RU1000000001", 0, 50, true, 0, OverlayEndUntilAutoChange); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.EnqueueSetpoint("camera", SetpointParams{ID: 10, Setpoint: 21, Sched: 20, Overlay: 3, Duration: time.Hour, EndRule: OverlayEndTimer}); err != nil {
+	if err := e.EnqueueSetpoint("camera", SetpointParams{ID: 10, Setpoint: 21, Sched: 20, Overlay: 1, Duration: time.Hour, EndRule: OverlayEndUntilAutoChange}); err != nil {
 		t.Fatal(err)
 	}
-	for _, ref := range []string{"RU1000000001", "bagno", "camera"} {
-		wire, _, err := e.resolve(ref)
+	wire := func(ref string) string {
+		t.Helper()
+		w, _, err := e.resolve(ref)
 		if err != nil {
 			t.Fatal(err)
 		}
-		takeRestores(t, e, hexEUI(wire))
+		return hexEUI(w)
+	}
+	if b := e.queue[wire("bagno")][0].heating; b == nil || b.overlay != 1 {
+		t.Errorf("room write = %+v, want 6240=1", b)
+	}
+	if b := e.queue[wire("RU1000000001")][0].dhw; b == nil || b.overlay != 1 {
+		t.Errorf("hot water write = %+v, want 6240=1", b)
+	}
+	for _, ref := range []string{"RU1000000001", "bagno", "camera"} {
+		takeRestores(t, e, wire(ref))
 	}
 	for _, zone := range []int{0, 2} {
-		if timer, ok := e.ZoneOverlayTimer(zone); !ok || !timer.ExpiresAt.IsZero() || timer.Rule != OverlayEndHomeChange {
-			t.Errorf("zone %d timer = %+v ok=%t, want the home change rule with no deadline", zone, timer, ok)
+		if timer, ok := e.ZoneOverlayTimer(zone); !ok || !timer.ExpiresAt.IsZero() || timer.Rule != OverlayEndUntilAutoChange {
+			t.Errorf("zone %d timer = %+v ok=%t, want the auto change rule with no deadline", zone, timer, ok)
 		}
 	}
-	if due, err := e.ExpireBoosts(now.Add(365 * 24 * time.Hour)); err != nil || len(due) != 1 {
-		t.Fatalf("a year later due=%v err=%v, want the timer of zone 10 alone", due, err)
+	if timer, ok := e.ZoneOverlayTimer(10); !ok || !timer.ExpiresAt.Equal(now.Add(time.Hour)) || timer.Rule != OverlayEndUntilAutoChange {
+		t.Errorf("zone 10 timer = %+v ok=%t, want the auto change rule ending in an hour", timer, ok)
+	}
+	if due, err := e.ExpireBoosts(now.Add(59 * time.Minute)); err != nil || len(due) != 0 {
+		t.Fatalf("before the deadline due=%v err=%v, want none", due, err)
 	}
 
 	restored := NewEmu(cfg, nil)
 	if err := restored.RestoreDesiredState(e.ExportDesiredState()); err != nil {
 		t.Fatal(err)
 	}
-	for _, zone := range []int{0, 2} {
-		if timer, ok := restored.ZoneOverlayTimer(zone); !ok || !timer.ExpiresAt.IsZero() || timer.Rule != OverlayEndHomeChange {
-			t.Errorf("restored zone %d timer = %+v ok=%t, want the home change rule with no deadline", zone, timer, ok)
+	for _, zone := range []int{0, 2, 10} {
+		timer, ok := restored.ZoneOverlayTimer(zone)
+		if !ok || timer.Rule != OverlayEndUntilAutoChange || timer.ExpiresAt.IsZero() != (zone != 10) {
+			t.Errorf("restored zone %d timer = %+v ok=%t, want the auto change rule", zone, timer, ok)
 		}
 	}
+	if due, err := restored.ExpireBoosts(now.Add(365 * 24 * time.Hour)); err != nil || len(due) != 1 {
+		t.Fatalf("a year later due=%v err=%v, want the timer of zone 10 alone", due, err)
+	}
 
-	if zones := restored.EndHomeChangeOverlays(now); !reflect.DeepEqual(zones, []int{0, 2}) {
-		t.Fatalf("overlays ended = %v, want zones 0 and 2", zones)
+	restored = NewEmu(cfg, nil)
+	if err := restored.RestoreDesiredState(e.ExportDesiredState()); err != nil {
+		t.Fatal(err)
+	}
+	if zones := restored.EndHomeChangeOverlays(now); !reflect.DeepEqual(zones, []int{0, 2, 10}) {
+		t.Fatalf("overlays ended = %v, want zones 0, 2 and 10", zones)
+	}
+	if timer, _ := restored.ZoneOverlayTimer(10); !timer.ExpiresAt.Equal(now) {
+		t.Errorf("zone 10 deadline = %v, want the time of the switch", timer.ExpiresAt)
 	}
 	due, err := restored.ExpireBoosts(now)
-	if err != nil || len(due) != 2 {
-		t.Fatalf("after the switch due=%v err=%v, want the thermostat and the bagno valve", due, err)
+	if err != nil || len(due) != 3 {
+		t.Fatalf("after the switch due=%v err=%v, want the thermostat and the two valves", due, err)
 	}
-	wantRestore := map[string]string{"RU1000000001": "dhw schedule id=0", "bagno": "boost id=2 on=false"}
-	for ref, want := range wantRestore {
-		wire, _, err := restored.resolve(ref)
+	for ref, want := range map[string]string{"RU1000000001": "dhw schedule id=0", "bagno": "boost id=2 on=false", "camera": "boost id=10 on=false"} {
+		w, _, err := restored.resolve(ref)
 		if err != nil {
 			t.Fatal(err)
 		}
-		queue := restored.queue[hexEUI(wire)]
+		queue := restored.queue[hexEUI(w)]
 		if len(queue) == 0 {
 			t.Errorf("%s holds no write after the switch", ref)
 			continue
@@ -543,8 +579,8 @@ func TestHomeChangeOverlayTimer(t *testing.T) {
 
 	bad := e.ExportDesiredState()
 	for key, timer := range bad.Boost {
-		if timer.Rule == OverlayEndTimer {
-			timer.ExpiresAt = time.Time{}
+		if timer.ID == 2 {
+			timer.Rule = OverlayEndTimer
 			bad.Boost[key] = timer
 		}
 	}

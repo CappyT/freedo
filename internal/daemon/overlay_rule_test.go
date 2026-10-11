@@ -54,8 +54,8 @@ func TestZoneOverlayRule(t *testing.T) {
 	set(map[string]any{"setpointC": 19, "mode": "until_next"})
 	wantOverlayRule(t, "until the next block", url, 3, "until_next", "until_next", windowStart.Add(time.Hour).Format(time.RFC3339))
 
-	set(map[string]any{"setpointC": 19, "mode": "until_home_change"})
-	wantOverlayRule(t, "until the home changes", url, 3, "manual", "until_home_change", nil)
+	set(map[string]any{"setpointC": 19, "mode": "until_auto_change"})
+	wantOverlayRule(t, "until the next automatic change", url, 3, "until_auto_change", "until_auto_change", windowStart.Add(time.Hour).Format(time.RFC3339))
 
 	set(map[string]any{"setpointC": 19, "mode": "manual"})
 	wantOverlayRule(t, "manual", url, 3, "manual", "manual", nil)
@@ -213,7 +213,8 @@ func TestOverlayRuleOf(t *testing.T) {
 		"a timer with no rule":      {3, tado.OverlayTimer{ExpiresAt: windowStart}, true, "until_next"},
 		"a device timer, no rule":   {2, tado.OverlayTimer{ExpiresAt: windowStart}, true, "until_next"},
 		"a timer with its rule":     {3, tado.OverlayTimer{ExpiresAt: windowStart, Rule: tado.OverlayEndTimer}, true, "timer"},
-		"the rule over the 6240":    {2, tado.OverlayTimer{Rule: tado.OverlayEndHomeChange}, true, "until_home_change"},
+		"the rule over the 6240":    {2, tado.OverlayTimer{Rule: tado.OverlayEndUntilAutoChange}, true, "until_auto_change"},
+		"an auto change overlay":    {1, tado.OverlayTimer{}, false, "until_auto_change"},
 		"a rule with no timer held": {3, tado.OverlayTimer{Rule: tado.OverlayEndTimer}, false, "until_next"},
 	} {
 		if got := overlayRule(tc.overlay, tc.timer, tc.timed); got != tc.want {

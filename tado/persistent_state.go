@@ -35,7 +35,7 @@ type DesiredSession struct {
 // Its key is "<wire EUI>|<zone>". A bare wire EUI is the key of a store that
 // kept one timer per node: the restore moves it to the zone ID names. Rule is
 // the OverlayEnd* rule the overlay was set with. ExpiresAt is zero only for
-// OverlayEndHomeChange, which has no deadline.
+// OverlayEndUntilAutoChange on a zone with no program, which has no deadline.
 type DesiredBoostTimer struct {
 	ID        int       `json:"id"`
 	ExpiresAt time.Time `json:"expiresAt"`
@@ -262,7 +262,7 @@ func validateDesiredState(in DesiredState) error {
 		if err := validateStateEUI(eui); err != nil {
 			return err
 		}
-		noDeadline := timer.ExpiresAt.IsZero() && timer.Rule != OverlayEndHomeChange
+		noDeadline := timer.ExpiresAt.IsZero() && timer.Rule != OverlayEndUntilAutoChange
 		if timer.ID < 0 || noDeadline || !validTimerRule(timer.Rule) || zoned && zone != strconv.Itoa(timer.ID) {
 			return fmt.Errorf("tado: desired state has invalid boost timer for %s", key)
 		}
@@ -279,7 +279,7 @@ func validateDesiredState(in DesiredState) error {
 
 func validTimerRule(rule string) bool {
 	switch rule {
-	case "", OverlayEndUntilNext, OverlayEndTimer, OverlayEndHomeChange:
+	case "", OverlayEndUntilNext, OverlayEndTimer, OverlayEndUntilAutoChange:
 		return true
 	}
 	return false

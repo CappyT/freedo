@@ -212,7 +212,7 @@ func asciiVal(v []byte) string {
 
 func hexVal(v []byte) string { return hex.EncodeToString(v) }
 
-var overlayName = map[uint64]string{0: "auto", 2: "manual", 3: "until_next"}
+var overlayName = map[uint64]string{0: "auto", 1: OverlayEndUntilAutoChange, 2: "manual", 3: "until_next"}
 
 var zoneKindName = map[uint64]string{1: "heating", 2: "hot_water"}
 
