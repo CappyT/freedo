@@ -3,16 +3,18 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping
+from functools import partial
 from typing import Any
 
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.entity_platform import async_get_platforms
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api import FreedoError
 from .const import DOMAIN
 from .coordinator import FreedoCoordinator
-from .model import Zone, node_display
+from .model import Zone, node_display, schedule_payload, schedule_programs
 
 _MODELS = {"valve": "Smart Radiator Thermostat", "thermostat": "Wired Smart Thermostat"}
 
@@ -62,6 +64,91 @@ class FreedoEntity(CoordinatorEntity[FreedoCoordinator]):
             serial_number=dev.get("device"),
             via_device_id=self._hub_device_id,
         )
+
+
+class FreedoScheduleEntity(FreedoEntity):
+    """The entity of a zone with a weekly schedule: a heating zone or the hot
+    water zone. The daemon serves both at GET and PUT /api/zones/{n}/schedule
+    and keeps each to the temperature range of its zone kind."""
+
+    # The bounds of a schedule entry temperature.
+    _schedule_range: tuple[float, float]
+    _zone: Zone | None
+
+    def checked_schedule(self, programs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """The daemon body of a schedule, or a service error naming the problem."""
+        try:
+            return schedule_payload(programs, *self._schedule_range)
+        except ValueError as err:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="invalid_schedule",
+                translation_placeholders={"reason": str(err)},
+            ) from err
+
+    async def async_get_schedule(self) -> dict[str, Any]:
+        """The weekly schedule of the zone, no programs when it has none."""
+        zone = self._zone
+        if zone is None:
+            return {}
+        view = await call_api(self.coordinator.client.zone_schedule(zone.number))
+        return {"zone": zone.number, "programs": schedule_programs(view or {})}
+
+    async def async_set_schedule(self, programs: list[dict[str, Any]]) -> None:
+        zone = self._zone
+        if zone is None:
+            return
+        await self._put_schedule(zone, self.checked_schedule(programs))
+
+    async def async_copy_schedule(self, to: list[str]) -> None:
+        """Copy the weekly schedule of the zone to the zones of other freedo
+        entities of the same zone kind. The daemon has no copy route: it reads
+        this zone and writes each target."""
+        zone = self._zone
+        if zone is None:
+            return
+        targets: list[FreedoScheduleEntity] = []
+        for entity_id in dict.fromkeys(to):
+            target = self._zone_entity(entity_id)
+            if target is None or target._zone is None:
+                raise ServiceValidationError(
+                    translation_domain=DOMAIN,
+                    translation_key="not_a_zone",
+                    translation_placeholders={"entity_id": entity_id},
+                )
+            if target is self:
+                raise ServiceValidationError(
+                    translation_domain=DOMAIN, translation_key="copy_to_itself"
+                )
+            if target._zone.kind != zone.kind:
+                raise ServiceValidationError(
+                    translation_domain=DOMAIN,
+                    translation_key="copy_across_kinds",
+                    translation_placeholders={"entity_id": entity_id},
+                )
+            targets.append(target)
+        view = await call_api(self.coordinator.client.zone_schedule(zone.number))
+        if view is None:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="no_schedule",
+                translation_placeholders={"zone": zone.name},
+            )
+        programs = self.checked_schedule(schedule_programs(view))
+        await each(
+            [(t.entity_id, partial(t._put_schedule, t._zone, programs)) for t in targets]
+        )
+
+    def _zone_entity(self, entity_id: str) -> FreedoScheduleEntity | None:
+        for platform in async_get_platforms(self.hass, DOMAIN):
+            entity = platform.entities.get(entity_id)
+            if isinstance(entity, FreedoScheduleEntity):
+                return entity
+        return None
+
+    async def _put_schedule(self, zone: Zone, programs: list[dict[str, Any]]) -> None:
+        await call_api(self.coordinator.client.set_zone_schedule(zone.number, programs))
+        await self.coordinator.async_request_refresh()
 
 
 class FreedoNodeEntity(FreedoEntity):

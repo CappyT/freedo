@@ -187,21 +187,21 @@
     },
     "get_schedule": {
       "name": "Get schedule",
-      "description": "Returns the weekly schedule of a zone: programs with the days they run on and their time blocks. A zone with no schedule has no programs."
+      "description": "Returns the weekly schedule of a heating zone or the hot water zone: programs with the days they run on and their time blocks. A zone with no schedule has no programs."
     },
     "set_schedule": {
       "name": "Set schedule",
-      "description": "Replaces the weekly schedule of a zone. The programs cover each of the seven days once. Each program starts at 00:00 and its times increase.",
+      "description": "Replaces the weekly schedule of a heating zone or the hot water zone. The programs cover each of the seven days once. Each program starts at 00:00 and its times increase.",
       "fields": {
         "programs": {
           "name": "Programs",
-          "description": "A list of programs. Each has days (mon to sun) and entries. Each entry has time (HH:MM), temperature (5 to 25 C) and enabled (default true, false switches the zone off)."
+          "description": "A list of programs. Each has days (mon to sun) and entries. Each entry has time (HH:MM), temperature (5 to 25 C for a heating zone, 30 to 65 C for the hot water zone) and enabled (default true, false switches the zone off)."
         }
       }
     },
     "copy_schedule": {
       "name": "Copy schedule",
-      "description": "Copies the weekly schedule of a zone to other zones.",
+      "description": "Copies the weekly schedule of a zone to other zones of the same kind. A room zone and the hot water zone do not share a schedule.",
       "fields": {
         "to": {
           "name": "Copy to",
@@ -232,7 +232,8 @@
     "overlay_duration_not_allowed": { "message": "A duration needs end rule timer." },
     "invalid_schedule": { "message": "The schedule is not valid: {reason}" },
     "no_schedule": { "message": "The zone {zone} has no schedule to copy." },
-    "not_a_zone": { "message": "{entity_id} is not a freedo heating zone." },
+    "not_a_zone": { "message": "{entity_id} is not a freedo zone." },
+    "copy_across_kinds": { "message": "{entity_id} is a different kind of zone. A room zone and the hot water zone do not share a schedule: their temperature ranges differ." },
     "copy_to_itself": { "message": "A zone cannot copy its schedule to itself." },
     "no_zones": { "message": "No freedo zone is loaded." },
     "zones_failed": { "message": "The daemon refused some zones: {failures}" }

@@ -19,8 +19,10 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import FreedoConfigEntry, FreedoCoordinator
-from .entity import FreedoEntity, call_api
+from .entity import FreedoScheduleEntity, call_api
 from .model import (
+    HOT_WATER_MAX_C,
+    HOT_WATER_MIN_C,
     Zone,
     zone_mode,
     zone_operation,
@@ -49,7 +51,7 @@ async def async_setup_entry(
         async_add_entities([FreedoHotWater(coordinator, zone)])
 
 
-class FreedoHotWater(FreedoEntity, WaterHeaterEntity):
+class FreedoHotWater(FreedoScheduleEntity, WaterHeaterEntity):
     _attr_name = None
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_operation_list = [STATE_AUTO, STATE_HEAT, STATE_OFF]
@@ -58,9 +60,10 @@ class FreedoHotWater(FreedoEntity, WaterHeaterEntity):
         | WaterHeaterEntityFeature.OPERATION_MODE
         | WaterHeaterEntityFeature.ON_OFF
     )
-    _attr_min_temp = 30.0
-    _attr_max_temp = 65.0
+    _attr_min_temp = HOT_WATER_MIN_C
+    _attr_max_temp = HOT_WATER_MAX_C
     _attr_target_temperature_step = 1.0
+    _schedule_range = (HOT_WATER_MIN_C, HOT_WATER_MAX_C)
 
     def __init__(self, coordinator: FreedoCoordinator, zone: Zone) -> None:
         super().__init__(coordinator, f"zone{zone.number}_water_heater")

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from functools import partial
 import time
 from typing import Any
 
@@ -19,29 +18,20 @@ from homeassistant.components.climate import (
     HVACMode,
 )
 from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
-from homeassistant.core import HomeAssistant, SupportsResponse, callback
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv, entity_platform
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import (
-    DOMAIN,
-    SERVICE_BOOST,
-    SERVICE_COPY_SCHEDULE,
-    SERVICE_GET_SCHEDULE,
-    SERVICE_SET_OVERLAY,
-    SERVICE_SET_SCHEDULE,
-)
+from .const import DOMAIN, SERVICE_BOOST, SERVICE_SET_OVERLAY
 from .coordinator import FreedoConfigEntry, FreedoCoordinator
-from .entity import FreedoEntity, call_api, each
+from .entity import FreedoScheduleEntity, call_api
 from .model import (
     OVERLAY_END_MAX_SEC,
     OVERLAY_END_RULES,
     ZONE_MAX_C,
     ZONE_MIN_C,
     Zone,
-    schedule_payload,
-    schedule_programs,
     zone_boost,
     zone_current_humidity,
     zone_current_temperature,
@@ -97,20 +87,9 @@ async def async_setup_entry(
         },
         "async_set_overlay",
     )
-    platform.async_register_entity_service(
-        SERVICE_GET_SCHEDULE, None, "async_get_schedule", supports_response=SupportsResponse.ONLY
-    )
-    platform.async_register_entity_service(
-        SERVICE_SET_SCHEDULE,
-        {vol.Required("programs"): vol.All(cv.ensure_list, [dict])},
-        "async_set_schedule",
-    )
-    platform.async_register_entity_service(
-        SERVICE_COPY_SCHEDULE, {vol.Required("to"): cv.entity_ids}, "async_copy_schedule"
-    )
 
 
-class FreedoZoneClimate(FreedoEntity, ClimateEntity):
+class FreedoZoneClimate(FreedoScheduleEntity, ClimateEntity):
     _attr_name = None
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_hvac_modes = [HVACMode.OFF, HVACMode.AUTO, HVACMode.HEAT]
@@ -124,6 +103,7 @@ class FreedoZoneClimate(FreedoEntity, ClimateEntity):
     _attr_min_temp = ZONE_MIN_C
     _attr_max_temp = ZONE_MAX_C
     _attr_target_temperature_step = 0.1
+    _schedule_range = (ZONE_MIN_C, ZONE_MAX_C)
 
     def __init__(self, coordinator: FreedoCoordinator, zone: Zone) -> None:
         super().__init__(coordinator, f"zone{zone.number}_climate")
@@ -307,57 +287,6 @@ class FreedoZoneClimate(FreedoEntity, ClimateEntity):
         self.async_write_ha_state()
         await self.coordinator.async_request_refresh()
 
-    async def async_get_schedule(self) -> dict[str, Any]:
-        """The weekly schedule of the zone, no programs when it has none."""
-        zone = self._zone
-        if zone is None:
-            return {}
-        view = await call_api(self.coordinator.client.zone_schedule(zone.number))
-        return {"zone": zone.number, "programs": schedule_programs(view or {})}
-
-    async def async_set_schedule(self, programs: list[dict[str, Any]]) -> None:
-        zone = self._zone
-        if zone is None:
-            return
-        await self._put_schedule(zone, _checked_schedule(programs))
-
-    async def async_copy_schedule(self, to: list[str]) -> None:
-        """Copy the weekly schedule of the zone to the zones of other freedo
-        climate entities. The daemon has no copy route: it reads this zone and
-        writes each target."""
-        zone = self._zone
-        if zone is None:
-            return
-        targets: list[FreedoZoneClimate] = []
-        for entity_id in dict.fromkeys(to):
-            target = self.platform.entities.get(entity_id)
-            if not isinstance(target, FreedoZoneClimate) or target._zone is None:
-                raise ServiceValidationError(
-                    translation_domain=DOMAIN,
-                    translation_key="not_a_zone",
-                    translation_placeholders={"entity_id": entity_id},
-                )
-            if target is self:
-                raise ServiceValidationError(
-                    translation_domain=DOMAIN, translation_key="copy_to_itself"
-                )
-            targets.append(target)
-        view = await call_api(self.coordinator.client.zone_schedule(zone.number))
-        if view is None:
-            raise ServiceValidationError(
-                translation_domain=DOMAIN,
-                translation_key="no_schedule",
-                translation_placeholders={"zone": zone.name},
-            )
-        programs = _checked_schedule(schedule_programs(view))
-        await each(
-            [(t.entity_id, partial(t._put_schedule, t._zone, programs)) for t in targets]
-        )
-
-    async def _put_schedule(self, zone: Zone, programs: list[dict[str, Any]]) -> None:
-        await call_api(self.coordinator.client.set_zone_schedule(zone.number, programs))
-        await self.coordinator.async_request_refresh()
-
     async def async_turn_on(self) -> None:
         """Return the zone to its program."""
         await self.async_set_hvac_mode(HVACMode.AUTO)
@@ -377,15 +306,3 @@ class FreedoZoneClimate(FreedoEntity, ClimateEntity):
             await self.async_boost(True)
         elif self.preset_mode == PRESET_BOOST:
             await self.async_boost(False)
-
-
-def _checked_schedule(programs: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """The daemon body of a schedule, or a service error naming the problem."""
-    try:
-        return schedule_payload(programs)
-    except ValueError as err:
-        raise ServiceValidationError(
-            translation_domain=DOMAIN,
-            translation_key="invalid_schedule",
-            translation_placeholders={"reason": str(err)},
-        ) from err

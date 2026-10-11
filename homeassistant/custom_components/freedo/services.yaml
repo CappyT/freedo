@@ -49,13 +49,17 @@ get_schedule:
   target:
     entity:
       integration: freedo
-      domain: climate
+      domain:
+        - climate
+        - water_heater
 
 set_schedule:
   target:
     entity:
       integration: freedo
-      domain: climate
+      domain:
+        - climate
+        - water_heater
   fields:
     programs:
       required: true
@@ -71,14 +75,18 @@ copy_schedule:
   target:
     entity:
       integration: freedo
-      domain: climate
+      domain:
+        - climate
+        - water_heater
   fields:
     to:
       required: true
       selector:
         entity:
           integration: freedo
-          domain: climate
+          domain:
+            - climate
+            - water_heater
           multiple: true
 
 boost_all:

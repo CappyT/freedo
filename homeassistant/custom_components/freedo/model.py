@@ -30,6 +30,11 @@ FLOW_LIMIT_MAX_C = 75.0
 ZONE_MIN_C = 5.0
 ZONE_MAX_C = 25.0
 
+# The daemon rejects a hot water setpoint outside this range with 400, in a
+# schedule entry too.
+HOT_WATER_MIN_C = 30.0
+HOT_WATER_MAX_C = 65.0
+
 DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 
 # The daemon rejects a zone temperature correction beyond +-10 C (tag 0140).
@@ -446,7 +451,9 @@ def window_payload(states: Iterable[str | None]) -> dict[str, bool] | None:
     return {"open": any(known)}
 
 
-def _entry_body(entry: Any, where: str) -> tuple[int, dict[str, Any]]:
+def _entry_body(
+    entry: Any, where: str, low: float, high: float
+) -> tuple[int, dict[str, Any]]:
     """One entry of a schedule: the minute of the day and the daemon body."""
     if not isinstance(entry, Mapping):
         raise ValueError(f"{where} must be a mapping with time and temperature")
@@ -466,8 +473,8 @@ def _entry_body(entry: Any, where: str) -> tuple[int, dict[str, Any]]:
     temp = entry.get("temperature")
     if isinstance(temp, bool) or not isinstance(temp, (int, float)):
         raise ValueError(f"{where}.temperature is required, as a number")
-    if not ZONE_MIN_C <= temp <= ZONE_MAX_C:
-        raise ValueError(f"{where}.temperature must be within {ZONE_MIN_C:g}..{ZONE_MAX_C:g} C")
+    if not low <= temp <= high:
+        raise ValueError(f"{where}.temperature must be within {low:g}..{high:g} C")
     if abs(temp * 100 - round(temp * 100)) > 1e-9:
         raise ValueError(f"{where}.temperature must have at most two decimal places")
     enabled = entry.get("enabled", True)
@@ -500,10 +507,13 @@ def _day_program_size(entries: list[dict[str, Any]]) -> int:
     return size
 
 
-def schedule_payload(programs: Any) -> list[dict[str, Any]]:
+def schedule_payload(
+    programs: Any, low: float = ZONE_MIN_C, high: float = ZONE_MAX_C
+) -> list[dict[str, Any]]:
     """Check a weekly schedule against the rules the daemon enforces and map it
     to the body of PUT /api/zones/{n}/schedule. Raises ValueError with the
-    first problem.
+    first problem. low and high bound the temperature of an entry: the range
+    of a room zone by default.
 
     A schedule is a list of programs, each with the days it runs on and its
     entries: {"days": ["mon", "tue"], "entries": [{"time": "00:00",
@@ -540,7 +550,7 @@ def schedule_payload(programs: Any) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
         previous = -1
         for j, entry in enumerate(entries):
-            minute, item = _entry_body(entry, f"{where}.entries[{j}]")
+            minute, item = _entry_body(entry, f"{where}.entries[{j}]", low, high)
             if not out and minute != 0:
                 raise ValueError(f"{where}.entries[0].time must be 00:00")
             if minute <= previous:

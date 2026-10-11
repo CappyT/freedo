@@ -418,6 +418,29 @@ def test_schedule_payload():
     ]
 
 
+HOT_WATER_WEEK = [
+    {"days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+     "entries": [{"time": "00:00", "temperature": 30},
+                 {"time": "06:00", "temperature": 55.5},
+                 {"time": "22:00", "temperature": 65, "enabled": False}]},
+]
+
+
+def test_schedule_payload_takes_the_range_of_the_zone():
+    body = schedule_payload(HOT_WATER_WEEK, 30, 65)
+    assert [e["setpoint_c"] for e in body[0]["entries"]] == [30, 55.5, 65]
+    # The room range is the default: the hot water week is above it.
+    with pytest.raises(ValueError, match="within 5..25"):
+        schedule_payload(HOT_WATER_WEEK)
+    # The room week is below the hot water range.
+    with pytest.raises(ValueError, match=r"entries\[0\].temperature must be within 30..65"):
+        schedule_payload(WEEK, 30, 65)
+    for temp in (29.9, 65.1):
+        week = _week(**{"0.entries.1.temperature": temp})
+        with pytest.raises(ValueError, match="within 30..65"):
+            schedule_payload(week, 30, 65)
+
+
 def test_schedule_view_round_trips():
     programs = schedule_programs(SCHEDULE)
     assert programs[0]["entries"][1] == {"time": "06:30", "temperature": 21.0, "enabled": True}

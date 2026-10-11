@@ -53,6 +53,7 @@ from test_model import (  # noqa: E402
     INSTALL,
     INSTALL_ZONES,
     NODES,
+    HOT_WATER_WEEK,
     SCHEDULE,
     WEEK,
     ZONES,
@@ -61,6 +62,7 @@ from test_model import (  # noqa: E402
 DOMAIN = "freedo"
 LIVING = "climate.living"
 BEDROOM = "climate.bedroom"
+HOT_WATER = "water_heater.hot_water"
 OFFLINE_SCHEDULE = "switch.freedo_offline_schedule"
 
 
@@ -947,8 +949,8 @@ async def test_copy_schedule_goes_on_after_a_refused_zone(hass, client):
     ("source", "targets", "message"),
     [
         (LIVING, [LIVING], "itself"),
-        (LIVING, ["climate.nowhere"], "not a freedo heating zone"),
-        (LIVING, ["switch.freedo_offline_schedule"], "not a freedo heating zone"),
+        (LIVING, ["climate.nowhere"], "not a freedo zone"),
+        (LIVING, ["switch.freedo_offline_schedule"], "not a freedo zone"),
         (BEDROOM, [LIVING], "no schedule"),
     ],
 )
@@ -957,6 +959,107 @@ async def test_copy_schedule_refuses(hass, client, source, targets, message):
     with pytest.raises(ServiceValidationError, match=message):
         await call_freedo(hass, "copy_schedule", {ATTR_ENTITY_ID: source, "to": targets})
     assert not [c for c in client.calls if c[0] == "set_schedule"]
+
+
+# --- hot water schedule ---
+
+HOT_WATER_SCHEDULE = {
+    "zone": 9,
+    "members": ["cccc"],
+    "programs": [
+        {"days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"], "mask": 127,
+         "entries": [{"minute": 0, "setpoint_c": 40.0, "enabled": False},
+                     {"minute": 360, "setpoint_c": 55.0, "enabled": True}]},
+    ],
+}
+
+
+async def test_get_hot_water_schedule(hass, client):
+    client.schedules[9] = copy.deepcopy(HOT_WATER_SCHEDULE)
+    await setup_entry(hass, client)
+    response = await hass.services.async_call(
+        DOMAIN, "get_schedule", {ATTR_ENTITY_ID: [HOT_WATER, LIVING]},
+        blocking=True, return_response=True,
+    )
+    water = response[HOT_WATER]
+    assert water["zone"] == 9
+    assert water["programs"][0]["entries"] == [
+        {"time": "00:00", "temperature": 40.0, "enabled": False},
+        {"time": "06:00", "temperature": 55.0, "enabled": True},
+    ]
+    # The services serve a heating zone in the same call.
+    assert response[LIVING]["zone"] == 1
+    # The daemon keeps no hot water program until one is set: 404, no programs.
+    del client.schedules[9]
+    response = await hass.services.async_call(
+        DOMAIN, "get_schedule", {ATTR_ENTITY_ID: HOT_WATER}, blocking=True, return_response=True
+    )
+    assert response == {HOT_WATER: {"zone": 9, "programs": []}}
+
+
+async def test_set_hot_water_schedule(hass, client):
+    await setup_entry(hass, client)
+    await call_freedo(hass, "set_schedule", {ATTR_ENTITY_ID: HOT_WATER, "programs": HOT_WATER_WEEK})
+    [(name, zone, body)] = client.calls
+    assert (name, zone) == ("set_schedule", 9)
+    assert body[0]["entries"][1] == {"minute": 360, "setpoint_c": 55.5, "enabled": True}
+    assert body[0]["entries"][2]["enabled"] is False
+
+
+@pytest.mark.parametrize(
+    ("target", "programs", "range_"),
+    [
+        (HOT_WATER, WEEK, "30..65"),
+        (HOT_WATER, [dict(HOT_WATER_WEEK[0], entries=[{"time": "00:00", "temperature": 29}])], "30..65"),
+        (BEDROOM, HOT_WATER_WEEK, "5..25"),
+    ],
+)
+async def test_set_schedule_keeps_to_the_range_of_the_zone(hass, client, target, programs, range_):
+    await setup_entry(hass, client)
+    with pytest.raises(ServiceValidationError, match=f"within {range_}"):
+        await call_freedo(hass, "set_schedule", {ATTR_ENTITY_ID: target, "programs": programs})
+    assert client.calls == []
+
+
+async def test_set_schedule_checks_every_target_before_it_writes(hass, client):
+    await setup_entry(hass, client)
+    # The room week is not valid for the hot water zone, valid for the bedroom.
+    with pytest.raises(ServiceValidationError, match="within 30..65"):
+        await call_freedo(
+            hass, "set_schedule", {ATTR_ENTITY_ID: [BEDROOM, HOT_WATER], "programs": WEEK}
+        )
+    assert client.calls == []
+
+
+async def test_hot_water_schedule_error_is_a_home_assistant_error(hass, client):
+    await setup_entry(hass, client)
+
+    async def refuse(zone, programs):
+        raise FreedoApiError(400, "programs[0].entries[0].setpoint_c must be within 30..65 C for hot water")
+
+    client.set_zone_schedule = refuse
+    with pytest.raises(HomeAssistantError, match="for hot water"):
+        await call_freedo(
+            hass, "set_schedule", {ATTR_ENTITY_ID: HOT_WATER, "programs": HOT_WATER_WEEK}
+        )
+
+
+@pytest.mark.parametrize(
+    ("source", "targets", "message"),
+    [
+        (HOT_WATER, [LIVING], "different kind of zone"),
+        (LIVING, [HOT_WATER], "different kind of zone"),
+        (LIVING, [BEDROOM, HOT_WATER], "different kind of zone"),
+        (HOT_WATER, [HOT_WATER], "itself"),
+    ],
+)
+async def test_copy_schedule_refuses_a_room_hot_water_pair(hass, client, source, targets, message):
+    client.schedules[9] = copy.deepcopy(HOT_WATER_SCHEDULE)
+    await setup_entry(hass, client)
+    with pytest.raises(ServiceValidationError, match=message):
+        await call_freedo(hass, "copy_schedule", {ATTR_ENTITY_ID: source, "to": targets})
+    # Nothing is read or written before the refusal.
+    assert client.calls == []
 
 
 # --- diagnostics ---
@@ -1252,8 +1355,6 @@ async def test_boiler_power_numbers_need_an_installation(hass, client):
 
 # --- home level services ---
 
-HOT_WATER = "water_heater.hot_water"
-
 
 async def test_boost_all_zones(hass, client):
     await setup_entry(hass, client)
@@ -1319,6 +1420,9 @@ def test_service_selectors_are_valid():
     for spec in services.values():
         for field in ((spec or {}).get("fields") or {}).values():
             selector.validate_selector(field["selector"])
+    # The schedule services take a heating zone and the hot water zone.
+    for name in ("get_schedule", "set_schedule", "copy_schedule"):
+        assert services[name]["target"]["entity"]["domain"] == ["climate", "water_heater"]
     # set_overlay takes a timer of up to 7 days.
     duration = services["set_overlay"]["fields"]["duration"]["selector"]["duration"]
     assert duration["enable_day"] is True
