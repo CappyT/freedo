@@ -50,10 +50,11 @@ func notFoundf(format string, a ...any) error { return &notFoundError{msg: fmt.S
 // conflictError is a mutation the stored rows refuse: a stale revision, a
 // duplicate key, or a row another one still names. referrers lists every row
 // that holds the reference, so one round trip tells the caller what to undo
-// first.
+// first. effects is what releasing a device's references would change.
 type conflictError struct {
 	msg       string
 	referrers []string
+	effects   []removalEffect
 	rev       uint64
 }
 
@@ -657,7 +658,10 @@ func updateDeviceColumn(ctx context.Context, q querier, key, column string, valu
 	return err
 }
 
-func (s *stateStore) DeleteDevice(ctx context.Context, ref string, expect *uint64) (installResult, *tado.Device, error) {
+// DeleteDevice removes a device. A device that a zone or a circuit still names
+// is refused, unless force releases its zone memberships. A heat source stays
+// refused: a circuit cannot run without one.
+func (s *stateStore) DeleteDevice(ctx context.Context, ref string, expect *uint64, force bool) (installResult, *tado.Device, error) {
 	var gone *tado.Device
 	res, err := s.mutate(ctx, expect, func(ctx context.Context, tx querier, cur *tado.Install) error {
 		key, dev, err := resolveRef(cur, ref)
@@ -682,9 +686,22 @@ func (s *stateStore) DeleteDevice(ctx context.Context, ref string, expect *uint6
 			referrers = append(referrers, fmt.Sprintf("circuit %d heat_source", id))
 		}
 		if len(referrers) > 0 {
-			return &conflictError{
-				msg:       fmt.Sprintf("device %s is still named by %s", dev.Ref(), strings.Join(referrers, ", ")),
-				referrers: referrers,
+			if len(circuits) > 0 || !force {
+				msg := fmt.Sprintf("device %s is still named by %s", dev.Ref(), strings.Join(referrers, ", "))
+				if len(circuits) > 0 {
+					msg += ": force does not release a heat source, change the heat_source of the circuit or delete the circuit first"
+				} else {
+					msg += ": pass force=true to remove it from them"
+				}
+				return &conflictError{msg: msg, referrers: referrers, effects: removalEffects(cur, dev)}
+			}
+			if _, err := tx.ExecContext(ctx, `DELETE FROM zone_member WHERE device_eui = ?`, key); err != nil {
+				return err
+			}
+			for _, zone := range zones {
+				if err := renumberMembers(ctx, tx, zone); err != nil {
+					return err
+				}
 			}
 		}
 		copied := *dev

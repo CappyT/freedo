@@ -352,6 +352,9 @@ func writeInstallErr(w http.ResponseWriter, err error) {
 		if len(conflict.referrers) > 0 {
 			body["referrers"] = conflict.referrers
 		}
+		if conflict.effects != nil {
+			body["effects"] = conflict.effects
+		}
 		writeJSON(w, http.StatusConflict, body)
 	case errors.Is(err, install.ErrNoInstall):
 		writeErr(w, http.StatusServiceUnavailable, err.Error())
@@ -427,6 +430,20 @@ func queryRev(r *http.Request) (*uint64, error) {
 		return nil, badf("bad rev %q: want a decimal revision", raw)
 	}
 	return &rev, nil
+}
+
+// queryForce reads the optional ?force= flag of a DELETE. An absent or empty
+// value is false.
+func queryForce(r *http.Request) (bool, error) {
+	raw := r.URL.Query().Get("force")
+	if raw == "" {
+		return false, nil
+	}
+	force, err := strconv.ParseBool(raw)
+	if err != nil {
+		return false, badf("bad force %q: want true or false", raw)
+	}
+	return force, nil
 }
 
 // pathInt reads a numeric path value.
@@ -611,9 +628,14 @@ func (d *daemon) deleteInstallDevice(w http.ResponseWriter, r *http.Request) {
 		writeInstallErr(w, err)
 		return
 	}
+	force, err := queryForce(r)
+	if err != nil {
+		writeInstallErr(w, err)
+		return
+	}
 	ref := r.PathValue("ref")
 	d.mutateInstall(w, "device", func(store *stateStore) (installResult, any, error) {
-		res, gone, err := store.DeleteDevice(r.Context(), ref, rev)
+		res, gone, err := store.DeleteDevice(r.Context(), ref, rev, force)
 		if err != nil {
 			return res, nil, err
 		}
@@ -887,6 +909,7 @@ func (d *daemon) installRoutes(m *http.ServeMux) {
 	m.HandleFunc("POST /api/install/devices", d.postInstallDevice)
 	m.HandleFunc("GET /api/install/devices/{ref}", d.getInstallDevice)
 	m.HandleFunc("PATCH /api/install/devices/{ref}", d.patchInstallDevice)
+	m.HandleFunc("GET /api/install/devices/{ref}/removal", d.getInstallDeviceRemoval)
 	m.HandleFunc("DELETE /api/install/devices/{ref}", d.deleteInstallDevice)
 	m.HandleFunc("GET /api/install/zones", d.getInstallZones)
 	m.HandleFunc("POST /api/install/zones", d.postInstallZone)
