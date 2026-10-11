@@ -33,6 +33,9 @@ func synthInstall(t *testing.T) *Install {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Tag 02b2 is part of the served d/config bytes and of their ETag. A fixed
+	// offset keeps the host zone and the date out of them.
+	in.Options.UTCOffsetMin = cfgPtr(120)
 	return in
 }
 
