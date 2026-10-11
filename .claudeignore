@@ -1,0 +1,28 @@
+# Files that an assistant must not read. They can exist in a working copy.
+# None of them is in the repository.
+
+# Installation data: the database holds the network key.
+freedo.yaml
+freedo.yml
+freedo.*.yaml
+freedo.*.yml
+!freedo.example.yaml
+freedo-state.db
+freedo-state.db-wal
+freedo-state.db-shm
+freedo-state.db-journal
+freedo_api_token
+.env
+.ha_token
+*.key
+
+# Captures, recordings and bench output.
+bench/
+*.iq
+*.bin
+*.log
+
+# Generated design output and downloaded datasheets.
+hardware/radio/out/
+hardware/radio/refs/
+hardware/radio/lib/3dmodels/
