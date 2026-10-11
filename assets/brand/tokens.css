@@ -1,0 +1,150 @@
+/*
+ * freedo design tokens. Single source of the identity values.
+ *
+ * Layer 1 is the raw palette, named after the colour. Layer 2 holds the role
+ * tokens: one set of names for both themes. Components use layer 2 only.
+ *
+ * Themes: the page follows the system setting. Set data-theme="light" or
+ * data-theme="dark" on <html> to force one. The role tokens use light-dark(),
+ * so each one resolves at the element that uses it.
+ *
+ * Rules: the brand colours are cool blues. The status colours are the only
+ * other hues. Always pair a status colour with an icon or a label. The icon
+ * gradient is for the app icon only. Self-host the fonts: a local controller
+ * must not call a font CDN.
+ */
+
+:root {
+  color-scheme: light dark;
+
+  /* ---- Layer 1: palette ------------------------------------------------ */
+  --navy: #0B1B3A; /* text, dark ground, knob */
+  --cobalt: #1B45C6; /* buttons, links, active states */
+  --azure: #2E7BFF; /* brand accent, dial, charts */
+  --azure-text: #1F6FF0; /* azure as text on white */
+  --sky: #7CC4FF; /* accent on dark, highlights */
+  --ice: #E6F1FF; /* panels, chips */
+  --frost: #F5F9FF; /* page ground */
+  --slate: #4A5B78; /* secondary text */
+  --white: #FFFFFF;
+  --cobalt-text-muted: #DCE7FF; /* muted text on cobalt */
+  --border-light: #D2E4FB;
+  --border-light-strong: #C9DCF6;
+  --navy-surface: #13284F; /* dark surface */
+  --navy-text: #EAF2FF; /* text on navy */
+  --navy-text-muted: #9FB3D6; /* secondary text on navy */
+  --navy-border: #22365F;
+  --navy-border-strong: #34507F;
+  --icon-gradient-from: #3D9EFF;
+  --icon-gradient-to: #1B45C6;
+
+  /* ---- Layer 2: roles, light | dark ------------------------------------ */
+  --ground: light-dark(var(--frost), var(--navy));
+  --surface: light-dark(var(--white), var(--navy-surface));
+  --panel: light-dark(var(--ice), var(--navy-surface));
+  --border: light-dark(var(--border-light), var(--navy-border));
+  --border-strong: light-dark(var(--border-light-strong), var(--navy-border-strong));
+  --text: light-dark(var(--navy), var(--navy-text));
+  --text-muted: light-dark(var(--slate), var(--navy-text-muted));
+  --accent: light-dark(var(--azure), var(--sky));
+  --accent-text: light-dark(var(--azure-text), var(--sky));
+  --action: var(--cobalt);
+  --action-text: var(--white);
+  --link: light-dark(var(--cobalt), var(--sky));
+  --link-hover: light-dark(var(--navy), var(--white));
+  --icon-gradient: linear-gradient(135deg, var(--icon-gradient-from), var(--icon-gradient-to)); /* icon only */
+
+  /* ---- Status: base = dots, icons, charts; text = labels; tint = badge
+         ground. Pair with an icon or a label. ------------------------------ */
+  --status-heating: light-dark(#F2671F, #FF7A33); /* valve open, zone calling for heat */
+  --status-heating-text: light-dark(#B4430B, #FFA26B);
+  --status-heating-tint: light-dark(#FFEDE3, #413038);
+
+  --status-cooling: light-dark(#14B8D4, #2BD2EE); /* AC running towards the setpoint */
+  --status-cooling-text: light-dark(#0B7487, #6FE3F5);
+  --status-cooling-tint: light-dark(#E0F7FB, #11405E);
+
+  --status-idle: light-dark(#22A06B, #3DD68C); /* on, setpoint reached, no demand */
+  --status-idle-text: light-dark(#146C48, #7BE8B0);
+  --status-idle-tint: light-dark(#E3F6EC, #15404A);
+
+  --status-away: light-dark(#7C5CFA, #9B85FF); /* away and eco: reduced setpoint */
+  --status-away-text: light-dark(#5B3FD6, #BDB0FF);
+  --status-away-tint: light-dark(#EFEBFF, #2B3265);
+
+  --status-off: light-dark(#A7B3C8, #5A6B8A); /* zone off or frost protection */
+  --status-off-text: light-dark(#4A5B78, #B4C2DA);
+  --status-off-tint: light-dark(#EEF2F8, #1C2C4A);
+
+  --status-warning: light-dark(#F5A623, #FFB938); /* low battery, weak signal, window open, rate limit */
+  --status-warning-text: light-dark(#8A5A00, #FFCB66);
+  --status-warning-tint: light-dark(#FFF4DB, #3D3527);
+
+  --status-fault: light-dark(#D9363E, #FF5A61); /* device error, failed command, auth failure */
+  --status-fault-text: light-dark(#B4232A, #FF8A8F);
+  --status-fault-tint: light-dark(#FDECEC, #412943);
+
+  /* Offline: dashed border and a hollow dot. No tint on dark. */
+  --status-offline: light-dark(#3A4660, #C9D3E6); /* bridge or device unreachable */
+  --status-offline-text: light-dark(#3A4660, #C9D3E6);
+  --status-offline-tint: light-dark(#E4E8F0, transparent);
+  --status-offline-border: light-dark(#3A4660, #8A9BBB);
+
+  /* ---- Type ------------------------------------------------------------ */
+  --font-display: "Sora", sans-serif;
+  --font-body: "IBM Plex Sans", "Helvetica Neue", sans-serif;
+  --font-mono: "IBM Plex Mono", monospace;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+  --weight-extrabold: 800;
+
+  /* Type scale: Sora for display and headings, Plex Sans for body, Plex Mono
+     for data and code. The wordmark is Sora 800, tracking -0.03 to -0.045em. */
+  --text-display-size: 64px; /* Sora 800 */
+  --text-display-leading: 1;
+  --text-display-tracking: -0.035em;
+  --text-heading-size: 32px; /* Sora 600 */
+  --text-heading-leading: 1.2;
+  --text-heading-tracking: -0.015em;
+  --text-body-size: 18px; /* Plex Sans 400 */
+  --text-body-leading: 1.55;
+  --text-data-size: 18px; /* Plex Mono 500 */
+  --text-data-tracking: 0.01em;
+  /* Supporting sizes used on the artboards */
+  --text-title-size: 44px; /* Sora 700, tracking -0.025em */
+  --text-card-title-size: 20px; /* Sora 600 */
+  --text-small-size: 14px; /* Plex Sans, badges at weight 500 */
+  --text-caption-size: 13px; /* Plex Mono 400 */
+
+  /* ---- Radii ----------------------------------------------------------- */
+  --radius-xs: 8px; /* clear-space frame */
+  --radius-sm: 10px; /* swatch */
+  --radius-md: 14px; /* colour chip */
+  --radius-lg: 20px; /* variant card */
+  --radius-xl: 22px; /* palette and status card */
+  --radius-2xl: 24px; /* logo tile */
+  --radius-pill: 999px; /* status badge */
+  --radius-card: var(--radius-xl);
+  --radius-badge: var(--radius-pill);
+  /* The icon corner is 116 on a 512 master (22.65625 percent). */
+
+  /* ---- Status badge ---------------------------------------------------- */
+  --badge-padding: 6px 12px;
+  --badge-gap: 8px;
+  --badge-dot-size: 8px;
+  --badge-font-size: var(--text-small-size);
+  --badge-font-weight: var(--weight-medium);
+  --badge-offline-padding: 5px 11px; /* 1px dashed border added */
+  --badge-offline-dot-size: 6px; /* hollow, 1px border */
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
