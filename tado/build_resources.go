@@ -549,7 +549,7 @@ const (
 	FlowMaxC = 75.0
 )
 
-// flowTag is the circuit-config field that carries the CH flow setpoint ("mandata"),
+// flowTag is the circuit-config field that carries the CH flow setpoint,
 // a u16 big-endian centi-degC. Confirmed on air on "h/<home>/c/<id>/config": the
 // cloud answers the wall thermostat's GET of that resource with 2040=<centi>
 // (12c0 = 48.00 C in every capture). The STM32 writes it as OpenTherm MaxTSet

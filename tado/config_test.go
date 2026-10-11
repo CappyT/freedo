@@ -444,7 +444,7 @@ func TestValidationWarnings(t *testing.T) {
 		mut  func(*Install)
 		want string
 	}{
-		// 17 warns but is legitimate: this installation runs a live zone 17.
+		// 17 warns but is legitimate: a live installation runs zone 17.
 		{"risky zone number", func(in *Install) { in.Zones[1].Number = 17 }, "is above 10"},
 		{"risky circuit id", func(in *Install) {
 			in.Circuits[0].ID = 12

@@ -3189,7 +3189,7 @@ func (e *EmuState) EnqueueDHWSchedule(target string, id int) error {
 	return nil
 }
 
-// EnqueueFlowSetpoint registers the CH flow setpoint ("temperatura di mandata")
+// EnqueueFlowSetpoint registers the CH flow setpoint
 // the emulator serves for heating circuit id when the wall thermostat next polls
 // "h/<home>/c/<id>/config" (tag 2040). Unlike a room or DHW setpoint this is not a
 // queued downlink: the circuit config is cloud-hosted and the device pulls it, so

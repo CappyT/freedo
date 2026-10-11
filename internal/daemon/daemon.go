@@ -2947,7 +2947,7 @@ func (d *daemon) postBoilerDHW(w http.ResponseWriter, r *http.Request) {
 	queued(w, v, d.persist(err), map[string]any{"target": targetName(dev), "id": id, "on": on})
 }
 
-// postBoilerFlow registers the CH flow setpoint ("temperatura di mandata") the
+// postBoilerFlow registers the CH flow setpoint the
 // emulator serves on the wall thermostat's circuit-config poll. Delivery is a
 // pull: the value reaches the boiler when the thermostat next reads
 // "h/<home>/c/<id>/config" and applies it as the OpenTherm CH setpoint.

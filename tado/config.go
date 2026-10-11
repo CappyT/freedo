@@ -20,8 +20,8 @@ const ConfigVersion = 1
 // (id & 0x1f), so 31 is the hard ceiling. The RU's zone table holds 11 entries,
 // but that bounds how many zones one thermostat aggregates, not how high a zone
 // number may be: zone_to_circuit_demand_update@0x2debc walks those 11 slots
-// matching each slot's circuit id, never the zone number. This installation runs
-// a live zone 17, so a number above 10 is worth flagging only as a count to
+// matching each slot's circuit id, never the zone number. A live installation
+// runs zone 17, so a number above 10 is worth flagging only as a count to
 // watch, not as an error.
 const (
 	maxTableSlot = 10
@@ -601,7 +601,7 @@ func (in *Install) checkZones(c *issues) {
 		case z.Number < 0:
 			c.errf(p+".number", "%d is negative", z.Number)
 		case z.Number > maxTableSlot:
-			c.warnf(p+".number", "%d is above %d: fine on air (zone 17 runs on this installation), but one thermostat aggregates at most %d zones per circuit",
+			c.warnf(p+".number", "%d is above %d: fine on air (a live installation runs zone 17), but one thermostat aggregates at most %d zones per circuit",
 				z.Number, maxTableSlot, maxTableSlot+1)
 		}
 		if j, dup := seen[z.Number]; dup {
