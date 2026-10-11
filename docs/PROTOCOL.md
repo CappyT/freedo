@@ -294,7 +294,9 @@ transaction.
 Every write takes `6200` from the program that the daemon pushed for the zone,
 else from the zone cache, never from the node, because the wall thermostat sits in
 two zones. With neither, a home write leaves `6200` out and the device keeps its
-own (`homeBlock` in `tado/emu.go`). A delivered write records in the node and in
+own (`homeBlock` in `tado/emu.go`). A zone with no program has no block change: freedo
+writes it at a switch between home and away and at a command, never at a block change or at
+the start (`TestZoneWithoutProgramWrites`). A delivered write records in the node and in
 the zone cache the `6200` that it carried. A write without `6200` leaves both as
 they were (`sentSchedC`, `keepZoneSchedC`). An open-window write to a node with no
 known block waits for a `6200`.

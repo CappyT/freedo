@@ -314,11 +314,22 @@ replaces queued writes that repeat the old overlay.
 
 `declared[].writer` names the device that receives commands. `declared[].target` holds
 `targetC`, `source` (`program`, `overlay`, `boost`, `window` or `away`), `overlay`
-(`kind`, `rule`, `on`, `setpointC`, `endsAt`), `programC`, `programOff`, `boost`, `known`
-and `on`.
+(`kind`, `rule`, `on`, `setpointC`, `endsAt`), `programC`, `programOff`, `hasProgram`,
+`boost`, `known` and `on`.
 
 - `targetC` is `null` when the device follows a value of its own: open window, away without
-  a temperature, an off overlay or a program block that is off.
+  a temperature, an off overlay or a program block that is off. It is also `null` on a zone
+  that has no program and whose zone cache holds no `6200`.
+- `hasProgram` is `true` while the daemon holds a weekly program for the zone: the hot water
+  program, or a schedule document that a member of a heating zone is served. It is `false`
+  for a zone with no program. `source` is `program` in both cases, because it only says that
+  no overlay, window or away state applies. Read `hasProgram` to tell a zone that follows a
+  program from a zone that has none.
+- Without a program, `programC` is the `6200` that the zone cache holds (the last write or
+  member report that carried it), or `null` when the cache holds none. A zone with no
+  program and no `6200` has `targetC` and `programC` at `null`. The daemon writes such a zone
+  only at a switch between home and away and at a command, never at a block change or at the
+  start, and its writes at home carry no `6200`.
 - `overlay.kind` follows `6240`: `manual`, `until_next` or `until_auto_change`. A timer
   appears as `until_next`, because the air has no timer.
 - `overlay.rule` is the rule the overlay runs under: `manual`, `timer`, `until_next` or

@@ -449,11 +449,16 @@ func overlayKind(overlay byte) string {
 // overlay: kind follows the 6240, rule is the end rule the overlay was set
 // with (manual, timer, until_next or until_auto_change) and endsAt is the
 // deadline the coordinator keeps, null while the rule has none.
+//
+// hasProgram tells whether the daemon holds a weekly program for the zone.
+// source is "program" without one too: the zone then runs the block its device
+// reports, and programC is the 6200 of the zone cache, null when it holds none.
 func (d *daemon) zoneTargetView(e *tado.EmuState, z *tado.Zone) map[string]any {
 	hotWater := z.Kind == tado.ZoneHotWater
+	_, held := d.zonePrograms(e, d.inst.Load(), z.Number)
 	view := map[string]any{
 		"targetC": nil, "source": nil, "overlay": nil,
-		"programC": nil, "programOff": false, "boost": false, "known": false,
+		"programC": nil, "programOff": false, "hasProgram": held, "boost": false, "known": false,
 	}
 	program, hasProgram := d.zoneSched[z.Number]
 	if hasProgram {
