@@ -63,4 +63,8 @@ tado_capture/internet_bridge/
 tado_capture/thermostat_ru/
 tado_capture/valve_nrf52/
 tado_capture/extflash/
+
+# flow-watch collector: logged samples and the OAuth token. The scripts stay tracked.
+tado_capture/flow-watch/data/
+tado_capture/flow-watch/.token.json*
 .claude/
