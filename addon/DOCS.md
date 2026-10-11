@@ -40,12 +40,20 @@ checks.
 
 The add-on has a web interface for the zones, the hot water, the boiler and the devices. Select Open
 Web UI on the add-on page, or the entry freedo in the sidebar. The page asks for no token: Home
-Assistant has already signed you in, and the add-on accepts the requests of the Home Assistant gateway.
+Assistant has already signed you in, and the add-on accepts the calls of the page from the Home
+Assistant gateway.
 
-The sidebar entry shows for administrators only. Every Home Assistant user who opens the page controls
-the heating, so give that right with care. The port 18080 does not share this rule: a client of that
-port needs the token. The page is also at `http://<host>:18080/` when the Network tab publishes the
-port. It then asks for the token once. See [Dashboard](https://github.com/CappyT/freedo/blob/main/docs/OPERATION.md#dashboard).
+Every Home Assistant user can open the page, also a user who is not an administrator. The sidebar entry
+shows for administrators only, but the page opens for everyone who signs in. Without the token, a user
+can read the state of the plant, set temperatures and weekly schedules, switch zones off, switch the home
+between home and away, set the flow limit, and lock or identify a valve. Pairing, the installation, the
+network key, factory reset, reboot, calibration, firmware, raw device reads and the debug routes need the
+token, also from the page. Give the right to open the page with care.
+
+The port 18080 does not share this rule: a client of that port needs the token for every API route. The
+page is also at `http://<host>:18080/` when the Network tab publishes the port. It then asks for the
+token once. See [Dashboard](https://github.com/CappyT/freedo/blob/main/docs/OPERATION.md#dashboard) and
+[Security](https://github.com/CappyT/freedo/blob/main/SECURITY.md#home-assistant-ingress).
 
 ## API and token
 

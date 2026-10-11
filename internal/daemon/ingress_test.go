@@ -4,12 +4,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"strings"
 	"testing"
 )
 
-// request runs one request through h as if the connection came from peer.
-func request(h http.Handler, peer, path string, header ...string) int {
-	req := httptest.NewRequest(http.MethodGet, path, nil)
+// send runs one request through h as if the connection came from peer.
+func send(h http.Handler, peer, method, target string, header ...string) int {
+	req := httptest.NewRequest(method, target, nil)
 	req.RemoteAddr = peer
 	for i := 0; i+1 < len(header); i += 2 {
 		req.Header.Set(header[i], header[i+1])
@@ -18,6 +19,12 @@ func request(h http.Handler, peer, path string, header ...string) int {
 	h.ServeHTTP(rec, req)
 	return rec.Code
 }
+
+func request(h http.Handler, peer, path string, header ...string) int {
+	return send(h, peer, http.MethodGet, path, header...)
+}
+
+const gatewayPeer = "172.30.32.2:50000"
 
 func TestFromAddr(t *testing.T) {
 	gateway := netip.MustParseAddr("172.30.32.2")
@@ -43,6 +50,14 @@ func TestFromAddr(t *testing.T) {
 	}
 }
 
+// sample fills a listed route with values, the way the dashboard calls it.
+func sample(pair string) (method, path string) {
+	method, path, _ = strings.Cut(pair, " ")
+	path = strings.ReplaceAll(path, "{n}", "3")
+	path = strings.ReplaceAll(path, "{id}", "0201")
+	return method, path
+}
+
 func TestIngressTrustsTheGatewayAddressOnly(t *testing.T) {
 	h := accessHandler(testAPIToken, false, true, okHandler())
 	bearer := "Bearer " + testAPIToken
@@ -50,8 +65,8 @@ func TestIngressTrustsTheGatewayAddressOnly(t *testing.T) {
 		name, peer, auth string
 		want             int
 	}{
-		{"the gateway needs no token", "172.30.32.2:50000", "", http.StatusOK},
-		{"the gateway with a wrong token is still trusted", "172.30.32.2:50000", "Bearer wrong", http.StatusOK},
+		{"the gateway needs no token", gatewayPeer, "", http.StatusOK},
+		{"the gateway with a wrong token is still trusted", gatewayPeer, "Bearer wrong", http.StatusOK},
 		{"the gateway as an IPv4-mapped address", "[::ffff:172.30.32.2]:50000", "", http.StatusOK},
 		{"another app has no token", "172.30.32.4:50000", "", http.StatusUnauthorized},
 		{"the host has no token", "172.30.32.1:50000", "", http.StatusUnauthorized},
@@ -65,6 +80,127 @@ func TestIngressTrustsTheGatewayAddressOnly(t *testing.T) {
 				t.Fatalf("status = %d, want %d", got, tc.want)
 			}
 		})
+	}
+}
+
+// The calls of the dashboard pass without a token from the gateway, and from no other source.
+func TestIngressPassesEveryListedRoute(t *testing.T) {
+	h := accessHandler(testAPIToken, false, true, okHandler())
+	if len(ingressRoutes) == 0 {
+		t.Fatal("the list of routes is empty")
+	}
+	var pairs []string
+	for _, rt := range ingressRoutes {
+		pairs = append(pairs, rt.method+" /"+strings.Join(rt.segments, "/"))
+	}
+	for _, pair := range pairs {
+		method, path := sample(pair)
+		if got := send(h, gatewayPeer, method, path); got != http.StatusOK {
+			t.Errorf("%s %s from the gateway: %d, want 200", method, path, got)
+		}
+		if got := send(h, "192.0.2.10:50000", method, path); got != http.StatusUnauthorized {
+			t.Errorf("%s %s from another source: %d, want 401", method, path, got)
+		}
+		// A query string does not change the route.
+		if got := send(h, gatewayPeer, method, path+"?x=1"); got != http.StatusOK {
+			t.Errorf("%s %s?x=1 from the gateway: %d, want 200", method, path, got)
+		}
+	}
+}
+
+// Everything else from the gateway needs the token like any other request. These are the
+// routes that pair, reset, flash or reconfigure, plus the reads of raw device data.
+func TestIngressRefusesEveryOtherRoute(t *testing.T) {
+	h := accessHandler(testAPIToken, false, true, okHandler())
+	bearer := "Bearer " + testAPIToken
+	for _, tc := range []struct{ method, path string }{
+		{"POST", "/api/pair/window"},
+		{"GET", "/api/pair/window"},
+		{"POST", "/api/pair"},
+		{"GET", "/api/install"},
+		{"PATCH", "/api/install"},
+		{"PUT", "/api/install/network_key"},
+		{"POST", "/api/install/devices"},
+		{"DELETE", "/api/install/devices/x"},
+		{"PATCH", "/api/install/zones/1"},
+		{"DELETE", "/api/install/circuits/1"},
+		{"POST", "/api/nodes/x/factoryreset"},
+		{"POST", "/api/nodes/x/fw"},
+		{"GET", "/api/nodes/x/fw"},
+		{"DELETE", "/api/nodes/x/fw"},
+		{"POST", "/api/nodes/x/reboot"},
+		{"POST", "/api/nodes/x/calibrate"},
+		{"POST", "/api/nodes/x/setpoint"},
+		{"POST", "/api/nodes/x/config"},
+		{"POST", "/api/nodes/x/netcmd"},
+		{"PUT", "/api/nodes/x/display"},
+		{"PUT", "/api/nodes/x/schedule"},
+		{"GET", "/api/nodes/x"},
+		{"GET", "/api/nodes/x/resource"},
+		{"GET", "/api/nodes/x/currentlog"},
+		{"GET", "/api/nodes/x/dbg/mem"},
+		{"GET", "/api/debug/rx"},
+		{"POST", "/api/debug/decrypt"},
+		{"GET", "/api/queue/x"},
+		{"DELETE", "/api/queue/x"},
+		{"POST", "/api/outdoor"},
+		{"POST", "/api/boiler/dhw"},
+		{"POST", "/api/zones/3/offset"},
+		{"POST", "/api/zones/3/temperature"},
+		{"PUT", "/api/zones/3/early-start"},
+		{"GET", "/api/stats"},
+		{"GET", "/api/unhandled"},
+		{"GET", "/api/heatsource/capabilities"},
+	} {
+		if got := send(h, gatewayPeer, tc.method, tc.path); got != http.StatusUnauthorized {
+			t.Errorf("%s %s from the gateway: %d, want 401", tc.method, tc.path, got)
+		}
+		if got := send(h, gatewayPeer, tc.method, tc.path, "Authorization", bearer); got != http.StatusOK {
+			t.Errorf("%s %s from the gateway with the token: %d, want 200", tc.method, tc.path, got)
+		}
+	}
+}
+
+// A request cannot be written to look like a listed route.
+func TestIngressMatchesExactly(t *testing.T) {
+	h := accessHandler(testAPIToken, false, true, okHandler())
+	for _, tc := range []struct{ method, path string }{
+		{"HEAD", "/api/zones"},
+		{"OPTIONS", "/api/zones"},
+		{"DELETE", "/api/home"},
+		{"PUT", "/api/home"},
+		{"GET", "/api/zones/"},
+		{"GET", "/api/home/"},
+		{"GET", "//api/zones"},
+		{"GET", "/api//zones"},
+		{"GET", "/api/zones/3/../install"},
+		{"GET", "/api/./zones"},
+		{"GET", "/api/zones/3/schedule/x"},
+		{"POST", "/api/zones//setpoint"},
+		{"POST", "/api/zones/3/setpoint/"},
+		{"POST", "/api/zones/3/setpoint/../../../install/devices"},
+		{"GET", "/API/zones"},
+		{"GET", "/api/health/x"},
+		{"POST", "/api/nodes/0201/childlock/x"},
+		{"POST", "/api/nodes//childlock"},
+		{"POST", "/api/nodes/a/b/childlock"},
+	} {
+		if got := send(h, gatewayPeer, tc.method, tc.path); got == http.StatusOK {
+			t.Errorf("%s %s from the gateway passed without a token", tc.method, tc.path)
+		}
+	}
+}
+
+// Every listed pair is a route of the daemon, so a typo in the list cannot hide a route that
+// the dashboard needs.
+func TestIngressRoutesAreDaemonRoutes(t *testing.T) {
+	mux := newInstallAPI(t).d.mux()
+	for _, rt := range ingressRoutes {
+		method, path := sample(rt.method + " /" + strings.Join(rt.segments, "/"))
+		req := httptest.NewRequest(method, path, nil)
+		if _, pattern := mux.Handler(req); pattern == "" {
+			t.Errorf("%s %s is not a route of the daemon", method, path)
+		}
 	}
 }
 
@@ -87,10 +223,10 @@ func TestIngressIgnoresForgedHeaders(t *testing.T) {
 // Without --ingress the gateway is a source like any other.
 func TestWithoutIngressTheGatewayNeedsTheToken(t *testing.T) {
 	h := accessHandler(testAPIToken, false, false, okHandler())
-	if got := request(h, "172.30.32.2:50000", "/api/zones"); got != http.StatusUnauthorized {
+	if got := request(h, gatewayPeer, "/api/zones"); got != http.StatusUnauthorized {
 		t.Fatalf("gateway without --ingress: status %d, want 401", got)
 	}
-	if got := request(h, "172.30.32.2:50000", "/api/zones", "Authorization", "Bearer "+testAPIToken); got != http.StatusOK {
+	if got := request(h, gatewayPeer, "/api/zones", "Authorization", "Bearer "+testAPIToken); got != http.StatusOK {
 		t.Fatalf("gateway with the token: status %d, want 200", got)
 	}
 }
@@ -107,16 +243,19 @@ func TestIngressKeepsTheOtherAccessRules(t *testing.T) {
 }
 
 // The dashboard and the API of one server: a page needs no token from anyone, and the
-// gateway reaches the API through the same handler.
+// gateway reaches the routes of the dashboard through the same handler.
 func TestServerWithIngress(t *testing.T) {
 	h := serverHandler(testAPIToken, false, true, okHandler())
 	if got := request(h, "192.0.2.10:50000", "/"); got == http.StatusUnauthorized {
 		t.Errorf("a page asked for a token")
 	}
-	if got := request(h, "172.30.32.2:50000", "/api/zones"); got != http.StatusOK {
+	if got := request(h, gatewayPeer, "/api/zones"); got != http.StatusOK {
 		t.Errorf("gateway API: status %d, want 200", got)
 	}
 	if got := request(h, "192.0.2.10:50000", "/api/zones"); got != http.StatusUnauthorized {
 		t.Errorf("other source API: status %d, want 401", got)
+	}
+	if got := send(h, gatewayPeer, "POST", "/api/pair/window"); got != http.StatusUnauthorized {
+		t.Errorf("a route outside the list from the gateway: status %d, want 401", got)
 	}
 }

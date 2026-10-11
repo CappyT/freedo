@@ -152,17 +152,22 @@ Home Assistant authenticates the user. The Supervisor then forwards the request 
 fixed address `172.30.32.2`. The developer documentation for apps tells an app to accept ingress
 connections from that address only and to treat the user as authenticated. The daemon follows it:
 
-- The flag `--ingress` makes the daemon accept an API request from the connection address `172.30.32.2`
-  without a token. Only `addon/run.sh` sets the flag. The bootstrap file and the environment have no
-  such setting, and the container image does not set it.
+- The flag `--ingress` makes the daemon accept the calls of the dashboard from the connection address
+  `172.30.32.2` without a token. Only the 17 method and path pairs of
+  [`internal/daemon/ingress_routes.json`](../internal/daemon/ingress_routes.json) qualify. Every other
+  request from that address needs the token. [SECURITY.md](../SECURITY.md#home-assistant-ingress) lists
+  the pairs and what a user can do with them.
+- Only `addon/run.sh` sets the flag. The bootstrap file and the environment have no such setting, and
+  the container image does not set it.
 - Every other source still needs the token: other apps, the host, the LAN, and the published port 18080.
-- The daemon reads the address of the TCP connection. A header such as `X-Forwarded-For` or
-  `X-Ingress-Path` has no effect.
+- The daemon compares the method and the exact path, and reads the address of the TCP connection. A
+  header such as `X-Forwarded-For` or `X-Ingress-Path` has no effect.
 
-The daemon cannot tell the Home Assistant users apart. Every user who can open the panel controls the
-plant, and the project accepts this. The add-on keeps `panel_admin` at its default `true`, so the
-sidebar entry shows for administrators only. Do not set `--ingress` in another setup. A reverse proxy
-on the host shows the daemon its own address, not the address of the client.
+The daemon cannot tell the Home Assistant users apart. Every user who can open the panel can use those
+calls, and the project accepts this. Home Assistant lets every user open an ingress session, so the
+add-on option `panel_admin` (default `true`) hides only the sidebar entry. Do not set `--ingress` in
+another setup. A reverse proxy on the host shows the daemon its own address, not the address of the
+client.
 
 ## Time zone
 

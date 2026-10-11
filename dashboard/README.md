@@ -66,4 +66,8 @@ other path. It loads every file that the page references, and, when Chrome is on
 
 The static files need no token. The API keeps its rules. In a standalone container the page asks for
 the API token once and keeps it in the browser storage. Under Home Assistant ingress the daemon trusts
-the gateway, so the page asks for nothing. See [`docs/OPERATION.md`](../docs/OPERATION.md#dashboard).
+the gateway for the calls that `src/lib/api.ts` makes, so the page asks for nothing. The calls are listed in
+`../internal/daemon/ingress_routes.json`, and `tests/ingress.test.ts` fails when the client calls a
+pair that is not in the list. A new client call needs a line in that file, and every line of the file
+widens what a Home Assistant user can do without the token. See
+[`docs/OPERATION.md`](../docs/OPERATION.md#dashboard).

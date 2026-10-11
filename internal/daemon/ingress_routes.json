@@ -1,0 +1,19 @@
+[
+	"GET /api/health",
+	"GET /api/zones",
+	"GET /api/nodes",
+	"GET /api/home",
+	"GET /api/boiler",
+	"GET /api/circuits",
+	"GET /api/zones/{n}/schedule",
+	"PUT /api/zones/{n}/schedule",
+	"POST /api/zones/{n}/setpoint",
+	"POST /api/zones/{n}/off",
+	"POST /api/zones/{n}/auto",
+	"POST /api/zones/{n}/boost",
+	"POST /api/zones/{n}/window",
+	"PATCH /api/home",
+	"POST /api/boiler/flow",
+	"POST /api/nodes/{id}/childlock",
+	"POST /api/nodes/{id}/identify"
+]

@@ -3,37 +3,54 @@ package daemon
 // ingress: Home Assistant ingress. The Supervisor authenticates the user in Home Assistant
 // and proxies the request to the add-on from a fixed address. The developer documentation
 // for apps tells an app to accept ingress connections from that address only. The daemon
-// takes the same rule: with --ingress, a request from the gateway address needs no token.
-// Every other source keeps the rules of requireToken.
+// takes the same rule with two limits, because Home Assistant lets every user open an
+// ingress session, and panel_admin hides only the sidebar entry:
 //
-// The decision reads the address of the TCP connection and nothing else. A header such as
-// X-Forwarded-For or X-Ingress-Path is under the control of the caller.
+//   - A request from the gateway address skips the token only for the method and path
+//     pairs in ingress_routes.json, the calls that the dashboard makes. Every other request
+//     from the gateway needs the token like a request from any other source. The routes
+//     that pair devices, change the installation or the network key, reset or flash a
+//     device, and read raw device answers are not in the list.
+//   - The decision reads the address of the TCP connection and nothing else. A header such
+//     as X-Forwarded-For or X-Ingress-Path is under the control of the caller.
 
 import (
+	_ "embed"
+	"encoding/json"
 	"log"
 	"net/http"
 	"net/netip"
+	"path"
+	"strings"
 )
 
 // ingressGateway is the address of the Supervisor on the network of the apps.
 var ingressGateway = netip.MustParseAddr("172.30.32.2")
 
+// ingressRoutesJSON lists the method and path pairs of the dashboard. dashboard/tests checks
+// that every call of dashboard/src/lib/api.ts is in it. A segment in braces matches one segment.
+//
+//go:embed ingress_routes.json
+var ingressRoutesJSON []byte
+
+var ingressRoutes = mustRoutes(ingressRoutesJSON)
+
 // accessHandler puts the API behind its access rules: the bearer token, and with ingress
-// the gateway of Home Assistant as a second way in.
+// the gateway of Home Assistant as a second way in for the routes of the dashboard.
 func accessHandler(token string, healthPublic, ingress bool, mux http.Handler) http.Handler {
 	checked := requireToken(token, healthPublic, mux)
 	if !ingress {
 		return checked
 	}
-	log.Printf("API: requests from the Home Assistant ingress gateway %s need no token", ingressGateway)
-	return trustGateway(ingressGateway, mux, checked)
+	log.Printf("API: the dashboard routes need no token from the Home Assistant ingress gateway %s", ingressGateway)
+	return trustGateway(ingressGateway, ingressRoutes, mux, checked)
 }
 
-// trustGateway serves a request that comes from the gateway address with trusted, and
-// every other request with checked.
-func trustGateway(gateway netip.Addr, trusted, checked http.Handler) http.Handler {
+// trustGateway serves a request with trusted when it comes from the gateway address and
+// matches one of the routes. Every other request goes to checked.
+func trustGateway(gateway netip.Addr, routes []route, trusted, checked http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if fromAddr(r, gateway) {
+		if fromAddr(r, gateway) && matchesAny(routes, r) {
 			trusted.ServeHTTP(w, r)
 			return
 		}
@@ -46,4 +63,61 @@ func trustGateway(gateway netip.Addr, trusted, checked http.Handler) http.Handle
 func fromAddr(r *http.Request, want netip.Addr) bool {
 	peer, err := netip.ParseAddrPort(r.RemoteAddr)
 	return err == nil && peer.Addr().Unmap() == want
+}
+
+// route is one method and path pair. A segment in braces matches one non-empty segment.
+type route struct {
+	method   string
+	segments []string
+}
+
+func mustRoutes(data []byte) []route {
+	var pairs []string
+	if err := json.Unmarshal(data, &pairs); err != nil {
+		panic("ingress_routes.json: " + err.Error())
+	}
+	routes := make([]route, 0, len(pairs))
+	for _, pair := range pairs {
+		method, p, ok := strings.Cut(pair, " ")
+		if !ok || method == "" || !strings.HasPrefix(p, "/api/") || p != path.Clean(p) {
+			panic("ingress_routes.json: bad pair " + pair)
+		}
+		routes = append(routes, route{method: method, segments: strings.Split(p[1:], "/")})
+	}
+	return routes
+}
+
+func matchesAny(routes []route, r *http.Request) bool {
+	for _, rt := range routes {
+		if rt.matches(r) {
+			return true
+		}
+	}
+	return false
+}
+
+// matches compares the method and the decoded path exactly. A path that is not in its clean
+// form (a dot segment, a double slash, a trailing slash) never matches, so a request cannot
+// be written to look like a listed route and reach another one.
+func (rt route) matches(r *http.Request) bool {
+	p := r.URL.Path
+	if r.Method != rt.method || p != path.Clean(p) || !strings.HasPrefix(p, "/") {
+		return false
+	}
+	parts := strings.Split(p[1:], "/")
+	if len(parts) != len(rt.segments) {
+		return false
+	}
+	for i, segment := range rt.segments {
+		if strings.HasPrefix(segment, "{") {
+			if parts[i] == "" {
+				return false
+			}
+			continue
+		}
+		if parts[i] != segment {
+			return false
+		}
+	}
+	return true
 }

@@ -20,6 +20,32 @@ The API token protects the plant. Anyone who has the token can:
 - pair devices, make a device leave the network and start a firmware transfer;
 - read device identifiers from the installation routes.
 
+## Home Assistant ingress
+
+The add-on starts the daemon with `--ingress`. Home Assistant authenticates the user and the Supervisor
+forwards the request from the address `172.30.32.2`. Every Home Assistant user can open an ingress
+session, also a user who is not an administrator: `panel_admin` hides only the sidebar entry. The daemon
+cannot tell the users apart.
+
+For a request from `172.30.32.2`, the daemon skips the token for these method and path pairs only. They
+are the calls of the dashboard. The list is `internal/daemon/ingress_routes.json`, and `{n}` and `{id}`
+stand for a zone number and a device:
+
+- Read: `GET /api/health`, `/api/zones`, `/api/nodes`, `/api/home`, `/api/boiler`, `/api/circuits` and
+  `/api/zones/{n}/schedule`.
+- Zone: `POST /api/zones/{n}/setpoint`, `/off`, `/auto`, `/boost` and `/window`, and
+  `PUT /api/zones/{n}/schedule`.
+- Home: `PATCH /api/home` (home or away).
+- Boiler: `POST /api/boiler/flow` (the flow limit).
+- Device: `POST /api/nodes/{id}/childlock` and `/identify`.
+
+So a Home Assistant user, without the token, can read the state of the plant, set temperatures and weekly
+schedules, switch zones off, switch the home between home and away, set the flow limit, and lock or
+identify a valve. Every other request from that address needs the token. This includes pairing, the
+installation and the network key, factory reset, reboot, calibration and firmware, the raw device reads and
+the debug routes. The daemon compares the method and the exact path. It reads the address of the TCP
+connection and no header.
+
 The API uses plain HTTP. There is no TLS, so the token and all data cross the network in clear
 text. Run the daemon on a trusted network, or put a TLS proxy in front. Without a token the daemon
 accepts a loopback address only. `--insecure-no-auth` removes that limit: avoid it.
