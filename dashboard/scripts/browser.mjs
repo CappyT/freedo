@@ -23,7 +23,8 @@ export async function launch({ chrome = findChrome(), width = 1280, height = 900
 		chrome,
 		['--headless=new', '--no-sandbox', '--disable-gpu', '--hide-scrollbars', '--remote-debugging-port=0',
 			`--user-data-dir=${profile}`, 'about:blank'],
-		{ stdio: ['ignore', 'ignore', 'pipe'] }
+		// A new process group lets close() stop the helper processes of Chrome too.
+		{ stdio: ['ignore', 'ignore', 'pipe'], detached: true }
 	);
 	const endpoint = await new Promise((resolve, reject) => {
 		let log = '';
@@ -137,11 +138,18 @@ export async function launch({ chrome = findChrome(), width = 1280, height = 900
 		page,
 		async close() {
 			socket.close();
-			child.kill('SIGTERM');
-			await new Promise((resolve) => {
-				child.once('exit', resolve);
-				setTimeout(resolve, 3000);
-			});
+			const exited = new Promise((resolve) => child.once('exit', resolve));
+			try {
+				process.kill(-child.pid, 'SIGTERM');
+			} catch {
+				// the group is gone already
+			}
+			await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 3000))]);
+			try {
+				process.kill(-child.pid, 'SIGKILL');
+			} catch {
+				// nothing left to stop
+			}
 			rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
 		}
 	};
