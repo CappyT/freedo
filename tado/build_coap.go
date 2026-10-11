@@ -320,6 +320,11 @@ func (c SetpointCoAP) sentSchedC() []byte {
 	return zoneWrite{home: c.Home, programOff: c.ProgramOff, schedC: c.SchedC, noSchedC: c.NoSchedC, awayC: c.AwayC, kind: roomZoneKind}.sentSchedC()
 }
 
+// head returns the home state and the program block the room write carries.
+func (c SetpointCoAP) head() []TLV {
+	return zoneWriteHead(zoneWrite{home: c.Home, programOff: c.ProgramOff, schedC: c.SchedC, noSchedC: c.NoSchedC, awayC: c.AwayC, kind: roomZoneKind})
+}
+
 // sentSchedC returns the 6200 the hot-water write carries, nil when it leaves
 // 6200 out.
 func (c DHWSetpointCoAP) sentSchedC() []byte {

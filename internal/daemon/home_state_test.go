@@ -155,7 +155,8 @@ func TestSetpointDurationQueuesReturnToSchedule(t *testing.T) {
 
 // TestAwayToggleRewritesEveryZone: the switch to away queues one write per zone,
 // to its writer alone, keeping the overlay the zone already runs. A room zone
-// with no overlay carries 6440, as in capture-away-20261011; hot water does not.
+// with no overlay carries 6440 when its target moves (here the target the zone
+// holds is unknown, which counts as a move); hot water does not.
 // The other members take the block from the writer's echo.
 func TestAwayToggleRewritesEveryZone(t *testing.T) {
 	clock := newTestClock(time.Date(2026, 1, 5, 5, 0, 0, 0, time.UTC))

@@ -8,6 +8,7 @@ import (
 	"context"
 	"net/http"
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	"freedo/internal/install"
@@ -188,6 +189,84 @@ func TestAwayTemperatureWrites(t *testing.T) {
 	dropAllQueues(t, a)
 	patch(21.0)
 	onlyPending(t, "a change while home again", a, ufficio, 0)
+}
+
+// reportedBlock is the block a valve reports for a zone at home with no overlay:
+// the head with the program setpoint centiC, which is what lets the engine
+// compare the target of its next write with the one the zone holds.
+func reportedBlock(centiC uint16) []tado.TLV {
+	sched := []byte{byte(centiC >> 8), byte(centiC)}
+	return []tado.TLV{
+		{Tag: "6160", Val: []byte{0x01}}, {Tag: "6180", Val: []byte{0x00}}, {Tag: "6020", Val: []byte{0x01}},
+		{Tag: "61e0", Val: []byte{0x01}}, {Tag: "6200", Val: sched}, {Tag: "6240", Val: []byte{0x00}},
+		{Tag: "6260", Val: []byte{0x01}}, {Tag: "6280", Val: []byte{0x09, 0xc4}}, {Tag: "62e0", Val: []byte{0x00}},
+	}
+}
+
+// TestAwaySwitchMarksOnlyMovedTargets: 6440 follows the target. Zone 3 holds
+// 18.00 C at home and keeps 18.00 C in away, so neither switch carries 6440.
+// Zone 10 goes from 20.00 C to off and back, so both do.
+func TestAwaySwitchMarksOnlyMovedTargets(t *testing.T) {
+	a := newInstallAPIOn(t, windowInstall(t, nil))
+	in := a.d.inst.Load()
+	ufficio, camera := wireOf(t, in, "VA1000000002"), wireOf(t, in, "VA1000000005")
+	for zone, setpoint := range map[int]float64{3: 18, 10: 20} {
+		var view map[string]any
+		if code := postJSON(t, http.MethodPut, a.base+"/api/zones/"+strconv.Itoa(zone)+"/schedule",
+			allDayProgram(map[string]any{"minute": 0, "setpoint_c": setpoint}), &view); code != http.StatusOK {
+			t.Fatalf("schedule of zone %d: code=%d %v", zone, code, view)
+		}
+	}
+	seedBlock(t, a.d, in, "VA1000000002", 3, reportedBlock(0x0708)...)
+	seedBlock(t, a.d, in, "VA1000000005", 10, reportedBlock(0x07d0)...)
+	a.mutate(http.MethodPatch, "/api/install/zones/3", map[string]any{"away_temperature_c": 18.0})
+
+	for _, tc := range []struct {
+		name         string
+		away         bool
+		ufficio, cam map[string]string
+	}{{
+		name:    "switch to away",
+		away:    true,
+		ufficio: map[string]string{"6160": "02", "61e0": "01", "6200": "0708"},
+		cam:     map[string]string{"6160": "02", "61e0": "00", "6440": "0001"},
+	}, {
+		name:    "return home",
+		ufficio: map[string]string{"6160": "01", "61e0": "01", "6200": "0708"},
+		cam:     map[string]string{"6160": "01", "61e0": "01", "6200": "07d0", "6440": "0001"},
+	}} {
+		if code, res := a.call(http.MethodPatch, "/api/home", map[string]any{"away": tc.away}); code != http.StatusOK {
+			t.Fatalf("%s: code=%d %v", tc.name, code, res)
+		}
+		wantTags(t, tc.name+", zone 3 keeps 18.00 C", deliverAck(t, a.d, in, ufficio), tc.ufficio, "6440")
+		wantTags(t, tc.name+", zone 10 moves", deliverAck(t, a.d, in, camera), tc.cam)
+	}
+}
+
+// TestAwayTemperatureChangeOnTheSameWireValue: two away temperatures that reach
+// the valve as the same value, here 24.5 and 25 C past the clamp of a
+// correction of -0.70 C, still write the zone, because the setting changed. The
+// second write moves nothing on the wire and carries no 6440. The same setting
+// again writes nothing at all (TestAwayTemperatureWrites).
+func TestAwayTemperatureChangeOnTheSameWireValue(t *testing.T) {
+	a := newInstallAPIOn(t, windowInstall(t, func(in *tado.Install) {
+		in.Options.ZoneOffsets = map[int]tado.ZoneOffset{3: {Mode: tado.OffsetModeSetpoint, SetpointCenti: -70}}
+	}))
+	in := a.d.inst.Load()
+	ufficio := wireOf(t, in, "VA1000000002")
+	seedBlock(t, a.d, in, "VA1000000002", 3, reportedBlock(0x07d0)...)
+	if code, res := a.call(http.MethodPatch, "/api/home", map[string]any{"away": true}); code != http.StatusOK {
+		t.Fatalf("away: code=%d %v", code, res)
+	}
+	dropAllQueues(t, a)
+	for _, c := range []float64{24.5, 25} {
+		a.mutate(http.MethodPatch, "/api/install/zones/3", map[string]any{"away_temperature_c": c})
+	}
+	if n := pending(t, a.d, ufficio); n != 2 {
+		t.Fatalf("%s holds %d queued writes, want the two changes", ufficio, n)
+	}
+	wantTags(t, "24.5 C", deliverAck(t, a.d, in, ufficio), map[string]string{"61e0": "01", "6200": "09c4", "6440": "0001"})
+	wantTags(t, "25 C", deliverAck(t, a.d, in, ufficio), map[string]string{"61e0": "01", "6200": "09c4"}, "6440")
 }
 
 // TestAwayTemperatureGoesOutOnTheValveScale: the away temperature is a target on

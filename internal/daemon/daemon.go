@@ -2565,8 +2565,8 @@ func (d *daemon) tickUTCOffset(e *tado.EmuState) bool {
 // rewriteZones queues one z/s write per zone, to its zoneWriteTargets. The
 // write keeps the overlay and the setpoint the zone already holds. switched
 // marks the home or away burst and the restate of an away temperature, whose
-// write carries 6440 on a room zone with no overlay; a schedule block change
-// carries none. Each zone then holds the block it follows now.
+// write carries 6440 on a room zone with no overlay when it moves the target of
+// the zone; a schedule block change carries none. Each zone then holds the block it follows now.
 func (d *daemon) rewriteZones(e *tado.EmuState, zones []int, dispatch func(string), switched bool) int {
 	enqueue := e.EnqueueZoneRewrite
 	if switched {

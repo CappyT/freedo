@@ -2921,9 +2921,11 @@ func (e *EmuState) EnqueueZoneRewrite(target string, id int) error {
 
 // EnqueueZoneSwitch queues the per-zone write of a home or away switch, or of a
 // change of the away temperature while away. It is EnqueueZoneRewrite, except
-// that a room zone that runs no overlay carries 6440=0001: the cloud marks the
-// write that way on every such zone but one (capture-away-20261011). A zone that
-// runs an overlay keeps it and carries no 6440, as in capture-app-20260907.
+// that a room zone that runs no overlay carries 6440=0001 when the write moves
+// its target, power or temperature (headTarget). In capture-away-20261011 all 16
+// writes fit that rule: the zone whose program setpoint equals its away
+// temperature carries no 6440 in either direction. A zone that runs an overlay
+// keeps it and carries no 6440, as in capture-app-20260907.
 func (e *EmuState) EnqueueZoneSwitch(target string, id int) error {
 	return e.enqueueZoneRewrite(target, id, false, true)
 }
@@ -2959,7 +2961,9 @@ func (e *EmuState) enqueueZoneRewrite(target string, id int, fromZone, switched 
 			restatePending(&c, pending)
 		}
 		c.OpenWindow = e.zoneOpenWindow(id, wire)
-		c.NewOverlay = switched && c.Overlay == overlayAuto
+		if switched && c.Overlay == overlayAuto {
+			c.NewOverlay = e.zoneHeadTarget(wire, id).movesTo(targetOf(c.head()))
+		}
 		if body, err = setpointBody(c); err == nil {
 			pkt, err = BuildSetpointCoAP(c)
 		}

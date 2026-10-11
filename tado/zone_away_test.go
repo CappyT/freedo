@@ -49,49 +49,110 @@ func wantAwayTags(t *testing.T, got, want map[string]string, absent ...string) {
 	}
 }
 
+// cachedHead is the no-overlay block a zone holds: the head of a write or of a
+// member report, 6200 only when sched is given.
+func cachedHead(mode, presence byte, sched ...byte) []TLV {
+	list := []TLV{
+		{Tag: "6160", Val: []byte{mode}}, {Tag: "6180", Val: []byte{0}}, {Tag: "6020", Val: []byte{1}},
+		{Tag: "61e0", Val: []byte{presence}},
+	}
+	if sched != nil {
+		list = append(list, TLV{Tag: "6200", Val: sched})
+	}
+	return append(list, TLV{Tag: "6240", Val: []byte{0}}, TLV{Tag: "62e0", Val: []byte{0}})
+}
+
 // TestAwaySwitchWriteShapes: the write of a home or away switch to a room zone
 // with no overlay, per capture-away-20261011. Away, a zone above the default
 // carries its temperature in 6200 with 61e0=1; a zone at the default carries
-// 61e0=0 and no 6200. Both carry 6180=0, 6240=0 and 6440. The return home
-// restores the program setpoint.
+// 61e0=0 and no 6200. Both carry 6180=0 and 6240=0. The return home restores the
+// program setpoint. 6440 follows the target: it is present when the write moves
+// the power or the temperature the zone holds, absent when it keeps both (the
+// zone whose program setpoint equals its away temperature), and present when the
+// held target is unknown.
 func TestAwaySwitchWriteShapes(t *testing.T) {
+	home205 := cachedHead(1, 1, 0x08, 0x02)
+	away12 := cachedHead(2, 1, 0x04, 0xb0)
+	away205 := cachedHead(2, 1, 0x08, 0x02)
+	awayOff := cachedHead(2, 0)
 	for _, tc := range []struct {
 		name   string
 		home   bool
 		away   map[int]float64
+		held   []TLV
 		want   map[string]string
 		absent []string
 	}{{
-		name: "away, 12 C",
-		away: map[int]float64{4: 12},
+		name: "away, 12 C", away: map[int]float64{4: 12}, held: home205,
 		want: map[string]string{
 			"6160": "02", "6180": "00", "6020": "01", "61e0": "01", "6200": "04b0", "6240": "00", "62e0": "00", "6440": "0001",
 		},
 		absent: []string{"6260", "6280"},
 	}, {
-		name: "away, zone at the default",
-		away: map[int]float64{},
+		name: "away, zone at the default", away: map[int]float64{}, held: home205,
 		want: map[string]string{
 			"6160": "02", "6180": "00", "6020": "01", "61e0": "00", "6240": "00", "62e0": "00", "6440": "0001",
 		},
 		absent: []string{"6200", "6260", "6280"},
 	}, {
-		name: "return home",
-		home: true,
-		away: map[int]float64{4: 12},
+		name: "return home from 12 C", home: true, away: map[int]float64{4: 12}, held: away12,
 		want: map[string]string{
 			"6160": "01", "6180": "00", "6020": "01", "61e0": "01", "6200": "0802", "6240": "00", "62e0": "00", "6440": "0001",
 		},
 		absent: []string{"6260", "6280"},
+	}, {
+		name: "return home from off", home: true, away: map[int]float64{}, held: awayOff,
+		want:   map[string]string{"6160": "01", "61e0": "01", "6200": "0802", "6440": "0001"},
+		absent: []string{"6260", "6280"},
+	}, {
+		name: "away at the program setpoint", away: map[int]float64{4: 20.5}, held: home205,
+		want:   map[string]string{"6160": "02", "61e0": "01", "6200": "0802", "6240": "00"},
+		absent: []string{"6440"},
+	}, {
+		name: "return home from the program setpoint", home: true, away: map[int]float64{4: 20.5}, held: away205,
+		want:   map[string]string{"6160": "01", "61e0": "01", "6200": "0802", "6240": "00"},
+		absent: []string{"6440"},
+	}, {
+		name: "off at home and off in away", away: map[int]float64{}, held: cachedHead(1, 0),
+		want:   map[string]string{"6160": "02", "61e0": "00", "6240": "00"},
+		absent: []string{"6200", "6440"},
+	}, {
+		name: "held target unknown", away: map[int]float64{4: 12},
+		want: map[string]string{"6160": "02", "61e0": "01", "6200": "04b0", "6440": "0001"},
 	}} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := awayEmu(t, tc.home, tc.away)
+			if tc.held != nil {
+				e.zoneState[zoneKey(4, "z/s")] = encodeTLVs(tc.held)
+			}
 			if err := e.EnqueueZoneSwitch(awayTarget, 4); err != nil {
 				t.Fatal(err)
 			}
 			wantAwayTags(t, firstQueued(t, e), tc.want, tc.absent...)
 		})
 	}
+}
+
+// TestAwaySwitchComparesWithQueuedWrites: the target a zone has is the one of
+// the newest write queued to its writer, else the one in the zone cache. A
+// restate of the same target behind a queued switch adds no 6440; the queued
+// write keeps its own.
+func TestAwaySwitchComparesWithQueuedWrites(t *testing.T) {
+	e := awayEmu(t, false, map[int]float64{4: 12})
+	e.zoneState[zoneKey(4, "z/s")] = encodeTLVs(cachedHead(1, 1, 0x08, 0x02))
+	e.node(awayValve()).raw = map[string][]byte{"6280": {0x08, 0x34}, "6240": {0x00}, "62e0": {0x00}}
+	e.node(awayValve()).refreshLastKnown()
+	for range 2 {
+		if err := e.EnqueueZoneSwitch(awayTarget, 4); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := queuedTags(t, e, hexEUI(awayValve()))
+	if len(got) != 2 {
+		t.Fatalf("queue = %v, want the first switch and the restate", got)
+	}
+	wantAwayTags(t, got[0], map[string]string{"61e0": "01", "6200": "04b0", "6440": "0001"})
+	wantAwayTags(t, got[1], map[string]string{"61e0": "01", "6200": "04b0"}, "6440")
 }
 
 // TestAwayRewriteCarriesTheAwayHead: a schedule block change in away restates
