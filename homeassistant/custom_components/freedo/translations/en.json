@@ -107,6 +107,7 @@
       "temperature_offset": { "name": "Temperature offset" },
       "open_window_duration": { "name": "Open window duration" },
       "device_overlay_timer": { "name": "Device change timer" },
+      "away_temperature": { "name": "Away temperature" },
       "flow_limit": { "name": "Circuit {circuit} flow limit" },
       "boiler_max_power": { "name": "Boiler maximum power" },
       "boiler_min_power": { "name": "Boiler minimum power" }

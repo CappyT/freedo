@@ -1,6 +1,6 @@
 """Numbers: the temperature correction of each heating zone, its open window
-detection time and the timer of a change made on a device, the flow limit of
-each circuit and the power of the boiler."""
+detection time, its away temperature and the timer of a change made on a
+device, the flow limit of each circuit and the power of the boiler."""
 
 from __future__ import annotations
 
@@ -26,6 +26,8 @@ from .model import (
     OFFSET_MODE_SETPOINT,
     OPEN_WINDOW_MAX_SEC,
     OVERLAY_END_MAX_SEC,
+    ZONE_MAX_C,
+    ZONE_MIN_C,
     Zone,
     flow_circuit,
     zone_offset_mode,
@@ -50,6 +52,10 @@ async def async_setup_entry(
             entities.append(OpenWindowDurationNumber(coordinator, zone))
         if zone_setting(data, zone, "device_overlay_end") is not None:
             entities.append(DeviceOverlayTimerNumber(coordinator, zone))
+        # The row carries the field, null when unset, from a daemon that has the
+        # away temperature.
+        if "away_temperature_c" in (data.zone_settings.get(zone.number) or {}):
+            entities.append(AwayTemperatureNumber(coordinator, zone))
     for circuit in sorted(data.circuit_sources):
         if flow_circuit(data, circuit) is not None:
             entities.append(FlowLimitNumber(coordinator, circuit))
@@ -158,6 +164,32 @@ class DeviceOverlayTimerNumber(_MinutesNumber):
     @property
     def available(self) -> bool:
         return super().available and (self._setting or {}).get("device_overlay_end") == "timer"
+
+
+class AwayTemperatureNumber(FreedoZoneSettingEntity, NumberEntity):
+    """The temperature the zone keeps while the home is away
+    (away_temperature_c). The room minimum means off in away, and so does a
+    zone with no value: the number shows the minimum then."""
+
+    _attr_device_class = NumberDeviceClass.TEMPERATURE
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+    _attr_translation_key = "away_temperature"
+    _attr_native_min_value = ZONE_MIN_C
+    _attr_native_max_value = ZONE_MAX_C
+    _attr_native_step = 0.1
+    _attr_mode = NumberMode.BOX
+
+    def __init__(self, coordinator: FreedoCoordinator, zone: Zone) -> None:
+        super().__init__(coordinator, zone, "away_temperature_c")
+
+    @property
+    def native_value(self) -> float:
+        value = (self._setting or {}).get("away_temperature_c")
+        return ZONE_MIN_C if value is None else value
+
+    async def async_set_native_value(self, value: float) -> None:
+        await self._write(away_temperature_c=round(value, 2))
 
 
 class FlowLimitNumber(FreedoEntity, NumberEntity):

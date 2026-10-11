@@ -747,6 +747,68 @@ async def test_open_window_duration_number(hass, client):
     assert len(client.calls) == 1
 
 
+async def test_away_temperature_number(hass, client):
+    entry = await setup_entry(hass, client)
+    away = entity_id(hass, entry, "number", "zone1_away_temperature_c")
+    state = hass.states.get(away)
+    assert float(state.state) == 21.5
+    assert state.attributes["device_class"] == "temperature"
+    assert state.attributes["unit_of_measurement"] == "°C"
+    assert (state.attributes["min"], state.attributes["max"], state.attributes["step"]) == (5, 25, 0.1)
+    assert er.async_get(hass).async_get(away).entity_category == "config"
+    # Zone 2 holds no value: it is off in away, which the minimum shows.
+    unset = entity_id(hass, entry, "number", "zone2_away_temperature_c")
+    assert float(hass.states.get(unset).state) == 5
+
+    await hass.services.async_call(
+        "number", "set_value", {ATTR_ENTITY_ID: unset, "value": 18.5}, blocking=True
+    )
+    await hass.services.async_call(
+        "number", "set_value", {ATTR_ENTITY_ID: away, "value": 5}, blocking=True
+    )
+    assert client.calls == [
+        ("patch_zone", 2, {"away_temperature_c": 18.5}),
+        ("patch_zone", 1, {"away_temperature_c": 5.0}),
+    ]
+    assert float(hass.states.get(unset).state) == 18.5
+    assert float(hass.states.get(away).state) == 5
+    for value in (4.9, 25.1):
+        with pytest.raises(ServiceValidationError):
+            await hass.services.async_call(
+                "number", "set_value", {ATTR_ENTITY_ID: away, "value": value}, blocking=True
+            )
+    assert len(client.calls) == 2
+
+
+async def test_away_temperature_only_where_the_daemon_serves_it(hass, client):
+    entry = await setup_entry(hass, client)
+    # The hot water zone has no away temperature.
+    assert not has_entity(hass, entry, "number", "zone9_away_temperature_c")
+    await hass.config_entries.async_unload(entry.entry_id)
+
+    # A daemon without the field sends no key in the zone row.
+    for row in client.install_json["zones"]:
+        del row["away_temperature_c"]
+    entry = await setup_entry(hass, client)
+    assert not has_entity(hass, entry, "number", "zone1_away_temperature_c")
+    assert has_entity(hass, entry, "number", "zone1_open_window_duration_sec")
+
+
+async def test_away_temperature_error_is_a_home_assistant_error(hass, client):
+    entry = await setup_entry(hass, client)
+    away = entity_id(hass, entry, "number", "zone1_away_temperature_c")
+
+    async def refuse(zone, **fields):
+        raise FreedoApiError(400, "away_temperature_c must be within 5..25 C")
+
+    client.patch_install_zone = refuse
+    with pytest.raises(HomeAssistantError, match="within 5..25"):
+        await hass.services.async_call(
+            "number", "set_value", {ATTR_ENTITY_ID: away, "value": 20}, blocking=True
+        )
+    assert float(hass.states.get(away).state) == 21.5
+
+
 async def test_device_overlay_end_rule(hass, client):
     entry = await setup_entry(hass, client)
     rule = entity_id(hass, entry, "select", "zone1_device_overlay_end")
