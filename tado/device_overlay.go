@@ -159,9 +159,10 @@ func (e *EmuState) TakeOverlayReports() []OverlayReport {
 }
 
 // SetZoneOverlayTimer replaces every coordinator-side deadline of the overlay
-// zone runs with one of d on each target. A zero d leaves the overlay with no
-// deadline. The expiry takes the ExpireBoosts path: overlay auto, no 6440.
-func (e *EmuState) SetZoneOverlayTimer(zone int, targets []string, d time.Duration) error {
+// zone runs with one of d on each target, kept with the OverlayEnd* rule that
+// gave it. A zero d leaves the overlay with no deadline. The expiry takes the
+// ExpireBoosts path: overlay auto, no 6440.
+func (e *EmuState) SetZoneOverlayTimer(zone int, targets []string, d time.Duration, rule string) error {
 	wires := make([][]byte, 0, len(targets))
 	for _, target := range targets {
 		wire, _, err := e.resolve(target)
@@ -176,7 +177,7 @@ func (e *EmuState) SetZoneOverlayTimer(zone int, targets []string, d time.Durati
 		}
 	}
 	for _, wire := range wires {
-		e.armOverlayTimer(wire, zone, d, e.zoneKind(zone) == dhwZoneKind, false, "")
+		e.armOverlayTimer(wire, zone, d, e.zoneKind(zone) == dhwZoneKind, false, rule)
 	}
 	return nil
 }

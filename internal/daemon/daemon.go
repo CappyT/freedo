@@ -2738,7 +2738,7 @@ func (d *daemon) postSetpoint(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		sp.Duration = d
+		sp.Duration, sp.EndRule = d, tado.OverlayEndTimer
 	}
 	if err := b.Zone.apply(&sp); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
@@ -2756,7 +2756,7 @@ func (d *daemon) postSetpoint(w http.ResponseWriter, r *http.Request) {
 		// "until_next" with no duration lasts to the next block of the program.
 		if overlay == 3 && sp.Duration == 0 && inst != nil {
 			if next, ok := d.nextZoneBlock(e, inst, id, now); ok && next.After(now) {
-				sp.Duration = next.Sub(now)
+				sp.Duration, sp.EndRule = next.Sub(now), tado.OverlayEndUntilNext
 			}
 		}
 		sp.RunningOverlay = overlay != overlayAutoMode && runningOverlay(e, n.Short(), id)
@@ -2872,17 +2872,18 @@ func (d *daemon) postBoilerDHW(w http.ResponseWriter, r *http.Request) {
 	if b.TempC != nil {
 		tempC = *b.TempC
 	}
-	duration := time.Duration(0)
+	duration, rule := time.Duration(0), ""
 	if b.DurationSec != nil {
 		if duration, err = overlaySeconds(*b.DurationSec); err != nil {
 			writeErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		rule = tado.OverlayEndTimer
 	}
 	target := hex.EncodeToString(dev.WireEUI())
 	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		d.applyHomeState(e)
-		if err := e.EnqueueDHWOverlay(target, id, tempC, on, duration, ""); err != nil {
+		if err := e.EnqueueDHWOverlay(target, id, tempC, on, duration, rule); err != nil {
 			return nil, err
 		}
 		d.dispatchQueued(e, target)

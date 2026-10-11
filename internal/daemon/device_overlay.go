@@ -38,7 +38,7 @@ func (d *daemon) takeOverlayReports(e *tado.EmuState) {
 			continue
 		}
 		if r.End {
-			if err := e.SetZoneOverlayTimer(r.Zone, nil, 0); err != nil {
+			if err := e.SetZoneOverlayTimer(r.Zone, nil, 0, ""); err != nil {
 				log.Printf("device overlay end on zone %d: %v", r.Zone, err)
 			}
 			continue
@@ -48,7 +48,8 @@ func (d *daemon) takeOverlayReports(e *tado.EmuState) {
 			continue
 		}
 		duration := d.deviceOverlayDuration(e, inst, r.Zone)
-		if err := e.SetZoneOverlayTimer(r.Zone, d.zoneWriteTargets(e, r.Zone), duration); err != nil {
+		rule := inst.Options.DeviceOverlayEnd(r.Zone).Mode
+		if err := e.SetZoneOverlayTimer(r.Zone, d.zoneWriteTargets(e, r.Zone), duration, rule); err != nil {
 			log.Printf("device overlay on zone %d: %v", r.Zone, err)
 		}
 	}

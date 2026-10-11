@@ -3342,11 +3342,11 @@ func (e *EmuState) enqueueBoostBlock(target string, id int, on, newOverlay bool,
 	q[len(q)-1].responseToken = append([]byte(nil), token...)
 	q[len(q)-1].responseCode = "2.04"
 	e.supersedeZoneWrites(wire, id)
-	d := time.Duration(0)
+	d, rule := time.Duration(0), ""
 	if on {
-		d = BoostDuration
+		d, rule = BoostDuration, OverlayEndTimer
 	}
-	e.armOverlayTimer(wire, id, d, false, on, "")
+	e.armOverlayTimer(wire, id, d, false, on, rule)
 	return nil
 }
 

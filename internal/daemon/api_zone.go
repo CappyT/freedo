@@ -388,6 +388,19 @@ func (d *daemon) postZoneBoost(w http.ResponseWriter, r *http.Request) {
 	queued(w, v, d.persist(err), map[string]any{"zone": z.Number, "target": targetName(dev), "on": *b.On})
 }
 
+// overlayRule names the end rule a zone overlay runs under: the one it was set
+// with, else the one its 6240 and its timer imply. A timer with no stored rule
+// reads as until_next, as it did before the rule was kept.
+func overlayRule(overlay byte, timer tado.OverlayTimer, timed bool) string {
+	switch {
+	case timed && timer.Rule != "":
+		return timer.Rule
+	case timed || overlay == 3:
+		return tado.OverlayEndUntilNext
+	}
+	return tado.OverlayEndManual
+}
+
 // overlayKind names a 6240 overlay.
 func overlayKind(overlay byte) string {
 	switch overlay {
@@ -404,7 +417,9 @@ func overlayKind(overlay byte) string {
 // device falls back to a value of its own: an open window, the away state of a
 // zone with no away temperature, an off overlay or a program block that is off.
 // Hot water follows the away state like the cloud: with no overlay it is off. On air a timer is an until_next
-// overlay; endsAt is the deadline the coordinator keeps.
+// overlay: kind follows the 6240, rule is the end rule the overlay was set
+// with (manual, timer, until_next or until_home_change) and endsAt is the
+// deadline the coordinator keeps, null while the rule has none.
 func (d *daemon) zoneTargetView(e *tado.EmuState, z *tado.Zone) map[string]any {
 	hotWater := z.Kind == tado.ZoneHotWater
 	view := map[string]any{
@@ -427,7 +442,9 @@ func (d *daemon) zoneTargetView(e *tado.EmuState, z *tado.Zone) map[string]any {
 		if boost {
 			kind = "boost"
 		}
-		overlay := map[string]any{"kind": kind, "on": on, "setpointC": nil, "endsAt": nil}
+		overlay := map[string]any{
+			"kind": kind, "rule": overlayRule(block.Overlay, timer, timed), "on": on, "setpointC": nil, "endsAt": nil,
+		}
 		if on && block.SetpointC != nil {
 			overlay["setpointC"] = correctedC(d.inst.Load(), z.Number, *block.SetpointC)
 		}
