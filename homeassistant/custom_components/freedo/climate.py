@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 import time
 from typing import Any
 
@@ -18,11 +19,11 @@ from homeassistant.components.climate import (
 )
 from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv, entity_platform
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import SERVICE_BOOST
+from .const import DOMAIN, SERVICE_BOOST, SERVICE_SET_OVERLAY
 from .coordinator import FreedoConfigEntry, FreedoCoordinator
 from .entity import FreedoEntity, call_api
 from .model import (
@@ -38,6 +39,13 @@ from .model import (
     zone_target_source,
     zone_target_temperature,
 )
+
+END_RULES = ("manual", "timer", "until_next")
+# The daemon bounds a timer overlay at 7 days (tado.OverlayMaxDuration).
+MAX_OVERLAY = timedelta(days=7)
+
+MIN_TEMP = 5.0
+MAX_TEMP = 25.0
 
 # A write reaches a valve at its next CSL wake-up, so the reported values lag.
 # The entity shows the requested value until the valve reports it, or at most
@@ -63,6 +71,22 @@ async def async_setup_entry(
     entity_platform.async_get_current_platform().async_register_entity_service(
         SERVICE_BOOST, {vol.Optional("on", default=True): cv.boolean}, "async_boost"
     )
+    entity_platform.async_get_current_platform().async_register_entity_service(
+        SERVICE_SET_OVERLAY,
+        {
+            vol.Optional(ATTR_HVAC_MODE, default=HVACMode.HEAT): vol.In(
+                [HVACMode.HEAT, HVACMode.OFF]
+            ),
+            vol.Optional(ATTR_TEMPERATURE): vol.All(
+                vol.Coerce(float), vol.Range(min=MIN_TEMP, max=MAX_TEMP)
+            ),
+            vol.Optional("end_rule", default="manual"): vol.In(END_RULES),
+            vol.Optional("duration"): vol.All(
+                cv.time_period, vol.Range(min=timedelta(seconds=1), max=MAX_OVERLAY)
+            ),
+        },
+        "async_set_overlay",
+    )
 
 
 class FreedoZoneClimate(FreedoEntity, ClimateEntity):
@@ -76,8 +100,8 @@ class FreedoZoneClimate(FreedoEntity, ClimateEntity):
         | ClimateEntityFeature.TURN_OFF
         | ClimateEntityFeature.TURN_ON
     )
-    _attr_min_temp = 5.0
-    _attr_max_temp = 25.0
+    _attr_min_temp = MIN_TEMP
+    _attr_max_temp = MAX_TEMP
     _attr_target_temperature_step = 0.1
 
     def __init__(self, coordinator: FreedoCoordinator, zone: Zone) -> None:
@@ -223,6 +247,42 @@ class FreedoZoneClimate(FreedoEntity, ClimateEntity):
                 raise HomeAssistantError("Set a target temperature first")
             await call_api(client.zone_setpoint(zone.number, self._valid_target(temp)))
         self._pending_mode = (hvac_mode, time.monotonic() + PENDING_SEC)
+        self.async_write_ha_state()
+        await self.coordinator.async_request_refresh()
+
+    async def async_set_overlay(
+        self,
+        hvac_mode: HVACMode = HVACMode.HEAT,
+        temperature: float | None = None,
+        end_rule: str = "manual",
+        duration: timedelta | None = None,
+    ) -> None:
+        """Heat to a temperature or switch off, until the end rule ends it."""
+        zone = self._zone
+        if zone is None:
+            return
+        heat = hvac_mode == HVACMode.HEAT
+        if heat != (temperature is not None):
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="overlay_temperature_required" if heat else "overlay_temperature_not_allowed",
+            )
+        if (end_rule == "timer") != (duration is not None):
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="overlay_duration_required" if end_rule == "timer" else "overlay_duration_not_allowed",
+            )
+        seconds = int(duration.total_seconds()) if duration is not None else None
+        client = self.coordinator.client
+        deadline = time.monotonic() + PENDING_SEC
+        if heat:
+            temp = self._valid_target(round(temperature, 1))
+            await call_api(client.zone_setpoint(zone.number, temp, end_rule, seconds))
+            self._pending_target = (temp, deadline)
+        else:
+            await call_api(client.zone_off(zone.number, end_rule, seconds))
+            self._pending_target = None
+        self._pending_mode = (hvac_mode, deadline)
         self.async_write_ha_state()
         await self.coordinator.async_request_refresh()
 

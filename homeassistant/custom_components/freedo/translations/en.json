@@ -100,6 +100,49 @@
           "description": "True starts the boost, false stops it."
         }
       }
+    },
+    "set_overlay": {
+      "name": "Set overlay",
+      "description": "Heats a zone to a temperature or switches it off, and sets when the change ends.",
+      "fields": {
+        "hvac_mode": {
+          "name": "Mode",
+          "description": "Heat sets the temperature, off switches the zone off."
+        },
+        "temperature": {
+          "name": "Temperature",
+          "description": "Target temperature. Required with mode heat, not allowed with mode off."
+        },
+        "end_rule": {
+          "name": "End rule",
+          "description": "Manual lasts until the next command, timer lasts for the duration, until next time block lasts until the next block of the weekly program."
+        },
+        "duration": {
+          "name": "Duration",
+          "description": "Length of the timer, up to 7 days. Required with end rule timer, not allowed with the other end rules."
+        }
+      }
     }
+  },
+  "selector": {
+    "overlay_hvac_mode": {
+      "options": {
+        "heat": "Heat",
+        "off": "Off"
+      }
+    },
+    "overlay_end_rule": {
+      "options": {
+        "manual": "Manual",
+        "timer": "Timer",
+        "until_next": "Until next time block"
+      }
+    }
+  },
+  "exceptions": {
+    "overlay_temperature_required": { "message": "Set a temperature with mode heat." },
+    "overlay_temperature_not_allowed": { "message": "A temperature is not allowed with mode off." },
+    "overlay_duration_required": { "message": "Set a duration with end rule timer." },
+    "overlay_duration_not_allowed": { "message": "A duration needs end rule timer." }
   }
 }

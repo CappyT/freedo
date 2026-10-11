@@ -15,3 +15,4 @@ CONF_WINDOW_ENTITIES = "window_entities"
 CONF_WINDOWS = "windows"
 
 SERVICE_BOOST = "boost"
+SERVICE_SET_OVERLAY = "set_overlay"

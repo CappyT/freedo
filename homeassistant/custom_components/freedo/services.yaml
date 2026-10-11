@@ -8,3 +8,38 @@ boost:
       default: true
       selector:
         boolean:
+
+set_overlay:
+  target:
+    entity:
+      integration: freedo
+      domain: climate
+  fields:
+    hvac_mode:
+      default: heat
+      selector:
+        select:
+          options:
+            - heat
+            - "off"
+          translation_key: overlay_hvac_mode
+    temperature:
+      selector:
+        number:
+          min: 5
+          max: 25
+          step: 0.1
+          unit_of_measurement: "°C"
+          mode: box
+    end_rule:
+      default: manual
+      selector:
+        select:
+          options:
+            - manual
+            - timer
+            - until_next
+          translation_key: overlay_end_rule
+    duration:
+      selector:
+        duration:

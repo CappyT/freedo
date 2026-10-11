@@ -10,6 +10,7 @@ from datetime import timedelta
 from unittest.mock import patch
 
 import pytest
+import voluptuous as vol
 
 pytest.importorskip("pytest_homeassistant_custom_component")
 
@@ -31,6 +32,7 @@ from homeassistant.const import (  # noqa: E402
     CONF_HOST,
     CONF_PORT,
 )
+from homeassistant.exceptions import ServiceValidationError  # noqa: E402
 from homeassistant.helpers import device_registry as dr  # noqa: E402
 from homeassistant.util import dt as dt_util  # noqa: E402
 from pytest_homeassistant_custom_component.common import (  # noqa: E402
@@ -62,6 +64,8 @@ class FakeClient:
         # The error GET /api/install raises, None to answer settings_json.
         self.settings_error: Exception | None = None
         self.calls: list[tuple] = []
+        # The end rule of each setpoint and off write: (name, zone, mode, durationSec).
+        self.end_rules: list[tuple] = []
         # Window pushes as the daemon receives them, in arrival order.
         self.windows: list[tuple[int, bool]] = []
         self.window_gate: asyncio.Event | None = None
@@ -98,6 +102,7 @@ class FakeClient:
 
     async def zone_setpoint(self, zone, temp_c, mode="manual", duration_sec=None):
         self.calls.append(("setpoint", zone, temp_c))
+        self.end_rules.append(("setpoint", zone, mode, duration_sec))
         return {"queued": True}
 
     async def zone_auto(self, zone):
@@ -106,6 +111,7 @@ class FakeClient:
 
     async def zone_off(self, zone, mode="manual", duration_sec=None):
         self.calls.append(("off", zone))
+        self.end_rules.append(("off", zone, mode, duration_sec))
         return {"queued": True}
 
     async def zone_boost(self, zone, on):
@@ -362,3 +368,71 @@ async def test_offline_schedule_unknown_without_install(hass, client):
     client.settings_error = FreedoApiError(503, "no installation")
     await setup_entry(hass, client)
     assert hass.states.get(OFFLINE_SCHEDULE).state == "unknown"
+
+
+# --- overlay end rule ---
+
+
+async def call_freedo(hass, service, data):
+    await hass.services.async_call(DOMAIN, service, data, blocking=True)
+    await hass.async_block_till_done()
+
+
+@pytest.mark.parametrize(
+    ("data", "expected"),
+    [
+        ({"temperature": 21}, ("setpoint", 2, "manual", None)),
+        (
+            {"temperature": 21, "end_rule": "timer", "duration": {"hours": 1, "minutes": 30}},
+            ("setpoint", 2, "timer", 5400),
+        ),
+        ({"temperature": 21, "end_rule": "until_next"}, ("setpoint", 2, "until_next", None)),
+        ({"hvac_mode": "off"}, ("off", 2, "manual", None)),
+        (
+            {"hvac_mode": "off", "end_rule": "timer", "duration": {"minutes": 45}},
+            ("off", 2, "timer", 2700),
+        ),
+        ({"hvac_mode": "off", "end_rule": "until_next"}, ("off", 2, "until_next", None)),
+    ],
+)
+async def test_set_overlay_end_rule(hass, client, data, expected):
+    await setup_entry(hass, client)
+    await call_freedo(hass, "set_overlay", {ATTR_ENTITY_ID: BEDROOM, **data})
+    assert client.end_rules == [expected]
+    state = hass.states.get(BEDROOM)
+    if expected[0] == "off":
+        assert state.state == HVACMode.OFF
+    else:
+        assert state.state == HVACMode.HEAT
+        assert state.attributes[ATTR_TEMPERATURE] == 21
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        {},
+        {"hvac_mode": "off", "temperature": 21},
+        {"temperature": 21, "end_rule": "timer"},
+        {"temperature": 21, "duration": {"hours": 1}},
+        {"temperature": 21, "end_rule": "timer", "duration": {"hours": 0}},
+        {"temperature": 21, "end_rule": "timer", "duration": {"days": 8}},
+        {"temperature": 30},
+        {"temperature": 4},
+        {"temperature": 21, "end_rule": "tomorrow"},
+        {"hvac_mode": "auto"},
+    ],
+)
+async def test_set_overlay_rejects_bad_input(hass, client, data):
+    await setup_entry(hass, client)
+    with pytest.raises((ServiceValidationError, vol.Invalid)):
+        await call_freedo(hass, "set_overlay", {ATTR_ENTITY_ID: BEDROOM, **data})
+    assert client.calls == []
+
+
+async def test_overlay_attributes_show_the_end_rule(hass, client):
+    await setup_entry(hass, client)
+    # Zone 1 runs a boost that ends at a set instant.
+    attrs = hass.states.get(LIVING).attributes
+    assert attrs["overlay"] == "boost"
+    assert attrs["overlay_ends_at"] == "2026-01-01T00:30:00Z"
+    assert hass.states.get(BEDROOM).attributes["overlay"] == "auto"
