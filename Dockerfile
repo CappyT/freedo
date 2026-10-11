@@ -1,5 +1,15 @@
 # syntax=docker/dockerfile:1
 
+# The dashboard stage builds static files, so one build serves every platform. The
+# layout under /src follows the repository: the app imports ../assets/brand.
+FROM --platform=$BUILDPLATFORM node:22-alpine AS dashboard
+WORKDIR /src/dashboard
+COPY dashboard/package.json dashboard/package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm npm ci
+COPY assets/brand /src/assets/brand
+COPY dashboard ./
+RUN npm run build
+
 # The build stage runs on the build host and cross-compiles: the daemon is pure
 # Go (CGO_ENABLED=0, the sqlite driver is modernc), so no emulation is needed.
 FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS build
@@ -12,6 +22,9 @@ COPY cmd/freedo ./cmd/freedo
 COPY internal ./internal
 COPY tado ./tado
 COPY cc1101 ./cc1101
+# The daemon embeds the dashboard from internal/web/dist. A missing build fails here.
+COPY --from=dashboard /src/dashboard/build ./internal/web/dist
+RUN test -f internal/web/dist/index.html
 ARG VERSION=dev
 ARG COMMIT=unknown
 ARG DATE=unknown

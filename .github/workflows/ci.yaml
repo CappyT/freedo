@@ -20,6 +20,34 @@ jobs:
       - run: go vet ./...
       - run: go test ./...
 
+  dashboard:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - run: npm run build
+      - run: npm run embed
+      # The daemon embeds the build. The check mounts it under a random path prefix, as
+      # Home Assistant ingress does, and runs it in Chrome.
+      - run: go build -o "$RUNNER_TEMP/freedo" ../cmd/freedo
+      - run: npm run prefix-check
+        env:
+          FREEDO_BIN: ${{ runner.temp }}/freedo
+          REQUIRE_BROWSER: "1"
+
   integration:
     runs-on: ubuntu-latest
     steps:

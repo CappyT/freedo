@@ -8,3 +8,14 @@
 !tado/
 !cc1101/
 !addon/run.sh
+# The dashboard build reads the brand tokens, the logos and the web icons.
+!dashboard/
+dashboard/node_modules
+dashboard/build
+dashboard/.svelte-kit
+!assets/brand/tokens.css
+!assets/brand/svg/
+!assets/brand/web/
+# The Go build embeds the output of the dashboard stage, never a local copy.
+internal/web/dist/*
+!internal/web/dist/.gitkeep
