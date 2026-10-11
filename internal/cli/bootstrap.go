@@ -166,9 +166,8 @@ unhandled_log, debug_api, csl_phase, tx_counter, zone_get_proxy,
 zone_proxy_timeout_sec, tune_debug and beacon_sec are top-level keys.
 options.utc_offset_min moved into the installation and is managed through the API.
 options.pan_id is gone: the PAN id is a protocol constant.
-to move this installation into the database, run the one-off seed script
-(issue #8), or start the daemon and write the installation through the
-management API under /api/install.
+to move this installation into the database, start the daemon and write the
+installation through the management API under /api/install.
 nothing is migrated for you on purpose`,
 		path, strings.Join(found, ", "), dbPath, BootstrapVersion)
 }

@@ -204,7 +204,7 @@ options: {utc_offset_min: 60}
 	msg := err.Error()
 	wants := append(append([]string{}, movedKeys...),
 		"version: 1", filepath.Join(dir, defaultDatabaseName),
-		"utc_offset_min", "pan_id", "/api/install", "seed script")
+		"utc_offset_min", "pan_id", "/api/install", "management API")
 	for _, want := range wants {
 		if !strings.Contains(msg, want) {
 			t.Errorf("the refusal does not name %q:\n%s", want, msg)
