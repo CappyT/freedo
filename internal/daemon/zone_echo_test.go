@@ -12,11 +12,11 @@ import (
 	"freedo/tado"
 )
 
-const camera = "VA1000000005" // the only member and writer of zone 10
+const bedroom = "VA1000000005" // the only member and writer of zone 10
 
-// cameraBlock is a z/s block of zone 10: a manual overlay at centiC with the
+// bedroomBlock is a z/s block of zone 10: a manual overlay at centiC with the
 // valve's own 6200 of 24.10 C.
-func cameraBlock(centiC uint16) []tado.TLV {
+func bedroomBlock(centiC uint16) []tado.TLV {
 	return []tado.TLV{
 		{Tag: "6280", Val: []byte{byte(centiC >> 8), byte(centiC)}}, {Tag: "6240", Val: []byte{0x02}},
 		{Tag: "6260", Val: []byte{0x01}}, {Tag: "6200", Val: []byte{0x09, 0x6a}},
@@ -50,8 +50,8 @@ func wantZoneTarget(t *testing.T, what, url string, zone int, setpointC float64)
 func TestStaleZoneEchoKeepsNewerSetpoint(t *testing.T) {
 	in := windowInstall(t, nil)
 	d, url := newWindowDaemon(t, in, newTestClock(windowStart), nil)
-	writer := wireOf(t, in, camera)
-	seedBlock(t, d, in, camera, 10, cameraBlock(2460)...)
+	writer := wireOf(t, in, bedroom)
+	seedBlock(t, d, in, bedroom, 10, bedroomBlock(2460)...)
 	wantZoneTarget(t, "seeded", url, 10, 24.6)
 
 	if _, code := postZone(t, url, 10, "setpoint", map[string]any{"setpointC": 25}); code != http.StatusOK {
@@ -59,18 +59,18 @@ func TestStaleZoneEchoKeepsNewerSetpoint(t *testing.T) {
 	}
 	wantTags(t, "the setpoint", deliver(t, d, in, writer), map[string]string{"6280": "09c4", "6240": "02"})
 
-	echoZone(t, d, in, camera, 10, 0x9812, cameraBlock(2460))
+	echoZone(t, d, in, bedroom, 10, 0x9812, bedroomBlock(2460))
 	wantZoneTarget(t, "after the stale echo", url, 10, 25)
 	if _, err := d.do(func(e *tado.EmuState) (any, error) { return nil, e.EnqueueZoneRewrite(writer, 10) }); err != nil {
 		t.Fatal(err)
 	}
 	wantTags(t, "the rewrite after the stale echo", deliver(t, d, in, writer), map[string]string{"6280": "09c4", "6240": "02"})
 
-	echoZone(t, d, in, camera, 10, 0x9813, cameraBlock(2500))
+	echoZone(t, d, in, bedroom, 10, 0x9813, bedroomBlock(2500))
 	wantZoneTarget(t, "after the current echo", url, 10, 25)
 
-	overlayFromDevice(t, d, in, camera, 10, 2460, 0x9814)
-	echoZone(t, d, in, camera, 10, 0x9815, cameraBlock(2460))
+	overlayFromDevice(t, d, in, bedroom, 10, 2460, 0x9814)
+	echoZone(t, d, in, bedroom, 10, 0x9815, bedroomBlock(2460))
 	wantZoneTarget(t, "after the wheel", url, 10, 24.6)
 }
 
@@ -80,15 +80,15 @@ func TestStaleZoneEchoExpires(t *testing.T) {
 	in := windowInstall(t, nil)
 	clock := newTestClock(windowStart)
 	d, url := newWindowDaemon(t, in, clock, nil)
-	writer := wireOf(t, in, camera)
-	seedBlock(t, d, in, camera, 10, cameraBlock(2460)...)
+	writer := wireOf(t, in, bedroom)
+	seedBlock(t, d, in, bedroom, 10, bedroomBlock(2460)...)
 	if _, code := postZone(t, url, 10, "setpoint", map[string]any{"setpointC": 25}); code != http.StatusOK {
 		t.Fatalf("setpoint: code=%d", code)
 	}
 	deliver(t, d, in, writer)
 
 	clock.advance(2 * time.Minute)
-	echoZone(t, d, in, camera, 10, 0x9812, cameraBlock(2460))
+	echoZone(t, d, in, bedroom, 10, 0x9812, bedroomBlock(2460))
 	wantZoneTarget(t, "after the window", url, 10, 24.6)
 }
 
@@ -98,8 +98,8 @@ func TestStaleZoneEchoExpires(t *testing.T) {
 func TestZoneEchoWithoutProgramQueuesNoRewrite(t *testing.T) {
 	in := windowInstall(t, nil)
 	d, url := newWindowDaemon(t, in, newTestClock(windowStart), nil)
-	writer := wireOf(t, in, camera)
-	seedBlock(t, d, in, camera, 10, cameraBlock(2460)...)
+	writer := wireOf(t, in, bedroom)
+	seedBlock(t, d, in, bedroom, 10, bedroomBlock(2460)...)
 	if _, code := postZone(t, url, 10, "setpoint", map[string]any{"setpointC": 25}); code != http.StatusOK {
 		t.Fatalf("setpoint: code=%d", code)
 	}
@@ -107,7 +107,7 @@ func TestZoneEchoWithoutProgramQueuesNoRewrite(t *testing.T) {
 	tickHome(t, d)
 
 	for i := range 3 {
-		echoZone(t, d, in, camera, 10, 0x9820+uint16(i), cameraBlock(2500))
+		echoZone(t, d, in, bedroom, 10, 0x9820+uint16(i), bedroomBlock(2500))
 		tickHome(t, d)
 		wantNoWrites(t, "the echo", d, writer)
 	}
@@ -120,8 +120,8 @@ func TestZoneEchoWithoutProgramQueuesNoRewrite(t *testing.T) {
 func TestRewriteBehindSetpointRestatesIt(t *testing.T) {
 	in := windowInstall(t, nil)
 	d, url := newWindowDaemon(t, in, newTestClock(windowStart), nil)
-	writer := wireOf(t, in, camera)
-	seedBlock(t, d, in, camera, 10, cameraBlock(2460)...)
+	writer := wireOf(t, in, bedroom)
+	seedBlock(t, d, in, bedroom, 10, bedroomBlock(2460)...)
 	if _, code := postZone(t, url, 10, "setpoint", map[string]any{"setpointC": 25}); code != http.StatusOK {
 		t.Fatalf("setpoint: code=%d", code)
 	}
@@ -141,8 +141,8 @@ func TestRewriteBehindSetpointRestatesIt(t *testing.T) {
 func TestRewriteBehindReturnFromOffReachesZone(t *testing.T) {
 	in := windowInstall(t, nil)
 	d, url := newWindowDaemon(t, in, newTestClock(windowStart), nil)
-	writer := wireOf(t, in, camera)
-	seedBlock(t, d, in, camera, 10, cameraBlock(2460)...)
+	writer := wireOf(t, in, bedroom)
+	seedBlock(t, d, in, bedroom, 10, bedroomBlock(2460)...)
 	if _, code := postZone(t, url, 10, "off", map[string]any{"mode": "manual"}); code != http.StatusOK {
 		t.Fatalf("off: code=%d", code)
 	}
@@ -171,8 +171,8 @@ func TestRewriteBehindReturnFromOffReachesZone(t *testing.T) {
 func TestSetpointBehindReturnStartsOverlay(t *testing.T) {
 	in := windowInstall(t, nil)
 	d, url := newWindowDaemon(t, in, newTestClock(windowStart), nil)
-	writer := wireOf(t, in, camera)
-	seedBlock(t, d, in, camera, 10, cameraBlock(2460)...)
+	writer := wireOf(t, in, bedroom)
+	seedBlock(t, d, in, bedroom, 10, bedroomBlock(2460)...)
 	if _, code := postZone(t, url, 10, "auto", map[string]any{}); code != http.StatusOK {
 		t.Fatalf("auto: code=%d", code)
 	}

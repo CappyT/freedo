@@ -50,7 +50,7 @@ func tlvVal(t *testing.T, doc []TLV, tag string) []byte {
 func displayEmu(t *testing.T) *EmuState {
 	t.Helper()
 	e, _ := fixtureEmu(t)
-	e.node(mustHex(cameraEUIHex)).LastID = 10 // takes the EnqueueConfig path
+	e.node(mustHex(bedroomEUIHex)).LastID = 10 // takes the EnqueueConfig path
 	return e
 }
 
@@ -61,14 +61,14 @@ func boolPtr(b bool) *bool    { return &b }
 // setting serves 0149 = 00 and 0158 = 0200, as before the settings existed.
 func TestDisplayDefaultsServeCapturedValues(t *testing.T) {
 	e := displayEmu(t)
-	got, err := e.DisplaySettings(cameraEUIHex)
+	got, err := e.DisplaySettings(bedroomEUIHex)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if want := (DisplaySettings{Orientation: OrientationHorizontal, Notification: true}); got != want {
 		t.Fatalf("defaults = %+v, want %+v", got, want)
 	}
-	doc := servedConfig(t, e, cameraEUIHex, 0xd400)
+	doc := servedConfig(t, e, bedroomEUIHex, 0xd400)
 	if v := tlvVal(t, doc, "0149"); !bytes.Equal(v, []byte{0x00}) {
 		t.Errorf("0149 = %x, want 00", v)
 	}
@@ -96,23 +96,23 @@ func TestDisplayWriteServesAndPushesDocument(t *testing.T) {
 		{"horizontal, off", DisplaySettingsWrite{Orientation: strPtr(OrientationHorizontal), Notification: boolPtr(false)},
 			[]byte{0x00}, []byte{0x00, 0x00}, true},
 	}
-	_, etag := servedConfigETag(t, e, cameraEUIHex, 0xd500)
+	_, etag := servedConfigETag(t, e, bedroomEUIHex, 0xd500)
 	for i, s := range steps {
 		last := func() *queuedDownlink {
-			if q := e.queue[cameraEUIHex]; len(q) > 0 {
+			if q := e.queue[bedroomEUIHex]; len(q) > 0 {
 				return q[len(q)-1]
 			}
 			return nil
 		}
 		before := last()
-		if err := e.EnqueueDisplaySettings(cameraEUIHex, 10, s.w); err != nil {
+		if err := e.EnqueueDisplaySettings(bedroomEUIHex, 10, s.w); err != nil {
 			t.Fatalf("%s: %v", s.name, err)
 		}
 		if queued := last() != before; queued != s.queued {
 			t.Fatalf("%s: queued = %v, want %v", s.name, queued, s.queued)
 		}
 		waiting := 0
-		for _, d := range e.queue[cameraEUIHex] {
+		for _, d := range e.queue[bedroomEUIHex] {
 			if !d.inFlight {
 				waiting++
 			}
@@ -120,7 +120,7 @@ func TestDisplayWriteServesAndPushesDocument(t *testing.T) {
 		if waiting > 1 {
 			t.Fatalf("%s: %d writes wait, want the newest document alone", s.name, waiting)
 		}
-		doc, next := servedConfigETag(t, e, cameraEUIHex, uint16(0xd510+i))
+		doc, next := servedConfigETag(t, e, bedroomEUIHex, uint16(0xd510+i))
 		if v := tlvVal(t, doc, "0149"); !bytes.Equal(v, s.d0149) {
 			t.Errorf("%s: 0149 = %x, want %x", s.name, v, s.d0149)
 		}
@@ -132,7 +132,7 @@ func TestDisplayWriteServesAndPushesDocument(t *testing.T) {
 		}
 		etag = next
 		if s.queued {
-			if q := e.queue[cameraEUIHex]; !bytes.Equal(configWriteDocument(t, q[len(q)-1]), e.cfgDoc[cameraEUIHex].body) {
+			if q := e.queue[bedroomEUIHex]; !bytes.Equal(configWriteDocument(t, q[len(q)-1]), e.cfgDoc[bedroomEUIHex].body) {
 				t.Errorf("%s: the queued write is not the served document", s.name)
 			}
 		}
@@ -169,16 +169,16 @@ func TestDisplayNotificationKeepsOtherBits(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			e := displayEmu(t)
 			start := c.start
-			if err := e.EnqueueConfig(cameraEUIHex, 10, ConfigWrite{ChangeNotify: &start}); err != nil {
+			if err := e.EnqueueConfig(bedroomEUIHex, 10, ConfigWrite{ChangeNotify: &start}); err != nil {
 				t.Fatal(err)
 			}
-			if got, _ := e.DisplaySettings(cameraEUIHex); got.Notification != c.wantState {
+			if got, _ := e.DisplaySettings(bedroomEUIHex); got.Notification != c.wantState {
 				t.Fatalf("notification before = %v, want %v", got.Notification, c.wantState)
 			}
-			if err := e.EnqueueDisplaySettings(cameraEUIHex, 10, DisplaySettingsWrite{Notification: &c.on}); err != nil {
+			if err := e.EnqueueDisplaySettings(bedroomEUIHex, 10, DisplaySettingsWrite{Notification: &c.on}); err != nil {
 				t.Fatal(err)
 			}
-			if v := tlvVal(t, servedConfig(t, e, cameraEUIHex, 0xd600), "0158"); !bytes.Equal(v, be16(c.want)) {
+			if v := tlvVal(t, servedConfig(t, e, bedroomEUIHex, 0xd600), "0158"); !bytes.Equal(v, be16(c.want)) {
 				t.Errorf("0158 = %x, want %04x", v, c.want)
 			}
 		})
@@ -190,7 +190,7 @@ func TestDisplayNotificationKeepsOtherBits(t *testing.T) {
 func TestDisplaySettingsSurviveRestart(t *testing.T) {
 	e := displayEmu(t)
 	w := DisplaySettingsWrite{Orientation: strPtr(OrientationVertical), Notification: boolPtr(false)}
-	if err := e.EnqueueDisplaySettings(cameraEUIHex, 10, w); err != nil {
+	if err := e.EnqueueDisplaySettings(bedroomEUIHex, 10, w); err != nil {
 		t.Fatal(err)
 	}
 	restarted, in := fixtureEmu(t)
@@ -200,7 +200,7 @@ func TestDisplaySettingsSurviveRestart(t *testing.T) {
 	if _, _, err := restarted.SetInstall(in); err != nil {
 		t.Fatal(err)
 	}
-	got, err := restarted.DisplaySettings(cameraEUIHex)
+	got, err := restarted.DisplaySettings(bedroomEUIHex)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,7 +215,7 @@ func TestDisplaySettingsSurviveRestart(t *testing.T) {
 // values under the ETag the valve holds, so its conditional GET earns 2.03.
 func TestDisplayDbg2KeepsTheConfigETag(t *testing.T) {
 	e := displayEmu(t)
-	etag := append([]byte(nil), e.cfgDoc[cameraEUIHex].etag...)
+	etag := append([]byte(nil), e.cfgDoc[bedroomEUIHex].etag...)
 	steps := []struct {
 		name    string
 		w       DisplaySettingsWrite
@@ -232,8 +232,8 @@ func TestDisplayDbg2KeepsTheConfigETag(t *testing.T) {
 	}
 	for i, s := range steps {
 		s.w.Via = OffsetModeDbg2
-		e.DropQueue(cameraEUIHex)
-		if err := e.EnqueueDisplaySettings(cameraEUIHex, 10, s.w); err != nil {
+		e.DropQueue(bedroomEUIHex)
+		if err := e.EnqueueDisplaySettings(bedroomEUIHex, 10, s.w); err != nil {
 			t.Fatalf("%s: %v", s.name, err)
 		}
 		var payloads []string
@@ -243,7 +243,7 @@ func TestDisplayDbg2KeepsTheConfigETag(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if eui != cameraEUIHex || m.Code != "0.03" || m.URI() != "d/dbg2/tlvs" {
+				if eui != bedroomEUIHex || m.Code != "0.03" || m.URI() != "d/dbg2/tlvs" {
 					t.Fatalf("%s: queued %s %s to %s, want PUT d/dbg2/tlvs to the valve only", s.name, m.Code, m.URI(), eui)
 				}
 				payloads = append(payloads, hex.EncodeToString(m.Payload))
@@ -256,18 +256,18 @@ func TestDisplayDbg2KeepsTheConfigETag(t *testing.T) {
 			t.Errorf("%s: queued %v, want the one write %s", s.name, payloads, s.payload)
 		}
 		if len(payloads) > 0 {
-			answerQueued(t, e, mustHex(cameraEUIHex), "2.04")
+			answerQueued(t, e, mustHex(bedroomEUIHex), "2.04")
 		}
 
-		after := e.cfgDoc[cameraEUIHex]
+		after := e.cfgDoc[bedroomEUIHex]
 		body := parseTLVList(after.body)
 		if !bytes.Equal(after.etag, etag) || tlvValue(body, configEtagTag) != hex.EncodeToString(etag) {
 			t.Errorf("%s: etag = %x, 015a = %s, want both %x", s.name, after.etag, tlvValue(body, configEtagTag), etag)
 		}
-		if m := servedConfigAnswer(t, e, cameraEUIHex, etag, uint16(0xd700+2*i)); m.Code != "2.03" {
+		if m := servedConfigAnswer(t, e, bedroomEUIHex, etag, uint16(0xd700+2*i)); m.Code != "2.03" {
 			t.Errorf("%s: conditional GET with the held ETag = %s, want 2.03", s.name, m.Code)
 		}
-		full := servedConfigAnswer(t, e, cameraEUIHex, nil, uint16(0xd701+2*i))
+		full := servedConfigAnswer(t, e, bedroomEUIHex, nil, uint16(0xd701+2*i))
 		doc := parseTLVList(full.Payload)
 		if full.Code != "2.05" || tlvValue(doc, "0149") != s.d0149 || tlvValue(doc, "0158") != s.d0158 {
 			t.Errorf("%s: full GET = %s 0149=%s 0158=%s, want 2.05 %s %s",
@@ -276,12 +276,12 @@ func TestDisplayDbg2KeepsTheConfigETag(t *testing.T) {
 	}
 
 	// The default write of the same values finds the document unchanged.
-	e.DropQueue(cameraEUIHex)
-	if err := e.EnqueueDisplaySettings(cameraEUIHex, 10, DisplaySettingsWrite{Orientation: strPtr(OrientationHorizontal)}); err != nil {
+	e.DropQueue(bedroomEUIHex)
+	if err := e.EnqueueDisplaySettings(bedroomEUIHex, 10, DisplaySettingsWrite{Orientation: strPtr(OrientationHorizontal)}); err != nil {
 		t.Fatal(err)
 	}
-	if n := queuedDownlinks(e); n != 0 || !bytes.Equal(e.cfgDoc[cameraEUIHex].etag, etag) {
-		t.Errorf("config write of the served values: %d queued, etag %x, want none and %x", n, e.cfgDoc[cameraEUIHex].etag, etag)
+	if n := queuedDownlinks(e); n != 0 || !bytes.Equal(e.cfgDoc[bedroomEUIHex].etag, etag) {
+		t.Errorf("config write of the served values: %d queued, etag %x, want none and %x", n, e.cfgDoc[bedroomEUIHex].etag, etag)
 	}
 }
 
@@ -292,17 +292,17 @@ func TestDisplayWriteRefusals(t *testing.T) {
 		target string
 		w      DisplaySettingsWrite
 	}{
-		{"no field", cameraEUIHex, DisplaySettingsWrite{}},
-		{"bad orientation", cameraEUIHex, DisplaySettingsWrite{Orientation: strPtr("diagonal")}},
+		{"no field", bedroomEUIHex, DisplaySettingsWrite{}},
+		{"bad orientation", bedroomEUIHex, DisplaySettingsWrite{Orientation: strPtr("diagonal")}},
 		{"wall thermostat", thermostatEUIHex, DisplaySettingsWrite{Notification: boolPtr(false)}},
 		{"wall thermostat via dbg2", thermostatEUIHex, DisplaySettingsWrite{Notification: boolPtr(false), Via: OffsetModeDbg2}},
-		{"bad via", cameraEUIHex, DisplaySettingsWrite{Orientation: strPtr(OrientationVertical), Via: "cloud"}},
+		{"bad via", bedroomEUIHex, DisplaySettingsWrite{Orientation: strPtr(OrientationVertical), Via: "cloud"}},
 	} {
 		if err := e.EnqueueDisplaySettings(c.target, 10, c.w); err == nil {
 			t.Errorf("%s: accepted", c.name)
 		}
 	}
-	if n := len(e.queue[cameraEUIHex]); n != 0 {
+	if n := len(e.queue[bedroomEUIHex]); n != 0 {
 		t.Errorf("a refused write queued %d downlinks", n)
 	}
 	if _, err := e.DisplaySettings(thermostatEUIHex); err == nil {

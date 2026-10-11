@@ -16,7 +16,7 @@ func TestEmuResolvesThroughInstall(t *testing.T) {
 	in := fixtureInstall(t)
 	e := NewEmu(in.EmuConfig(), NewUnhandledLogger(io.Discard))
 
-	for _, ref := range []string{"VA1000000005", "camera", "a602", "02a6cefa07c51b00"} {
+	for _, ref := range []string{"VA1000000005", "bedroom", "a602", "02a6cefa07c51b00"} {
 		wire, label, err := e.resolve(ref)
 		if err != nil {
 			t.Errorf("resolve(%q): %v", ref, err)
@@ -25,20 +25,20 @@ func TestEmuResolvesThroughInstall(t *testing.T) {
 		if got := hex.EncodeToString(wire); got != "02a6cefa07c51b00" {
 			t.Errorf("resolve(%q) = %s", ref, got)
 		}
-		if label != "camera" {
-			t.Errorf("resolve(%q) label = %q, want camera", ref, label)
+		if label != "bedroom" {
+			t.Errorf("resolve(%q) label = %q, want bedroom", ref, label)
 		}
 	}
 
-	_, _, err := e.resolve("cucina")
+	_, _, err := e.resolve("kitchen")
 	var amb *AmbiguousRefError
 	if !errors.As(err, &amb) {
 		t.Fatalf("resolve of a shared label = %v, want an ambiguity error", err)
 	}
 	if len(amb.Candidates) != 2 {
-		t.Errorf("candidates = %v, want the two cucina valves", amb.Candidates)
+		t.Errorf("candidates = %v, want the two kitchen valves", amb.Candidates)
 	}
-	if err := e.EnqueueSetpoint("cucina", SetpointParams{ID: 5, Setpoint: 20, Sched: 20}); err == nil {
+	if err := e.EnqueueSetpoint("kitchen", SetpointParams{ID: 5, Setpoint: 20, Sched: 20}); err == nil {
 		t.Error("EnqueueSetpoint on a shared label was accepted")
 	}
 }
@@ -97,7 +97,7 @@ func TestUTCOffsetPushesOnlyChangedDesiredValue(t *testing.T) {
 		t.Fatalf("EmuConfig.UTCOffsetMin = %v, want the fixture's 60", cfg.UTCOffsetMin)
 	}
 	e := NewEmu(cfg, NewUnhandledLogger(io.Discard))
-	dev := mustHex("02a6cefa07c51b00") // camera, VA1000000005
+	dev := mustHex("02a6cefa07c51b00") // bedroom, VA1000000005
 
 	if _, _, ok := utcWrite(t, e.OnFrame(utcUplink(t, dev, 0x6101))); ok {
 		t.Fatal("initial desired config caused a redundant UTC-offset write")
@@ -110,7 +110,7 @@ func TestUTCOffsetPushesOnlyChangedDesiredValue(t *testing.T) {
 		t.Fatal("SyncUTCOffset missed the changed offset")
 	}
 	if got := e.PushUTCOffset(now); got != hexEUI(dev) {
-		t.Fatalf("PushUTCOffset = %q, want the camera valve first", got)
+		t.Fatalf("PushUTCOffset = %q, want the bedroom valve first", got)
 	}
 	f, body, ok := utcWrite(t, e.OnFrame(utcUplink(t, dev, 0x6102)))
 	if !ok {
@@ -148,7 +148,7 @@ func TestNoAutoQueueSuppressesUTCOffset(t *testing.T) {
 	if _, _, ok := utcWrite(t, actions); ok {
 		t.Fatal("no-auto-queue emitted an automatic UTC-offset write")
 	}
-	if n := e.Pending("camera"); n != 0 {
+	if n := e.Pending("bedroom"); n != 0 {
 		t.Fatalf("pending=%d, want 0", n)
 	}
 	if _, ok := findAction(actions, ActEnhAck, ""); !ok {
@@ -164,13 +164,13 @@ func TestUTCOffsetOperatorWriteWins(t *testing.T) {
 	dev := mustHex("02a6cefa07c51b00")
 
 	off := 90
-	if err := e.EnqueueConfig("camera", 10, ConfigWrite{UTCOffsetMin: &off}); err != nil {
+	if err := e.EnqueueConfig("bedroom", 10, ConfigWrite{UTCOffsetMin: &off}); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.EnqueueConfig("camera", 10, ConfigWrite{UTCOffsetMin: &off}); err != nil {
+	if err := e.EnqueueConfig("bedroom", 10, ConfigWrite{UTCOffsetMin: &off}); err != nil {
 		t.Fatal(err)
 	}
-	if n := e.Pending("camera"); n != 1 {
+	if n := e.Pending("bedroom"); n != 1 {
 		t.Fatalf("identical config produced %d queued writes, want 1", n)
 	}
 	_, body, ok := utcWrite(t, e.OnFrame(utcUplink(t, dev, 0x6201)))
@@ -181,7 +181,7 @@ func TestUTCOffsetOperatorWriteWins(t *testing.T) {
 	if body != want || !strings.Contains(body, "02b202005a") {
 		t.Errorf("body = %s, want the whole document %s with the operator's +90 min", body, want)
 	}
-	if n := e.Pending("camera"); n != 1 {
+	if n := e.Pending("bedroom"); n != 1 {
 		t.Errorf("pending=%d, want only the operator's write", n)
 	}
 }
@@ -230,7 +230,7 @@ func TestInstallDissectNamesNodes(t *testing.T) {
 		if strings.Contains(s, "MIC fail") {
 			t.Fatalf("install key does not decrypt the corpus: %s", s)
 		}
-		if strings.Contains(s, "camera") || strings.Contains(s, "cucina") || strings.Contains(s, "corridoio") {
+		if strings.Contains(s, "bedroom") || strings.Contains(s, "kitchen") || strings.Contains(s, "hall") {
 			named++
 		}
 	}

@@ -110,7 +110,7 @@ func TestZonePIDReachesTheValveByItsRead(t *testing.T) {
 	}
 
 	// One 16-byte block keeps the answer inside a single frame.
-	raw := deviceUplink(t, mustHex(cameraEUIHex), CoAPReq{
+	raw := deviceUplink(t, mustHex(bedroomEUIHex), CoAPReq{
 		Type: "CON", Code: "0.01", MID: 0xd101, Token: []byte{0x0e},
 		Path:    []string{"h", "7654321", "z", "10", "config"},
 		Options: []CoAPOption{{Num: 4, Val: held.ETag}, {Num: 23, Val: []byte{0x00}}},

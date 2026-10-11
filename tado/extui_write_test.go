@@ -6,14 +6,14 @@ import (
 )
 
 func TestExtuiPZHWriteRequiresValve201(t *testing.T) {
-	camera := NodeByAny("camera")
-	cameraEUI := mustHex(camera.WireLE)
+	bedroom := NodeByAny("bedroom")
+	bedroomEUI := mustHex(bedroom.WireLE)
 	e, _, _ := newTestEmu(t)
-	wire, label, err := e.resolve("camera")
+	wire, label, err := e.resolve("bedroom")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := e.EnqueueExtuiPZH("camera", "", ""); err != nil {
+	if err := e.EnqueueExtuiPZH("bedroom", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	actions, ok := e.nextDownlink(wire, label)
@@ -42,23 +42,23 @@ func TestExtuiPZHWriteRequiresValve201(t *testing.T) {
 	if option, ok := request.Option(7); ok {
 		t.Fatalf("Uri-Port=%x", option.Val)
 	}
-	e.OnFrame(BuildEnhAck(lastSeq, BridgeEUI, cameraEUI, 0x0101))
-	if e.Pending("camera") != 1 {
-		t.Fatalf("Enhanced ACK completed extui: pending=%d", e.Pending("camera"))
+	e.OnFrame(BuildEnhAck(lastSeq, BridgeEUI, bedroomEUI, 0x0101))
+	if e.Pending("bedroom") != 1 {
+		t.Fatalf("Enhanced ACK completed extui: pending=%d", e.Pending("bedroom"))
 	}
-	ack, err := BuildCoAPAck("2.01", request.MID, request.Token, nil, cameraEUI, BridgeEUI, coapPort, bridgeCoAPPort)
+	ack, err := BuildCoAPAck("2.01", request.MID, request.Token, nil, bedroomEUI, BridgeEUI, coapPort, bridgeCoAPPort)
 	if err != nil {
 		t.Fatal(err)
 	}
-	frame, err := BuildData(NetworkKey, 0x42, BridgeEUI, cameraEUI[:5], WrapAppPayload(ack, 900, nil))
+	frame, err := BuildData(NetworkKey, 0x42, BridgeEUI, bedroomEUI[:5], WrapAppPayload(ack, 900, nil))
 	if err != nil {
 		t.Fatal(err)
 	}
 	e.OnFrame(frame.Bytes())
-	if e.Pending("camera") != 0 {
-		t.Fatalf("2.01 left extui pending=%d", e.Pending("camera"))
+	if e.Pending("bedroom") != 0 {
+		t.Fatalf("2.01 left extui pending=%d", e.Pending("bedroom"))
 	}
-	history := e.QueueHistory("camera")
+	history := e.QueueHistory("bedroom")
 	if len(history) != 1 || history[0].Kind != "extui" || history[0].Reason != "coap-ack" {
 		t.Fatalf("history=%+v", history)
 	}

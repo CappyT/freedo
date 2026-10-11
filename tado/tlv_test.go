@@ -39,9 +39,9 @@ func TestParseAppGolden(t *testing.T) {
 // TestSetpointRoundTrip: a command built by BuildSetpoint decrypts back to the
 // exact TLVs and setpoint we asked for. Exercises the full encode+decode path.
 func TestSetpointRoundTrip(t *testing.T) {
-	valve := NodeByAny("camera")
+	valve := NodeByAny("bedroom")
 	if valve == nil {
-		t.Fatal("camera node not found")
+		t.Fatal("bedroom node not found")
 	}
 	dst, _ := hex.DecodeString(valve.WireLE)
 	meta, _ := hex.DecodeString("7e33f01122e806ff") // placeholder meta
@@ -96,7 +96,7 @@ func TestSetpointRoundTrip(t *testing.T) {
 // TestBuildSetpointAutoOmitsSetpoint: the captured return to schedule carries
 // neither 6260 nor 6280, see capturedSetpointAutoBody.
 func TestBuildSetpointAutoOmitsSetpoint(t *testing.T) {
-	dst, _ := hex.DecodeString(NodeByAny("camera").WireLE)
+	dst, _ := hex.DecodeString(NodeByAny("bedroom").WireLE)
 	_, pt, err := BuildSetpoint(NetworkKey, SetpointCmd{
 		DstEUI:     dst,
 		Seq:        0x10,

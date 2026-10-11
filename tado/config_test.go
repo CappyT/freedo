@@ -124,10 +124,10 @@ func TestFullInstallZoneShape(t *testing.T) {
 // resolving it must name them all instead of picking one.
 func TestAmbiguousLabelResolution(t *testing.T) {
 	in := loadFullInstall(t)
-	_, err := in.Resolve("soggiorno")
+	_, err := in.Resolve("living")
 	var amb *AmbiguousRefError
 	if !errors.As(err, &amb) {
-		t.Fatalf("Resolve(soggiorno) error = %v, want *AmbiguousRefError", err)
+		t.Fatalf("Resolve(living) error = %v, want *AmbiguousRefError", err)
 	}
 	if len(amb.Candidates) != 5 {
 		t.Errorf("candidates = %v, want 5", amb.Candidates)
@@ -137,8 +137,8 @@ func TestAmbiguousLabelResolution(t *testing.T) {
 			t.Errorf("error %q does not name %s", amb.Error(), want)
 		}
 	}
-	if got := len(in.DevicesByLabel("bagno")); got != 4 {
-		t.Errorf("DevicesByLabel(bagno) = %d, want 4", got)
+	if got := len(in.DevicesByLabel("bath")); got != 4 {
+		t.Errorf("DevicesByLabel(bath) = %d, want 4", got)
 	}
 }
 
@@ -148,12 +148,12 @@ func TestAmbiguousLabelResolution(t *testing.T) {
 // rename. The comparison ignores case, the way Resolve reads a label.
 func TestDuplicateLabelWarns(t *testing.T) {
 	in := base()
-	in.Devices[2].Label = "Cucina"
+	in.Devices[2].Label = "Kitchen"
 	if err := in.Validate(); err != nil {
 		t.Fatalf("Validate: %v", err)
 	}
 	got := strings.Join(in.Warnings(), "\n")
-	if !strings.Contains(got, `devices[2].label: "Cucina" duplicates devices[1]`) {
+	if !strings.Contains(got, `devices[2].label: "Kitchen" duplicates devices[1]`) {
 		t.Errorf("warnings = %v, want the duplicate label reported", in.Warnings())
 	}
 }
@@ -166,10 +166,10 @@ func TestResolveIdentifierForms(t *testing.T) {
 		"01026a3107c51b00",
 		"00:1b:c5:07:31:6a:02:01",
 		"0201",
-		"taverna e uffici", // not a device label
+		"basement and offices", // not a device label
 	} {
 		d, err := in.Resolve(ref)
-		if ref == "taverna e uffici" {
+		if ref == "basement and offices" {
 			if err == nil {
 				t.Errorf("Resolve(%q) resolved to %s, want unknown", ref, d.Ref())
 			}
@@ -292,9 +292,9 @@ func base() *Install {
 		NetworkKeyHex: "000102030405060708090a0b0c0d0e0f",
 		Coordinator:   Coordinator{EUI: "aa016a3107c51b00"},
 		Devices: []Device{
-			{Kind: KindThermostat, EUI: "05a2cafa07c51b00", Serial: "RU2001000001", Label: "corridoio"},
-			{Kind: KindValve, EUI: "01026a3107c51b00", Serial: "VA2001000001", Label: "cucina"},
-			{Kind: KindValve, EUI: "03046a3107c51b00", Serial: "VA2001000002", Label: "sala da pranzo"},
+			{Kind: KindThermostat, EUI: "05a2cafa07c51b00", Serial: "RU2001000001", Label: "hall"},
+			{Kind: KindValve, EUI: "01026a3107c51b00", Serial: "VA2001000001", Label: "kitchen"},
+			{Kind: KindValve, EUI: "03046a3107c51b00", Serial: "VA2001000002", Label: "dining room"},
 		},
 		Zones: []Zone{
 			{Number: 0, Kind: ZoneHotWater, Members: []string{"RU2001000001"}},
@@ -358,8 +358,8 @@ func TestValidationErrors(t *testing.T) {
 		}, `unknown device "VA9999999999"`},
 		{"ambiguous member", func(in *Install) {
 			in.Devices[2].Label = in.Devices[1].Label
-			in.Zones[1].Members = []string{"cucina"}
-		}, `"cucina" matches 2 devices`},
+			in.Zones[1].Members = []string{"kitchen"}
+		}, `"kitchen" matches 2 devices`},
 		{"device claims missing zone", func(in *Install) {
 			n := 7
 			in.Devices[1].Zone = &n
@@ -577,7 +577,7 @@ func TestValidateCommissionable(t *testing.T) {
 	// zone with nothing in it yet is a warning while commissioning.
 	starting := base()
 	starting.Devices, starting.Circuits = nil, nil
-	starting.Zones = []Zone{{Number: 1, Name: "sala", Kind: ZoneHeating}}
+	starting.Zones = []Zone{{Number: 1, Name: "lounge", Kind: ZoneHeating}}
 	if err := starting.ValidateCommissionable(true); err != nil {
 		t.Fatalf("ValidateCommissionable(true) on a zone without devices = %v, want a warning", err)
 	}
@@ -719,20 +719,20 @@ func TestZoneKindTLV(t *testing.T) {
 }
 
 func TestDeviceAccessors(t *testing.T) {
-	d := Device{Kind: KindValve, EUI: "01026a3107c51b00", Serial: "VA2001000001", Label: "cucina"}
+	d := Device{Kind: KindValve, EUI: "01026a3107c51b00", Serial: "VA2001000001", Label: "kitchen"}
 	if got := hex.EncodeToString(d.WireEUI()); got != "01026a3107c51b00" {
 		t.Errorf("WireEUI = %s", got)
 	}
 	if got := d.Short(); got != "0201" {
 		t.Errorf("Short = %s, want 0201", got)
 	}
-	if got := d.Ref(); got != "VA2001000001 (cucina)" {
+	if got := d.Ref(); got != "VA2001000001 (kitchen)" {
 		t.Errorf("Ref = %q", got)
 	}
 	if got := (&Device{EUI: "01026a3107c51b00"}).Ref(); got != "01026a3107c51b00" {
 		t.Errorf("Ref without serial = %q", got)
 	}
-	if got := (&Device{Label: "cucina"}).Ref(); got != "cucina" {
+	if got := (&Device{Label: "kitchen"}).Ref(); got != "kitchen" {
 		t.Errorf("Ref without serial or EUI = %q", got)
 	}
 	if bad := (&Device{EUI: "nope"}); bad.WireEUI() != nil || bad.Short() != "" {

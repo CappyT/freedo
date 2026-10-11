@@ -23,9 +23,9 @@ func removalFixture(t *testing.T) *installAPI {
 	a := newInstallAPI(t)
 	a.declareDevices()
 	a.mutate(http.MethodPost, "/api/install/devices",
-		map[string]any{"kind": "valve", "eui": apiValveLeftEUI, "serial": "VA9000000003", "label": "bagno"})
+		map[string]any{"kind": "valve", "eui": apiValveLeftEUI, "serial": "VA9000000003", "label": "bath"})
 	a.mutate(http.MethodPost, "/api/install/devices",
-		map[string]any{"kind": "valve", "eui": apiValveRightEUI, "serial": "VA9000000004", "label": "cantina"})
+		map[string]any{"kind": "valve", "eui": apiValveRightEUI, "serial": "VA9000000004", "label": "cellar"})
 	a.mutate(http.MethodPost, "/api/install/zones", map[string]any{"number": 1, "kind": "heating"})
 	a.mutate(http.MethodPut, "/api/install/zones/1/members",
 		map[string]any{"members": []string{"VA9000000001", "VA9000000002"}})
@@ -36,7 +36,7 @@ func removalFixture(t *testing.T) *installAPI {
 	a.mutate(http.MethodPost, "/api/install/zones", map[string]any{"number": 3, "kind": "heating"})
 	a.mutate(http.MethodPut, "/api/install/zones/3/members", map[string]any{"members": []string{"VA9000000003"}})
 	a.mutate(http.MethodPost, "/api/install/circuits",
-		map[string]any{"id": 1, "name": "casa", "heat_source": "RU9000000001"})
+		map[string]any{"id": 1, "name": "house", "heat_source": "RU9000000001"})
 	return a
 }
 

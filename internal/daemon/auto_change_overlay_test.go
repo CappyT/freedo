@@ -110,7 +110,7 @@ func TestAutoChangeOverlayEndsAtEachSwitch(t *testing.T) {
 func TestAutoChangeOverlayLeavesOtherRules(t *testing.T) {
 	in := windowInstall(t, nil)
 	d, url := newWindowDaemon(t, in, newTestClock(windowStart), nil)
-	ufficio, camera, bagno := wireOf(t, in, "VA1000000002"), wireOf(t, in, "VA1000000005"), wireOf(t, in, "VA1000000007")
+	office, bedroom, bath := wireOf(t, in, "VA1000000002"), wireOf(t, in, "VA1000000005"), wireOf(t, in, "VA1000000007")
 	for zone, body := range map[int]map[string]any{
 		3:  {"setpointC": 19, "mode": "until_auto_change"},
 		10: {"setpointC": 20, "mode": "manual"},
@@ -120,13 +120,13 @@ func TestAutoChangeOverlayLeavesOtherRules(t *testing.T) {
 			t.Fatalf("zone %d overlay: code=%d", zone, code)
 		}
 	}
-	for _, target := range []string{ufficio, camera, bagno} {
+	for _, target := range []string{office, bedroom, bath} {
 		deliver(t, d, in, target)
 	}
 	setHome(t, url, true)
-	wantTags(t, "the end", deliver(t, d, in, ufficio), map[string]string{"6240": "00"})
-	wantTags(t, "the manual overlay", deliver(t, d, in, camera), map[string]string{"6240": "02", "6160": "02"})
-	wantTags(t, "the timer overlay", deliver(t, d, in, bagno), map[string]string{"6240": "03", "6160": "02"})
+	wantTags(t, "the end", deliver(t, d, in, office), map[string]string{"6240": "00"})
+	wantTags(t, "the manual overlay", deliver(t, d, in, bedroom), map[string]string{"6240": "02", "6160": "02"})
+	wantTags(t, "the timer overlay", deliver(t, d, in, bath), map[string]string{"6240": "03", "6160": "02"})
 }
 
 // TestAutoChangeOverlayHotWater: the hot water zone takes the rule too, with no

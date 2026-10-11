@@ -27,11 +27,11 @@ func frameCounter(f *Frame) uint32 { return binary.LittleEndian.Uint32(f.Plainte
 // frame counter.
 func TestMACRetransmissionKeepsSeq(t *testing.T) {
 	e, _, _ := newTestEmu(t)
-	if err := e.EnqueueChildLock("camera", 10, true); err != nil {
+	if err := e.EnqueueChildLock("bedroom", 10, true); err != nil {
 		t.Fatal(err)
 	}
-	first := nextAttempt(t, e, "camera")
-	retry := nextAttempt(t, e, "camera")
+	first := nextAttempt(t, e, "bedroom")
+	retry := nextAttempt(t, e, "bedroom")
 	if retry.Seq != first.Seq {
 		t.Errorf("retry seq=%02x, want %02x", retry.Seq, first.Seq)
 	}
@@ -39,7 +39,7 @@ func TestMACRetransmissionKeepsSeq(t *testing.T) {
 		t.Errorf("retry reused frame counter %d", frameCounter(first))
 	}
 	e.confirmBySeq(first.DstEUI, retry.Seq)
-	if n := e.Pending("camera"); n != 0 {
+	if n := e.Pending("bedroom"); n != 0 {
 		t.Errorf("pending=%d after the Enhanced ACK of the retry, want 0", n)
 	}
 }
@@ -47,11 +47,11 @@ func TestMACRetransmissionKeepsSeq(t *testing.T) {
 // A downlink that waits for a CoAP answer retries as a new frame.
 func TestCoAPTransactionRetryTakesNewSeq(t *testing.T) {
 	e, _, _ := newTestEmu(t)
-	if err := e.EnqueueIdentify("camera", 10); err != nil {
+	if err := e.EnqueueIdentify("bedroom", 10); err != nil {
 		t.Fatal(err)
 	}
-	first := nextAttempt(t, e, "camera")
-	retry := nextAttempt(t, e, "camera")
+	first := nextAttempt(t, e, "bedroom")
+	retry := nextAttempt(t, e, "bedroom")
 	if retry.Seq == first.Seq {
 		t.Errorf("CoAP retry kept seq %02x", first.Seq)
 	}
@@ -62,16 +62,16 @@ func TestCoAPTransactionRetryTakesNewSeq(t *testing.T) {
 func TestFramePendingOnlyWhileMoreQueued(t *testing.T) {
 	e, _, _ := newTestEmu(t)
 	for _, on := range []bool{true, false} {
-		if err := e.EnqueueChildLock("camera", 10, on); err != nil {
+		if err := e.EnqueueChildLock("bedroom", 10, on); err != nil {
 			t.Fatal(err)
 		}
 	}
-	first := nextAttempt(t, e, "camera")
+	first := nextAttempt(t, e, "bedroom")
 	if first.raw[0] != fcfDataPending[0] {
 		t.Fatalf("first FCF=%02x, want %02x with a second downlink queued", first.raw[0], fcfDataPending[0])
 	}
 	e.confirmBySeq(first.DstEUI, first.Seq)
-	second := nextAttempt(t, e, "camera")
+	second := nextAttempt(t, e, "bedroom")
 	if second.raw[0] != fcfData[0] {
 		t.Fatalf("last FCF=%02x, want %02x", second.raw[0], fcfData[0])
 	}
@@ -79,7 +79,7 @@ func TestFramePendingOnlyWhileMoreQueued(t *testing.T) {
 
 func TestCoAPReplyFramePendingOnlyWithQueuedDownlink(t *testing.T) {
 	e, _, _ := newTestEmu(t)
-	wire, label, err := e.resolve("camera")
+	wire, label, err := e.resolve("bedroom")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +89,7 @@ func TestCoAPReplyFramePendingOnlyWithQueuedDownlink(t *testing.T) {
 		want   byte
 	}{{false, fcfData[0]}, {true, fcfDataPending[0]}} {
 		if tc.queued {
-			if err := e.EnqueueChildLock("camera", 10, true); err != nil {
+			if err := e.EnqueueChildLock("bedroom", 10, true); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -107,10 +107,10 @@ func TestCoAPReplyFramePendingOnlyWithQueuedDownlink(t *testing.T) {
 // commercial coordinator.
 func TestBeaconSharesUnicastFrameCounter(t *testing.T) {
 	e, _, _ := newTestEmu(t)
-	if err := e.EnqueueChildLock("camera", 10, true); err != nil {
+	if err := e.EnqueueChildLock("bedroom", 10, true); err != nil {
 		t.Fatal(err)
 	}
-	down := nextAttempt(t, e, "camera")
+	down := nextAttempt(t, e, "bedroom")
 	a, err := e.Beacon()
 	if err != nil {
 		t.Fatal(err)

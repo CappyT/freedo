@@ -63,10 +63,10 @@ func TestRestoredTimers(t *testing.T) {
 	if err := e.EnqueueDHWOverlay("RU1000000001", 0, 50, true, time.Hour, ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.EnqueueBoost("camera", 10, true); err != nil {
+	if err := e.EnqueueBoost("bedroom", 10, true); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.EnqueueSetpoint("bagno", SetpointParams{ID: 2, Setpoint: 21, Sched: 20, Overlay: 3, Duration: time.Hour}); err != nil {
+	if err := e.EnqueueSetpoint("bath", SetpointParams{ID: 2, Setpoint: 21, Sched: 20, Overlay: 3, Duration: time.Hour}); err != nil {
 		t.Fatal(err)
 	}
 	e.storeZoneState(10, "z/s", encodeTLVs([]TLV{
@@ -312,11 +312,11 @@ func TestDroppedReturnKeepsTimer(t *testing.T) {
 		start        func(e *EmuState) error
 		drop         func(e *EmuState)
 	}{
-		{"room boost, retry limit", cameraEUIHex, 10,
-			func(e *EmuState) error { return e.EnqueueBoost(cameraEUIHex, 10, true) },
+		{"room boost, retry limit", bedroomEUIHex, 10,
+			func(e *EmuState) error { return e.EnqueueBoost(bedroomEUIHex, 10, true) },
 			func(e *EmuState) {
 				for range maxDownlinkTries + 1 {
-					e.NextQueuedDownlink(cameraEUIHex)
+					e.NextQueuedDownlink(bedroomEUIHex)
 				}
 			}},
 		{"hot water, 4.04", ru, 0,
@@ -370,16 +370,16 @@ func TestDroppedReturnKeepsTimer(t *testing.T) {
 // takes it, and a manual mode then never expires.
 func TestModeEndsTimer(t *testing.T) {
 	e, now := clockedFixtureEmu(t)
-	camera := mustHex(cameraEUIHex)
+	bedroom := mustHex(bedroomEUIHex)
 	e.SetHomeState(true, map[int]float64{10: 20})
-	if err := e.EnqueueSetpoint(cameraEUIHex, SetpointParams{ID: 10, Setpoint: 22, Overlay: 3, Duration: time.Hour}); err != nil {
+	if err := e.EnqueueSetpoint(bedroomEUIHex, SetpointParams{ID: 10, Setpoint: 22, Overlay: 3, Duration: time.Hour}); err != nil {
 		t.Fatal(err)
 	}
-	answerQueued(t, e, camera, "2.04")
-	if err := e.EnqueueMode(cameraEUIHex, 10, 2); err != nil {
+	answerQueued(t, e, bedroom, "2.04")
+	if err := e.EnqueueMode(bedroomEUIHex, 10, 2); err != nil {
 		t.Fatal(err)
 	}
-	answerQueued(t, e, camera, "2.04")
+	answerQueued(t, e, bedroom, "2.04")
 	if timer, ok := e.ZoneOverlayTimer(10); ok {
 		t.Errorf("manual mode left the deadline %+v", timer)
 	}
@@ -393,7 +393,7 @@ func TestModeEndsTimer(t *testing.T) {
 // overlay deadline with the rest of its state.
 func TestSetInstallDropsTimersOfRemovedZone(t *testing.T) {
 	e, _ := clockedFixtureEmu(t)
-	if err := e.EnqueueBoost(cameraEUIHex, 10, true); err != nil {
+	if err := e.EnqueueBoost(bedroomEUIHex, 10, true); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := e.SetInstall(variantInstall(t, [2]string{zone10, ""})); err != nil {
@@ -410,35 +410,35 @@ func TestSetInstallDropsTimersOfRemovedZone(t *testing.T) {
 // of the engine.
 func TestZoneWritesKeepOpenWindow(t *testing.T) {
 	e, _ := clockedFixtureEmu(t)
-	camera := mustHex(cameraEUIHex)
+	bedroom := mustHex(bedroomEUIHex)
 	e.SetHomeState(true, map[int]float64{10: 20})
-	e.cacheTLVs(e.node(camera), []TLV{
+	e.cacheTLVs(e.node(bedroom), []TLV{
 		{Tag: "6280", Val: []byte{0x08, 0x34}}, {Tag: "6240", Val: []byte{0x00}}, {Tag: "62e0", Val: []byte{0x00}},
-	}, "", ClassData, "camera", "bridge", "")
-	if err := e.EnqueueOpenWindow(cameraEUIHex, 10, true); err != nil {
+	}, "", ClassData, "bedroom", "bridge", "")
+	if err := e.EnqueueOpenWindow(bedroomEUIHex, 10, true); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.EnqueueZoneRewrite(cameraEUIHex, 10); err != nil {
+	if err := e.EnqueueZoneRewrite(bedroomEUIHex, 10); err != nil {
 		t.Fatal(err)
 	}
-	if got := queuedTags(t, e, cameraEUIHex); len(got) != 2 || got[1]["62e0"] != "01" {
+	if got := queuedTags(t, e, bedroomEUIHex); len(got) != 2 || got[1]["62e0"] != "01" {
 		t.Fatalf("rewrite behind the open window = %v, want 62e0 01", got)
 	}
-	answerQueued(t, e, camera, "2.04")
-	answerQueued(t, e, camera, "2.04")
+	answerQueued(t, e, bedroom, "2.04")
+	answerQueued(t, e, bedroom, "2.04")
 
-	if err := e.EnqueueSetpoint(cameraEUIHex, SetpointParams{ID: 10, Setpoint: 22, Overlay: 2}); err != nil {
+	if err := e.EnqueueSetpoint(bedroomEUIHex, SetpointParams{ID: 10, Setpoint: 22, Overlay: 2}); err != nil {
 		t.Fatal(err)
 	}
-	if got := queuedTags(t, e, cameraEUIHex); len(got) != 1 || got[0]["62e0"] != "01" {
+	if got := queuedTags(t, e, bedroomEUIHex); len(got) != 1 || got[0]["62e0"] != "01" {
 		t.Fatalf("setpoint on the open zone = %v, want 62e0 01", got)
 	}
 
 	e.SetOpenWindows(map[int]bool{10: false})
-	if err := e.EnqueueZoneRewrite(cameraEUIHex, 10); err != nil {
+	if err := e.EnqueueZoneRewrite(bedroomEUIHex, 10); err != nil {
 		t.Fatal(err)
 	}
-	if got := queuedTags(t, e, cameraEUIHex); len(got) != 2 || got[1]["62e0"] != "00" {
+	if got := queuedTags(t, e, bedroomEUIHex); len(got) != 2 || got[1]["62e0"] != "00" {
 		t.Errorf("rewrite on a zone the engine closes = %v, want 62e0 00 behind the setpoint", got)
 	}
 }
@@ -496,13 +496,13 @@ func TestAutoChangeOverlayTimer(t *testing.T) {
 	cfg := fixtureInstall(t).EmuConfig()
 	cfg.Now = func() time.Time { return now }
 	e := NewEmu(cfg, nil)
-	if err := e.EnqueueSetpoint("bagno", SetpointParams{ID: 2, Setpoint: 21, Sched: 20, Overlay: 1, EndRule: OverlayEndUntilAutoChange}); err != nil {
+	if err := e.EnqueueSetpoint("bath", SetpointParams{ID: 2, Setpoint: 21, Sched: 20, Overlay: 1, EndRule: OverlayEndUntilAutoChange}); err != nil {
 		t.Fatal(err)
 	}
 	if err := e.EnqueueDHWOverlay("RU1000000001", 0, 50, true, 0, OverlayEndUntilAutoChange); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.EnqueueSetpoint("camera", SetpointParams{ID: 10, Setpoint: 21, Sched: 20, Overlay: 1, Duration: time.Hour, EndRule: OverlayEndUntilAutoChange}); err != nil {
+	if err := e.EnqueueSetpoint("bedroom", SetpointParams{ID: 10, Setpoint: 21, Sched: 20, Overlay: 1, Duration: time.Hour, EndRule: OverlayEndUntilAutoChange}); err != nil {
 		t.Fatal(err)
 	}
 	wire := func(ref string) string {
@@ -513,13 +513,13 @@ func TestAutoChangeOverlayTimer(t *testing.T) {
 		}
 		return hexEUI(w)
 	}
-	if b := e.queue[wire("bagno")][0].heating; b == nil || b.overlay != 1 {
+	if b := e.queue[wire("bath")][0].heating; b == nil || b.overlay != 1 {
 		t.Errorf("room write = %+v, want 6240=1", b)
 	}
 	if b := e.queue[wire("RU1000000001")][0].dhw; b == nil || b.overlay != 1 {
 		t.Errorf("hot water write = %+v, want 6240=1", b)
 	}
-	for _, ref := range []string{"RU1000000001", "bagno", "camera"} {
+	for _, ref := range []string{"RU1000000001", "bath", "bedroom"} {
 		takeRestores(t, e, wire(ref))
 	}
 	for _, zone := range []int{0, 2} {
@@ -562,7 +562,7 @@ func TestAutoChangeOverlayTimer(t *testing.T) {
 	if err != nil || len(due) != 3 {
 		t.Fatalf("after the switch due=%v err=%v, want the thermostat and the two valves", due, err)
 	}
-	for ref, want := range map[string]string{"RU1000000001": "dhw schedule id=0", "bagno": "boost id=2 on=false", "camera": "boost id=10 on=false"} {
+	for ref, want := range map[string]string{"RU1000000001": "dhw schedule id=0", "bath": "boost id=2 on=false", "bedroom": "boost id=10 on=false"} {
 		w, _, err := restored.resolve(ref)
 		if err != nil {
 			t.Fatal(err)

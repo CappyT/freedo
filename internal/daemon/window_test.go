@@ -385,7 +385,7 @@ func TestWindowDeviceReportHonoursZoneConfig(t *testing.T) {
 	clock := newTestClock(windowStart)
 	d, url := newWindowDaemon(t, in, clock, nil)
 	a, b := wireOf(t, in, "VA1000000006"), wireOf(t, in, "VA1000000001")
-	camera := wireOf(t, in, "VA1000000005")
+	bedroom := wireOf(t, in, "VA1000000005")
 	seedBlock(t, d, in, "VA1000000006", 5)
 	seedBlock(t, d, in, "VA1000000001", 5)
 	seedBlock(t, d, in, "VA1000000005", 10)
@@ -395,10 +395,10 @@ func TestWindowDeviceReportHonoursZoneConfig(t *testing.T) {
 	wantWindow(t, "detection off", zoneWindowOf(t, url, 5), false, "", time.Time{})
 
 	report(t, d, in, "VA1000000006", 10, 0x6102)
-	wantNoWrites(t, "a report from outside the zone", d, camera)
+	wantNoWrites(t, "a report from outside the zone", d, bedroom)
 
 	report(t, d, in, "VA1000000005", 10, 0x6103)
-	wantWindowWrites(t, "the 600 s zone", d, in, "01", camera)
+	wantWindowWrites(t, "the 600 s zone", d, in, "01", bedroom)
 	wantWindow(t, "the 600 s zone", zoneWindowOf(t, url, 10), true, "device", windowStart.Add(600*time.Second))
 }
 
@@ -535,7 +535,7 @@ func TestWindowWriteKeepsZoneState(t *testing.T) {
 	in := windowInstall(t, nil)
 	clock := newTestClock(windowStart)
 	d, url := newWindowDaemon(t, in, clock, nil)
-	camera := wireOf(t, in, "VA1000000005")
+	bedroom := wireOf(t, in, "VA1000000005")
 	var view map[string]any
 	if code := postJSON(t, http.MethodPut, url+"/api/zones/10/schedule",
 		allDayProgram(map[string]any{"minute": 0, "setpoint_c": 19.5}), &view); code != http.StatusOK {
@@ -545,7 +545,7 @@ func TestWindowWriteKeepsZoneState(t *testing.T) {
 		tado.TLV{Tag: "6280", Val: []byte{0x08, 0x34}}, tado.TLV{Tag: "6240", Val: []byte{0x02}},
 		tado.TLV{Tag: "6260", Val: []byte{0x01}}, tado.TLV{Tag: "6200", Val: []byte{0x07, 0x9e}},
 		tado.TLV{Tag: "62e0", Val: []byte{0x00}})
-	dropQueue(t, d, camera)
+	dropQueue(t, d, bedroom)
 
 	if _, code := postWindow(t, url, 10, true); code != http.StatusOK {
 		t.Fatalf("open: code=%d", code)
@@ -554,7 +554,7 @@ func TestWindowWriteKeepsZoneState(t *testing.T) {
 		"6160": "01", "6180": "00", "6020": "01", "61e0": "01", "6200": "079e",
 		"6240": "02", "6260": "01", "6280": "0834", "62e0": "01",
 	}
-	tags := nextZoneWrite(t, d, camera)
+	tags := nextZoneWrite(t, d, bedroom)
 	wantTags(t, "the window write", tags, want, "6440")
 	if len(tags) != len(want) {
 		t.Errorf("the window write carries %v, want exactly %v", tags, want)
@@ -748,12 +748,12 @@ func TestWindowSurvivesRestart(t *testing.T) {
 	in := windowInstall(t, nil)
 	clock := newTestClock(windowStart)
 	d, url := newWindowDaemon(t, in, clock, store)
-	ufficio := wireOf(t, in, "VA1000000002")
+	office := wireOf(t, in, "VA1000000002")
 	seedBlock(t, d, in, "VA1000000002", 3)
 	if _, code := postWindow(t, url, 3, true); code != http.StatusOK {
 		t.Fatalf("open: code=%d", code)
 	}
-	wantWindowWrites(t, "the open", d, in, "01", ufficio)
+	wantWindowWrites(t, "the open", d, in, "01", office)
 	tick(t, d)
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
@@ -769,11 +769,11 @@ func TestWindowSurvivesRestart(t *testing.T) {
 	seedBlock(t, d, in, "VA1000000002", 3, openBlock(0x01)...)
 	wantWindow(t, "after the restart", zoneWindowOf(t, url, 3), true, "external", windowStart.Add(2*time.Hour))
 	tick(t, d)
-	wantNoWrites(t, "a confirmed open after the restart", d, ufficio)
+	wantNoWrites(t, "a confirmed open after the restart", d, office)
 
 	clock.advance(time.Hour)
 	tick(t, d)
-	wantWindowWrites(t, "the stored deadline", d, in, "00", ufficio)
+	wantWindowWrites(t, "the stored deadline", d, in, "00", office)
 	tick(t, d)
 	windows, owed, err := reopened.ZoneWindows(context.Background())
 	if err != nil || len(windows) != 0 || len(owed) != 0 {
@@ -792,16 +792,16 @@ func TestWindowCloseResentAfterRestart(t *testing.T) {
 	in := windowInstall(t, nil)
 	clock := newTestClock(windowStart)
 	d, url := newWindowDaemon(t, in, clock, store)
-	ufficio := wireOf(t, in, "VA1000000002")
+	office := wireOf(t, in, "VA1000000002")
 	seedBlock(t, d, in, "VA1000000002", 3)
 	if _, code := postWindow(t, url, 3, true); code != http.StatusOK {
 		t.Fatalf("open: code=%d", code)
 	}
-	wantWindowWrites(t, "the open", d, in, "01", ufficio)
+	wantWindowWrites(t, "the open", d, in, "01", office)
 	if _, code := postWindow(t, url, 3, false); code != http.StatusOK {
 		t.Fatalf("close: code=%d", code)
 	}
-	if n := pending(t, d, ufficio); n != 1 {
+	if n := pending(t, d, office); n != 1 {
 		t.Fatalf("the close is not queued: %d writes", n)
 	}
 	if err := store.Close(); err != nil {
@@ -819,10 +819,10 @@ func TestWindowCloseResentAfterRestart(t *testing.T) {
 	seedBlock(t, d, in, "VA1000000002", 3, openBlock(0x01)...)
 	clock.advance(windowRetryEvery)
 	tick(t, d)
-	wantWindowWrites(t, "the resent close", d, in, "00", ufficio)
+	wantWindowWrites(t, "the resent close", d, in, "00", office)
 	clock.advance(windowRetryEvery)
 	tick(t, d)
-	wantNoWrites(t, "the confirmed close", d, ufficio)
+	wantNoWrites(t, "the confirmed close", d, office)
 }
 
 // restartAfterOpen opens the window of zone 3 on a valve that reports its
@@ -838,7 +838,7 @@ func restartAfterOpen(t *testing.T, edit, seeded func(d *daemon, in *tado.Instal
 	in := windowInstall(t, nil)
 	clock := newTestClock(windowStart)
 	d, url := newWindowDaemon(t, in, clock, store)
-	ufficio := wireOf(t, in, "VA1000000002")
+	office := wireOf(t, in, "VA1000000002")
 	if edit != nil {
 		edit(d, in, url)
 	}
@@ -849,7 +849,7 @@ func restartAfterOpen(t *testing.T, edit, seeded func(d *daemon, in *tado.Instal
 	if _, code := postWindow(t, url, 3, true); code != http.StatusOK {
 		t.Fatalf("open: code=%d", code)
 	}
-	wantWindowWrites(t, "the open", d, in, "01", ufficio)
+	wantWindowWrites(t, "the open", d, in, "01", office)
 	tick(t, d)
 	// The shutdown save: a restart within zoneStateSaveEvery of the open would
 	// otherwise keep the zone cache from before it.
@@ -868,7 +868,7 @@ func restartAfterOpen(t *testing.T, edit, seeded func(d *daemon, in *tado.Instal
 	clock.advance(time.Minute)
 	d, url = newWindowDaemon(t, in, clock, reopened)
 	tick(t, d)
-	wantNoWrites(t, "a confirmed open after the restart", d, ufficio)
+	wantNoWrites(t, "a confirmed open after the restart", d, office)
 	return d, url, in, reopened, clock
 }
 
@@ -887,18 +887,18 @@ func wantNothingOwed(t *testing.T, store *stateStore) {
 // the owed write.
 func TestWindowCloseAfterRestartWithoutBlock(t *testing.T) {
 	d, url, in, store, clock := restartAfterOpen(t, putFlatProgram(t), nil)
-	ufficio := wireOf(t, in, "VA1000000002")
+	office := wireOf(t, in, "VA1000000002")
 
 	if _, code := postWindow(t, url, 3, false); code != http.StatusOK {
 		t.Fatalf("close: code=%d", code)
 	}
-	if n := pending(t, d, ufficio); n != 1 {
+	if n := pending(t, d, office); n != 1 {
 		t.Fatalf("the close: %d queued writes, want 1", n)
 	}
 	want := map[string]string{
 		"6160": "01", "6180": "00", "6020": "01", "61e0": "01", "6200": "079e", "6240": "00", "62e0": "00",
 	}
-	tags := deliver(t, d, in, ufficio)
+	tags := deliver(t, d, in, office)
 	wantTags(t, "the close", tags, want, "6440")
 	if len(tags) != len(want) {
 		t.Errorf("the close carries %v, want exactly %v", tags, want)
@@ -909,7 +909,7 @@ func TestWindowCloseAfterRestartWithoutBlock(t *testing.T) {
 		clock.advance(windowRetryEvery)
 		tick(t, d)
 	}
-	wantNoWrites(t, "the confirmed close", d, ufficio)
+	wantNoWrites(t, "the confirmed close", d, office)
 	wantWindow(t, "after the close", zoneWindowOf(t, url, 3), false, "", time.Time{})
 }
 
@@ -940,7 +940,7 @@ func TestWindowCloseAfterRestartKeepsManualOverlay(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
-	ufficio := wireOf(t, in, "VA1000000002")
+	office := wireOf(t, in, "VA1000000002")
 
 	if _, code := postWindow(t, url, 3, false); code != http.StatusOK {
 		t.Fatalf("close: code=%d", code)
@@ -949,7 +949,7 @@ func TestWindowCloseAfterRestartKeepsManualOverlay(t *testing.T) {
 		"6160": "01", "6180": "00", "6020": "01", "61e0": "01", "6200": "079e",
 		"6240": "02", "6260": "01", "6280": "0834", "62e0": "00",
 	}
-	tags := deliver(t, d, in, ufficio)
+	tags := deliver(t, d, in, office)
 	wantTags(t, "the close", tags, want, "6440")
 	if len(tags) != len(want) {
 		t.Errorf("the close carries %v, want exactly %v", tags, want)
@@ -968,7 +968,7 @@ func TestWindowCloseAfterCrashKeepsDeliveredOverlay(t *testing.T) {
 	in := windowInstall(t, nil)
 	clock := newTestClock(windowStart)
 	d, url := newWindowDaemon(t, in, clock, store)
-	ufficio := wireOf(t, in, "VA1000000002")
+	office := wireOf(t, in, "VA1000000002")
 	putFlatProgram(t)(d, in, url)
 	seedBlock(t, d, in, "VA1000000002", 3)
 	var res map[string]any
@@ -976,11 +976,11 @@ func TestWindowCloseAfterCrashKeepsDeliveredOverlay(t *testing.T) {
 		map[string]any{"tempC": 21.0, "mode": "manual", "id": 3}, &res); code != http.StatusOK {
 		t.Fatalf("setpoint: code=%d %v", code, res)
 	}
-	wantTags(t, "the manual setpoint", deliver(t, d, in, ufficio), map[string]string{"6240": "02", "6280": "0834"})
+	wantTags(t, "the manual setpoint", deliver(t, d, in, office), map[string]string{"6240": "02", "6280": "0834"})
 	if _, code := postWindow(t, url, 3, true); code != http.StatusOK {
 		t.Fatalf("open: code=%d", code)
 	}
-	wantWindowWrites(t, "the open", d, in, "01", ufficio)
+	wantWindowWrites(t, "the open", d, in, "01", office)
 	tick(t, d)
 	clock.advance(zoneStateSaveEvery)
 	if _, err := d.do(func(e *tado.EmuState) (any, error) { d.flushUnsaved(context.Background(), e); return nil, nil }); err != nil {
@@ -998,11 +998,11 @@ func TestWindowCloseAfterCrashKeepsDeliveredOverlay(t *testing.T) {
 	clock.advance(time.Minute)
 	d, url = newWindowDaemon(t, in, clock, reopened)
 	tick(t, d)
-	wantNoWrites(t, "a confirmed open after the restart", d, ufficio)
+	wantNoWrites(t, "a confirmed open after the restart", d, office)
 	if _, code := postWindow(t, url, 3, false); code != http.StatusOK {
 		t.Fatalf("close: code=%d", code)
 	}
-	wantTags(t, "the close", deliver(t, d, in, ufficio),
+	wantTags(t, "the close", deliver(t, d, in, office),
 		map[string]string{"6240": "02", "6260": "01", "6280": "0834", "62e0": "00"}, "6440")
 }
 
@@ -1012,15 +1012,15 @@ func TestWindowCloseAfterCrashKeepsDeliveredOverlay(t *testing.T) {
 // and the close goes out at once with it.
 func TestWindowCloseAfterRestartWithoutProgram(t *testing.T) {
 	d, url, in, store, _ := restartAfterOpen(t, nil, nil)
-	ufficio := wireOf(t, in, "VA1000000002")
+	office := wireOf(t, in, "VA1000000002")
 
 	if _, code := postWindow(t, url, 3, false); code != http.StatusOK {
 		t.Fatalf("close: code=%d", code)
 	}
-	if n := pending(t, d, ufficio); n != 1 {
-		t.Fatalf("the close: %s holds %d queued writes, want 1", ufficio, n)
+	if n := pending(t, d, office); n != 1 {
+		t.Fatalf("the close: %s holds %d queued writes, want 1", office, n)
 	}
-	wantTags(t, "the close", deliver(t, d, in, ufficio), map[string]string{"6200": "07d0", "62e0": "00"}, "6440")
+	wantTags(t, "the close", deliver(t, d, in, office), map[string]string{"6200": "07d0", "62e0": "00"}, "6440")
 	tick(t, d)
 	wantNothingOwed(t, store)
 }

@@ -208,9 +208,9 @@ func stringsOf(t *testing.T, v any) []string {
 func (a *installAPI) declareDevices() {
 	a.t.Helper()
 	for _, dev := range []map[string]any{
-		{"kind": "thermostat", "eui": apiThermostatEUI, "serial": "RU9000000001", "label": "ingresso"},
-		{"kind": "valve", "eui": apiValveEUI, "serial": "VA9000000001", "label": "sala"},
-		{"kind": "valve", "eui": apiValveTwoEUI, "serial": "VA9000000002", "label": "studio"},
+		{"kind": "thermostat", "eui": apiThermostatEUI, "serial": "RU9000000001", "label": "entry"},
+		{"kind": "valve", "eui": apiValveEUI, "serial": "VA9000000001", "label": "lounge"},
+		{"kind": "valve", "eui": apiValveTwoEUI, "serial": "VA9000000002", "label": "study"},
 	} {
 		a.mutate(http.MethodPost, "/api/install/devices", dev)
 	}
@@ -248,13 +248,13 @@ func TestInstallAPIBuildsInstallationFromEmpty(t *testing.T) {
 		t.Fatalf("devices = %v, want three", devices)
 	}
 	dev := a.get("/api/install/devices/VA9000000001")["device"].(map[string]any)
-	if dev["eui"] != apiValveEUI || dev["kind"] != "valve" || dev["label"] != "sala" {
+	if dev["eui"] != apiValveEUI || dev["kind"] != "valve" || dev["label"] != "lounge" {
 		t.Fatalf("device = %v, want the valve declared above", dev)
 	}
 	patched := a.mutate(http.MethodPatch, "/api/install/devices/VA9000000002", map[string]any{
-		"label": "mansarda", "notes": "under the roof", "kind": "valve", "serial": "VA9000009002",
+		"label": "attic", "notes": "under the roof", "kind": "valve", "serial": "VA9000009002",
 	})["device"].(map[string]any)
-	if patched["label"] != "mansarda" || patched["notes"] != "under the roof" ||
+	if patched["label"] != "attic" || patched["notes"] != "under the roof" ||
 		patched["serial"] != "VA9000009002" {
 		t.Fatalf("patched device = %v", patched)
 	}
@@ -264,7 +264,7 @@ func TestInstallAPIBuildsInstallationFromEmpty(t *testing.T) {
 	// A zone with no member yet is a warning, not an error: the commissioning
 	// flow declares the zone before it fills it.
 	zone := a.mutate(http.MethodPost, "/api/install/zones",
-		map[string]any{"number": 1, "name": "sala", "kind": "heating"})
+		map[string]any{"number": 1, "name": "lounge", "kind": "heating"})
 	if warns := warningsOf(t, zone); !containsSubstring(warns, "zone 1 has no member") {
 		t.Fatalf("warnings = %v, want the empty zone reported", warns)
 	}
@@ -290,14 +290,14 @@ func TestInstallAPIBuildsInstallationFromEmpty(t *testing.T) {
 	}
 
 	circuit := a.mutate(http.MethodPost, "/api/install/circuits",
-		map[string]any{"id": 1, "name": "casa", "heat_source": "RU9000000001"})["circuit"].(map[string]any)
+		map[string]any{"id": 1, "name": "house", "heat_source": "RU9000000001"})["circuit"].(map[string]any)
 	if circuit["heat_source"] != apiThermostatEUI {
 		t.Fatalf("circuit = %v, want the thermostat as heat source", circuit)
 	}
 	a.mutate(http.MethodPatch, "/api/install/zones/1", map[string]any{"circuit": 1})
 	a.mutate(http.MethodPatch, "/api/install/circuits/1",
-		map[string]any{"name": "piano terra", "heat_source": apiThermostatEUI})
-	if got := a.get("/api/install/circuits/1")["circuit"].(map[string]any); got["name"] != "piano terra" ||
+		map[string]any{"name": "ground floor", "heat_source": apiThermostatEUI})
+	if got := a.get("/api/install/circuits/1")["circuit"].(map[string]any); got["name"] != "ground floor" ||
 		got["heat_source"] != apiThermostatEUI {
 		t.Fatalf("circuit = %v, want the patched name and the same heat source", got)
 	}
@@ -440,17 +440,17 @@ func TestInstallAPIRejectsBadInput(t *testing.T) {
 		// API refuses to write the second one, so the duplicate goes into the
 		// rows directly, which is what an older installation carries.
 		a.mutate(http.MethodPost, "/api/install/devices",
-			map[string]any{"kind": "valve", "eui": apiValveLeftEUI, "serial": "VA9000000003", "label": "cucina"})
+			map[string]any{"kind": "valve", "eui": apiValveLeftEUI, "serial": "VA9000000003", "label": "kitchen"})
 		a.mutate(http.MethodPost, "/api/install/devices",
-			map[string]any{"kind": "valve", "eui": apiValveRightEUI, "serial": "VA9000000004", "label": "dispensa"})
-		a.seedLabel(apiValveRightEUI, "cucina")
+			map[string]any{"kind": "valve", "eui": apiValveRightEUI, "serial": "VA9000000004", "label": "pantry"})
+		a.seedLabel(apiValveRightEUI, "kitchen")
 		a.mutate(http.MethodPost, "/api/install/zones", map[string]any{"number": 3, "kind": "heating"})
-		code, res := a.call(http.MethodPost, "/api/install/zones/3/members", map[string]any{"ref": "cucina"})
+		code, res := a.call(http.MethodPost, "/api/install/zones/3/members", map[string]any{"ref": "kitchen"})
 		if code != http.StatusBadRequest {
 			t.Fatalf("got %d %v, want 400", code, res)
 		}
 		if got := stringsOf(t, res["candidates"]); len(got) != 2 {
-			t.Fatalf("candidates = %v, want both cucina valves", got)
+			t.Fatalf("candidates = %v, want both kitchen valves", got)
 		}
 	})
 
@@ -470,7 +470,7 @@ func TestInstallAPIConflicts(t *testing.T) {
 		map[string]any{"members": []string{"RU9000000001", "VA9000000001"}})
 	a.mutate(http.MethodPut, "/api/install/zones/1/reporter", map[string]any{"ref": "VA9000000001"})
 	a.mutate(http.MethodPost, "/api/install/circuits",
-		map[string]any{"id": 1, "name": "casa", "heat_source": "RU9000000001"})
+		map[string]any{"id": 1, "name": "house", "heat_source": "RU9000000001"})
 	a.mutate(http.MethodPatch, "/api/install/zones/1", map[string]any{"circuit": 1})
 
 	t.Run("stale rev", func(t *testing.T) {
@@ -570,7 +570,7 @@ func TestInstallAPIRefusesADuplicateLabel(t *testing.T) {
 	a.declareDevices()
 
 	code, res := a.call(http.MethodPost, "/api/install/devices",
-		map[string]any{"kind": "valve", "eui": apiValveLeftEUI, "serial": "VA9000000003", "label": "sala"})
+		map[string]any{"kind": "valve", "eui": apiValveLeftEUI, "serial": "VA9000000003", "label": "lounge"})
 	if code != http.StatusConflict {
 		t.Fatalf("create with a duplicate label: got %d %v, want 409", code, res)
 	}
@@ -580,7 +580,7 @@ func TestInstallAPIRefusesADuplicateLabel(t *testing.T) {
 
 	// One name in two spellings is still one name: the comparison ignores case.
 	code, res = a.call(http.MethodPatch, "/api/install/devices/VA9000000002",
-		map[string]any{"label": "Sala"})
+		map[string]any{"label": "Lounge"})
 	if code != http.StatusConflict {
 		t.Fatalf("rename onto a duplicate: got %d %v, want 409", code, res)
 	}
@@ -589,7 +589,7 @@ func TestInstallAPIRefusesADuplicateLabel(t *testing.T) {
 	}
 
 	// A device keeps its own label: a rename onto it is not a duplicate.
-	a.mutate(http.MethodPatch, "/api/install/devices/VA9000000001", map[string]any{"label": "sala"})
+	a.mutate(http.MethodPatch, "/api/install/devices/VA9000000001", map[string]any{"label": "lounge"})
 	// The rule is about names, so two devices without one collide with nothing.
 	a.mutate(http.MethodPost, "/api/install/devices",
 		map[string]any{"kind": "valve", "eui": apiValveLeftEUI, "serial": "VA9000000003"})
@@ -597,7 +597,7 @@ func TestInstallAPIRefusesADuplicateLabel(t *testing.T) {
 		map[string]any{"kind": "valve", "eui": apiValveRightEUI, "serial": "VA9000000004"})
 
 	if got := stringsOfKey(t, a.get("/api/install/devices"), "devices", "label"); !reflect.DeepEqual(got,
-		[]string{"ingresso", "sala", "studio", "", ""}) {
+		[]string{"entry", "lounge", "study", "", ""}) {
 		t.Fatalf("labels = %v, want the declared ones: the refusals wrote nothing", got)
 	}
 }
@@ -613,16 +613,16 @@ func TestInstallAPIServesADuplicateLabelFromTheRows(t *testing.T) {
 	a := newInstallAPIOn(t, seed)
 
 	warns := warningsOf(t, a.get("/api/install"))
-	if !containsSubstring(warns, `"sala" duplicates devices[0]`) {
+	if !containsSubstring(warns, `"lounge" duplicates devices[0]`) {
 		t.Fatalf("warnings = %v, want the duplicate label reported", warns)
 	}
 	if got := stringsOfKey(t, a.get("/api/install/devices"), "devices", "label"); !reflect.DeepEqual(got,
-		[]string{"sala", "sala"}) {
+		[]string{"lounge", "lounge"}) {
 		t.Fatalf("labels = %v, want both devices served", got)
 	}
 
 	// The way out is a rename onto a free label.
-	a.mutate(http.MethodPatch, "/api/install/devices/VA9000000001", map[string]any{"label": "studio"})
+	a.mutate(http.MethodPatch, "/api/install/devices/VA9000000001", map[string]any{"label": "study"})
 	if warns := warningsOf(t, a.get("/api/install")); containsSubstring(warns, "duplicates devices[") {
 		t.Fatalf("warnings = %v, want the duplicate gone after the rename", warns)
 	}
@@ -636,12 +636,12 @@ home_id: 7801
 network_key: "0102030405060708090a0b0c0d0e0f10"
 coordinator: {eui: "aa016a3107c51b00", serial: IB9000000001}
 devices:
-  - {kind: thermostat, eui: "03046a3107c51b00", serial: RU9000000001, label: sala}
-  - {kind: valve, eui: "01026a3107c51b00", serial: VA9000000001, label: sala}
+  - {kind: thermostat, eui: "03046a3107c51b00", serial: RU9000000001, label: lounge}
+  - {kind: valve, eui: "01026a3107c51b00", serial: VA9000000001, label: lounge}
 zones:
-  - {number: 1, name: sala, kind: heating, circuit: 1, members: [RU9000000001, VA9000000001], reporter: VA9000000001}
+  - {number: 1, name: lounge, kind: heating, circuit: 1, members: [RU9000000001, VA9000000001], reporter: VA9000000001}
 circuits:
-  - {id: 1, name: casa, heat_source: RU9000000001}
+  - {id: 1, name: house, heat_source: RU9000000001}
 `
 
 // TestInstallAPIMissingObjects: a path that names nothing answers 404.
@@ -787,8 +787,8 @@ func TestInstallAPINeverRevealsTheNetworkKey(t *testing.T) {
 		map[string]any{"id": 1, "heat_source": "RU9000000001"})
 	a.mutate(http.MethodPatch, "/api/install/zones/1", map[string]any{"circuit": 1})
 	a.mutate(http.MethodPatch, "/api/install", map[string]any{"utc_offset_min": 60})
-	a.mutate(http.MethodPatch, "/api/install/devices/VA9000000002", map[string]any{"label": "mansarda"})
-	a.mutate(http.MethodPatch, "/api/install/circuits/1", map[string]any{"name": "casa"})
+	a.mutate(http.MethodPatch, "/api/install/devices/VA9000000002", map[string]any{"label": "attic"})
+	a.mutate(http.MethodPatch, "/api/install/circuits/1", map[string]any{"name": "house"})
 	a.mutate(http.MethodDelete, "/api/install/zones/1/members/VA9000000002", nil)
 	a.mutate(http.MethodDelete, "/api/install/zones/1/measuring", nil)
 	a.mutate(http.MethodDelete, "/api/install/zones/1/reporter", nil)
@@ -829,13 +829,13 @@ func TestInstallAPINeverRevealsTheNetworkKey(t *testing.T) {
 func TestInstallAPISurvivesRestart(t *testing.T) {
 	a := newInstallAPI(t)
 	a.declareDevices()
-	a.mutate(http.MethodPost, "/api/install/zones", map[string]any{"number": 1, "name": "sala", "kind": "heating"})
+	a.mutate(http.MethodPost, "/api/install/zones", map[string]any{"number": 1, "name": "lounge", "kind": "heating"})
 	a.mutate(http.MethodPut, "/api/install/zones/1/members",
 		map[string]any{"members": []string{"RU9000000001", "VA9000000001", "VA9000000002"}})
 	a.mutate(http.MethodPut, "/api/install/zones/1/reporter", map[string]any{"ref": "VA9000000001"})
 	a.mutate(http.MethodPut, "/api/install/zones/1/measuring", map[string]any{"ref": "VA9000000002"})
 	a.mutate(http.MethodPost, "/api/install/circuits",
-		map[string]any{"id": 1, "name": "casa", "heat_source": "RU9000000001"})
+		map[string]any{"id": 1, "name": "house", "heat_source": "RU9000000001"})
 	a.mutate(http.MethodPatch, "/api/install/zones/1", map[string]any{"circuit": 1})
 	a.mutate(http.MethodPatch, "/api/install", map[string]any{"utc_offset_min": -60})
 
@@ -1193,7 +1193,7 @@ func TestInstallAPIPatchesZoneOpenWindow(t *testing.T) {
 	a := newInstallAPI(t)
 	a.declareDevices()
 	zone := a.mutate(http.MethodPost, "/api/install/zones",
-		map[string]any{"number": 1, "name": "sala", "kind": "heating"})["zone"].(map[string]any)
+		map[string]any{"number": 1, "name": "lounge", "kind": "heating"})["zone"].(map[string]any)
 	if zone["open_window_detection"] != true || zone["open_window_duration_sec"].(float64) != 900 {
 		t.Fatalf("new zone = %v, want the detection on and 900 seconds", zone)
 	}

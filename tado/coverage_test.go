@@ -112,7 +112,7 @@ func TestCatalogTagsNowDecoded(t *testing.T) {
 // used to be logged as unknown, and assert the analyzer logs no unknown resource
 // or tag now.
 func TestReplayResourcesHandled(t *testing.T) {
-	valve := mustHex(NodeByAny("camera").WireLE)
+	valve := mustHex(NodeByAny("bedroom").WireLE)
 	ru := mustHex(NodeByAny("RU1000000001").WireLE)
 
 	// TLV payload built only from newly-catalogued tags: none should log.
@@ -159,18 +159,18 @@ func TestReplayResourcesHandled(t *testing.T) {
 // TestActiveGetCorrelation: an enqueued bridge GET rides out on the device's next
 // frame, and the device's 2.05 response is filed under the queried resource.
 func TestActiveGetCorrelation(t *testing.T) {
-	camera := NodeByAny("camera")
-	cameraEUI := mustHex(camera.WireLE)
+	bedroom := NodeByAny("bedroom")
+	bedroomEUI := mustHex(bedroom.WireLE)
 	raw, _, _ := firstUplink(t, func(fr *Frame, _ *AppPayload) bool {
-		return hex.EncodeToString(fr.SrcEUI()) == camera.WireLE
+		return hex.EncodeToString(fr.SrcEUI()) == bedroom.WireLE
 	})
 
 	e, _, _ := newTestEmu(t)
-	if err := e.EnqueueGet("camera", "d/fw/state", []string{"d", "fw", "state"}, nil); err != nil {
+	if err := e.EnqueueGet("bedroom", "d/fw/state", []string{"d", "fw", "state"}, nil); err != nil {
 		t.Fatal(err)
 	}
 
-	// The GET piggybacks on the next frame from the camera.
+	// The GET piggybacks on the next frame from the bedroom.
 	get, ok := findAction(e.OnFrame(raw), ActData, "downlink get")
 	if !ok {
 		t.Fatal("the queued GET did not piggyback")
@@ -186,71 +186,71 @@ func TestActiveGetCorrelation(t *testing.T) {
 	if gm.URI() != "d/fw/state" {
 		t.Errorf("active GET URI = %q, want d/fw/state", gm.URI())
 	}
-	e.OnFrame(BuildEnhAck(gf.Seq, BridgeEUI, cameraEUI, 0x0101))
-	if e.Pending("camera") != 1 || !e.Queue("camera")[0].InFlight {
-		t.Fatalf("Enhanced ACK closed active GET: queue=%+v", e.Queue("camera"))
+	e.OnFrame(BuildEnhAck(gf.Seq, BridgeEUI, bedroomEUI, 0x0101))
+	if e.Pending("bedroom") != 1 || !e.Queue("bedroom")[0].InFlight {
+		t.Fatalf("Enhanced ACK closed active GET: queue=%+v", e.Queue("bedroom"))
 	}
-	if len(e.QueueHistory("camera")) != 0 {
-		t.Fatalf("Enhanced ACK recorded active GET history: %+v", e.QueueHistory("camera"))
+	if len(e.QueueHistory("bedroom")) != 0 {
+		t.Fatalf("Enhanced ACK recorded active GET history: %+v", e.QueueHistory("bedroom"))
 	}
-	if err := e.EnqueueGet("camera", "d/fw/state", []string{"d", "fw", "state"}, nil); err != nil {
+	if err := e.EnqueueGet("bedroom", "d/fw/state", []string{"d", "fw", "state"}, nil); err != nil {
 		t.Fatal(err)
 	}
-	if e.Pending("camera") != 1 {
-		t.Fatalf("duplicate active GET pending=%d, want 1", e.Pending("camera"))
+	if e.Pending("bedroom") != 1 {
+		t.Fatalf("duplicate active GET pending=%d, want 1", e.Pending("bedroom"))
 	}
 
 	// Synthesize the device's 2.05 response with the same MID and feed it back.
 	body := TLV{Tag: "0140", Val: []byte{0x00, 0x2a}}.Encode()
-	wrong, err := BuildCoAPAck("2.05", gm.MID+1, gm.Token, body, cameraEUI, BridgeEUI, coapPort, bridgeCoAPPort)
+	wrong, err := BuildCoAPAck("2.05", gm.MID+1, gm.Token, body, bedroomEUI, BridgeEUI, coapPort, bridgeCoAPPort)
 	if err != nil {
 		t.Fatal(err)
 	}
-	wrongFrame, err := BuildData(NetworkKey, 0x3f, BridgeEUI, cameraEUI[:5], WrapAppPayload(wrong, 899, nil))
+	wrongFrame, err := BuildData(NetworkKey, 0x3f, BridgeEUI, bedroomEUI[:5], WrapAppPayload(wrong, 899, nil))
 	if err != nil {
 		t.Fatal(err)
 	}
 	e.OnFrame(wrongFrame.Bytes())
-	if e.Pending("camera") != 1 {
-		t.Fatalf("wrong MID closed active GET: pending=%d", e.Pending("camera"))
+	if e.Pending("bedroom") != 1 {
+		t.Fatalf("wrong MID closed active GET: pending=%d", e.Pending("bedroom"))
 	}
-	resp, err := BuildCoAPAck("2.05", gm.MID, gm.Token, body, cameraEUI, BridgeEUI, coapPort, bridgeCoAPPort)
+	resp, err := BuildCoAPAck("2.05", gm.MID, gm.Token, body, bedroomEUI, BridgeEUI, coapPort, bridgeCoAPPort)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rf, err := BuildData(NetworkKey, 0x40, BridgeEUI, cameraEUI[:5], WrapAppPayload(resp, 900, nil))
+	rf, err := BuildData(NetworkKey, 0x40, BridgeEUI, bedroomEUI[:5], WrapAppPayload(resp, 900, nil))
 	if err != nil {
 		t.Fatal(err)
 	}
 	e.OnFrame(rf.Bytes())
 
-	got, ok := e.ActiveGetResult("camera", "d/fw/state")
+	got, ok := e.ActiveGetResult("bedroom", "d/fw/state")
 	if !ok {
 		t.Fatal("no result recorded for the active GET")
 	}
 	if !bytes.Equal(got, body) {
 		t.Errorf("active GET result = %x, want %x", got, body)
 	}
-	if code, _, ok := e.ActiveGetResponse("camera", "d/fw/state"); !ok || code != "2.05" {
+	if code, _, ok := e.ActiveGetResponse("bedroom", "d/fw/state"); !ok || code != "2.05" {
 		t.Fatalf("active GET response code=%q ok=%t, want 2.05/true", code, ok)
 	}
-	if e.Pending("camera") != 0 || len(e.pendGet) != 0 {
-		t.Fatalf("matching 2.05 left active GET pending=%d correlations=%v", e.Pending("camera"), e.pendGet)
+	if e.Pending("bedroom") != 0 || len(e.pendGet) != 0 {
+		t.Fatalf("matching 2.05 left active GET pending=%d correlations=%v", e.Pending("bedroom"), e.pendGet)
 	}
-	history := e.QueueHistory("camera")
+	history := e.QueueHistory("bedroom")
 	if len(history) != 1 || history[0].Result != "delivered" || history[0].Reason != "coap-ack" {
 		t.Fatalf("active GET history=%+v, want delivered/coap-ack", history)
 	}
 }
 
 func TestActiveGetCurrentlogBlock2Reassembly(t *testing.T) {
-	camera := NodeByAny("camera")
-	cameraEUI := mustHex(camera.WireLE)
+	bedroom := NodeByAny("bedroom")
+	bedroomEUI := mustHex(bedroom.WireLE)
 	raw, _, _ := firstUplink(t, func(fr *Frame, _ *AppPayload) bool {
-		return hex.EncodeToString(fr.SrcEUI()) == camera.WireLE
+		return hex.EncodeToString(fr.SrcEUI()) == bedroom.WireLE
 	})
 	e, _, _ := newTestEmu(t)
-	if err := e.EnqueueGet("camera", "d/currentlog", []string{"d", "currentlog"}, nil); err != nil {
+	if err := e.EnqueueGet("bedroom", "d/currentlog", []string{"d", "currentlog"}, nil); err != nil {
 		t.Fatal(err)
 	}
 	get, ok := findAction(e.OnFrame(raw), ActData, "downlink get")
@@ -263,27 +263,27 @@ func TestActiveGetCurrentlogBlock2Reassembly(t *testing.T) {
 	}
 
 	body := bytes.Repeat([]byte{0xa5}, 260)
-	second := activeGetBlockResponse(t, e, cameraEUI, first.MID, first.Token, 0x0b, body[:128], 0x7a01)
+	second := activeGetBlockResponse(t, e, bedroomEUI, first.MID, first.Token, 0x0b, body[:128], 0x7a01)
 	if second.MID == first.MID || !bytes.Equal(second.Token, first.Token) {
 		t.Fatalf("block GET MID/token=%04x/%x, want new MID and %x", second.MID, second.Token, first.Token)
 	}
 	if block, ok := second.Option(23); !ok || !bytes.Equal(block.Val, []byte{0x13}) {
 		t.Fatalf("second GET Block2=%v, want 13", block)
 	}
-	third := activeGetBlockResponse(t, e, cameraEUI, second.MID, second.Token, 0x1b, body[128:256], 0x7a02)
+	third := activeGetBlockResponse(t, e, bedroomEUI, second.MID, second.Token, 0x1b, body[128:256], 0x7a02)
 	if block, ok := third.Option(23); !ok || !bytes.Equal(block.Val, []byte{0x23}) {
 		t.Fatalf("third GET Block2=%v, want 23", block)
 	}
-	activeGetBlockResponse(t, e, cameraEUI, third.MID, third.Token, 0x23, body[256:], 0x7a03)
+	activeGetBlockResponse(t, e, bedroomEUI, third.MID, third.Token, 0x23, body[256:], 0x7a03)
 
-	code, got, ok := e.ActiveGetResponse("camera", "d/currentlog")
+	code, got, ok := e.ActiveGetResponse("bedroom", "d/currentlog")
 	if !ok || code != "2.05" || !bytes.Equal(got, body) {
 		t.Fatalf("active Block2 response=%q/%d/%t, want 2.05/%d/true", code, len(got), ok, len(body))
 	}
-	if e.Pending("camera") != 0 || len(e.pendGet) != 0 {
-		t.Fatalf("Block2 result left pending=%d correlations=%v", e.Pending("camera"), e.pendGet)
+	if e.Pending("bedroom") != 0 || len(e.pendGet) != 0 {
+		t.Fatalf("Block2 result left pending=%d correlations=%v", e.Pending("bedroom"), e.pendGet)
 	}
-	history := e.QueueHistory("camera")
+	history := e.QueueHistory("bedroom")
 	if len(history) != 1 || history[0].Result != "delivered" || history[0].Reason != "coap-ack" || history[0].Tries != 1 {
 		t.Fatalf("Block2 history=%+v, want one delivered/coap-ack attempt", history)
 	}
@@ -306,13 +306,13 @@ func straddlingDoc(value []byte) []byte {
 // once, reassembled. Parsing a single block would file the halves of the TLV the
 // block boundary cuts.
 func TestBlock2CachesOnlyTheWholeBody(t *testing.T) {
-	camera := NodeByAny("camera")
-	cameraEUI := mustHex(camera.WireLE)
+	bedroom := NodeByAny("bedroom")
+	bedroomEUI := mustHex(bedroom.WireLE)
 	raw, _, _ := firstUplink(t, func(fr *Frame, _ *AppPayload) bool {
-		return hex.EncodeToString(fr.SrcEUI()) == camera.WireLE
+		return hex.EncodeToString(fr.SrcEUI()) == bedroom.WireLE
 	})
 	e, log, _ := newTestEmu(t)
-	if err := e.EnqueueGet("camera", "d/currentlog", []string{"d", "currentlog"}, nil); err != nil {
+	if err := e.EnqueueGet("bedroom", "d/currentlog", []string{"d", "currentlog"}, nil); err != nil {
 		t.Fatal(err)
 	}
 	get, ok := findAction(e.OnFrame(raw), ActData, "downlink get")
@@ -326,17 +326,17 @@ func TestBlock2CachesOnlyTheWholeBody(t *testing.T) {
 	if len(doc) != 299 {
 		t.Fatalf("document is %d bytes, want 299", len(doc))
 	}
-	ns := e.nodes[hexEUI(cameraEUI)]
+	ns := e.nodes[hexEUI(bedroomEUI)]
 
-	second := activeGetBlockResponse(t, e, cameraEUI, first.MID, first.Token, 0x0b, doc[:128], 0x7b01)
+	second := activeGetBlockResponse(t, e, bedroomEUI, first.MID, first.Token, 0x0b, doc[:128], 0x7b01)
 	if len(ns.raw["0210"]) != 0 || e.block2.Open() != 1 {
 		t.Fatalf("block 0 cached %x with %d transfers open", ns.raw["0210"], e.block2.Open())
 	}
-	third := activeGetBlockResponse(t, e, cameraEUI, second.MID, second.Token, 0x1b, doc[128:256], 0x7b02)
+	third := activeGetBlockResponse(t, e, bedroomEUI, second.MID, second.Token, 0x1b, doc[128:256], 0x7b02)
 	if len(ns.raw["0210"]) != 0 {
 		t.Fatalf("block 1 cached the cut TLV as %x", ns.raw["0210"])
 	}
-	activeGetBlockResponse(t, e, cameraEUI, third.MID, third.Token, 0x23, doc[256:], 0x7b03)
+	activeGetBlockResponse(t, e, bedroomEUI, third.MID, third.Token, 0x23, doc[256:], 0x7b03)
 
 	if !bytes.Equal(ns.raw["0210"], value) {
 		t.Errorf("cached 0210 = %x, want %x", ns.raw["0210"], value)
@@ -347,7 +347,7 @@ func TestBlock2CachesOnlyTheWholeBody(t *testing.T) {
 	if n := countPrefix(log.Counts(), rsnBlock2Dropped); n != 0 {
 		t.Errorf("%d blocks dropped in an ordered transfer: %s", n, log.Summary())
 	}
-	if code, got, ok := e.ActiveGetResponse("camera", "d/currentlog"); !ok || code != "2.05" || !bytes.Equal(got, doc) {
+	if code, got, ok := e.ActiveGetResponse("bedroom", "d/currentlog"); !ok || code != "2.05" || !bytes.Equal(got, doc) {
 		t.Errorf("active GET response=%q/%d/%t, want 2.05/%d/true", code, len(got), ok, len(doc))
 	}
 }
@@ -355,24 +355,24 @@ func TestBlock2CachesOnlyTheWholeBody(t *testing.T) {
 // TestBlock2OrphanBlockDropped: a block that arrives without its predecessors is
 // logged and discarded, never parsed.
 func TestBlock2OrphanBlockDropped(t *testing.T) {
-	cameraEUI := mustHex(NodeByAny("camera").WireLE)
+	bedroomEUI := mustHex(NodeByAny("bedroom").WireLE)
 	e, log, _ := newTestEmu(t)
 	pkt, err := BuildCoAP(CoAPReq{
 		Type: "ACK", Code: "2.05", MID: 0x4242, Token: []byte{0x55},
 		Options: []CoAPOption{{Num: 23, Val: []byte{0x10}}}, // block 1, last, szx 0
 		Payload: TLV{Tag: "0143", Val: []byte{0x01}}.Encode(),
-		SrcEUI:  cameraEUI, DstEUI: BridgeEUI, SrcPort: coapPort, DstPort: bridgeCoAPPort,
+		SrcEUI:  bedroomEUI, DstEUI: BridgeEUI, SrcPort: coapPort, DstPort: bridgeCoAPPort,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	frame, err := BuildData(NetworkKey, 0x51, BridgeEUI, cameraEUI[:5], WrapAppPayload(pkt, 901, nil))
+	frame, err := BuildData(NetworkKey, 0x51, BridgeEUI, bedroomEUI[:5], WrapAppPayload(pkt, 901, nil))
 	if err != nil {
 		t.Fatal(err)
 	}
 	e.OnFrame(frame.Bytes())
 
-	if v := e.nodes[hexEUI(cameraEUI)].raw["0143"]; len(v) != 0 {
+	if v := e.nodes[hexEUI(bedroomEUI)].raw["0143"]; len(v) != 0 {
 		t.Errorf("orphan block cached 0143=%x", v)
 	}
 	if n := countPrefix(log.Counts(), rsnBlock2Dropped); n != 1 {
@@ -407,8 +407,8 @@ func activeGetBlockResponse(t *testing.T, e *EmuState, dev []byte, mid uint16, t
 			t.Fatal(err)
 		}
 		actions = e.OnFrame(frame.Bytes())
-		if i != len(fragments)-1 && e.Pending("camera") != 1 {
-			t.Fatalf("fragment %d changed active GET pending=%d", i, e.Pending("camera"))
+		if i != len(fragments)-1 && e.Pending("bedroom") != 1 {
+			t.Fatalf("fragment %d changed active GET pending=%d", i, e.Pending("bedroom"))
 		}
 	}
 	if block&8 == 0 {
@@ -435,13 +435,13 @@ func activeGetMessage(t *testing.T, raw []byte) *CoAPMessage {
 }
 
 func TestActiveGetErrorResponseCorrelation(t *testing.T) {
-	camera := NodeByAny("camera")
-	cameraEUI := mustHex(camera.WireLE)
+	bedroom := NodeByAny("bedroom")
+	bedroomEUI := mustHex(bedroom.WireLE)
 	raw, _, _ := firstUplink(t, func(fr *Frame, _ *AppPayload) bool {
-		return hex.EncodeToString(fr.SrcEUI()) == camera.WireLE
+		return hex.EncodeToString(fr.SrcEUI()) == bedroom.WireLE
 	})
 	e, _, _ := newTestEmu(t)
-	if err := e.EnqueueGet("camera", "d/currentlog", []string{"d", "currentlog"}, nil); err != nil {
+	if err := e.EnqueueGet("bedroom", "d/currentlog", []string{"d", "currentlog"}, nil); err != nil {
 		t.Fatal(err)
 	}
 	get, ok := findAction(e.OnFrame(raw), ActData, "downlink get")
@@ -453,38 +453,38 @@ func TestActiveGetErrorResponseCorrelation(t *testing.T) {
 		t.Fatal(err)
 	}
 	gm := ParseApp(gf.Plaintext).CoAP
-	resp, err := BuildCoAPAck("4.03", gm.MID, gm.Token, nil, cameraEUI, BridgeEUI, coapPort, bridgeCoAPPort)
+	resp, err := BuildCoAPAck("4.03", gm.MID, gm.Token, nil, bedroomEUI, BridgeEUI, coapPort, bridgeCoAPPort)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rf, err := BuildData(NetworkKey, 0x40, BridgeEUI, cameraEUI[:5], WrapAppPayload(resp, 900, nil))
+	rf, err := BuildData(NetworkKey, 0x40, BridgeEUI, bedroomEUI[:5], WrapAppPayload(resp, 900, nil))
 	if err != nil {
 		t.Fatal(err)
 	}
 	e.OnFrame(rf.Bytes())
-	code, body, ok := e.ActiveGetResponse("camera", "d/currentlog")
+	code, body, ok := e.ActiveGetResponse("bedroom", "d/currentlog")
 	if !ok || code != "4.03" || len(body) != 0 {
 		t.Fatalf("active GET response=%q/%x ok=%t, want 4.03/empty/true", code, body, ok)
 	}
-	if e.Pending("camera") != 0 || len(e.pendGet) != 0 {
-		t.Fatalf("4.03 left active GET pending=%d correlations=%v", e.Pending("camera"), e.pendGet)
+	if e.Pending("bedroom") != 0 || len(e.pendGet) != 0 {
+		t.Fatalf("4.03 left active GET pending=%d correlations=%v", e.Pending("bedroom"), e.pendGet)
 	}
-	history := e.QueueHistory("camera")
+	history := e.QueueHistory("bedroom")
 	if len(history) != 1 || history[0].Result != "delivered" || history[0].Reason != "coap-ack" {
 		t.Fatalf("active GET history=%+v, want delivered/coap-ack", history)
 	}
 }
 
 func TestActiveGetRejectsMismatchedResponse(t *testing.T) {
-	camera := NodeByAny("camera")
-	other := NodeByAny("bagno")
-	cameraEUI := mustHex(camera.WireLE)
+	bedroom := NodeByAny("bedroom")
+	other := NodeByAny("bath")
+	bedroomEUI := mustHex(bedroom.WireLE)
 	otherEUI := mustHex(other.WireLE)
 	raw, _, _ := firstUplink(t, func(fr *Frame, _ *AppPayload) bool {
-		return hex.EncodeToString(fr.SrcEUI()) == camera.WireLE
+		return hex.EncodeToString(fr.SrcEUI()) == bedroom.WireLE
 	})
 	e, _, _ := newTestEmu(t)
-	if err := e.EnqueueGet("camera", "d/fw/state", []string{"d", "fw", "state"}, nil); err != nil {
+	if err := e.EnqueueGet("bedroom", "d/fw/state", []string{"d", "fw", "state"}, nil); err != nil {
 		t.Fatal(err)
 	}
 	get, ok := findAction(e.OnFrame(raw), ActData, "downlink get")
@@ -504,8 +504,8 @@ func TestActiveGetRejectsMismatchedResponse(t *testing.T) {
 		typ  string
 	}{
 		{name: "source", src: otherEUI, mid: gm.MID, typ: "ACK"},
-		{name: "mid", src: cameraEUI, mid: gm.MID + 1, typ: "ACK"},
-		{name: "type", src: cameraEUI, mid: gm.MID, typ: "CON"},
+		{name: "mid", src: bedroomEUI, mid: gm.MID + 1, typ: "ACK"},
+		{name: "type", src: bedroomEUI, mid: gm.MID, typ: "CON"},
 	}
 	for i, tc := range cases {
 		pkt, err := BuildCoAP(CoAPReq{Type: tc.typ, Code: "4.03", MID: tc.mid, Token: gm.Token, Payload: tc.body, SrcEUI: tc.src, DstEUI: BridgeEUI, SrcPort: coapPort, DstPort: bridgeCoAPPort})
@@ -517,8 +517,8 @@ func TestActiveGetRejectsMismatchedResponse(t *testing.T) {
 			t.Fatalf("%s: %v", tc.name, err)
 		}
 		e.OnFrame(frame.Bytes())
-		if e.Pending("camera") != 1 || len(e.pendGet) != 1 {
-			t.Fatalf("%s closed active GET: pending=%d correlations=%v", tc.name, e.Pending("camera"), e.pendGet)
+		if e.Pending("bedroom") != 1 || len(e.pendGet) != 1 {
+			t.Fatalf("%s closed active GET: pending=%d correlations=%v", tc.name, e.Pending("bedroom"), e.pendGet)
 		}
 	}
 }
@@ -526,11 +526,11 @@ func TestActiveGetRejectsMismatchedResponse(t *testing.T) {
 func TestEnqueueGetDeduplicatesPending(t *testing.T) {
 	e, _, _ := newTestEmu(t)
 	for range 2 {
-		if err := e.EnqueueGet("camera", "d/fw/state", []string{"d", "fw", "state"}, nil); err != nil {
+		if err := e.EnqueueGet("bedroom", "d/fw/state", []string{"d", "fw", "state"}, nil); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if got := e.Pending("camera"); got != 1 {
+	if got := e.Pending("bedroom"); got != 1 {
 		t.Fatalf("pending=%d, want 1", got)
 	}
 }
@@ -539,14 +539,14 @@ func TestActiveGetRetryLimitClearsCorrelation(t *testing.T) {
 	e, _, _ := newTestEmu(t)
 	now := time.Unix(100, 0)
 	e.cfg.Now = func() time.Time { return now }
-	wire, label, err := e.resolve("camera")
+	wire, label, err := e.resolve("bedroom")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := e.EnqueueGet("camera", "d/fw/state", []string{"d", "fw", "state"}, nil); err != nil {
+	if err := e.EnqueueGet("bedroom", "d/fw/state", []string{"d", "fw", "state"}, nil); err != nil {
 		t.Fatal(err)
 	}
-	oldMID := e.Queue("camera")[0].MID
+	oldMID := e.Queue("bedroom")[0].MID
 	for range maxDownlinkTries {
 		if _, ok := e.nextDownlink(wire, label); !ok {
 			t.Fatal("active GET retry missing")
@@ -556,14 +556,14 @@ func TestActiveGetRetryLimitClearsCorrelation(t *testing.T) {
 	if _, ok := e.nextDownlink(wire, label); ok {
 		t.Fatal("retry-limit active GET produced action")
 	}
-	if e.Pending("camera") != 0 || len(e.pendGet) != 0 {
-		t.Fatalf("retry-limit left active GET pending=%d correlations=%v", e.Pending("camera"), e.pendGet)
+	if e.Pending("bedroom") != 0 || len(e.pendGet) != 0 {
+		t.Fatalf("retry-limit left active GET pending=%d correlations=%v", e.Pending("bedroom"), e.pendGet)
 	}
-	if err := e.EnqueueGet("camera", "d/fw/state", []string{"d", "fw", "state"}, nil); err != nil {
+	if err := e.EnqueueGet("bedroom", "d/fw/state", []string{"d", "fw", "state"}, nil); err != nil {
 		t.Fatal(err)
 	}
-	if e.Pending("camera") != 1 || e.Queue("camera")[0].MID == oldMID {
-		t.Fatalf("new active GET queue=%+v, want a new request", e.Queue("camera"))
+	if e.Pending("bedroom") != 1 || e.Queue("bedroom")[0].MID == oldMID {
+		t.Fatalf("new active GET queue=%+v, want a new request", e.Queue("bedroom"))
 	}
 }
 
@@ -571,18 +571,18 @@ func TestActiveGetRetryIsPacedAndKeepsMID(t *testing.T) {
 	e, _, _ := newTestEmu(t)
 	now := time.Unix(100, 0)
 	e.cfg.Now = func() time.Time { return now }
-	wire, label, err := e.resolve("camera")
+	wire, label, err := e.resolve("bedroom")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := e.EnqueueGet("camera", "d/fw/state", []string{"d", "fw", "state"}, nil); err != nil {
+	if err := e.EnqueueGet("bedroom", "d/fw/state", []string{"d", "fw", "state"}, nil); err != nil {
 		t.Fatal(err)
 	}
 	first, ok := e.nextDownlink(wire, label)
 	if !ok || len(first) != 1 || !first[0].WaitResponse {
 		t.Fatalf("first=%+v ok=%t", first, ok)
 	}
-	mid := e.Queue("camera")[0].MID
+	mid := e.Queue("bedroom")[0].MID
 	now = now.Add(activeGetRetryBackoff - time.Nanosecond)
 	if _, ok := e.nextDownlink(wire, label); ok {
 		t.Fatal("active GET retried before backoff")
@@ -592,21 +592,21 @@ func TestActiveGetRetryIsPacedAndKeepsMID(t *testing.T) {
 	if !ok || len(second) != 1 || !second[0].WaitResponse {
 		t.Fatalf("second=%+v ok=%t", second, ok)
 	}
-	if got := e.Queue("camera")[0].MID; got != mid {
+	if got := e.Queue("bedroom")[0].MID; got != mid {
 		t.Fatalf("MID=%04x, want %04x", got, mid)
 	}
 }
 
 func TestRebootRequiresMatchingCoAPResponse(t *testing.T) {
-	camera := NodeByAny("camera")
-	cameraEUI := mustHex(camera.WireLE)
+	bedroom := NodeByAny("bedroom")
+	bedroomEUI := mustHex(bedroom.WireLE)
 	otherEUI := []byte{0x67, 0x45, 0x23, 0x31, 0x07, 0xc5, 0x1b, 0x00}
 	e, _, _ := newTestEmu(t)
-	wire, label, err := e.resolve("camera")
+	wire, label, err := e.resolve("bedroom")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := e.EnqueueReboot("camera", 5); err != nil {
+	if err := e.EnqueueReboot("bedroom", 5); err != nil {
 		t.Fatal(err)
 	}
 	first, ok := e.nextDownlink(wire, label)
@@ -618,9 +618,9 @@ func TestRebootRequiresMatchingCoAPResponse(t *testing.T) {
 		t.Fatal(err)
 	}
 	firstReq := ParseApp(firstData.Plaintext).CoAP
-	e.OnFrame(BuildEnhAck(firstData.Seq, BridgeEUI, cameraEUI, 0x0101))
-	if e.Pending("camera") != 1 {
-		t.Fatalf("Enhanced ACK completed reboot: pending=%d", e.Pending("camera"))
+	e.OnFrame(BuildEnhAck(firstData.Seq, BridgeEUI, bedroomEUI, 0x0101))
+	if e.Pending("bedroom") != 1 {
+		t.Fatalf("Enhanced ACK completed reboot: pending=%d", e.Pending("bedroom"))
 	}
 
 	second, ok := e.nextDownlink(wire, label)
@@ -635,7 +635,7 @@ func TestRebootRequiresMatchingCoAPResponse(t *testing.T) {
 	if secondReq.MID != firstReq.MID || !bytes.Equal(secondReq.Token, firstReq.Token) {
 		t.Fatalf("retry MID/token=%04x/%x, want %04x/%x", secondReq.MID, secondReq.Token, firstReq.MID, firstReq.Token)
 	}
-	e.HoldQueuedDownlink("camera", time.Hour)
+	e.HoldQueuedDownlink("bedroom", time.Hour)
 
 	feed := func(src []byte, code string, mid uint16, token []byte, seq byte) {
 		t.Helper()
@@ -650,36 +650,36 @@ func TestRebootRequiresMatchingCoAPResponse(t *testing.T) {
 		e.OnFrame(frame.Bytes())
 	}
 	feed(otherEUI, "2.04", firstReq.MID, firstReq.Token, 0x40)
-	if e.Pending("camera") != 1 {
+	if e.Pending("bedroom") != 1 {
 		t.Fatal("wrong source completed reboot")
 	}
-	feed(cameraEUI, "2.04", firstReq.MID+1, firstReq.Token, 0x41)
-	if e.Pending("camera") != 1 {
+	feed(bedroomEUI, "2.04", firstReq.MID+1, firstReq.Token, 0x41)
+	if e.Pending("bedroom") != 1 {
 		t.Fatal("wrong MID completed reboot")
 	}
-	feed(cameraEUI, "2.05", firstReq.MID, firstReq.Token, 0x42)
-	if e.Pending("camera") != 1 {
+	feed(bedroomEUI, "2.05", firstReq.MID, firstReq.Token, 0x42)
+	if e.Pending("bedroom") != 1 {
 		t.Fatal("wrong code completed reboot")
 	}
-	if d := e.queue[hexEUI(cameraEUI)][0]; !d.requireCoAP || !bytes.Equal(d.responseToken, firstReq.Token) {
+	if d := e.queue[hexEUI(bedroomEUI)][0]; !d.requireCoAP || !bytes.Equal(d.responseToken, firstReq.Token) {
 		t.Fatalf("reboot confirmation=%+v token=%x, want required/%x", d, d.responseToken, firstReq.Token)
 	}
 	wrongToken := []byte{0x00}
-	feed(cameraEUI, "2.04", firstReq.MID, wrongToken, 0x43)
-	if e.Pending("camera") != 1 {
-		t.Fatalf("wrong reboot response completed queue: pending=%d", e.Pending("camera"))
+	feed(bedroomEUI, "2.04", firstReq.MID, wrongToken, 0x43)
+	if e.Pending("bedroom") != 1 {
+		t.Fatalf("wrong reboot response completed queue: pending=%d", e.Pending("bedroom"))
 	}
-	feed(cameraEUI, "2.04", firstReq.MID, firstReq.Token, 0x44)
-	if e.Pending("camera") != 0 {
-		t.Fatalf("matching 2.04 left reboot pending=%d", e.Pending("camera"))
+	feed(bedroomEUI, "2.04", firstReq.MID, firstReq.Token, 0x44)
+	if e.Pending("bedroom") != 0 {
+		t.Fatalf("matching 2.04 left reboot pending=%d", e.Pending("bedroom"))
 	}
-	history := e.QueueHistory("camera")
+	history := e.QueueHistory("bedroom")
 	if len(history) != 1 || history[0].Result != "delivered" || history[0].Reason != "coap-ack" {
 		t.Fatalf("history=%+v, want delivered coap-ack", history)
 	}
 
 	retry, _, _ := newTestEmu(t)
-	if err := retry.EnqueueReboot("camera", 5); err != nil {
+	if err := retry.EnqueueReboot("bedroom", 5); err != nil {
 		t.Fatal(err)
 	}
 	for range maxDownlinkTries {
@@ -687,10 +687,10 @@ func TestRebootRequiresMatchingCoAPResponse(t *testing.T) {
 			t.Fatal("reboot retry missing")
 		}
 	}
-	if _, ok := retry.nextDownlink(wire, label); ok || retry.Pending("camera") != 0 {
-		t.Fatalf("retry-limit left reboot queue=%+v", retry.Queue("camera"))
+	if _, ok := retry.nextDownlink(wire, label); ok || retry.Pending("bedroom") != 0 {
+		t.Fatalf("retry-limit left reboot queue=%+v", retry.Queue("bedroom"))
 	}
-	history = retry.QueueHistory("camera")
+	history = retry.QueueHistory("bedroom")
 	if len(history) != 1 || history[0].Result != "dropped" || history[0].Reason != "retry-limit" {
 		t.Fatalf("retry history=%+v, want dropped retry-limit", history)
 	}
@@ -699,14 +699,14 @@ func TestRebootRequiresMatchingCoAPResponse(t *testing.T) {
 // TestEnqueueConfigWrite: a d/config store write carries the set fields as their
 // store TLVs, on a CoAP 0.03 PUT to d/config.
 func TestEnqueueConfigWrite(t *testing.T) {
-	camera := NodeByAny("camera")
+	bedroom := NodeByAny("bedroom")
 	raw, _, _ := firstUplink(t, func(fr *Frame, _ *AppPayload) bool {
-		return hex.EncodeToString(fr.SrcEUI()) == camera.WireLE
+		return hex.EncodeToString(fr.SrcEUI()) == bedroom.WireLE
 	})
 
 	e, _, _ := newTestEmu(t)
 	trace, offlineScheduleEnabled := uint8(1), false
-	if err := e.EnqueueConfig("camera", 10, ConfigWrite{TraceEnable: &trace, OfflineScheduleEnabled: &offlineScheduleEnabled}); err != nil {
+	if err := e.EnqueueConfig("bedroom", 10, ConfigWrite{TraceEnable: &trace, OfflineScheduleEnabled: &offlineScheduleEnabled}); err != nil {
 		t.Fatal(err)
 	}
 

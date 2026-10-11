@@ -791,7 +791,7 @@ func TestLiveRadioQueuesFragmentedCSLBatchWithSharedBootstrap(t *testing.T) {
 }
 
 func TestLiveRadioBatchesServedZoneConfigBlock2Fragments(t *testing.T) {
-	device, err := defaultInstall.Resolve("ufficio")
+	device, err := defaultInstall.Resolve("office")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1136,11 +1136,11 @@ func TestLiveRadioSetsNoHostCSLNeighborCap(t *testing.T) {
 }
 
 func TestLogCSLTxIncludesActionMetadata(t *testing.T) {
-	got := formatCSLTx(tado.Action{Node: "cucina", Bytes: []byte{0x69, 0xec, 0, 0x06, 0x0a}, QueueAttempt: true, Reason: "downlink active GET d/fw/state seq=d0 try=1"}, true,
+	got := formatCSLTx(tado.Action{Node: "kitchen", Bytes: []byte{0x69, 0xec, 0, 0x06, 0x0a}, QueueAttempt: true, Reason: "downlink active GET d/fw/state seq=d0 try=1"}, true,
 		&cc1101.CSLTxResult{Sent: 255}, errors.New("CSLTX has no target sample anchor"))
 
 	for _, want := range []string{
-		"node=cucina", "short=0a06", "queue=true", "bootstrap=true", "sent=255", "ack=false",
+		"node=kitchen", "short=0a06", "queue=true", "bootstrap=true", "sent=255", "ack=false",
 		`reason="downlink active GET d/fw/state seq=d0 try=1"`, "error=CSLTX has no target sample anchor",
 	} {
 		if !strings.Contains(got, want) {

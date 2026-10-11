@@ -56,14 +56,14 @@ func coldStartFixture(t *testing.T) (*coldStartRun, *tado.EmuState, *fakeCSLRadi
 	tx.result = radio.ImmediateResult{CSLQueue: true}
 	r := &coldStartRun{
 		emu: emu, passive: &fakePassiveRadio{}, tx: tx, completions: tx.completions,
-		in: fixtureInstall, doTx: true, target: "bagno", listen: 20 * time.Millisecond,
+		in: fixtureInstall, doTx: true, target: "bath", listen: 20 * time.Millisecond,
 	}
 	return r, emu, tx
 }
 
 func queueOne(t *testing.T, emu *tado.EmuState) {
 	t.Helper()
-	if err := emu.EnqueueSetpoint("bagno", tado.SetpointParams{
+	if err := emu.EnqueueSetpoint("bath", tado.SetpointParams{
 		ID: 3, Setpoint: 5.0, Sched: 5.0, Overlay: 2,
 	}); err != nil {
 		t.Fatal(err)
@@ -80,8 +80,8 @@ func matchingAck(t *testing.T, action tado.Action) *radio.CSLCompletion {
 	if err != nil {
 		t.Fatal(err)
 	}
-	bagno := tado.NodeByAny("bagno")
-	wire := mustHexBytes(t, bagno.WireLE)
+	bath := tado.NodeByAny("bath")
+	wire := mustHexBytes(t, bath.WireLE)
 	ack := tado.BuildEnhAck(data.Seq, tado.BridgeEUI, wire, 0)
 	return &radio.CSLCompletion{
 		Action: action,
@@ -101,8 +101,8 @@ func matchingAckAndCoAP204(t *testing.T, action tado.Action) *radio.CSLCompletio
 	if app == nil || app.CoAP == nil {
 		t.Fatal("queued setpoint has no CoAP request")
 	}
-	bagno := tado.NodeByAny("bagno")
-	wire := mustHexBytes(t, bagno.WireLE)
+	bath := tado.NodeByAny("bath")
+	wire := mustHexBytes(t, bath.WireLE)
 	response, err := tado.BuildCoAPAck("2.04", app.CoAP.MID, app.CoAP.Token, nil, wire, tado.BridgeEUI, 5683, 4005)
 	if err != nil {
 		t.Fatal(err)
@@ -145,8 +145,8 @@ func TestColdStartAttemptDeliveredByCSLCompletion(t *testing.T) {
 	if app == nil || app.CoAP == nil || app.CoAP.URI() != "z/s?id=3" {
 		t.Fatalf("H14 job does not contain the requested setpoint: %+v", app)
 	}
-	if emu.Pending("bagno") != 0 {
-		t.Fatalf("%d queued downlinks remain after delivery", emu.Pending("bagno"))
+	if emu.Pending("bath") != 0 {
+		t.Fatalf("%d queued downlinks remain after delivery", emu.Pending("bath"))
 	}
 }
 
@@ -167,8 +167,8 @@ func TestColdStartDoesNotCreditUncorrelatedACK(t *testing.T) {
 	if delivered {
 		t.Fatal("unrelated ACK counted as cold-start delivery")
 	}
-	if emu.Pending("bagno") != 0 {
-		t.Fatalf("%d queued downlinks remain after an unconfirmed attempt", emu.Pending("bagno"))
+	if emu.Pending("bath") != 0 {
+		t.Fatalf("%d queued downlinks remain after an unconfirmed attempt", emu.Pending("bath"))
 	}
 }
 

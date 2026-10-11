@@ -121,20 +121,20 @@ func TestDeviceOverlayRestatesQueuedZoneWrites(t *testing.T) {
 	in := fixtureInstall(t)
 	e := NewEmu(in.EmuConfig(), NewUnhandledLogger(io.Discard))
 	e.SetHomeState(true, map[int]float64{5: 20})
-	if err := e.EnqueueSetpoint(cucinaBEUIHex, SetpointParams{ID: 5, Setpoint: 21, Overlay: 2}); err != nil {
+	if err := e.EnqueueSetpoint(kitchenBEUIHex, SetpointParams{ID: 5, Setpoint: 21, Overlay: 2}); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.EnqueueZoneRewrite(cucinaBEUIHex, 5); err != nil {
+	if err := e.EnqueueZoneRewrite(kitchenBEUIHex, 5); err != nil {
 		t.Fatal(err)
 	}
-	e.OnFrame(synthDeviceUplink(t, in, mustHex(cucinaAEUIHex), CoAPReq{
+	e.OnFrame(synthDeviceUplink(t, in, mustHex(kitchenAEUIHex), CoAPReq{
 		Type: "CON", Code: "0.03", MID: 0x7501, Token: []byte{0x22},
 		Path: homePath(in, "z", "5", "overlay"), Options: []CoAPOption{optOctets},
 		Payload: encodeTLVs([]TLV{
 			{Tag: "6280", Val: []byte{0x08, 0x98}}, {Tag: "6240", Val: []byte{0x02}}, {Tag: "6260", Val: []byte{0x01}},
 		}),
 	}))
-	got := queuedTags(t, e, cucinaBEUIHex)
+	got := queuedTags(t, e, kitchenBEUIHex)
 	if len(got) != 2 {
 		t.Fatalf("writer queue = %v, want the 6440 setpoint and one rewrite", got)
 	}
@@ -144,7 +144,7 @@ func TestDeviceOverlayRestatesQueuedZoneWrites(t *testing.T) {
 	if w := got[1]; w["6240"] != "02" || w["6260"] != "01" || w["6280"] != "0898" || w["6200"] != "07d0" || w["6440"] != "" {
 		t.Errorf("rewrite = %v, want the 22 C overlay, 6200 07d0 and no 6440", w)
 	}
-	if q := e.queue[cucinaAEUIHex]; len(q) != 0 {
+	if q := e.queue[kitchenAEUIHex]; len(q) != 0 {
 		t.Errorf("the wheel member got %d writes, want none", len(q))
 	}
 }
@@ -158,7 +158,7 @@ func TestDeviceOverlayEndRestatesQueuedZoneWrites(t *testing.T) {
 	in := fixtureInstall(t)
 	e := NewEmu(in.EmuConfig(), NewUnhandledLogger(io.Discard))
 	e.SetHomeState(true, map[int]float64{5: 20})
-	e.OnFrame(synthDeviceUplink(t, in, mustHex(cucinaAEUIHex), CoAPReq{
+	e.OnFrame(synthDeviceUplink(t, in, mustHex(kitchenAEUIHex), CoAPReq{
 		Type: "CON", Code: "0.03", MID: 0x7511, Token: []byte{0x23},
 		Path: homePath(in, "z", "5", "overlay"), Options: []CoAPOption{optOctets},
 		Payload: encodeTLVs([]TLV{
@@ -166,33 +166,33 @@ func TestDeviceOverlayEndRestatesQueuedZoneWrites(t *testing.T) {
 		}),
 	}))
 	e.TakeOverlayReports()
-	e.queue[cucinaBEUIHex] = nil
-	if err := e.EnqueueZoneRewrite(cucinaBEUIHex, 5); err != nil {
+	e.queue[kitchenBEUIHex] = nil
+	if err := e.EnqueueZoneRewrite(kitchenBEUIHex, 5); err != nil {
 		t.Fatal(err)
 	}
-	if got := queuedTags(t, e, cucinaBEUIHex); len(got) != 1 || got[0]["6240"] != "02" {
+	if got := queuedTags(t, e, kitchenBEUIHex); len(got) != 1 || got[0]["6240"] != "02" {
 		t.Fatalf("writer queue = %v, want one rewrite of the overlay", got)
 	}
 
-	raw := synthDeviceUplink(t, in, mustHex(cucinaAEUIHex), CoAPReq{
+	raw := synthDeviceUplink(t, in, mustHex(kitchenAEUIHex), CoAPReq{
 		Type: "CON", Code: "0.04", MID: 0x7512, Token: []byte{0x24},
 		Path: homePath(in, "z", "5", "overlay"),
 	})
 	if m := synthAnswer(t, in, e.OnFrame(raw), 0x7512); m.Code != "2.05" || len(m.Payload) != 0 {
 		t.Fatalf("answer=%s payload=%x, want 2.05 with no body", m.Code, m.Payload)
 	}
-	want := OverlayReport{Zone: 5, Device: cucinaAEUIHex, End: true}
+	want := OverlayReport{Zone: 5, Device: kitchenAEUIHex, End: true}
 	if got := e.TakeOverlayReports(); len(got) != 1 || got[0] != want {
 		t.Fatalf("reports=%+v, want [%+v]", got, want)
 	}
 	if block, ok := e.ZoneBlock(5); !ok || block.Overlay != overlayAuto {
 		t.Errorf("zone block = %+v (known=%t), want overlay auto", block, ok)
 	}
-	got := queuedTags(t, e, cucinaBEUIHex)
+	got := queuedTags(t, e, kitchenBEUIHex)
 	if len(got) != 1 || got[0]["6240"] != "00" || got[0]["6440"] != "" {
 		t.Errorf("writer queue = %v, want one rewrite in overlay auto with no 6440", got)
 	}
-	if q := e.queue[cucinaAEUIHex]; len(q) != 0 {
+	if q := e.queue[kitchenAEUIHex]; len(q) != 0 {
 		t.Errorf("the reporter got %d writes, want none", len(q))
 	}
 }

@@ -23,8 +23,8 @@ import (
 // and 2090. Tag 4160 takes the same width as the other percent attributes.
 
 const (
-	capCamera    = "02a6cefa07c51b00" // valve VA1000000005, zone 10
-	capCorridoio = "05a2cafa07c51b00" // wall thermostat RU1000000001, circuit 1
+	capBedroom = "02a6cefa07c51b00" // valve VA1000000005, zone 10
+	capHall    = "05a2cafa07c51b00" // wall thermostat RU1000000001, circuit 1
 )
 
 func demandEmu(t *testing.T) *EmuState {
@@ -59,10 +59,10 @@ func circuitOf(t *testing.T, e *EmuState, id int) CircuitView {
 // tag 6340, 6060, 6400 or 2040.
 func TestDemandChainPopulatesState(t *testing.T) {
 	e := demandEmu(t)
-	camera, corridoio := mustHex(capCamera), mustHex(capCorridoio)
+	bedroom, hall := mustHex(capBedroom), mustHex(capHall)
 
 	// 1. The valve publishes the zone demand on the home plane.
-	e.OnFrame(uplinkFrame(t, camera, "0.03",
+	e.OnFrame(uplinkFrame(t, bedroom, "0.03",
 		[]string{"h", "7654321", "z", "10", "act"}, nil,
 		TLV{Tag: "40a0", Val: []byte{100}}.Encode()))
 	if got := zoneOf(t, e, 10); got.DemandPct != 100 {
@@ -71,7 +71,7 @@ func TestDemandChainPopulatesState(t *testing.T) {
 
 	// 2. The same demand reaches the wall thermostat as a 2.05 we relay. It
 	// carries no path and no query, so the zone comes from the publisher.
-	e.OnFrame(zoneUplink(t, camera, corridoio, CoAPReq{
+	e.OnFrame(zoneUplink(t, bedroom, hall, CoAPReq{
 		Type: "NON", Code: "2.05", MID: 0x7801, Token: []byte{0x78},
 		Payload: concat(
 			TLV{Tag: "4060", Val: []byte{0x06, 0xd4}}.Encode(), // 17.48 C
@@ -88,7 +88,7 @@ func TestDemandChainPopulatesState(t *testing.T) {
 	}
 
 	// 3. The thermostat aggregates the circuit.
-	e.OnFrame(uplinkFrame(t, corridoio, "0.03",
+	e.OnFrame(uplinkFrame(t, hall, "0.03",
 		[]string{"h", "7654321", "c", "1", "act"}, nil,
 		concat(
 			TLV{Tag: "4040", Val: []byte{0x06, 0xd4}}.Encode(), // 17.48 C
@@ -102,7 +102,7 @@ func TestDemandChainPopulatesState(t *testing.T) {
 
 	// 4. The thermostat pushes the circuit heat percent back to the zone. The
 	// datagram is addressed to the valve, so we only route it.
-	e.OnFrame(zoneUplink(t, corridoio, camera, CoAPReq{
+	e.OnFrame(zoneUplink(t, hall, bedroom, CoAPReq{
 		Type: "CON", Code: "0.03", MID: 0x3a01, Token: []byte{0x3a},
 		Path: []string{"z", "cpe"}, Query: []string{"lid=10"},
 		Payload: TLV{Tag: "4160", Val: []byte{100}}.Encode(),
@@ -122,7 +122,7 @@ func TestDemandChainPopulatesState(t *testing.T) {
 		t.Fatal(err)
 	}
 	if want := []NodeTableRec{{Role: 0x0d, Node: 10}}; !reflect.DeepEqual(recs, want) {
-		t.Errorf("camera 015e records = %v, want %v", recs, want)
+		t.Errorf("bedroom 015e records = %v, want %v", recs, want)
 	}
 
 	// Nothing in the chain needed the phantom tags.
@@ -143,7 +143,7 @@ func TestDemandChainPopulatesState(t *testing.T) {
 // attributes that changed, so an omitted one keeps its last value.
 func TestDemandReportsMergeAsDeltas(t *testing.T) {
 	e := demandEmu(t)
-	camera, corridoio := mustHex(capCamera), mustHex(capCorridoio)
+	bedroom, hall := mustHex(capBedroom), mustHex(capHall)
 
 	circuit := func(tlvs ...TLV) {
 		t.Helper()
@@ -151,7 +151,7 @@ func TestDemandReportsMergeAsDeltas(t *testing.T) {
 		for _, tl := range tlvs {
 			body = append(body, tl.Encode()...)
 		}
-		e.OnFrame(uplinkFrame(t, corridoio, "0.03",
+		e.OnFrame(uplinkFrame(t, hall, "0.03",
 			[]string{"h", "7654321", "c", "1", "act"}, nil, body))
 	}
 
@@ -172,10 +172,10 @@ func TestDemandReportsMergeAsDeltas(t *testing.T) {
 
 	// The zone report has two publishers: the valve writes 40a0, the thermostat
 	// writes 4160. Neither may clear the other.
-	e.OnFrame(uplinkFrame(t, camera, "0.03",
+	e.OnFrame(uplinkFrame(t, bedroom, "0.03",
 		[]string{"h", "7654321", "z", "10", "act"}, nil,
 		TLV{Tag: "40a0", Val: []byte{100}}.Encode()))
-	e.OnFrame(zoneUplink(t, corridoio, camera, CoAPReq{
+	e.OnFrame(zoneUplink(t, hall, bedroom, CoAPReq{
 		Type: "CON", Code: "0.03", MID: 0x3a02, Token: []byte{0x3a},
 		Path: []string{"z", "cpe"}, Query: []string{"lid=10"},
 		Payload: TLV{Tag: "4160", Val: []byte{0}}.Encode(),
@@ -189,10 +189,10 @@ func TestDemandReportsMergeAsDeltas(t *testing.T) {
 // frame. The boiler view must keep the ones a later frame omits.
 func TestBoilerReportMergesAsDelta(t *testing.T) {
 	e := demandEmu(t)
-	corridoio := mustHex(capCorridoio)
+	hall := mustHex(capHall)
 	mon := func(body []byte) {
 		t.Helper()
-		e.OnFrame(uplinkFrame(t, corridoio, "0.03",
+		e.OnFrame(uplinkFrame(t, hall, "0.03",
 			[]string{"h", "7654321", "hvac", "mon"}, nil, body))
 	}
 
@@ -222,12 +222,12 @@ func TestBoilerReportMergesAsDelta(t *testing.T) {
 // d/config document reassigns the role, because 015e is where the role lives.
 func TestObservedNodeRolesSupersedeServedOnes(t *testing.T) {
 	e := demandEmu(t)
-	bagno := mustHex("04a3defa07c51b00") // VA1000000007, zone 2
+	bath := mustHex("04a3defa07c51b00") // VA1000000007, zone 2
 
 	if got := zoneOf(t, e, 10).Reporter; got != "a602" {
 		t.Fatalf("zone 10 reporter = %q before any observation, want a602", got)
 	}
-	e.OnFrame(uplinkFrame(t, bagno, "0.03",
+	e.OnFrame(uplinkFrame(t, bath, "0.03",
 		[]string{"d", "VA1000000007", "config"}, nil,
 		concat(
 			TLV{Tag: "015c", Val: []byte{0x00, 0x74, 0xcb, 0xb1}}.Encode(),
@@ -238,7 +238,7 @@ func TestObservedNodeRolesSupersedeServedOnes(t *testing.T) {
 		t.Fatal(err)
 	}
 	if want := []NodeTableRec{{Role: 0x0d, Node: 10}}; !reflect.DeepEqual(recs, want) {
-		t.Fatalf("bagno 015e records = %v, want %v", recs, want)
+		t.Fatalf("bath 015e records = %v, want %v", recs, want)
 	}
 	// Two devices now claim zone 10; the tie resolves on the short address.
 	if got := zoneOf(t, e, 10).Reporter; got != "a304" {
@@ -259,25 +259,25 @@ func TestInstallWithoutReporterRuns(t *testing.T) {
 		t.Errorf("warnings = %v, want one about the missing election", in.Warnings())
 	}
 
-	camera, err := in.Resolve("VA1000000005")
+	bedroom, err := in.Resolve("VA1000000005")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := initialNodeTable(in, camera), []NodeTableRec{{Role: 0x05, Node: 10}}; !reflect.DeepEqual(got, want) {
-		t.Errorf("camera node table = %v, want the plain membership role %v", got, want)
+	if got, want := initialNodeTable(in, bedroom), []NodeTableRec{{Role: 0x05, Node: 10}}; !reflect.DeepEqual(got, want) {
+		t.Errorf("bedroom node table = %v, want the plain membership role %v", got, want)
 	}
 	if _, err := BuildZoneConfigDocument(in, 10); err != nil {
 		t.Errorf("zone 10 config document: %v", err)
 	}
 	// The single member answers for the zone temperature, so the offset write
 	// path keeps a target.
-	if d, err := in.MeasuringDevice(10); err != nil || d != camera {
+	if d, err := in.MeasuringDevice(10); err != nil || d != bedroom {
 		t.Errorf("MeasuringDevice(10) = %v, %v, want the only member", d, err)
 	}
 
 	// The chain still fills the state view: nothing in it needs an election.
 	e := NewEmu(in.EmuConfig(), NewUnhandledLogger(io.Discard))
-	e.OnFrame(uplinkFrame(t, mustHex(capCamera), "0.03",
+	e.OnFrame(uplinkFrame(t, mustHex(capBedroom), "0.03",
 		[]string{"h", "7654321", "z", "10", "act"}, nil,
 		TLV{Tag: "40a0", Val: []byte{100}}.Encode()))
 	got := zoneOf(t, e, 10)

@@ -28,24 +28,24 @@ home_id: 7801
 network_key: "0102030405060708090a0b0c0d0e0f10"
 coordinator: {eui: "aa016a3107c51b00", serial: IB9000000001}
 devices:
-  - {kind: thermostat, eui: "03046a3107c51b00", serial: RU9000000001, label: sala}
-  - {kind: valve, eui: "01026a3107c51b00", serial: VA9000000001, label: sala}
-  - {kind: valve, eui: "11226a3107c51b00", serial: VA9000000002, label: studio}
+  - {kind: thermostat, eui: "03046a3107c51b00", serial: RU9000000001, label: lounge}
+  - {kind: valve, eui: "01026a3107c51b00", serial: VA9000000001, label: lounge}
+  - {kind: valve, eui: "11226a3107c51b00", serial: VA9000000002, label: study}
 zones:
-  - {number: 1, name: sala, kind: heating, circuit: 1, members: [RU9000000001, VA9000000001], reporter: VA9000000001}
-  - {number: 4, name: studio, kind: heating, circuit: 1, members: [VA9000000002], reporter: VA9000000002}
+  - {number: 1, name: lounge, kind: heating, circuit: 1, members: [RU9000000001, VA9000000001], reporter: VA9000000001}
+  - {number: 4, name: study, kind: heating, circuit: 1, members: [VA9000000002], reporter: VA9000000002}
 circuits:
-  - {id: 1, name: casa, heat_source: RU9000000001}
+  - {id: 1, name: house, heat_source: RU9000000001}
 `
 
 // The lines the reload tests delete, and the wire EUIs they name.
 const (
-	reloadStudioDevice = "  - {kind: valve, eui: \"11226a3107c51b00\", serial: VA9000000002, label: studio}\n"
-	reloadStudioZone   = "  - {number: 4, name: studio, kind: heating, circuit: 1, members: [VA9000000002], reporter: VA9000000002}\n"
+	reloadStudyDevice = "  - {kind: valve, eui: \"11226a3107c51b00\", serial: VA9000000002, label: study}\n"
+	reloadStudyZone   = "  - {number: 4, name: study, kind: heating, circuit: 1, members: [VA9000000002], reporter: VA9000000002}\n"
 
-	reloadValveEUI    = "01026a3107c51b00" // VA9000000001, zone 1
-	reloadStudioEUI   = "11226a3107c51b00" // VA9000000002, zone 4, the one that leaves
-	reloadStudioShort = "2211"
+	reloadValveEUI   = "01026a3107c51b00" // VA9000000001, zone 1
+	reloadStudyEUI   = "11226a3107c51b00" // VA9000000002, zone 4, the one that leaves
+	reloadStudyShort = "2211"
 )
 
 // reloadInstall edits the synthetic installation and validates the result.
@@ -65,10 +65,10 @@ func reloadInstall(t *testing.T, edits ...[2]string) *tado.Install {
 	return in
 }
 
-// reloadNoStudio is the same installation without the studio valve and its zone.
-func reloadNoStudio(t *testing.T) *tado.Install {
+// reloadNoStudy is the same installation without the study valve and its zone.
+func reloadNoStudy(t *testing.T) *tado.Install {
 	t.Helper()
-	return reloadInstall(t, [2]string{reloadStudioDevice, ""}, [2]string{reloadStudioZone, ""})
+	return reloadInstall(t, [2]string{reloadStudyDevice, ""}, [2]string{reloadStudyZone, ""})
 }
 
 // reloadDaemon builds an armed daemon over in, with link maintenance enrolled
@@ -157,29 +157,29 @@ func maps[V any](in map[string]V) map[string]V {
 // neither panics nor addresses it.
 func TestSetInstallRemovesDeviceState(t *testing.T) {
 	d, radio := reloadDaemon(t, reloadInstall(t))
-	seedTargetState(d, reloadStudioEUI)
+	seedTargetState(d, reloadStudyEUI)
 	seedTargetState(d, reloadValveEUI)
-	d.cslAdmissionWait[reloadStudioShort] = cslAdmissionNeighborFull
+	d.cslAdmissionWait[reloadStudyShort] = cslAdmissionNeighborFull
 	d.linkMaintCursor = len(d.linkMaintOrder) - 1
 
-	added, removed, err := d.setInstall(reloadNoStudio(t))
+	added, removed, err := d.setInstall(reloadNoStudy(t))
 	if err != nil {
 		t.Fatalf("setInstall: %v", err)
 	}
-	if len(added) != 0 || !reflect.DeepEqual(removed, []string{reloadStudioEUI}) {
-		t.Fatalf("added = %v, removed = %v, want only the studio valve removed", added, removed)
+	if len(added) != 0 || !reflect.DeepEqual(removed, []string{reloadStudyEUI}) {
+		t.Fatalf("added = %v, removed = %v, want only the study valve removed", added, removed)
 	}
-	if held := targetStateMaps(d, reloadStudioEUI); held != nil {
+	if held := targetStateMaps(d, reloadStudyEUI); held != nil {
 		t.Errorf("the removed device still sits in %v", held)
 	}
-	if _, ok := d.cslAdmissionWait[reloadStudioShort]; ok {
+	if _, ok := d.cslAdmissionWait[reloadStudyShort]; ok {
 		t.Error("the removed device still holds a CSL admission wait under its short address")
 	}
 	if held := targetStateMaps(d, reloadValveEUI); len(held) != 8 {
 		t.Errorf("the surviving device kept only %v", held)
 	}
 	for _, key := range d.linkMaintOrder {
-		if key == reloadStudioEUI {
+		if key == reloadStudyEUI {
 			t.Fatalf("link maintenance order still names the removed device: %v", d.linkMaintOrder)
 		}
 	}
@@ -200,10 +200,10 @@ func TestSetInstallRemovesDeviceState(t *testing.T) {
 	if len(radio.batches) == 0 {
 		t.Fatal("link maintenance sent nothing after the reload")
 	}
-	studio := mustDecodeEUI(t, reloadStudioEUI)
+	study := mustDecodeEUI(t, reloadStudyEUI)
 	for _, batch := range radio.batches {
 		for _, action := range batch {
-			if len(action.Bytes) >= 11 && string(action.Bytes[3:11]) == string(studio) {
+			if len(action.Bytes) >= 11 && string(action.Bytes[3:11]) == string(study) {
 				t.Fatalf("link maintenance addressed the removed device: %s", action.Node)
 			}
 		}
@@ -213,7 +213,7 @@ func TestSetInstallRemovesDeviceState(t *testing.T) {
 // TestSetInstallAddsDeviceState: a device the reload declares joins link
 // maintenance from scratch, and the entries already there keep their state.
 func TestSetInstallAddsDeviceState(t *testing.T) {
-	d, _ := reloadDaemon(t, reloadNoStudio(t))
+	d, _ := reloadDaemon(t, reloadNoStudy(t))
 	kept := linkMaintEntry{state: 2, retry: 3, age: 9, wait: 4}
 	d.linkMaint[reloadValveEUI] = kept
 	orderBefore := append([]string(nil), d.linkMaintOrder...)
@@ -222,17 +222,17 @@ func TestSetInstallAddsDeviceState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("setInstall: %v", err)
 	}
-	if len(removed) != 0 || !reflect.DeepEqual(added, []string{reloadStudioEUI}) {
-		t.Fatalf("added = %v, removed = %v, want only the studio valve added", added, removed)
+	if len(removed) != 0 || !reflect.DeepEqual(added, []string{reloadStudyEUI}) {
+		t.Fatalf("added = %v, removed = %v, want only the study valve added", added, removed)
 	}
-	entry, ok := d.linkMaint[reloadStudioEUI]
+	entry, ok := d.linkMaint[reloadStudyEUI]
 	if !ok || entry != (linkMaintEntry{state: 1, retry: -1}) {
 		t.Errorf("added device entry = %+v (present %t), want a fresh one", entry, ok)
 	}
 	if got := d.linkMaint[reloadValveEUI]; got != kept {
 		t.Errorf("surviving entry = %+v, want %+v", got, kept)
 	}
-	if want := append(orderBefore, reloadStudioEUI); !reflect.DeepEqual(d.linkMaintOrder, want) {
+	if want := append(orderBefore, reloadStudyEUI); !reflect.DeepEqual(d.linkMaintOrder, want) {
 		t.Errorf("link maintenance order = %v, want %v", d.linkMaintOrder, want)
 	}
 }
@@ -241,7 +241,7 @@ func TestSetInstallAddsDeviceState(t *testing.T) {
 // the boot-time case, and it must move nothing.
 func TestSetInstallUnchangedKeepsDaemonState(t *testing.T) {
 	d, _ := reloadDaemon(t, reloadInstall(t))
-	seedTargetState(d, reloadStudioEUI)
+	seedTargetState(d, reloadStudyEUI)
 	before := daemonStateSnapshot(d)
 
 	added, removed, err := d.setInstall(reloadInstall(t))
@@ -260,7 +260,7 @@ func TestSetInstallUnchangedKeepsDaemonState(t *testing.T) {
 // leaves both the served pointer and the daemon maps as they were.
 func TestSetInstallRejectedKeepsInstall(t *testing.T) {
 	d, _ := reloadDaemon(t, reloadInstall(t))
-	seedTargetState(d, reloadStudioEUI)
+	seedTargetState(d, reloadStudyEUI)
 	before := daemonStateSnapshot(d)
 	served := d.inst.Load()
 
@@ -291,15 +291,15 @@ func TestCSLCompletionAfterRemovalSurvives(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			d, _ := reloadDaemon(t, reloadInstall(t))
-			seedTargetState(d, reloadStudioEUI)
-			if _, _, err := d.setInstall(reloadNoStudio(t)); err != nil {
+			seedTargetState(d, reloadStudyEUI)
+			if _, _, err := d.setInstall(reloadNoStudy(t)); err != nil {
 				t.Fatalf("setInstall: %v", err)
 			}
 			frame := make([]byte, 11)
-			copy(frame[3:], mustDecodeEUI(t, reloadStudioEUI))
+			copy(frame[3:], mustDecodeEUI(t, reloadStudyEUI))
 			action := tado.Action{
-				Node: reloadStudioEUI, Bytes: frame,
-				QueueTarget: reloadStudioEUI, QueueAttempt: true,
+				Node: reloadStudyEUI, Bytes: frame,
+				QueueTarget: reloadStudyEUI, QueueAttempt: true,
 			}
 			d.handleCSLCompletion(radio.CSLCompletion{Action: action, Result: tc.result})
 		})
@@ -313,7 +313,7 @@ func TestCSLCompletionAfterRemovalSurvives(t *testing.T) {
 // since the previous one, so the overlap does not depend on the host speed.
 func TestSetInstallConcurrentWithAPIReaders(t *testing.T) {
 	first := reloadInstall(t)
-	renamer := strings.NewReplacer("sala", "salotto", "studio", "mansarda")
+	renamer := strings.NewReplacer("lounge", "parlor", "study", "attic")
 	second, err := tado.Parse([]byte(renamer.Replace(installReloadYAML)))
 	if err != nil {
 		t.Fatalf("renamed install: %v", err)
@@ -461,8 +461,8 @@ func readRound(base string, phase *atomic.Int64, servedAt func(int64) int, quiet
 
 // The two names each renamed object carries, first installation then second.
 var (
-	reloadZoneNames  = map[int][2]string{1: {"sala", "salotto"}, 4: {"studio", "mansarda"}}
-	reloadNodeRooms  = map[string][2]string{"VA9000000001": {"sala", "salotto"}, "VA9000000002": {"studio", "mansarda"}}
+	reloadZoneNames  = map[int][2]string{1: {"lounge", "parlor"}, 4: {"study", "attic"}}
+	reloadNodeRooms  = map[string][2]string{"VA9000000001": {"lounge", "parlor"}, "VA9000000002": {"study", "attic"}}
 	errMixedInstalls = "mixes the two installations"
 )
 
@@ -630,32 +630,32 @@ func reloadWeek(c float64) []tado.ScheduleProgram {
 // member that stayed holds one, and no document otherwise.
 func TestSetInstallMovedMemberTakesNewZoneProgram(t *testing.T) {
 	const (
-		salaZone   = "  - {number: 1, name: sala, kind: heating, circuit: 1, members: [RU9000000001, VA9000000001], reporter: VA9000000001}\n"
-		studioZone = "  - {number: 4, name: studio, kind: heating, circuit: 1, members: [VA9000000002], reporter: VA9000000002}\n"
-		salaLeft   = "  - {number: 1, name: sala, kind: heating, circuit: 1, members: [RU9000000001], reporter: RU9000000001}\n"
-		studioIn   = "  - {number: 4, name: studio, kind: heating, circuit: 1, members: [VA9000000001, VA9000000002], reporter: VA9000000002}\n"
+		loungeZone = "  - {number: 1, name: lounge, kind: heating, circuit: 1, members: [RU9000000001, VA9000000001], reporter: VA9000000001}\n"
+		studyZone  = "  - {number: 4, name: study, kind: heating, circuit: 1, members: [VA9000000002], reporter: VA9000000002}\n"
+		loungeLeft = "  - {number: 1, name: lounge, kind: heating, circuit: 1, members: [RU9000000001], reporter: RU9000000001}\n"
+		studyIn    = "  - {number: 4, name: study, kind: heating, circuit: 1, members: [VA9000000001, VA9000000002], reporter: VA9000000002}\n"
 	)
-	moved := reloadInstall(t, [2]string{salaZone, salaLeft}, [2]string{studioZone, studioIn})
-	sala, studio := reloadWeek(21), reloadWeek(18)
+	moved := reloadInstall(t, [2]string{loungeZone, loungeLeft}, [2]string{studyZone, studyIn})
+	lounge, study := reloadWeek(21), reloadWeek(18)
 
 	for _, tc := range []struct {
-		name   string
-		studio []tado.ScheduleProgram
+		name  string
+		study []tado.ScheduleProgram
 	}{
 		{name: "new zone without a program"},
-		{name: "new zone with a program", studio: studio},
+		{name: "new zone with a program", study: study},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			d, _ := reloadDaemon(t, reloadInstall(t))
 			e := d.emu
 			for _, eui := range []string{"03046a3107c51b00", reloadValveEUI} {
-				if err := e.SetSchedule(eui, sala); err != nil {
-					t.Fatalf("SetSchedule sala: %v", err)
+				if err := e.SetSchedule(eui, lounge); err != nil {
+					t.Fatalf("SetSchedule lounge: %v", err)
 				}
 			}
-			if tc.studio != nil {
-				if err := e.SetSchedule(reloadStudioEUI, tc.studio); err != nil {
-					t.Fatalf("SetSchedule studio: %v", err)
+			if tc.study != nil {
+				if err := e.SetSchedule(reloadStudyEUI, tc.study); err != nil {
+					t.Fatalf("SetSchedule study: %v", err)
 				}
 			}
 			if _, _, err := d.setInstall(moved); err != nil {
@@ -665,17 +665,17 @@ func TestSetInstallMovedMemberTakesNewZoneProgram(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Schedule: %v", err)
 			}
-			if tc.studio == nil && set {
+			if tc.study == nil && set {
 				t.Errorf("the moved valve still holds %v, want no document", got)
 			}
-			if tc.studio != nil && !reflect.DeepEqual(got, tc.studio) {
-				t.Errorf("the moved valve holds %v (set=%t), want %v", got, set, tc.studio)
+			if tc.study != nil && !reflect.DeepEqual(got, tc.study) {
+				t.Errorf("the moved valve holds %v (set=%t), want %v", got, set, tc.study)
 			}
 			programs, ok := d.zonePrograms(e, moved, 4)
-			if ok != (tc.studio != nil) || (ok && !reflect.DeepEqual(programs, tc.studio)) {
-				t.Errorf("zone 4 program = %v (%t), want %v", programs, ok, tc.studio)
+			if ok != (tc.study != nil) || (ok && !reflect.DeepEqual(programs, tc.study)) {
+				t.Errorf("zone 4 program = %v (%t), want %v", programs, ok, tc.study)
 			}
-			if programs, ok := d.zonePrograms(e, moved, 1); !ok || !reflect.DeepEqual(programs, sala) {
+			if programs, ok := d.zonePrograms(e, moved, 1); !ok || !reflect.DeepEqual(programs, lounge) {
 				t.Errorf("zone 1 program = %v (%t), want the one it kept", programs, ok)
 			}
 		})

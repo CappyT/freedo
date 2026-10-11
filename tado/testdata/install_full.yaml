@@ -47,7 +47,7 @@ coordinator:
 #   serial  optional, the printed VA.../RU.../IB... string
 #   label   optional room name. The management API keeps it unique, and this
 #           fixture is the older shape: five devices below are labelled
-#           "soggiorno", which loads with a warning per repeat. Anything that
+#           "living", which loads with a warning per repeat. Anything that
 #           resolves a target by label and finds several gets an error listing
 #           them, never a silent first hit.
 #   zone    optional. The single logical id the device answers to on "?id=N".
@@ -60,64 +60,64 @@ devices:
   - kind: thermostat
     eui: "05a2cafa07c51b00"
     serial: RU2001000001
-    label: soggiorno
+    label: living
     notes: "OpenTherm to the boiler; heat source of circuit 1 and DHW"
   - kind: thermostat
     eui: "41c8693107c51b00"
     serial: RU2001000002
-    label: corridoio primo piano
+    label: first floor hall
     notes: "heat source of circuit 2"
   - kind: thermostat
     eui: "5e12693107c51b00"
     serial: RU2001000003
-    label: ufficio
+    label: office
     notes: "heat source of circuit 4"
 
-  # --- zone 1, soggiorno (4 valves, same label as the thermostat above) ---
-  - {kind: valve, eui: "01026a3107c51b00", serial: VA2001000001, label: soggiorno}
-  - {kind: valve, eui: "03046a3107c51b00", serial: VA2001000002, label: soggiorno}
-  - {kind: valve, eui: "05066a3107c51b00", serial: VA2001000003, label: soggiorno}
-  - {kind: valve, eui: "07086a3107c51b00", serial: VA2001000004, label: soggiorno}
+  # --- zone 1, living (4 valves, same label as the thermostat above) ---
+  - {kind: valve, eui: "01026a3107c51b00", serial: VA2001000001, label: living}
+  - {kind: valve, eui: "03046a3107c51b00", serial: VA2001000002, label: living}
+  - {kind: valve, eui: "05066a3107c51b00", serial: VA2001000003, label: living}
+  - {kind: valve, eui: "07086a3107c51b00", serial: VA2001000004, label: living}
 
-  # --- zone 2, cucina. These four carry an explicit logical id. ---
-  - {kind: valve, eui: "090a6a3107c51b00", serial: VA2001000005, label: cucina, zone: 2}
-  - {kind: valve, eui: "0b0c6a3107c51b00", serial: VA2001000006, label: cucina, zone: 2}
-  - {kind: valve, eui: "0d0e6a3107c51b00", serial: VA2001000007, label: cucina, zone: 2}
-  - {kind: valve, eui: "0f106a3107c51b00", serial: VA2001000008, label: cucina, zone: 2}
+  # --- zone 2, kitchen. These four carry an explicit logical id. ---
+  - {kind: valve, eui: "090a6a3107c51b00", serial: VA2001000005, label: kitchen, zone: 2}
+  - {kind: valve, eui: "0b0c6a3107c51b00", serial: VA2001000006, label: kitchen, zone: 2}
+  - {kind: valve, eui: "0d0e6a3107c51b00", serial: VA2001000007, label: kitchen, zone: 2}
+  - {kind: valve, eui: "0f106a3107c51b00", serial: VA2001000008, label: kitchen, zone: 2}
 
-  # --- zone 3, sala da pranzo ---
-  - {kind: valve, eui: "11126a3107c51b00", serial: VA2001000009, label: sala da pranzo}
-  - {kind: valve, eui: "13146a3107c51b00", serial: VA2001000010, label: sala da pranzo}
-  - {kind: valve, eui: "15166a3107c51b00", serial: VA2001000011, label: sala da pranzo}
-  - {kind: valve, eui: "17186a3107c51b00", serial: VA2001000012, label: sala da pranzo}
+  # --- zone 3, dining room ---
+  - {kind: valve, eui: "11126a3107c51b00", serial: VA2001000009, label: dining room}
+  - {kind: valve, eui: "13146a3107c51b00", serial: VA2001000010, label: dining room}
+  - {kind: valve, eui: "15166a3107c51b00", serial: VA2001000011, label: dining room}
+  - {kind: valve, eui: "17186a3107c51b00", serial: VA2001000012, label: dining room}
 
-  # --- zone 5, camera matrimoniale ---
-  - {kind: valve, eui: "191a6a3107c51b00", serial: VA2001000013, label: camera matrimoniale}
-  - {kind: valve, eui: "1b1c6a3107c51b00", serial: VA2001000014, label: camera matrimoniale}
-  - {kind: valve, eui: "1d1e6a3107c51b00", serial: VA2001000015, label: camera matrimoniale}
-  - {kind: valve, eui: "1f206a3107c51b00", serial: VA2001000016, label: camera matrimoniale}
+  # --- zone 5, master bedroom ---
+  - {kind: valve, eui: "191a6a3107c51b00", serial: VA2001000013, label: master bedroom}
+  - {kind: valve, eui: "1b1c6a3107c51b00", serial: VA2001000014, label: master bedroom}
+  - {kind: valve, eui: "1d1e6a3107c51b00", serial: VA2001000015, label: master bedroom}
+  - {kind: valve, eui: "1f206a3107c51b00", serial: VA2001000016, label: master bedroom}
 
-  # --- zone 6, corridoio primo piano ---
-  - {kind: valve, eui: "21226a3107c51b00", serial: VA2001000017, label: corridoio primo piano}
-  - {kind: valve, eui: "23246a3107c51b00", serial: VA2001000018, label: corridoio primo piano}
-  - {kind: valve, eui: "25266a3107c51b00", serial: VA2001000019, label: corridoio primo piano}
-  - {kind: valve, eui: "27286a3107c51b00", serial: VA2001000020, label: corridoio primo piano}
+  # --- zone 6, first floor hall ---
+  - {kind: valve, eui: "21226a3107c51b00", serial: VA2001000017, label: first floor hall}
+  - {kind: valve, eui: "23246a3107c51b00", serial: VA2001000018, label: first floor hall}
+  - {kind: valve, eui: "25266a3107c51b00", serial: VA2001000019, label: first floor hall}
+  - {kind: valve, eui: "27286a3107c51b00", serial: VA2001000020, label: first floor hall}
 
-  # --- zone 8, bagno ---
-  - {kind: valve, eui: "292a6a3107c51b00", serial: VA2001000021, label: bagno}
-  - {kind: valve, eui: "2b2c6a3107c51b00", serial: VA2001000022, label: bagno}
-  - {kind: valve, eui: "2d2e6a3107c51b00", serial: VA2001000023, label: bagno}
-  - {kind: valve, eui: "2f306a3107c51b00", serial: VA2001000024, label: bagno}
+  # --- zone 8, bath ---
+  - {kind: valve, eui: "292a6a3107c51b00", serial: VA2001000021, label: bath}
+  - {kind: valve, eui: "2b2c6a3107c51b00", serial: VA2001000022, label: bath}
+  - {kind: valve, eui: "2d2e6a3107c51b00", serial: VA2001000023, label: bath}
+  - {kind: valve, eui: "2f306a3107c51b00", serial: VA2001000024, label: bath}
 
-  # --- zone 9, ufficio ---
-  - {kind: valve, eui: "31326a3107c51b00", serial: VA2001000025, label: ufficio}
-  - {kind: valve, eui: "33346a3107c51b00", serial: VA2001000026, label: ufficio}
-  - {kind: valve, eui: "35366a3107c51b00", serial: VA2001000027, label: ufficio}
+  # --- zone 9, office ---
+  - {kind: valve, eui: "31326a3107c51b00", serial: VA2001000025, label: office}
+  - {kind: valve, eui: "33346a3107c51b00", serial: VA2001000026, label: office}
+  - {kind: valve, eui: "35366a3107c51b00", serial: VA2001000027, label: office}
 
-  # --- zone 10, taverna ---
-  - {kind: valve, eui: "37386a3107c51b00", serial: VA2001000028, label: taverna}
-  - {kind: valve, eui: "393a6a3107c51b00", serial: VA2001000029, label: taverna}
-  - {kind: valve, eui: "3b3c6a3107c51b00", serial: VA2001000030, label: taverna}
+  # --- zone 10, basement ---
+  - {kind: valve, eui: "37386a3107c51b00", serial: VA2001000028, label: basement}
+  - {kind: valve, eui: "393a6a3107c51b00", serial: VA2001000029, label: basement}
+  - {kind: valve, eui: "3b3c6a3107c51b00", serial: VA2001000030, label: basement}
 
 # The zone map the cloud allocated. Zone numbers are sparse - 4 and 7 are simply
 # not in use here - and they are not an index into this list: the number is the N
@@ -141,7 +141,7 @@ devices:
 #             to circuit 9, whose demand nobody publishes, so always set it.
 zones:
   - number: 0
-    name: acqua calda sanitaria
+    name: domestic hot water
     kind: hotwater
     # Only the wall thermostat is wired to the boiler, so a hot-water zone has
     # exactly one sensible member. No reporter and no circuit: the DHW slot
@@ -149,7 +149,7 @@ zones:
     members: [RU2001000001]
 
   - number: 1
-    name: soggiorno
+    name: living
     kind: heating
     circuit: 1
     members: [RU2001000001, VA2001000001, VA2001000002, VA2001000003, VA2001000004]
@@ -158,7 +158,7 @@ zones:
     measuring_device: RU2001000001
 
   - number: 2
-    name: cucina
+    name: kitchen
     kind: heating
     circuit: 1
     members: [VA2001000005, VA2001000006, VA2001000007, VA2001000008]
@@ -166,7 +166,7 @@ zones:
     measuring_device: VA2001000005
 
   - number: 3
-    name: sala da pranzo
+    name: dining room
     kind: heating
     circuit: 1
     members: [VA2001000009, VA2001000010, VA2001000011, VA2001000012]
@@ -174,7 +174,7 @@ zones:
     measuring_device: VA2001000009
 
   - number: 5
-    name: camera matrimoniale
+    name: master bedroom
     kind: heating
     circuit: 2
     members: [VA2001000013, VA2001000014, VA2001000015, VA2001000016]
@@ -182,7 +182,7 @@ zones:
     measuring_device: VA2001000013
 
   - number: 6
-    name: corridoio primo piano
+    name: first floor hall
     kind: heating
     circuit: 2
     members: [RU2001000002, VA2001000017, VA2001000018, VA2001000019, VA2001000020]
@@ -190,7 +190,7 @@ zones:
     measuring_device: RU2001000002
 
   - number: 8
-    name: bagno
+    name: bath
     kind: heating
     circuit: 4
     members: [VA2001000021, VA2001000022, VA2001000023, VA2001000024]
@@ -198,7 +198,7 @@ zones:
     measuring_device: VA2001000021
 
   - number: 9
-    name: ufficio
+    name: office
     kind: heating
     circuit: 4
     members: [RU2001000003, VA2001000025, VA2001000026, VA2001000027]
@@ -206,7 +206,7 @@ zones:
     measuring_device: RU2001000003
 
   - number: 10
-    name: taverna
+    name: basement
     kind: heating
     circuit: 4
     members: [VA2001000028, VA2001000029, VA2001000030]
@@ -219,13 +219,13 @@ zones:
 # aggregate anything. Circuit ids are sparse too, and bounded like zone numbers.
 circuits:
   - id: 1
-    name: piano terra
+    name: ground floor
     heat_source: RU2001000001
   - id: 2
-    name: primo piano
+    name: first floor
     heat_source: RU2001000002
   - id: 4
-    name: taverna e uffici
+    name: basement and offices
     heat_source: RU2001000003
 
 # Installation knobs. The block can be omitted. The process knobs - serial port,

@@ -46,14 +46,14 @@ func served02b3(t *testing.T, e *EmuState, euiHex string, mid uint16) byte {
 // offline schedule off.
 func TestServedConfigOfflineScheduleFollowsInstall(t *testing.T) {
 	e, _ := fixtureEmu(t)
-	for i, eui := range []string{cameraEUIHex, bagnoEUIHex} {
+	for i, eui := range []string{bedroomEUIHex, bathEUIHex} {
 		if got := served02b3(t, e, eui, uint16(0xd100+i)); got != 1 {
 			t.Errorf("default install: %s 02b3 = %d, want 1", eui, got)
 		}
 	}
 
 	off := NewEmu(offlineScheduleInstall(t, false).EmuConfig(), NewUnhandledLogger(io.Discard))
-	for i, eui := range []string{cameraEUIHex, bagnoEUIHex} {
+	for i, eui := range []string{bedroomEUIHex, bathEUIHex} {
 		if got := served02b3(t, off, eui, uint16(0xd200+i)); got != 0 {
 			t.Errorf("offline_schedule false: %s 02b3 = %d, want 0", eui, got)
 		}
@@ -65,22 +65,22 @@ func TestServedConfigOfflineScheduleFollowsInstall(t *testing.T) {
 // the field and a restart; the other devices follow the installation.
 func TestOfflineSchedulePerDeviceWriteWins(t *testing.T) {
 	e, _ := fixtureEmu(t)
-	e.node(mustHex(cameraEUIHex)).LastID = 10 // takes the EnqueueConfig path
+	e.node(mustHex(bedroomEUIHex)).LastID = 10 // takes the EnqueueConfig path
 	disabled := false
-	if err := e.EnqueueConfig(cameraEUIHex, 10, ConfigWrite{OfflineScheduleEnabled: &disabled}); err != nil {
+	if err := e.EnqueueConfig(bedroomEUIHex, 10, ConfigWrite{OfflineScheduleEnabled: &disabled}); err != nil {
 		t.Fatal(err)
 	}
 	// Each GET takes a new MID: a repeated one is a retransmission, answered
 	// from the first answer.
 	mid := uint16(0xd300)
-	check := func(step string, e *EmuState, camera, bagno byte) {
+	check := func(step string, e *EmuState, bedroom, bath byte) {
 		t.Helper()
 		mid += 2
-		if got := served02b3(t, e, cameraEUIHex, mid); got != camera {
-			t.Errorf("%s: camera 02b3 = %d, want %d", step, got, camera)
+		if got := served02b3(t, e, bedroomEUIHex, mid); got != bedroom {
+			t.Errorf("%s: bedroom 02b3 = %d, want %d", step, got, bedroom)
 		}
-		if got := served02b3(t, e, bagnoEUIHex, mid+1); got != bagno {
-			t.Errorf("%s: bagno 02b3 = %d, want %d", step, got, bagno)
+		if got := served02b3(t, e, bathEUIHex, mid+1); got != bath {
+			t.Errorf("%s: bath 02b3 = %d, want %d", step, got, bath)
 		}
 	}
 	check("after the device write", e, 0, 1)
@@ -97,7 +97,7 @@ func TestOfflineSchedulePerDeviceWriteWins(t *testing.T) {
 	check("install on", e, 0, 1)
 
 	calib := 50
-	if err := e.EnqueueConfig(cameraEUIHex, 10, ConfigWrite{CalibOffset: &calib}); err != nil {
+	if err := e.EnqueueConfig(bedroomEUIHex, 10, ConfigWrite{CalibOffset: &calib}); err != nil {
 		t.Fatal(err)
 	}
 	check("a write without 02b3", e, 0, 1)

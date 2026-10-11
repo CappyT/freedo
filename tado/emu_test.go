@@ -195,9 +195,9 @@ func TestOnFrameAcksUplink(t *testing.T) {
 // TestOnFrameLearnsCSLFromEnhAck: an Enhanced ACK from a device teaches its CSL
 // phase and period.
 func TestOnFrameLearnsCSLFromEnhAck(t *testing.T) {
-	dev := NodeByAny("camera")
+	dev := NodeByAny("bedroom")
 	if dev == nil {
-		t.Fatal("camera not in inventory")
+		t.Fatal("bedroom not in inventory")
 	}
 	wire := mustB(dev.WireLE)
 
@@ -314,7 +314,7 @@ func TestUnhandledLogging(t *testing.T) {
 	// An uplink carrying a TLV tag outside the catalog is logged too. Every tag
 	// the golden capture carries is catalogued, so the frame is synthesized.
 	const wantTag = "9999"
-	raw := uplinkFrame(t, mustHex(NodeByAny("camera").WireLE), "0.03",
+	raw := uplinkFrame(t, mustHex(NodeByAny("bedroom").WireLE), "0.03",
 		[]string{"d", "VA1000000005", "config"}, []string{"id=10"},
 		TLV{Tag: wantTag, Val: []byte{0x01}}.Encode())
 	e2, log2, _ := newTestEmu(t)
@@ -509,10 +509,10 @@ func TestEnqueueDHWControlRequiresCoAP204(t *testing.T) {
 
 func TestEnqueueBoostRequiresMatchingCoAP204(t *testing.T) {
 	e, _, _ := newTestEmu(t)
-	if err := e.EnqueueBoost("camera", 3, true); err != nil {
+	if err := e.EnqueueBoost("bedroom", 3, true); err != nil {
 		t.Fatal(err)
 	}
-	wire, label, err := e.resolve("camera")
+	wire, label, err := e.resolve("bedroom")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -526,7 +526,7 @@ func TestEnqueueBoostRequiresMatchingCoAP204(t *testing.T) {
 	}
 	request := ParseApp(data.Plaintext).CoAP
 	e.OnFrame(BuildEnhAck(data.Seq, BridgeEUI, wire, 0))
-	if e.Pending("camera") != 1 {
+	if e.Pending("bedroom") != 1 {
 		t.Fatal("Enhanced ACK completed boost")
 	}
 
@@ -544,19 +544,19 @@ func TestEnqueueBoostRequiresMatchingCoAP204(t *testing.T) {
 	}
 	feed("2.05", request.Token, 0x41)
 	feed("2.04", []byte{0}, 0x42)
-	if e.Pending("camera") != 1 {
+	if e.Pending("bedroom") != 1 {
 		t.Fatal("wrong CoAP code or token completed boost")
 	}
 	feed("4.04", request.Token, 0x43)
-	if e.Pending("camera") != 0 {
-		t.Fatalf("matching 4.04 left boost pending=%d", e.Pending("camera"))
+	if e.Pending("bedroom") != 0 {
+		t.Fatalf("matching 4.04 left boost pending=%d", e.Pending("bedroom"))
 	}
-	history := e.QueueHistory("camera")
+	history := e.QueueHistory("bedroom")
 	if len(history) != 1 || history[0].Result != "dropped" || history[0].Reason != "coap-4.04" {
 		t.Fatalf("4.04 history=%+v, want dropped/coap-4.04", history)
 	}
 
-	if err := e.EnqueueBoost("camera", 3, true); err != nil {
+	if err := e.EnqueueBoost("bedroom", 3, true); err != nil {
 		t.Fatal(err)
 	}
 	actions, ok = e.nextDownlink(wire, label)
@@ -569,15 +569,15 @@ func TestEnqueueBoostRequiresMatchingCoAP204(t *testing.T) {
 	}
 	request = ParseApp(data.Plaintext).CoAP
 	feed("2.04", request.Token, 0x43)
-	if e.Pending("camera") != 0 {
-		t.Fatalf("matching 2.04 left boost pending=%d", e.Pending("camera"))
+	if e.Pending("bedroom") != 0 {
+		t.Fatalf("matching 2.04 left boost pending=%d", e.Pending("bedroom"))
 	}
-	history = e.QueueHistory("camera")
+	history = e.QueueHistory("bedroom")
 	if len(history) != 2 || history[0].Result != "delivered" || history[0].Reason != "coap-ack" {
 		t.Fatalf("history=%+v, want delivered/coap-ack", history)
 	}
 
-	if err := e.EnqueueBoost("camera", 3, true); err != nil {
+	if err := e.EnqueueBoost("bedroom", 3, true); err != nil {
 		t.Fatal(err)
 	}
 	actions, ok = e.nextDownlink(wire, label)
@@ -590,10 +590,10 @@ func TestEnqueueBoostRequiresMatchingCoAP204(t *testing.T) {
 	}
 	request = ParseApp(data.Plaintext).CoAP
 	feed("4.05", request.Token, 0x44)
-	if e.Pending("camera") != 0 {
-		t.Fatalf("matching 4.05 left boost pending=%d", e.Pending("camera"))
+	if e.Pending("bedroom") != 0 {
+		t.Fatalf("matching 4.05 left boost pending=%d", e.Pending("bedroom"))
 	}
-	history = e.QueueHistory("camera")
+	history = e.QueueHistory("bedroom")
 	if len(history) != 3 || history[0].Result != "dropped" || history[0].Reason != "coap-4.05" {
 		t.Fatalf("4.05 history=%+v, want dropped/coap-4.05", history)
 	}
@@ -604,13 +604,13 @@ func TestBoostTimerQueuesCapturedRestore(t *testing.T) {
 	cfg := fixtureInstall(t).EmuConfig()
 	cfg.Now = func() time.Time { return now }
 	e := NewEmu(cfg, nil)
-	if err := e.EnqueueBoost("camera", 10, true); err != nil {
+	if err := e.EnqueueBoost("bedroom", 10, true); err != nil {
 		t.Fatal(err)
 	}
 	if due, err := e.ExpireBoosts(now.Add(BoostDuration)); err != nil || len(due) != 0 {
 		t.Fatalf("expiry while the boost waits in the queue: due=%v err=%v", due, err)
 	}
-	answerQueued(t, e, mustHex(cameraEUIHex), "2.04")
+	answerQueued(t, e, mustHex(bedroomEUIHex), "2.04")
 	if due, err := e.ExpireBoosts(now.Add(BoostDuration - time.Second)); err != nil || len(due) != 0 {
 		t.Fatalf("early expiry due=%v err=%v", due, err)
 	}
@@ -618,7 +618,7 @@ func TestBoostTimerQueuesCapturedRestore(t *testing.T) {
 	if err != nil || len(due) != 1 {
 		t.Fatalf("expiry due=%v err=%v", due, err)
 	}
-	wire, _, err := e.resolve("camera")
+	wire, _, err := e.resolve("bedroom")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -856,7 +856,7 @@ func TestServedSchedulePullBlock2AndETag(t *testing.T) {
 	for minute := 0; minute < 24*60; minute += 60 {
 		entries = append(entries, ScheduleEntry{Minute: minute, SetpointCenti: 500 + minute, Enabled: true})
 	}
-	if err := e.SetSchedule("camera", []ScheduleProgram{{DayMask: 0x7f, Entries: entries}}); err != nil {
+	if err := e.SetSchedule("bedroom", []ScheduleProgram{{DayMask: 0x7f, Entries: entries}}); err != nil {
 		t.Fatal(err)
 	}
 	e.inst = &Install{HomeID: 7654321}
@@ -965,7 +965,7 @@ func TestSetScheduleRequiresCompleteOrderedWeek(t *testing.T) {
 		{"minute past the day", []ScheduleProgram{{DayMask: 0x7f, Entries: []ScheduleEntry{{Minute: 0, SetpointCenti: 500}, {Minute: 1440, SetpointCenti: 700}}}}},
 		{"second program empty", []ScheduleProgram{{DayMask: 0x1f, Entries: day}, {DayMask: 0x60}}},
 	} {
-		if err := e.SetSchedule("camera", tc.programs); err == nil {
+		if err := e.SetSchedule("bedroom", tc.programs); err == nil {
 			t.Errorf("SetSchedule(%s) accepted %+v", tc.name, tc.programs)
 		}
 	}
@@ -999,7 +999,7 @@ func TestSetScheduleDayBlobBoundary(t *testing.T) {
 		if n := len(EncodeScheduleDayProgram(0x01, tc.entries...)); n != tc.size {
 			t.Fatalf("fixture encodes to %d bytes, want %d", n, tc.size)
 		}
-		err := e.SetSchedule("camera", []ScheduleProgram{{DayMask: 0x7f, Entries: tc.entries}})
+		err := e.SetSchedule("bedroom", []ScheduleProgram{{DayMask: 0x7f, Entries: tc.entries}})
 		if (err == nil) != tc.ok {
 			t.Errorf("SetSchedule(%d-byte day) err = %v, want ok=%t", tc.size, err, tc.ok)
 		}
@@ -1021,10 +1021,10 @@ func TestSetScheduleAcceptsSeveralDayPrograms(t *testing.T) {
 			{Minute: 1439, SetpointCenti: -50, Enabled: true},
 		}},
 	}
-	if err := e.SetSchedule("camera", programs); err != nil {
+	if err := e.SetSchedule("bedroom", programs); err != nil {
 		t.Fatal(err)
 	}
-	got, set, err := e.Schedule("camera")
+	got, set, err := e.Schedule("bedroom")
 	if err != nil || !set {
 		t.Fatalf("Schedule = %v, %t, %v", got, set, err)
 	}
@@ -1062,11 +1062,11 @@ func servedBlockAnswer(t *testing.T, actions []Action, mid uint16) *CoAPMessage 
 func TestServedVolatileSettings(t *testing.T) {
 	dev := mustHex("02a6cefa07c51b00")
 	e, _, _ := newTestEmu(t)
-	if err := e.EnqueueChildLock("camera", 10, true); err != nil {
+	if err := e.EnqueueChildLock("bedroom", 10, true); err != nil {
 		t.Fatal(err)
 	}
 	// The served lock is the one the valve took.
-	actions, ok, err := e.NextQueuedDownlink("camera")
+	actions, ok, err := e.NextQueuedDownlink("bedroom")
 	if err != nil || !ok {
 		t.Fatalf("no queued child lock: ok=%v err=%v", ok, err)
 	}
@@ -1076,7 +1076,7 @@ func TestServedVolatileSettings(t *testing.T) {
 	}
 	e.OnFrame(BuildEnhAck(df.Seq, BridgeEUI, dev, 0))
 	unitF := true
-	if err := e.EnqueueConfig("camera", 10, ConfigWrite{TempUnitF: &unitF}); err != nil {
+	if err := e.EnqueueConfig("bedroom", 10, ConfigWrite{TempUnitF: &unitF}); err != nil {
 		t.Fatal(err)
 	}
 	for i, tc := range []struct {
@@ -1602,22 +1602,22 @@ func TestSessionAdoptionFromLaterUplink(t *testing.T) {
 
 // TestPiggybackSetpoint requires the valve's correlated application response.
 func TestPiggybackSetpoint(t *testing.T) {
-	camera := NodeByAny("camera")
-	if camera == nil {
-		t.Fatal("camera not in inventory")
+	bedroom := NodeByAny("bedroom")
+	if bedroom == nil {
+		t.Fatal("bedroom not in inventory")
 	}
 	raw, f, _ := firstUplink(t, func(fr *Frame, _ *AppPayload) bool {
-		return hex.EncodeToString(fr.SrcEUI()) == camera.WireLE
+		return hex.EncodeToString(fr.SrcEUI()) == bedroom.WireLE
 	})
 
 	e, _, _ := newTestEmu(t)
-	if err := e.EnqueueSetpoint("camera", SetpointParams{
+	if err := e.EnqueueSetpoint("bedroom", SetpointParams{
 		ID: 10, Setpoint: 21.5, Sched: 18.0, Overlay: 2,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if e.Pending("camera") != 1 {
-		t.Fatalf("pending=%d, want 1", e.Pending("camera"))
+	if e.Pending("bedroom") != 1 {
+		t.Fatalf("pending=%d, want 1", e.Pending("bedroom"))
 	}
 
 	actions := e.OnFrame(raw)
@@ -1631,8 +1631,8 @@ func TestPiggybackSetpoint(t *testing.T) {
 	if !dl.CSLTx {
 		t.Fatalf("setpoint CSL plan=%+v", dl)
 	}
-	if dl.Node != "camera" {
-		t.Errorf("action node=%q, want camera", dl.Node)
+	if dl.Node != "bedroom" {
+		t.Errorf("action node=%q, want bedroom", dl.Node)
 	}
 
 	df, err := ParseData(NetworkKey, dl.Bytes)
@@ -1640,7 +1640,7 @@ func TestPiggybackSetpoint(t *testing.T) {
 		t.Fatalf("downlink does not decrypt: %v", err)
 	}
 	if !bytes.Equal(df.DstEUI, f.SrcEUI()) {
-		t.Errorf("downlink dst=%x, want the camera %x", df.DstEUI, f.SrcEUI())
+		t.Errorf("downlink dst=%x, want the bedroom %x", df.DstEUI, f.SrcEUI())
 	}
 	app := ParseApp(df.Plaintext)
 	if app == nil || app.CoAP == nil {
@@ -1674,8 +1674,8 @@ func TestPiggybackSetpoint(t *testing.T) {
 	}
 	// MAC acknowledgement refreshes the link but does not prove application.
 	e.OnFrame(BuildEnhAck(df.Seq, BridgeEUI, f.SrcEUI(), 0x0101))
-	if e.Pending("camera") != 1 {
-		t.Errorf("pending=%d after the device EnhACK, want 1", e.Pending("camera"))
+	if e.Pending("bedroom") != 1 {
+		t.Errorf("pending=%d after the device EnhACK, want 1", e.Pending("bedroom"))
 	}
 	ack, err := BuildCoAPAck("2.04", app.CoAP.MID, app.CoAP.Token, nil, f.SrcEUI(), BridgeEUI, coapPort, bridgeCoAPPort)
 	if err != nil {
@@ -1686,8 +1686,8 @@ func TestPiggybackSetpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	e.OnFrame(ackFrame.Bytes())
-	if e.Pending("camera") != 0 {
-		t.Errorf("pending=%d after the device CoAP response, want 0", e.Pending("camera"))
+	if e.Pending("bedroom") != 0 {
+		t.Errorf("pending=%d after the device CoAP response, want 0", e.Pending("bedroom"))
 	}
 	if st := e.Stats(); st.DownlinksDelivered != 1 {
 		t.Errorf("delivered=%d, want 1", st.DownlinksDelivered)
@@ -1730,10 +1730,10 @@ func TestEnqueueSetpointRequiresCorrelatedApplicationResponse(t *testing.T) {
 	for _, accepted := range []string{"2.04"} {
 		t.Run(accepted, func(t *testing.T) {
 			e, _, _ := newTestEmu(t)
-			if err := e.EnqueueSetpoint("camera", SetpointParams{ID: 4, Setpoint: 5, Sched: 5, Overlay: 2}); err != nil {
+			if err := e.EnqueueSetpoint("bedroom", SetpointParams{ID: 4, Setpoint: 5, Sched: 5, Overlay: 2}); err != nil {
 				t.Fatal(err)
 			}
-			wire, label, err := e.resolve("camera")
+			wire, label, err := e.resolve("bedroom")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1747,36 +1747,36 @@ func TestEnqueueSetpointRequiresCorrelatedApplicationResponse(t *testing.T) {
 			}
 			request := ParseApp(data.Plaintext).CoAP
 			e.OnFrame(BuildEnhAck(data.Seq, BridgeEUI, wire, 0))
-			if e.Pending("camera") != 1 {
+			if e.Pending("bedroom") != 1 {
 				t.Fatal("Enhanced ACK completed setpoint")
 			}
 
 			other := []byte{0x68, 0x45, 0x23, 0x31, 0x07, 0xc5, 0x1b, 0x00}
 			e.confirmByMID(other, &CoAPMessage{Type: "ACK", Code: accepted, MID: request.MID, Token: request.Token})
-			if e.Pending("camera") != 1 {
+			if e.Pending("bedroom") != 1 {
 				t.Fatal("wrong source completed setpoint")
 			}
 			e.confirmByMID(wire, &CoAPMessage{Type: "ACK", Code: accepted, MID: request.MID + 1, Token: request.Token})
-			if e.Pending("camera") != 1 {
+			if e.Pending("bedroom") != 1 {
 				t.Fatal("wrong MID completed setpoint")
 			}
 			e.confirmByMID(wire, &CoAPMessage{Type: "ACK", Code: accepted, MID: request.MID, Token: []byte{0}})
-			if e.Pending("camera") != 1 {
+			if e.Pending("bedroom") != 1 {
 				t.Fatal("wrong token completed setpoint")
 			}
 			e.confirmByMID(wire, &CoAPMessage{Type: "ACK", Code: "2.01", MID: request.MID, Token: request.Token})
-			if e.Pending("camera") != 1 {
+			if e.Pending("bedroom") != 1 {
 				t.Fatal("wrong 2.01 code completed setpoint")
 			}
 			e.confirmByMID(wire, &CoAPMessage{Type: "ACK", Code: "2.05", MID: request.MID, Token: request.Token})
-			if e.Pending("camera") != 1 {
+			if e.Pending("bedroom") != 1 {
 				t.Fatal("wrong 2.05 code completed setpoint")
 			}
 			feed(t, e, wire, accepted, request.MID, request.Token, 0x46)
-			if e.Pending("camera") != 0 {
+			if e.Pending("bedroom") != 0 {
 				t.Fatal("matching CoAP response did not complete setpoint")
 			}
-			history := e.QueueHistory("camera")
+			history := e.QueueHistory("bedroom")
 			if len(history) != 1 || history[0].Result != "delivered" || history[0].Reason != "coap-ack" {
 				t.Fatalf("history=%+v, want delivered/coap-ack", history)
 			}
@@ -1784,10 +1784,10 @@ func TestEnqueueSetpointRequiresCorrelatedApplicationResponse(t *testing.T) {
 	}
 
 	e, _, _ := newTestEmu(t)
-	if err := e.EnqueueSetpoint("camera", SetpointParams{ID: 4, Setpoint: 5, Sched: 5, Overlay: 2}); err != nil {
+	if err := e.EnqueueSetpoint("bedroom", SetpointParams{ID: 4, Setpoint: 5, Sched: 5, Overlay: 2}); err != nil {
 		t.Fatal(err)
 	}
-	wire, label, err := e.resolve("camera")
+	wire, label, err := e.resolve("bedroom")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1801,10 +1801,10 @@ func TestEnqueueSetpointRequiresCorrelatedApplicationResponse(t *testing.T) {
 	}
 	request := ParseApp(data.Plaintext).CoAP
 	feed(t, e, wire, "4.05", request.MID, request.Token, 0x47)
-	if e.Pending("camera") != 0 {
+	if e.Pending("bedroom") != 0 {
 		t.Fatal("matching 4.xx left setpoint pending")
 	}
-	history := e.QueueHistory("camera")
+	history := e.QueueHistory("bedroom")
 	if len(history) != 1 || history[0].Result != "dropped" || history[0].Reason != "coap-4.05" {
 		t.Fatalf("history=%+v, want dropped/coap-4.05", history)
 	}
@@ -1815,21 +1815,21 @@ func TestEnqueueSetpointRequiresCorrelatedApplicationResponse(t *testing.T) {
 // an undelivered attempt from riding out as a piggyback during the next one.
 func TestDropQueue(t *testing.T) {
 	e, _, _ := newTestEmu(t)
-	if n := e.DropQueue("bagno"); n != 0 {
+	if n := e.DropQueue("bath"); n != 0 {
 		t.Errorf("DropQueue on an empty queue returned %d, want 0", n)
 	}
 	if n := e.DropQueue("nosuchnode"); n != 0 {
 		t.Errorf("DropQueue on an unknown target returned %d, want 0", n)
 	}
-	for _, node := range []string{"bagno", "camera"} {
+	for _, node := range []string{"bath", "bedroom"} {
 		if err := e.EnqueueSetpoint(node, SetpointParams{ID: 3, Setpoint: 5.0, Sched: 5.0, Overlay: 2}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := e.EnqueueIdentify("bagno", 3); err != nil {
+	if err := e.EnqueueIdentify("bath", 3); err != nil {
 		t.Fatal(err)
 	}
-	queue := e.Queue("bagno")
+	queue := e.Queue("bath")
 	if len(queue) != 2 {
 		t.Fatalf("queue length=%d, want 2", len(queue))
 	}
@@ -1837,18 +1837,18 @@ func TestDropQueue(t *testing.T) {
 		t.Errorf("first queue entry = %+v, want a fresh setpoint", queue[0])
 	}
 	queue[0].Kind = "changed"
-	if got := e.Queue("bagno")[0].Kind; got != "setpoint" {
+	if got := e.Queue("bath")[0].Kind; got != "setpoint" {
 		t.Errorf("Queue returned mutable state: kind=%q", got)
 	}
 	before := e.Stats()
-	if n := e.DropQueue("bagno"); n != 2 {
-		t.Errorf("dropped %d downlinks, want the 2 queued for bagno", n)
+	if n := e.DropQueue("bath"); n != 2 {
+		t.Errorf("dropped %d downlinks, want the 2 queued for bath", n)
 	}
-	if n := e.Pending("bagno"); n != 0 {
-		t.Errorf("bagno still holds %d downlinks", n)
+	if n := e.Pending("bath"); n != 0 {
+		t.Errorf("bath still holds %d downlinks", n)
 	}
-	if n := e.Pending("camera"); n != 1 {
-		t.Errorf("camera lost its own queue (%d pending, want 1)", n)
+	if n := e.Pending("bedroom"); n != 1 {
+		t.Errorf("bedroom lost its own queue (%d pending, want 1)", n)
 	}
 	after := e.Stats()
 	if after.DownlinksDelivered != before.DownlinksDelivered || after.DownlinksDropped != before.DownlinksDropped {
@@ -1856,18 +1856,18 @@ func TestDropQueue(t *testing.T) {
 			before.DownlinksDelivered, after.DownlinksDelivered,
 			before.DownlinksDropped, after.DownlinksDropped)
 	}
-	if _, err := e.ScheduleDownlink("bagno"); err == nil {
+	if _, err := e.ScheduleDownlink("bath"); err == nil {
 		t.Error("scheduling after a withdrawal should fail: nothing is queued")
 	}
 }
 
 func TestQueueHistoryRecordsTerminalOutcomes(t *testing.T) {
 	e, _, _ := newTestEmu(t)
-	wire, label, err := e.resolve("bagno")
+	wire, label, err := e.resolve("bath")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := e.EnqueueSetpoint("bagno", SetpointParams{ID: 3, Setpoint: 5, Sched: 5, Overlay: 2}); err != nil {
+	if err := e.EnqueueSetpoint("bath", SetpointParams{ID: 3, Setpoint: 5, Sched: 5, Overlay: 2}); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := e.nextDownlink(wire, label); !ok {
@@ -1876,12 +1876,12 @@ func TestQueueHistoryRecordsTerminalOutcomes(t *testing.T) {
 	q := e.queue[hexEUI(wire)][0]
 	e.confirmByMID(wire, &CoAPMessage{Type: "ACK", Code: "2.04", MID: q.mid, Token: q.responseToken})
 
-	if err := e.EnqueueIdentify("bagno", 3); err != nil {
+	if err := e.EnqueueIdentify("bath", 3); err != nil {
 		t.Fatal(err)
 	}
-	e.DropQueue("bagno")
+	e.DropQueue("bath")
 
-	if err := e.EnqueueSetpoint("bagno", SetpointParams{ID: 3, Setpoint: 5, Sched: 5, Overlay: 2}); err != nil {
+	if err := e.EnqueueSetpoint("bath", SetpointParams{ID: 3, Setpoint: 5, Sched: 5, Overlay: 2}); err != nil {
 		t.Fatal(err)
 	}
 	for range maxDownlinkTries {
@@ -1893,7 +1893,7 @@ func TestQueueHistoryRecordsTerminalOutcomes(t *testing.T) {
 		t.Fatal("retry-limit downlink was sent")
 	}
 
-	history := e.QueueHistory("bagno")
+	history := e.QueueHistory("bath")
 	if len(history) != 3 {
 		t.Fatalf("history length=%d, want 3", len(history))
 	}
@@ -1906,14 +1906,14 @@ func TestQueueHistoryRecordsTerminalOutcomes(t *testing.T) {
 		t.Errorf("history=%+v, want terminal attempts and timestamps", history)
 	}
 	history[0].Result = "changed"
-	if got := e.QueueHistory("bagno")[0].Result; got != "dropped" {
+	if got := e.QueueHistory("bath")[0].Result; got != "dropped" {
 		t.Errorf("QueueHistory returned mutable state: result=%q", got)
 	}
 }
 
 func TestQueueHistoryRetainsNewest32Outcomes(t *testing.T) {
 	e, _, _ := newTestEmu(t)
-	wire, _, err := e.resolve("bagno")
+	wire, _, err := e.resolve("bath")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1921,7 +1921,7 @@ func TestQueueHistoryRetainsNewest32Outcomes(t *testing.T) {
 	for i := 0; i < maxDownlinkHistory+1; i++ {
 		e.recordDownlinkOutcome(key, &queuedDownlink{kind: "setpoint", desc: strconv.Itoa(i)}, "withdrawn", "operator")
 	}
-	history := e.QueueHistory("bagno")
+	history := e.QueueHistory("bath")
 	if len(history) != maxDownlinkHistory {
 		t.Fatalf("history length=%d, want %d", len(history), maxDownlinkHistory)
 	}
@@ -1935,7 +1935,7 @@ func TestQueueHistoryRetainsNewest32Outcomes(t *testing.T) {
 
 func TestQueueZoneHopRecordsSupersededOutcome(t *testing.T) {
 	e, _, _ := newTestEmu(t)
-	wire, _, err := e.resolve("bagno")
+	wire, _, err := e.resolve("bath")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1945,11 +1945,11 @@ func TestQueueZoneHopRecordsSupersededOutcome(t *testing.T) {
 	e.queueZoneHop(wire, older, []byte{1}, "zone old", origin)
 	e.queueZoneHop(wire, newer, []byte{2}, "zone new", origin)
 
-	queue := e.Queue("bagno")
+	queue := e.Queue("bath")
 	if len(queue) != 1 || queue[0].Desc != "zone new" {
 		t.Fatalf("queue=%+v, want only the newer zone hop", queue)
 	}
-	history := e.QueueHistory("bagno")
+	history := e.QueueHistory("bath")
 	if len(history) != 1 || history[0].Result != "superseded" || history[0].Reason != "newer-zone-state" {
 		t.Fatalf("history=%+v, want superseded newer-zone-state", history)
 	}
@@ -1997,7 +1997,7 @@ func TestZoneRelayCollapsesRetransmissions(t *testing.T) {
 // resource; neither push replaces the other.
 func TestZoneHopRouteKeysByOriginEUI(t *testing.T) {
 	e, _, _ := newTestEmu(t)
-	wire, _, err := e.resolve("bagno")
+	wire, _, err := e.resolve("bath")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2005,7 +2005,7 @@ func TestZoneHopRouteKeysByOriginEUI(t *testing.T) {
 	second := append([]byte{0x11, 0x22, 0x33, 0x44, 0x55}, EUISuffix...)
 	e.queueZoneHop(wire, &CoAPMessage{Type: "CON", Code: "0.03", MID: 0x0101, Path: "z/p", Query: "lid=5"}, []byte{1}, "first", first)
 	e.queueZoneHop(wire, &CoAPMessage{Type: "CON", Code: "0.03", MID: 0x0201, Path: "z/p", Query: "lid=5"}, []byte{2}, "second", second)
-	if got := queueDescs(e, "bagno"); len(got) != 2 {
+	if got := queueDescs(e, "bath"); len(got) != 2 {
 		t.Fatalf("queue=%v, want both pushes", got)
 	}
 }
@@ -2014,7 +2014,7 @@ func TestZoneHopRouteKeysByOriginEUI(t *testing.T) {
 // waiting one of the same observation. A CON notification and an ACK never do.
 func TestZoneHopNotificationSupersedes(t *testing.T) {
 	e, _, _ := newTestEmu(t)
-	wire, _, err := e.resolve("bagno")
+	wire, _, err := e.resolve("bath")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2029,7 +2029,7 @@ func TestZoneHopNotificationSupersedes(t *testing.T) {
 	e.queueZoneHop(wire, notify("CON", 0x0004, 0x0c), []byte{4}, "con-4", origin)
 	e.queueZoneHop(wire, notify("CON", 0x0005, 0x0c), []byte{5}, "con-5", origin)
 	want := []string{"other-token", "non-3", "con-4", "con-5"}
-	if got := queueDescs(e, "bagno"); !slices.Equal(got, want) {
+	if got := queueDescs(e, "bath"); !slices.Equal(got, want) {
 		t.Fatalf("queue=%v, want %v", got, want)
 	}
 }
@@ -2038,20 +2038,20 @@ func TestZoneHopNotificationSupersedes(t *testing.T) {
 // datagrams, after the one on the air and after the ACKs already waiting.
 func TestZoneHopAckGoesFirst(t *testing.T) {
 	e, _, _ := newTestEmu(t)
-	wire, _, err := e.resolve("bagno")
+	wire, _, err := e.resolve("bath")
 	if err != nil {
 		t.Fatal(err)
 	}
 	origin := mustHex(NodeByAny("0a01").WireLE)
 	e.queueZoneHop(wire, &CoAPMessage{Type: "CON", Code: "0.03", MID: 0x0101, Path: "z/p", Query: "lid=5"}, []byte{1}, "push-1", origin)
-	if _, ok, err := e.NextQueuedDownlink("bagno"); err != nil || !ok {
+	if _, ok, err := e.NextQueuedDownlink("bath"); err != nil || !ok {
 		t.Fatalf("dispatch ok=%t err=%v", ok, err)
 	}
 	e.queueZoneHop(wire, &CoAPMessage{Type: "CON", Code: "0.03", MID: 0x0102, Path: "z/p", Query: "lid=8"}, []byte{2}, "push-2", origin)
 	e.queueZoneHop(wire, &CoAPMessage{Type: "ACK", Code: "2.05", MID: 0x0c01}, []byte{3}, "ack-1", origin)
 	e.queueZoneHop(wire, &CoAPMessage{Type: "ACK", Code: "2.04", MID: 0x0c02}, []byte{4}, "ack-2", origin)
 	want := []string{"push-1", "ack-1", "ack-2", "push-2"}
-	if got := queueDescs(e, "bagno"); !slices.Equal(got, want) {
+	if got := queueDescs(e, "bath"); !slices.Equal(got, want) {
 		t.Fatalf("queue=%v, want %v", got, want)
 	}
 }
@@ -2060,7 +2060,7 @@ func TestZoneHopAckGoesFirst(t *testing.T) {
 // datagram that is not an ACK is dropped and recorded.
 func TestZoneHopBacklogIsBounded(t *testing.T) {
 	e, _, _ := newTestEmu(t)
-	wire, _, err := e.resolve("bagno")
+	wire, _, err := e.resolve("bath")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2070,15 +2070,15 @@ func TestZoneHopBacklogIsBounded(t *testing.T) {
 		e.queueZoneHop(wire, &CoAPMessage{Type: "CON", Code: "0.03", MID: uint16(0x0100 + i), Path: "z/p", Query: "lid=" + strconv.Itoa(i)},
 			[]byte{byte(i)}, "push-"+strconv.Itoa(i), origin)
 	}
-	got := queueDescs(e, "bagno")
+	got := queueDescs(e, "bath")
 	if len(got) != maxZoneHopsPerTarget || got[0] != "ack" || got[1] != "push-3" {
 		t.Fatalf("queue=%v, want the ACK then push-3 onwards", got)
 	}
-	history := e.QueueHistory("bagno")
+	history := e.QueueHistory("bath")
 	if len(history) != 3 || history[0].Result != "dropped" || history[0].Reason != "zone-backlog" || history[2].Desc != "push-0" {
 		t.Fatalf("history=%+v, want push-0..2 dropped for zone-backlog", history)
 	}
-	actions, ok, err := e.NextQueuedDownlink("bagno")
+	actions, ok, err := e.NextQueuedDownlink("bath")
 	if err != nil || !ok || len(actions) != 1 || !actions[0].ZoneRelay {
 		t.Fatalf("actions=%+v ok=%t err=%v, want one zone relay attempt", actions, ok, err)
 	}
@@ -2088,16 +2088,16 @@ func TestZoneHopBacklogIsBounded(t *testing.T) {
 // Data frame, all sharing one sequence number.
 func TestScheduleDownlink(t *testing.T) {
 	e, _, _ := newTestEmu(t)
-	if _, err := e.ScheduleDownlink("bagno"); err == nil {
+	if _, err := e.ScheduleDownlink("bath"); err == nil {
 		t.Error("scheduling with an empty queue should fail")
 	}
 	if _, err := e.ScheduleDownlink("nosuchnode"); err == nil {
 		t.Error("scheduling for an unknown target should fail")
 	}
-	if err := e.EnqueueSetpoint("bagno", SetpointParams{ID: 3, Setpoint: 19.0, Sched: 19.0, Overlay: 2}); err != nil {
+	if err := e.EnqueueSetpoint("bath", SetpointParams{ID: 3, Setpoint: 19.0, Sched: 19.0, Overlay: 2}); err != nil {
 		t.Fatal(err)
 	}
-	actions, err := e.ScheduleDownlink("bagno")
+	actions, err := e.ScheduleDownlink("bath")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2105,7 +2105,7 @@ func TestScheduleDownlink(t *testing.T) {
 		t.Fatalf("got %d actions, want %d wake-ups plus the Data frame", len(actions), wakeUpTrainLen+1)
 	}
 
-	bagno := NodeByAny("bagno")
+	bath := NodeByAny("bath")
 	prev := uint16(0xffff)
 	for i, a := range actions[:len(actions)-1] {
 		if a.Kind != ActWakeUp {
@@ -2115,8 +2115,8 @@ func TestScheduleDownlink(t *testing.T) {
 		if err != nil {
 			t.Fatalf("wake-up %d does not parse: %v", i, err)
 		}
-		if w.DstShort != bagno.Short {
-			t.Errorf("wake-up %d dst=%s, want %s", i, w.DstShort, bagno.Short)
+		if w.DstShort != bath.Short {
+			t.Errorf("wake-up %d dst=%s, want %s", i, w.DstShort, bath.Short)
 		}
 		if w.PANID != PANID {
 			t.Errorf("wake-up %d pan=%04x, want %04x", i, w.PANID, PANID)
@@ -2135,8 +2135,8 @@ func TestScheduleDownlink(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cold-start Data does not decrypt: %v", err)
 	}
-	if hex.EncodeToString(df.DstEUI) != bagno.WireLE {
-		t.Errorf("Data dst=%x, want %s", df.DstEUI, bagno.WireLE)
+	if hex.EncodeToString(df.DstEUI) != bath.WireLE {
+		t.Errorf("Data dst=%x, want %s", df.DstEUI, bath.WireLE)
 	}
 	w, _ := ParseWakeUp(actions[0].Bytes)
 	if w.Seq != df.Seq {
@@ -2527,11 +2527,11 @@ func TestNoAutoQueueSuppressesZoneQueues(t *testing.T) {
 // learned from the traffic. A device that publishes on "lid=N" is a member of N,
 // and so is the peer it addresses.
 func TestZoneDirectoryLearned(t *testing.T) {
-	camera := mustHex(NodeByAny("camera").WireLE)
+	bedroom := mustHex(NodeByAny("bedroom").WireLE)
 	ru := mustHex(NodeByAny("RU1000000001").WireLE)
 
 	// Declared by short address: a room name resolves to one device, and the two
-	// cucina valves share it.
+	// kitchen valves share it.
 	e := NewEmu(EmuConfig{TxCounter: 100000, Zones: map[int][]string{5: {"0a06", "0a01"}}}, nil)
 	if got := e.ZoneMembers(5); !reflect.DeepEqual(got, []string{"0a01", "0a06"}) {
 		t.Errorf("declared zone 5 = %v, want [0a01 0a06]", got)
@@ -2543,9 +2543,9 @@ func TestZoneDirectoryLearned(t *testing.T) {
 		t.Error("an unresolvable member should be refused")
 	}
 
-	// A zone publish from the camera, addressed to the wall thermostat: both are
+	// A zone publish from the bedroom, addressed to the wall thermostat: both are
 	// members of zone 10, and the bridge itself never is.
-	e.OnFrame(zoneUplink(t, camera, ru, CoAPReq{
+	e.OnFrame(zoneUplink(t, bedroom, ru, CoAPReq{
 		Type: "CON", Code: "0.03", MID: 0x5101, Token: []byte{2},
 		Path: []string{"z", "s"}, Query: []string{"lid=10"}, Options: []CoAPOption{optOctets},
 		Payload: TLV{Tag: "6280", Val: tempC(21.0)}.Encode(),
@@ -3118,17 +3118,17 @@ func TestBridgeSeen(t *testing.T) {
 		t.Fatalf("MaxBridgeCounter=%d before any traffic, want 0", e.MaxBridgeCounter())
 	}
 
-	camera := mustB(NodeByAny("camera").WireLE)
+	bedroom := mustB(NodeByAny("bedroom").WireLE)
 	pkt, err := BuildCoAP(CoAPReq{
 		Code: "0.03", Path: []string{"d", "info"},
-		SrcEUI: BridgeEUI, DstEUI: camera, SrcPort: 4005,
+		SrcEUI: BridgeEUI, DstEUI: bedroom, SrcPort: 4005,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	const ctr = 123456
 	down := func(seq byte, c uint32) []byte {
-		f, err := BuildData(NetworkKey, seq, camera, BridgeEUI[:5], WrapAppPayload(pkt, c, nil))
+		f, err := BuildData(NetworkKey, seq, bedroom, BridgeEUI[:5], WrapAppPayload(pkt, c, nil))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -3546,7 +3546,7 @@ func reasons(actions []Action) []string {
 // and the emulator's own hash otherwise. Either way the recorded ETag is the one
 // that went on the wire, so a conditional GET validates against it.
 func TestConfigEtagSource(t *testing.T) {
-	const target = "VA1000000007" // bagno valve
+	const target = "VA1000000007" // bath valve
 	node := NodeByAny(target)
 	if node == nil {
 		t.Fatal("valve not in inventory")
@@ -3602,7 +3602,7 @@ func TestConfigEtagSource(t *testing.T) {
 // d/config against it - 2.03 Valid on a match, 2.05 Content with the document and
 // its ETag on a stale/absent one - the way the real bridge does.
 func TestConfigEtagValidation(t *testing.T) {
-	const target = "VA1000000007" // bagno valve
+	const target = "VA1000000007" // bath valve
 	node := NodeByAny(target)
 	if node == nil {
 		t.Fatal("valve not in inventory")
@@ -3697,7 +3697,7 @@ func TestServedConfigCarriesETagInOptionOnly(t *testing.T) {
 		if etag != nil {
 			opts = append([]CoAPOption{{Num: 4, Val: etag}}, opts...)
 		}
-		raw := deviceUplink(t, mustHex(cameraEUIHex), CoAPReq{
+		raw := deviceUplink(t, mustHex(bedroomEUIHex), CoAPReq{
 			Type: "CON", Code: "0.01", MID: mid, Token: []byte{0x0e},
 			Path: []string{"d", "config"}, Options: opts,
 		})
@@ -3706,8 +3706,8 @@ func TestServedConfigCarriesETagInOptionOnly(t *testing.T) {
 
 	m := get(e, 0xc101, nil)
 	etag, ok := m.Option(4)
-	if m.Code != "2.05" || !ok || !bytes.Equal(etag.Val, e.cfgDoc[cameraEUIHex].etag) {
-		t.Fatalf("d/config = %s, ETag option %x, want 2.05 and %x", m.Code, etag.Val, e.cfgDoc[cameraEUIHex].etag)
+	if m.Code != "2.05" || !ok || !bytes.Equal(etag.Val, e.cfgDoc[bedroomEUIHex].etag) {
+		t.Fatalf("d/config = %s, ETag option %x, want 2.05 and %x", m.Code, etag.Val, e.cfgDoc[bedroomEUIHex].etag)
 	}
 	for _, tlv := range parseTLVList(m.Payload) {
 		if tlv.Tag == configEtagTag {
@@ -3725,7 +3725,7 @@ func TestServedConfigCarriesETagInOptionOnly(t *testing.T) {
 	if _, _, err := restarted.SetInstall(in); err != nil {
 		t.Fatal(err)
 	}
-	if got := restarted.cfgDoc[cameraEUIHex].etag; !bytes.Equal(got, etag.Val) {
+	if got := restarted.cfgDoc[bedroomEUIHex].etag; !bytes.Equal(got, etag.Val) {
 		t.Fatalf("ETag after restart = %x, want %x", got, etag.Val)
 	}
 	if m := get(restarted, 0xc102, etag.Val); m.Code != "2.03" {
@@ -3791,10 +3791,10 @@ func TestThermostatNodeTableSelectsFlowCircuit(t *testing.T) {
 func TestInitialConfigDocumentFromInstall(t *testing.T) {
 	in := fixtureInstall(t)
 	e := NewEmu(in.EmuConfig(), nil)
-	camera := mustHex("02a6cefa07c51b00")
-	snap, ok := e.cfgDoc[hexEUI(camera)]
+	bedroom := mustHex("02a6cefa07c51b00")
+	snap, ok := e.cfgDoc[hexEUI(bedroom)]
 	if !ok {
-		t.Fatal("camera has no initial d/config document")
+		t.Fatal("bedroom has no initial d/config document")
 	}
 	var records []NodeTableRec
 	for _, tlv := range parseTLVList(snap.body) {
@@ -3803,7 +3803,7 @@ func TestInitialConfigDocumentFromInstall(t *testing.T) {
 		}
 	}
 	if want := []NodeTableRec{{Role: 0x0d, Node: 10}}; !reflect.DeepEqual(records, want) {
-		t.Errorf("camera node table=%v, want %v", records, want)
+		t.Errorf("bedroom node table=%v, want %v", records, want)
 	}
 	reporter, err := in.Resolve("VA1000000006")
 	if err != nil {
@@ -3833,7 +3833,7 @@ func TestInitialConfigDocumentFromInstall(t *testing.T) {
 		t.Errorf("thermostat node table=%v, want %v", got, wantRU)
 	}
 
-	raw := deviceUplink(t, camera, CoAPReq{
+	raw := deviceUplink(t, bedroom, CoAPReq{
 		Type: "CON", Code: "0.01", MID: 0xc001, Token: []byte{0x0c},
 		Path: []string{"d", "config"}, Options: []CoAPOption{{Num: 23, Val: []byte{0x03}}},
 	})
@@ -3846,11 +3846,11 @@ func TestInitialConfigDocumentFromInstall(t *testing.T) {
 	}
 
 	calib := 50
-	if err := e.EnqueueConfig(hexEUI(camera), 10, ConfigWrite{CalibOffset: &calib}); err != nil {
+	if err := e.EnqueueConfig(hexEUI(bedroom), 10, ConfigWrite{CalibOffset: &calib}); err != nil {
 		t.Fatal(err)
 	}
-	updated := e.cfgDoc[hexEUI(camera)]
-	raw = deviceUplink(t, camera, CoAPReq{
+	updated := e.cfgDoc[hexEUI(bedroom)]
+	raw = deviceUplink(t, bedroom, CoAPReq{
 		Type: "CON", Code: "0.01", MID: 0xc002, Token: []byte{0x0d},
 		Path: []string{"d", "config"}, Options: []CoAPOption{{Num: 4, Val: snap.etag}},
 	})
@@ -3888,13 +3888,13 @@ func TestEnqueueConfigFragmentsOversizedNodeTable(t *testing.T) {
 	for i := range table {
 		table[i] = NodeTableRec{Role: 0x0b, Node: uint8(i)}
 	}
-	if err := e.EnqueueConfig("camera", 10, ConfigWrite{NodeTable: table}); err != nil {
+	if err := e.EnqueueConfig("bedroom", 10, ConfigWrite{NodeTable: table}); err != nil {
 		t.Fatal(err)
 	}
-	if e.Pending("camera") != 1 {
-		t.Fatalf("pending=%d, want 1", e.Pending("camera"))
+	if e.Pending("bedroom") != 1 {
+		t.Fatalf("pending=%d, want 1", e.Pending("bedroom"))
 	}
-	wire, label, err := e.resolve("camera")
+	wire, label, err := e.resolve("bedroom")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3963,12 +3963,12 @@ func TestEnqueueConfigFragmentsOversizedNodeTable(t *testing.T) {
 		t.Fatal(err)
 	}
 	e.confirmBySeq(wire, last.Seq)
-	if e.Pending("camera") != 1 {
-		t.Errorf("MAC ACK removed fragmented downlink: pending=%d, want 1", e.Pending("camera"))
+	if e.Pending("bedroom") != 1 {
+		t.Errorf("MAC ACK removed fragmented downlink: pending=%d, want 1", e.Pending("bedroom"))
 	}
 	e.confirmByMID(wire, &CoAPMessage{Type: "ACK", Code: "2.04", MID: msg.MID, Token: msg.Token})
-	if e.Pending("camera") != 0 {
-		t.Errorf("CoAP ACK did not remove fragmented downlink: pending=%d", e.Pending("camera"))
+	if e.Pending("bedroom") != 0 {
+		t.Errorf("CoAP ACK did not remove fragmented downlink: pending=%d", e.Pending("bedroom"))
 	}
 }
 

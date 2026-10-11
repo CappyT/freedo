@@ -141,7 +141,7 @@ func TestAPIZoneScheduleRejectsBrokenWeek(t *testing.T) {
 // ETag so the device reads the new document.
 func TestAPIZoneScheduleServedWithFreshETag(t *testing.T) {
 	d, url := scheduleDaemon(t)
-	camera, err := defaultInstall.Resolve("VA1000000005")
+	bedroom, err := defaultInstall.Resolve("VA1000000005")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +150,7 @@ func TestAPIZoneScheduleServedWithFreshETag(t *testing.T) {
 		t.Fatalf("put schedule: got %d", code)
 	}
 
-	first := deviceScheduleGET(t, d, camera, 0xc100, nil)
+	first := deviceScheduleGET(t, d, bedroom, 0xc100, nil)
 	if first.Code != "2.05" || len(first.Payload) == 0 {
 		t.Fatalf("first read: code=%s payload=%x, want a 2.05 document", first.Code, first.Payload)
 	}
@@ -160,7 +160,7 @@ func TestAPIZoneScheduleServedWithFreshETag(t *testing.T) {
 	}
 	stamp := append([]byte(nil), etag.Val...)
 
-	valid := deviceScheduleGET(t, d, camera, 0xc101, stamp)
+	valid := deviceScheduleGET(t, d, bedroom, 0xc101, stamp)
 	if valid.Code != "2.03" || len(valid.Payload) != 0 {
 		t.Errorf("conditional read: code=%s payload=%x, want an empty 2.03", valid.Code, valid.Payload)
 	}
@@ -170,7 +170,7 @@ func TestAPIZoneScheduleServedWithFreshETag(t *testing.T) {
 	if code := postJSON(t, http.MethodPut, url+"/api/zones/10/schedule", changed, &stored); code != http.StatusOK {
 		t.Fatalf("second put: got %d", code)
 	}
-	again := deviceScheduleGET(t, d, camera, 0xc102, stamp)
+	again := deviceScheduleGET(t, d, bedroom, 0xc102, stamp)
 	if again.Code != "2.05" {
 		t.Fatalf("read after the change: code=%s, want 2.05", again.Code)
 	}

@@ -653,7 +653,7 @@ func TestDaemonNoAutoQueueCLI(t *testing.T) {
 		return
 	}
 
-	camera, err := defaultInstall.Resolve("camera")
+	bedroom, err := defaultInstall.Resolve("bedroom")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -661,14 +661,14 @@ func TestDaemonNoAutoQueueCLI(t *testing.T) {
 		Type: "NON", Code: "0.03", MID: 0x6110, Token: []byte{0x51},
 		Path: []string{"h", "7654321", "z", "10", "s"}, Query: []string{"id=10"},
 		Payload: tado.TLV{Tag: "6280", Val: []byte{0x08, 0x34}}.Encode(),
-		SrcEUI:  camera.WireEUI(), DstEUI: defaultInstall.CoordinatorEUI(),
+		SrcEUI:  bedroom.WireEUI(), DstEUI: defaultInstall.CoordinatorEUI(),
 		SrcPort: 5683, DstPort: 4005,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	frame, err := tado.BuildData(defaultInstall.NetworkKey(), 0x21, defaultInstall.CoordinatorEUI(),
-		camera.WireEUI()[:5], tado.WrapAppPayload(pkt, 700, nil))
+		bedroom.WireEUI()[:5], tado.WrapAppPayload(pkt, 700, nil))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -716,7 +716,7 @@ func TestDaemonNoAutoQueueCLI(t *testing.T) {
 			var queue struct {
 				Pending int `json:"pending"`
 			}
-			if code := getJSON(t, "http://"+addr+"/api/queue/"+camera.Serial, &queue); code != http.StatusOK {
+			if code := getJSON(t, "http://"+addr+"/api/queue/"+bedroom.Serial, &queue); code != http.StatusOK {
 				t.Errorf("queue: got %d", code)
 			} else if queue.Pending != 0 {
 				t.Errorf("CLI --no-auto-queue left %d automatic downlinks", queue.Pending)
@@ -2640,11 +2640,11 @@ func TestDaemonPersistsDesiredState(t *testing.T) {
 	}
 	defer store.Close()
 	got := restarted.ExportDesiredState()
-	camera, err := in.Resolve("VA1000000005")
+	bedroom, err := in.Resolve("VA1000000005")
 	if err != nil {
 		t.Fatal(err)
 	}
-	key := hex.EncodeToString(camera.WireEUI())
+	key := hex.EncodeToString(bedroom.WireEUI())
 	if !got.ChildLock[key] || !got.TempUnitF[key] || got.FlowC["1"] != 48 {
 		t.Errorf("restored desired state=%+v", got)
 	}
@@ -2844,18 +2844,18 @@ func TestDaemonAPI(t *testing.T) {
 		t.Fatalf("queue history after delete: got %+v", afterDelete)
 	}
 
-	camera := tado.NodeByAny("camera")
+	bedroom := tado.NodeByAny("bedroom")
 	var boostBefore struct {
 		Pending int `json:"pending"`
 	}
-	if code := getJSON(t, srv.URL+"/api/queue/"+camera.Short, &boostBefore); code != http.StatusOK {
+	if code := getJSON(t, srv.URL+"/api/queue/"+bedroom.Short, &boostBefore); code != http.StatusOK {
 		t.Fatalf("boost queue: got %d", code)
 	}
 	var boost struct {
 		Queued  bool `json:"queued"`
 		Pending int  `json:"pending"`
 	}
-	code = postJSON(t, http.MethodPost, srv.URL+"/api/nodes/"+camera.Short+"/boost",
+	code = postJSON(t, http.MethodPost, srv.URL+"/api/nodes/"+bedroom.Short+"/boost",
 		map[string]any{"on": true, "id": 10}, &boost)
 	if code != http.StatusOK || !boost.Queued || boost.Pending != boostBefore.Pending+1 {
 		t.Fatalf("boost: got %d %+v", code, boost)
@@ -2863,7 +2863,7 @@ func TestDaemonAPI(t *testing.T) {
 	var boostAfter struct {
 		Pending int `json:"pending"`
 	}
-	if code := getJSON(t, srv.URL+"/api/queue/"+camera.Short, &boostAfter); code != http.StatusOK || boostAfter.Pending != boostBefore.Pending+1 {
+	if code := getJSON(t, srv.URL+"/api/queue/"+bedroom.Short, &boostAfter); code != http.StatusOK || boostAfter.Pending != boostBefore.Pending+1 {
 		t.Fatalf("boost queue: got %d %+v", code, boostAfter)
 	}
 }
@@ -4693,7 +4693,7 @@ func TestDaemonConfigAndActiveGet(t *testing.T) {
 		cancel()
 	})
 
-	const short = "a602" // camera, in the inventory
+	const short = "a602" // bedroom, in the inventory
 
 	var set struct {
 		Queued bool   `json:"queued"`
@@ -5159,11 +5159,11 @@ func TestDaemonShutdownSavePersistsAcrossTheCLI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	camera, err := defaultInstall.Resolve("VA1000000005")
+	bedroom, err := defaultInstall.Resolve("VA1000000005")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if key := hex.EncodeToString(camera.WireEUI()); !saved.TempUnitF[key] {
+	if key := hex.EncodeToString(bedroom.WireEUI()); !saved.TempUnitF[key] {
 		t.Errorf("the shutdown save lost the temperature unit: %+v\n%s", saved.TempUnitF, output.String())
 	}
 	// The handler save took sequence 1, so a second one proves the shutdown save
@@ -5451,11 +5451,11 @@ func TestBootServesTheStoredConfigDocument(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := newTestStore(t, path)
-	camera, err := defaultInstall.Resolve("VA1000000005")
+	bedroom, err := defaultInstall.Resolve("VA1000000005")
 	if err != nil {
 		t.Fatal(err)
 	}
-	wire := camera.WireEUI()
+	wire := bedroom.WireEUI()
 
 	// The run before the restart pushes a field the installation does not own, so
 	// the served document stops being reproducible from the installation alone.

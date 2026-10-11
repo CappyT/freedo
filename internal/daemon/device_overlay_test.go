@@ -213,7 +213,7 @@ func TestInstallAPIPatchesDeviceOverlayEnd(t *testing.T) {
 	a := newInstallAPI(t)
 	a.declareDevices()
 	zone := a.mutate(http.MethodPost, "/api/install/zones",
-		map[string]any{"number": 1, "name": "sala", "kind": "heating"})["zone"].(map[string]any)
+		map[string]any{"number": 1, "name": "lounge", "kind": "heating"})["zone"].(map[string]any)
 	if zone["device_overlay_end"] != "until_next" || zone["device_overlay_end_sec"] != nil {
 		t.Fatalf("new zone = %v, want until_next with no duration", zone)
 	}

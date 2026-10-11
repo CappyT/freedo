@@ -32,7 +32,7 @@ func deviceFallbackFrame(t *testing.T, src []byte, serial string, mode byte) []b
 func TestZoneFallbackEntryAndExit(t *testing.T) {
 	now := time.Date(2026, 1, 5, 6, 0, 0, 0, time.UTC)
 	e := fallbackEmu(t, &now)
-	thermostat := mustHex(capCorridoio)
+	thermostat := mustHex(capHall)
 
 	e.OnFrame(zoneFallbackFrame(t, thermostat, "10", FallbackNone))
 	if ev := e.TakeFallbackEvents(); len(ev) != 0 {
@@ -77,7 +77,7 @@ func TestZoneFallbackEntryAndExit(t *testing.T) {
 func TestZoneFallbackUndeclaredZone(t *testing.T) {
 	now := time.Date(2026, 1, 5, 6, 0, 0, 0, time.UTC)
 	e := fallbackEmu(t, &now)
-	e.OnFrame(zoneFallbackFrame(t, mustHex(capCorridoio), "17", FallbackFrost))
+	e.OnFrame(zoneFallbackFrame(t, mustHex(capHall), "17", FallbackFrost))
 	if z := zoneOf(t, e, 17); z.FallbackMode != FallbackFrost {
 		t.Fatalf("zone 17 = %+v, want mode 3", z)
 	}
@@ -89,7 +89,7 @@ func TestZoneFallbackUndeclaredZone(t *testing.T) {
 func TestDeviceFallbackMode(t *testing.T) {
 	now := time.Date(2026, 1, 5, 6, 0, 0, 0, time.UTC)
 	e := fallbackEmu(t, &now)
-	thermostat, valve := mustHex(capCorridoio), mustHex(capCamera)
+	thermostat, valve := mustHex(capHall), mustHex(capBedroom)
 
 	e.OnFrame(deviceFallbackFrame(t, valve, "VA1000000005", FallbackNone))
 	e.OnFrame(deviceFallbackFrame(t, thermostat, "RU1000000001", FallbackUnset))
@@ -118,7 +118,7 @@ func TestDeviceFallbackMode(t *testing.T) {
 func TestFallbackIgnoresGet(t *testing.T) {
 	now := time.Date(2026, 1, 5, 6, 0, 0, 0, time.UTC)
 	e := fallbackEmu(t, &now)
-	e.OnFrame(uplinkFrame(t, mustHex(capCorridoio), "0.01", []string{"h", "7654321", "z", "10", "fallback"}, nil,
+	e.OnFrame(uplinkFrame(t, mustHex(capHall), "0.01", []string{"h", "7654321", "z", "10", "fallback"}, nil,
 		TLV{Tag: "6460", Val: []byte{FallbackFrost}}.Encode()))
 	if got := e.ZoneFallbacks(); len(got) != 0 {
 		t.Fatalf("a GET recorded %+v", got)

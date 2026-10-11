@@ -52,51 +52,51 @@ func headRequest(t *testing.T, e *EmuState, dev []byte) *CoAPMessage {
 // conditional GET, which earns 2.03, never hides a value it lacks.
 func TestDbg2PatchesTheDocumentOnDelivery(t *testing.T) {
 	e := displayEmu(t)
-	camera := mustHex(cameraEUIHex)
-	before := e.cfgDoc[cameraEUIHex]
-	served0140 := func() string { return tlvValue(parseTLVList(e.cfgDoc[cameraEUIHex].body), "0140") }
+	bedroom := mustHex(bedroomEUIHex)
+	before := e.cfgDoc[bedroomEUIHex]
+	served0140 := func() string { return tlvValue(parseTLVList(e.cfgDoc[bedroomEUIHex].body), "0140") }
 	was := served0140()
 
-	if err := e.EnqueueCalibOffsetDbg2(cameraEUIHex, 10, -70); err != nil {
+	if err := e.EnqueueCalibOffsetDbg2(bedroomEUIHex, 10, -70); err != nil {
 		t.Fatal(err)
 	}
 	if got := served0140(); got != was {
 		t.Errorf("queued dbg2: served 0140 = %q, want %q until the valve takes it", got, was)
 	}
-	answerQueued(t, e, camera, "4.04")
-	if n := e.Pending(cameraEUIHex); n != 0 {
+	answerQueued(t, e, bedroom, "4.04")
+	if n := e.Pending(bedroomEUIHex); n != 0 {
 		t.Fatalf("4.04 left %d writes queued", n)
 	}
-	if got := e.cfgDoc[cameraEUIHex]; !bytes.Equal(got.body, before.body) || !bytes.Equal(got.etag, before.etag) {
+	if got := e.cfgDoc[bedroomEUIHex]; !bytes.Equal(got.body, before.body) || !bytes.Equal(got.etag, before.etag) {
 		t.Errorf("refused dbg2: document %x etag %x, want %x %x", got.body, got.etag, before.body, before.etag)
 	}
 
 	orientation := OrientationVertical
-	if err := e.EnqueueDisplaySettings(cameraEUIHex, 10, DisplaySettingsWrite{Orientation: &orientation, Via: OffsetModeDbg2}); err != nil {
+	if err := e.EnqueueDisplaySettings(bedroomEUIHex, 10, DisplaySettingsWrite{Orientation: &orientation, Via: OffsetModeDbg2}); err != nil {
 		t.Fatal(err)
 	}
 	for i := 0; i <= maxDownlinkTries; i++ {
-		e.NextQueuedDownlink(cameraEUIHex)
+		e.NextQueuedDownlink(bedroomEUIHex)
 	}
-	if n := e.Pending(cameraEUIHex); n != 0 {
+	if n := e.Pending(bedroomEUIHex); n != 0 {
 		t.Fatalf("retry limit left %d writes queued", n)
 	}
-	if got, _ := e.DisplaySettings(cameraEUIHex); got.Orientation != OrientationHorizontal {
+	if got, _ := e.DisplaySettings(bedroomEUIHex); got.Orientation != OrientationHorizontal {
 		t.Errorf("dropped dbg2: display %+v, want the horizontal the valve holds", got)
 	}
-	if got := e.cfgDoc[cameraEUIHex]; !bytes.Equal(got.body, before.body) {
+	if got := e.cfgDoc[bedroomEUIHex]; !bytes.Equal(got.body, before.body) {
 		t.Errorf("dropped dbg2: document %x, want %x", got.body, before.body)
 	}
 
-	if err := e.EnqueueCalibOffsetDbg2(cameraEUIHex, 10, -70); err != nil {
+	if err := e.EnqueueCalibOffsetDbg2(bedroomEUIHex, 10, -70); err != nil {
 		t.Fatal(err)
 	}
-	answerQueued(t, e, camera, "2.04")
+	answerQueued(t, e, bedroom, "2.04")
 	if got := served0140(); got != "ffba" {
 		t.Errorf("delivered dbg2: served 0140 = %q, want ffba", got)
 	}
-	if !bytes.Equal(e.cfgDoc[cameraEUIHex].etag, before.etag) {
-		t.Errorf("delivered dbg2: etag %x, want the held %x", e.cfgDoc[cameraEUIHex].etag, before.etag)
+	if !bytes.Equal(e.cfgDoc[bedroomEUIHex].etag, before.etag) {
+		t.Errorf("delivered dbg2: etag %x, want the held %x", e.cfgDoc[bedroomEUIHex].etag, before.etag)
 	}
 	if !e.TakeDeliveredChanged() {
 		t.Error("the delivered dbg2 record is not marked for the owner to persist")
@@ -108,24 +108,24 @@ func TestDbg2PatchesTheDocumentOnDelivery(t *testing.T) {
 // d/config write replaces.
 func TestConfigWriteKeepsQueuedDbg2(t *testing.T) {
 	e := displayEmu(t)
-	camera := mustHex(cameraEUIHex)
-	if err := e.EnqueueCalibOffsetDbg2(cameraEUIHex, 10, -70); err != nil {
+	bedroom := mustHex(bedroomEUIHex)
+	if err := e.EnqueueCalibOffsetDbg2(bedroomEUIHex, 10, -70); err != nil {
 		t.Fatal(err)
 	}
 	orientation := uint8(1)
-	if err := e.EnqueueConfig(cameraEUIHex, 10, ConfigWrite{Orientation: &orientation}); err != nil {
+	if err := e.EnqueueConfig(bedroomEUIHex, 10, ConfigWrite{Orientation: &orientation}); err != nil {
 		t.Fatal(err)
 	}
-	doc := parseTLVList(configWriteDocument(t, e.queue[cameraEUIHex][1]))
+	doc := parseTLVList(configWriteDocument(t, e.queue[bedroomEUIHex][1]))
 	if tlvValue(doc, "0140") != "ffba" || tlvValue(doc, "0149") != "01" {
 		t.Fatalf("config write behind dbg2: 0140=%s 0149=%s, want ffba 01", tlvValue(doc, "0140"), tlvValue(doc, "0149"))
 	}
 	calib := 30
-	if err := e.EnqueueConfig(cameraEUIHex, 10, ConfigWrite{CalibOffset: &calib}); err != nil {
+	if err := e.EnqueueConfig(bedroomEUIHex, 10, ConfigWrite{CalibOffset: &calib}); err != nil {
 		t.Fatal(err)
 	}
-	answerQueued(t, e, camera, "2.04")
-	if got := tlvValue(parseTLVList(e.cfgDoc[cameraEUIHex].body), "0140"); got != "001e" {
+	answerQueued(t, e, bedroom, "2.04")
+	if got := tlvValue(parseTLVList(e.cfgDoc[bedroomEUIHex].body), "0140"); got != "001e" {
 		t.Errorf("dbg2 delivered ahead of a d/config write: served 0140 = %s, want the 001e the write carries", got)
 	}
 }
@@ -327,14 +327,14 @@ func TestZoneReadsRestateTheHomeState(t *testing.T) {
 // valve took, not what is queued to it.
 func TestChildLockRecordedOnDelivery(t *testing.T) {
 	e, _ := fixtureEmu(t)
-	camera := mustHex(cameraEUIHex)
-	if err := e.EnqueueChildLock(cameraEUIHex, 10, true); err != nil {
+	bedroom := mustHex(bedroomEUIHex)
+	if err := e.EnqueueChildLock(bedroomEUIHex, 10, true); err != nil {
 		t.Fatal(err)
 	}
-	if e.childLock[cameraEUIHex] {
+	if e.childLock[bedroomEUIHex] {
 		t.Fatal("the child lock is recorded before the valve takes it")
 	}
-	actions, ok, err := e.NextQueuedDownlink(cameraEUIHex)
+	actions, ok, err := e.NextQueuedDownlink(bedroomEUIHex)
 	if err != nil || !ok {
 		t.Fatalf("no queued downlink: ok=%v err=%v", ok, err)
 	}
@@ -342,8 +342,8 @@ func TestChildLockRecordedOnDelivery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e.OnFrame(BuildEnhAck(df.Seq, e.selfEUI, camera, 0))
-	if !e.childLock[cameraEUIHex] || !e.TakeDeliveredChanged() {
+	e.OnFrame(BuildEnhAck(df.Seq, e.selfEUI, bedroom, 0))
+	if !e.childLock[bedroomEUIHex] || !e.TakeDeliveredChanged() {
 		t.Error("the delivered child lock is not recorded for the owner to persist")
 	}
 }
@@ -354,7 +354,7 @@ func TestChildLockRecordedOnDelivery(t *testing.T) {
 func TestConfigWritesCoalesce(t *testing.T) {
 	e := displayEmu(t)
 	calib := 20
-	if err := e.EnqueueConfig(cameraEUIHex, 10, ConfigWrite{CalibOffset: &calib}); err != nil {
+	if err := e.EnqueueConfig(bedroomEUIHex, 10, ConfigWrite{CalibOffset: &calib}); err != nil {
 		t.Fatal(err)
 	}
 	v := 120
@@ -363,10 +363,10 @@ func TestConfigWritesCoalesce(t *testing.T) {
 	if !e.SyncUTCOffset(now) {
 		t.Fatal("SyncUTCOffset missed the changed offset")
 	}
-	if got := e.PushUTCOffset(now); got != cameraEUIHex {
-		t.Fatalf("PushUTCOffset = %q, want the camera valve", got)
+	if got := e.PushUTCOffset(now); got != bedroomEUIHex {
+		t.Fatalf("PushUTCOffset = %q, want the bedroom valve", got)
 	}
-	q := e.queue[cameraEUIHex]
+	q := e.queue[bedroomEUIHex]
 	if len(q) != 1 {
 		t.Fatalf("%d d/config writes queued, want the newest document alone", len(q))
 	}
@@ -374,7 +374,7 @@ func TestConfigWritesCoalesce(t *testing.T) {
 	if tlvValue(doc, "0140") != "0014" || tlvValue(doc, "02b2") != "0078" {
 		t.Errorf("coalesced write: 0140=%s 02b2=%s, want 0014 0078", tlvValue(doc, "0140"), tlvValue(doc, "02b2"))
 	}
-	if !bytes.Equal(configWriteDocument(t, q[0]), e.cfgDoc[cameraEUIHex].body) {
+	if !bytes.Equal(configWriteDocument(t, q[0]), e.cfgDoc[bedroomEUIHex].body) {
 		t.Error("the coalesced write is not the served document")
 	}
 }
@@ -384,32 +384,32 @@ func TestConfigWritesCoalesce(t *testing.T) {
 // close it; the new ones do.
 func TestServerErrorRetryMintsNewIDs(t *testing.T) {
 	e, now := clockedFixtureEmu(t)
-	camera := mustHex(cameraEUIHex)
-	if err := e.EnqueueSetpoint(cameraEUIHex, SetpointParams{ID: 10, Setpoint: 21, Sched: 20, Overlay: 2}); err != nil {
+	bedroom := mustHex(bedroomEUIHex)
+	if err := e.EnqueueSetpoint(bedroomEUIHex, SetpointParams{ID: 10, Setpoint: 21, Sched: 20, Overlay: 2}); err != nil {
 		t.Fatal(err)
 	}
-	first := headRequest(t, e, camera)
-	answerQueued(t, e, camera, "5.03")
-	if n := e.Pending(cameraEUIHex); n != 1 {
+	first := headRequest(t, e, bedroom)
+	answerQueued(t, e, bedroom, "5.03")
+	if n := e.Pending(bedroomEUIHex); n != 1 {
 		t.Fatalf("5.03 left %d writes queued, want the write for a retry", n)
 	}
 	*now = now.Add(serverErrorRetryBackoff)
-	second := headRequest(t, e, camera)
+	second := headRequest(t, e, bedroom)
 	if second.MID == first.MID || bytes.Equal(second.Token, first.Token) {
 		t.Fatalf("retry MID/token = %04x/%x, want new ones after %04x/%x", second.MID, second.Token, first.MID, first.Token)
 	}
 	if !bytes.Equal(second.Payload, first.Payload) || second.URI() != first.URI() {
 		t.Errorf("retry = %s %x, want the same request %s %x", second.URI(), second.Payload, first.URI(), first.Payload)
 	}
-	if ck, ok := second.RecomputeChecksum(e.selfEUI, camera); !ok || ck != second.Checksum {
+	if ck, ok := second.RecomputeChecksum(e.selfEUI, bedroom); !ok || ck != second.Checksum {
 		t.Errorf("retry checksum = %04x, want %04x", second.Checksum, ck)
 	}
-	e.confirmByMID(camera, &CoAPMessage{Type: "ACK", Code: "2.04", MID: first.MID, Token: first.Token})
-	if n := e.Pending(cameraEUIHex); n != 1 {
+	e.confirmByMID(bedroom, &CoAPMessage{Type: "ACK", Code: "2.04", MID: first.MID, Token: first.Token})
+	if n := e.Pending(bedroomEUIHex); n != 1 {
 		t.Fatal("the old MID closed the re-minted write")
 	}
-	answerQueued(t, e, camera, "2.04")
-	if n := e.Pending(cameraEUIHex); n != 0 {
+	answerQueued(t, e, bedroom, "2.04")
+	if n := e.Pending(bedroomEUIHex); n != 0 {
 		t.Fatalf("2.04 under the new MID left %d queued", n)
 	}
 }
@@ -428,26 +428,26 @@ func clockedFixtureEmu(t *testing.T) (*EmuState, *time.Time) {
 // the busy device would answer 5.xx again, but after the backoff.
 func TestServerErrorWaitsForTheRetry(t *testing.T) {
 	e, now := clockedFixtureEmu(t)
-	camera := mustHex(cameraEUIHex)
-	if err := e.EnqueueSetpoint(cameraEUIHex, SetpointParams{ID: 10, Setpoint: 21, Sched: 20, Overlay: 2}); err != nil {
+	bedroom := mustHex(bedroomEUIHex)
+	if err := e.EnqueueSetpoint(bedroomEUIHex, SetpointParams{ID: 10, Setpoint: 21, Sched: 20, Overlay: 2}); err != nil {
 		t.Fatal(err)
 	}
-	for _, a := range answerQueued(t, e, camera, "5.03") {
+	for _, a := range answerQueued(t, e, bedroom, "5.03") {
 		if a.QueueAttempt {
 			t.Errorf("the 5.03 answer sent %q in the same rendezvous", a.Reason)
 		}
 	}
-	if q := e.Queue(cameraEUIHex); len(q) != 1 || q[0].Tries != 1 {
+	if q := e.Queue(bedroomEUIHex); len(q) != 1 || q[0].Tries != 1 {
 		t.Fatalf("queue after 5.03 = %+v, want the write after one try", q)
 	}
-	if _, ok, _ := e.NextQueuedDownlink(cameraEUIHex); ok {
+	if _, ok, _ := e.NextQueuedDownlink(bedroomEUIHex); ok {
 		t.Fatal("the retry went out before the backoff")
 	}
 	*now = now.Add(serverErrorRetryBackoff)
-	if _, ok, _ := e.NextQueuedDownlink(cameraEUIHex); !ok {
+	if _, ok, _ := e.NextQueuedDownlink(bedroomEUIHex); !ok {
 		t.Fatal("no retry after the backoff")
 	}
-	if q := e.Queue(cameraEUIHex); len(q) != 1 || q[0].Tries != 2 {
+	if q := e.Queue(bedroomEUIHex); len(q) != 1 || q[0].Tries != 2 {
 		t.Errorf("queue after the retry = %+v, want the second try", q)
 	}
 }
@@ -458,24 +458,24 @@ func TestServerErrorWaitsForTheRetry(t *testing.T) {
 func TestConfigWriteReportsCoalescedWrite(t *testing.T) {
 	e, _ := fixtureEmu(t)
 	flipped := !e.inst.Options.OfflineScheduleEnabled()
-	if err := e.EnqueueConfig(cameraEUIHex, 10, ConfigWrite{OfflineScheduleEnabled: &flipped}); err != nil {
+	if err := e.EnqueueConfig(bedroomEUIHex, 10, ConfigWrite{OfflineScheduleEnabled: &flipped}); err != nil {
 		t.Fatal(err)
 	}
-	written, err := e.ClearOfflineSchedule(cameraEUIHex, 10)
+	written, err := e.ClearOfflineSchedule(bedroomEUIHex, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := e.Pending(cameraEUIHex); !written || n != 1 {
+	if n := e.Pending(bedroomEUIHex); !written || n != 1 {
 		t.Errorf("clear behind a queued write: written=%t with %d queued, want true and the one coalesced write", written, n)
 	}
 
 	orientation := uint8(1)
-	if err := e.EnqueueConfig(cameraEUIHex, 10, ConfigWrite{Orientation: &orientation}); err != nil {
+	if err := e.EnqueueConfig(bedroomEUIHex, 10, ConfigWrite{Orientation: &orientation}); err != nil {
 		t.Fatal(err)
 	}
-	e.node(mustHex(cameraEUIHex)).LastID = 10
+	e.node(mustHex(bedroomEUIHex)).LastID = 10
 	e.inst.HomeID++
-	if written := e.refreshConfigDocuments(); !written[cameraEUIHex] {
-		t.Errorf("reload behind a queued write: written=%v, want %s", written, cameraEUIHex)
+	if written := e.refreshConfigDocuments(); !written[bedroomEUIHex] {
+		t.Errorf("reload behind a queued write: written=%v, want %s", written, bedroomEUIHex)
 	}
 }

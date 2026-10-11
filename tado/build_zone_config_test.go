@@ -187,12 +187,12 @@ func TestZoneConfigDocumentMatchesCapture(t *testing.T) {
 // cached from the run before.
 func TestZoneConfigEtagSurvivesRestart(t *testing.T) {
 	in := fixtureInstall(t)
-	camera := mustHex("02a6cefa07c51b00")
+	bedroom := mustHex("02a6cefa07c51b00")
 	// One 16-byte block keeps the answer inside a single frame; every block
 	// carries the ETag of the whole document.
 	firstBlock := []CoAPOption{{Num: 23, Val: []byte{0x00}}}
 	before := NewEmu(in.EmuConfig(), nil)
-	raw := deviceUplink(t, camera, CoAPReq{
+	raw := deviceUplink(t, bedroom, CoAPReq{
 		Type: "CON", Code: "0.01", MID: 0xd001, Token: []byte{0x0e},
 		Path: []string{"h", "7654321", "z", "10", "config"}, Options: firstBlock,
 	})
@@ -207,7 +207,7 @@ func TestZoneConfigEtagSurvivesRestart(t *testing.T) {
 	cached := append([]byte(nil), etag.Val...)
 
 	after := NewEmu(in.EmuConfig(), nil)
-	raw = deviceUplink(t, camera, CoAPReq{
+	raw = deviceUplink(t, bedroom, CoAPReq{
 		Type: "CON", Code: "0.01", MID: 0xd002, Token: []byte{0x0f},
 		Path:    []string{"h", "7654321", "z", "10", "config"},
 		Options: []CoAPOption{{Num: 4, Val: cached}},

@@ -119,7 +119,7 @@ func TestSnapshotBoiler(t *testing.T) {
 		{Tag: "0462", Val: []byte{0x0f}},       // 1.5 bar
 		{Tag: "0463", Val: []byte{0x00, 0x00, 0x01, 0x2c}},
 		{Tag: "0466", Val: []byte{0x00, 0x00, 0x0e, 0x10}},
-	}, "", ClassData, "corridoio", "bridge", "")
+	}, "", ClassData, "hall", "bridge", "")
 
 	b := e.Snapshot().Boiler
 	if !b.Present {
@@ -164,7 +164,7 @@ func TestSnapshotCircuitAttribution(t *testing.T) {
 	in := fixtureInstall(t)
 	e := NewEmu(in.EmuConfig(), nil)
 	ns := e.node(mustB("05a2cafa07c51b00"))
-	e.cacheTLVs(ns, []TLV{{Tag: "044c", Val: []byte{0x0f, 0xa0}}}, "", ClassData, "corridoio", "bridge", "")
+	e.cacheTLVs(ns, []TLV{{Tag: "044c", Val: []byte{0x0f, 0xa0}}}, "", ClassData, "hall", "bridge", "")
 	circuits := e.Snapshot().Circuits
 	if len(circuits) != 1 {
 		t.Fatalf("circuits=%d, want 1", len(circuits))
@@ -180,7 +180,7 @@ func TestSnapshotCircuitAttribution(t *testing.T) {
 func TestSnapshotBoilerIgnoresReportInterval(t *testing.T) {
 	e, _, _ := newTestEmu(t)
 	ns := e.node(mustB("02a6cefa07c51b00"))
-	e.cacheTLVs(ns, []TLV{{Tag: "015d", Val: []byte{0x00, 0x70}}}, "", ClassData, "camera", "bridge", "")
+	e.cacheTLVs(ns, []TLV{{Tag: "015d", Val: []byte{0x00, 0x70}}}, "", ClassData, "bedroom", "bridge", "")
 
 	if b := e.Snapshot().Boiler; b.Present || b.FaultCode != 0 {
 		t.Errorf("present=%v fault=%d, want false and 0", b.Present, b.FaultCode)
@@ -192,7 +192,7 @@ func TestSnapshotBoilerIgnoresReportInterval(t *testing.T) {
 func TestHeatDemand(t *testing.T) {
 	e, _, _ := newTestEmu(t)
 	with := e.node(mustB("02a6cefa07c51b00"))
-	e.cacheTLVs(with, []TLV{{Tag: "40a0", Val: []byte{0x4b}}}, "", ClassData, "camera", "bridge", "")
+	e.cacheTLVs(with, []TLV{{Tag: "40a0", Val: []byte{0x4b}}}, "", ClassData, "bedroom", "bridge", "")
 	e.node(mustB("04a3defa07c51b00")) // no telemetry at all
 
 	got := map[string]int{}
@@ -213,7 +213,7 @@ func TestCacheTLVs62c0ByResource(t *testing.T) {
 	e, _, _ := newTestEmu(t)
 	plane := e.node(mustB("02a6cefa07c51b00"))
 	e.cacheTLVs(plane, []TLV{{Tag: "62c0", Val: []byte{0x01}}},
-		"h/7654321/z/10/s?id=10", ClassData, "camera", "bridge", "")
+		"h/7654321/z/10/s?id=10", ClassData, "bedroom", "bridge", "")
 	if got := plane.Telemetry["open_window_zone"]; got != "1" {
 		t.Errorf("zone plane: open_window_zone=%q, want 1: %v", got, plane.Telemetry)
 	}
@@ -223,7 +223,7 @@ func TestCacheTLVs62c0ByResource(t *testing.T) {
 		{Tag: "63e0", Val: []byte{0x01}},
 		{Tag: "62c0", Val: []byte{0x03, 0x84}},
 		{Tag: "6380", Val: []byte{0x03, 0x84}},
-	}, "h/7654321/z/10/config", ClassData, "cucina", "bridge", "")
+	}, "h/7654321/z/10/config", ClassData, "kitchen", "bridge", "")
 	if got := cfg.Telemetry["zone_open_ivl_sec"]; got != "900" {
 		t.Errorf("zone config: zone_open_ivl_sec=%q, want 900: %v", got, cfg.Telemetry)
 	}
@@ -314,16 +314,16 @@ func TestModeString(t *testing.T) {
 	}
 }
 
-// downlinkFor queues one command for the camera, replays its first golden uplink
+// downlinkFor queues one command for the bedroom, replays its first golden uplink
 // and returns the piggybacked Data action.
 func downlinkFor(t *testing.T, reasonPrefix string, queue func(*EmuState) error) Action {
 	t.Helper()
-	camera := NodeByAny("camera")
-	if camera == nil {
-		t.Fatal("camera not in inventory")
+	bedroom := NodeByAny("bedroom")
+	if bedroom == nil {
+		t.Fatal("bedroom not in inventory")
 	}
 	raw, _, _ := firstUplink(t, func(fr *Frame, _ *AppPayload) bool {
-		return hex.EncodeToString(fr.SrcEUI()) == camera.WireLE
+		return hex.EncodeToString(fr.SrcEUI()) == bedroom.WireLE
 	})
 	e, _, _ := newTestEmu(t)
 	if err := queue(e); err != nil {
@@ -348,27 +348,27 @@ func TestResourceDownlinks(t *testing.T) {
 		queue  func(*EmuState) error
 	}{
 		{"childlock", "downlink childlock", NetworkKey, "d/lock", nil,
-			func(e *EmuState) error { return e.EnqueueChildLock("camera", 10, true) }},
+			func(e *EmuState) error { return e.EnqueueChildLock("bedroom", 10, true) }},
 		{"identify", "downlink identify", NetworkKey, "d/identify", nil,
-			func(e *EmuState) error { return e.EnqueueIdentify("camera", 5) }},
+			func(e *EmuState) error { return e.EnqueueIdentify("bedroom", 5) }},
 		{"calibrate", "downlink calibrate", NetworkKey, "d/calibrate", nil,
-			func(e *EmuState) error { return e.EnqueueCalibrate("camera") }},
+			func(e *EmuState) error { return e.EnqueueCalibrate("bedroom") }},
 		{"reboot", "downlink reboot", NetworkKey, "d/reboot", []string{"id=5"},
-			func(e *EmuState) error { return e.EnqueueReboot("camera", 5) }},
+			func(e *EmuState) error { return e.EnqueueReboot("bedroom", 5) }},
 		{"netcmd", "downlink netcmd", NetworkKey, "d/test/v1", []string{"t=1007"},
-			func(e *EmuState) error { return e.EnqueueNetcmd("camera", 1007) }},
+			func(e *EmuState) error { return e.EnqueueNetcmd("bedroom", 1007) }},
 		{"mode", "downlink mode", NetworkKey, "z/s", []string{"id=4"},
 			func(e *EmuState) error {
-				seedHeatingBlock(e, mustB(NodeByAny("camera").WireLE))
-				return e.EnqueueMode("camera", 4, 2)
+				seedHeatingBlock(e, mustB(NodeByAny("bedroom").WireLE))
+				return e.EnqueueMode("bedroom", 4, 2)
 			}},
 		{"openwindow", "downlink openwindow", NetworkKey, "z/s", []string{"id=4"},
 			func(e *EmuState) error {
-				seedHeatingBlock(e, mustB(NodeByAny("camera").WireLE))
-				return e.EnqueueOpenWindow("camera", 4, true)
+				seedHeatingBlock(e, mustB(NodeByAny("bedroom").WireLE))
+				return e.EnqueueOpenWindow("bedroom", 4, true)
 			}},
 		{"pair", "downlink pair", PairingKey, "d/pair", nil,
-			func(e *EmuState) error { return e.EnqueuePair("camera", NetworkKey) }},
+			func(e *EmuState) error { return e.EnqueuePair("bedroom", NetworkKey) }},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -418,23 +418,23 @@ func seedHeatingBlock(e *EmuState, wire []byte) {
 		{Tag: "6200", Val: []byte{0x07, 0x08}},
 		{Tag: "6240", Val: []byte{0x00}},
 		{Tag: "62e0", Val: []byte{0x01}},
-	}, "", ClassData, "camera", "bridge", "")
+	}, "", ClassData, "bedroom", "bridge", "")
 }
 
 // TestPairKeySeparation: the d/pair frame is secured with PairingKey, so the
 // network key must not open it.
 func TestPairKeySeparation(t *testing.T) {
 	a := downlinkFor(t, "downlink pair", func(e *EmuState) error {
-		return e.EnqueuePair("camera", NetworkKey)
+		return e.EnqueuePair("bedroom", NetworkKey)
 	})
 	if _, err := ParseData(NetworkKey, a.Bytes); err == nil {
 		t.Error("the pair frame decrypted under the network key")
 	}
 	e, _, _ := newTestEmu(t)
-	if err := e.EnqueuePair("camera", []byte("short")); err == nil {
+	if err := e.EnqueuePair("bedroom", []byte("short")); err == nil {
 		t.Error("a network key that is not 16 bytes should be rejected")
 	}
-	if e.Pending("camera") != 0 {
+	if e.Pending("bedroom") != 0 {
 		t.Error("a rejected key must not queue anything")
 	}
 }
@@ -442,7 +442,7 @@ func TestPairKeySeparation(t *testing.T) {
 // TestChildLockPayload: the queued d/lock write carries 0290=01.
 func TestChildLockPayload(t *testing.T) {
 	a := downlinkFor(t, "downlink childlock", func(e *EmuState) error {
-		return e.EnqueueChildLock("camera", 10, true)
+		return e.EnqueueChildLock("bedroom", 10, true)
 	})
 	df, err := ParseData(NetworkKey, a.Bytes)
 	if err != nil {
@@ -463,7 +463,7 @@ func TestBoostPayload(t *testing.T) {
 		name   string
 		target string
 	}{
-		{name: "valve", target: "camera"},
+		{name: "valve", target: "bedroom"},
 		{name: "thermostat", target: "RU1000000001"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -501,16 +501,16 @@ func TestBoostPayload(t *testing.T) {
 }
 
 func TestBoostTelemetryCachesRawAndDecodedValue(t *testing.T) {
-	device := NodeByAny("camera")
+	device := NodeByAny("bedroom")
 	if device == nil {
-		t.Fatal("camera not in inventory")
+		t.Fatal("bedroom not in inventory")
 	}
 	e, _, _ := newTestEmu(t)
 	wire := mustHex(device.WireLE)
-	if err := e.EnqueueBoost("camera", 3, true); err != nil {
+	if err := e.EnqueueBoost("bedroom", 3, true); err != nil {
 		t.Fatal(err)
 	}
-	_, label, err := e.resolve("camera")
+	_, label, err := e.resolve("bedroom")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -550,17 +550,17 @@ func TestBoostTelemetryCachesRawAndDecodedValue(t *testing.T) {
 // TestModeReusesLastKnown: EnqueueMode resends the node's cached block and only
 // moves the overlay.
 func TestModeReusesLastKnown(t *testing.T) {
-	camera := NodeByAny("camera")
+	bedroom := NodeByAny("bedroom")
 	raw, _, _ := firstUplink(t, func(fr *Frame, _ *AppPayload) bool {
-		return hex.EncodeToString(fr.SrcEUI()) == camera.WireLE
+		return hex.EncodeToString(fr.SrcEUI()) == bedroom.WireLE
 	})
 	e, _, _ := newTestEmu(t)
-	ns := e.node(mustB(camera.WireLE))
-	seedHeatingBlock(e, mustB(camera.WireLE))
+	ns := e.node(mustB(bedroom.WireLE))
+	seedHeatingBlock(e, mustB(bedroom.WireLE))
 	if ns.LastSetpointC != 21.5 || ns.LastSchedC != 18 || ns.LastOverlay != 0 || !ns.LastOpenWindow {
 		t.Fatalf("last-known block = %v %v %v %v", ns.LastSetpointC, ns.LastSchedC, ns.LastOverlay, ns.LastOpenWindow)
 	}
-	if err := e.EnqueueMode("camera", 4, 3); err != nil {
+	if err := e.EnqueueMode("bedroom", 4, 3); err != nil {
 		t.Fatal(err)
 	}
 	a, ok := findAction(e.OnFrame(raw), ActData, "downlink mode")
@@ -591,13 +591,13 @@ func TestModeReusesLastKnown(t *testing.T) {
 // takes the open window write in the shape of the zone rewrite, and its 2.04
 // confirms the 62e0 alone, so a mode write still waits for the block.
 func TestOpenWindowWithoutBlockRestatesRewrite(t *testing.T) {
-	camera := NodeByAny("camera")
-	if camera == nil {
-		t.Fatal("camera not in inventory")
+	bedroom := NodeByAny("bedroom")
+	if bedroom == nil {
+		t.Fatal("bedroom not in inventory")
 	}
 	body := func(e *EmuState) (*queuedDownlink, string) {
 		t.Helper()
-		wire, label, err := e.resolve("camera")
+		wire, label, err := e.resolve("bedroom")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -619,7 +619,7 @@ func TestOpenWindowWithoutBlockRestatesRewrite(t *testing.T) {
 	rewrite, _, _ := newTestEmu(t)
 	rewrite.SetHomeState(true, map[int]float64{4: 19.5})
 	rewrite.SetOpenWindows(map[int]bool{4: false})
-	if err := rewrite.EnqueueZoneRewrite("camera", 4); err != nil {
+	if err := rewrite.EnqueueZoneRewrite("bedroom", 4); err != nil {
 		t.Fatal(err)
 	}
 	_, want := body(rewrite)
@@ -627,7 +627,7 @@ func TestOpenWindowWithoutBlockRestatesRewrite(t *testing.T) {
 	e, _, _ := newTestEmu(t)
 	e.SetHomeState(true, map[int]float64{4: 19.5})
 	e.SetOpenWindows(map[int]bool{4: false})
-	if err := e.EnqueueOpenWindow("camera", 4, false); err != nil {
+	if err := e.EnqueueOpenWindow("bedroom", 4, false); err != nil {
 		t.Fatal(err)
 	}
 	head, got := body(e)
@@ -637,23 +637,23 @@ func TestOpenWindowWithoutBlockRestatesRewrite(t *testing.T) {
 	if want := "61600101" + "61800100" + "60200101" + "61e00101" + "620002079e" + "62400100" + "62e00100"; got != want {
 		t.Errorf("body=%s, want %s", got, want)
 	}
-	if _, confirmed := e.ConfirmedOpenWindow("camera"); confirmed {
+	if _, confirmed := e.ConfirmedOpenWindow("bedroom"); confirmed {
 		t.Error("the write in flight already confirms 62e0")
 	}
-	if err := e.EnqueueOpenWindow("camera", 4, false); !errors.Is(err, ErrHeatingBlockPending) {
+	if err := e.EnqueueOpenWindow("bedroom", 4, false); !errors.Is(err, ErrHeatingBlockPending) {
 		t.Errorf("second write error = %v, want ErrHeatingBlockPending", err)
 	}
-	wire := mustB(camera.WireLE)
+	wire := mustB(bedroom.WireLE)
 	e.confirmByMID(wire, &CoAPMessage{Type: "ACK", Code: "2.04", MID: head.mid, Token: head.responseToken})
-	if open, confirmed := e.ConfirmedOpenWindow("camera"); open || !confirmed {
+	if open, confirmed := e.ConfirmedOpenWindow("bedroom"); open || !confirmed {
 		t.Errorf("confirmed 62e0 = %t %t, want false true", open, confirmed)
 	}
-	if err := e.EnqueueMode("camera", 4, 2); !errors.Is(err, ErrHeatingBlockUnavailable) {
+	if err := e.EnqueueMode("bedroom", 4, 2); !errors.Is(err, ErrHeatingBlockUnavailable) {
 		t.Errorf("mode error = %v, want ErrHeatingBlockUnavailable", err)
 	}
 
 	away, _, _ := newTestEmu(t)
-	if err := away.EnqueueOpenWindow("camera", 4, true); err != nil {
+	if err := away.EnqueueOpenWindow("bedroom", 4, true); err != nil {
 		t.Errorf("away write error = %v, want none: an away write carries no 6200", err)
 	}
 }
@@ -662,29 +662,29 @@ func TestOpenWindowWithoutBlockRestatesRewrite(t *testing.T) {
 // overlay, so it ends with 6440=0001. The captured 62e0 write that answers an
 // open window report keeps the running overlay and carries no 6440.
 func TestModeCarries6440OpenWindowDoesNot(t *testing.T) {
-	camera := NodeByAny("camera")
-	if camera == nil {
-		t.Fatal("camera not in inventory")
+	bedroom := NodeByAny("bedroom")
+	if bedroom == nil {
+		t.Fatal("bedroom not in inventory")
 	}
 	for _, tc := range []struct {
 		name    string
 		enqueue func(*EmuState) error
 		want    string
 	}{
-		{"mode", func(e *EmuState) error { return e.EnqueueMode("camera", 4, 2) }, "6440020001"},
+		{"mode", func(e *EmuState) error { return e.EnqueueMode("bedroom", 4, 2) }, "6440020001"},
 		// 6160 6180 6020 61e0 6200 6240 62e0, home at 20.00 C on the program.
 		{"openwindow", func(e *EmuState) error {
 			e.SetHomeState(true, map[int]float64{4: 20})
-			return e.EnqueueOpenWindow("camera", 4, true)
+			return e.EnqueueOpenWindow("bedroom", 4, true)
 		}, "61600101" + "61800100" + "60200101" + "61e00101" + "62000207d0" + "62400100" + "62e00101"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e, _, _ := newTestEmu(t)
-			seedHeatingBlock(e, mustB(camera.WireLE))
+			seedHeatingBlock(e, mustB(bedroom.WireLE))
 			if err := tc.enqueue(e); err != nil {
 				t.Fatal(err)
 			}
-			wire, label, err := e.resolve("camera")
+			wire, label, err := e.resolve("bedroom")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -794,38 +794,38 @@ func TestModeAndOpenWindowNeedCompleteHeatingBlock(t *testing.T) {
 	// Home with no program: the open window write has no 6200 to restate.
 	e.SetHomeState(true, nil)
 	for name, enqueue := range map[string]func() error{
-		"mode":       func() error { return e.EnqueueMode("camera", 4, 2) },
-		"openwindow": func() error { return e.EnqueueOpenWindow("camera", 4, true) },
+		"mode":       func() error { return e.EnqueueMode("bedroom", 4, 2) },
+		"openwindow": func() error { return e.EnqueueOpenWindow("bedroom", 4, true) },
 	} {
 		if err := enqueue(); !errors.Is(err, ErrHeatingBlockUnavailable) {
 			t.Errorf("%s error = %v, want ErrHeatingBlockUnavailable", name, err)
 		}
 	}
-	if got := e.Pending("camera"); got != 0 {
+	if got := e.Pending("bedroom"); got != 0 {
 		t.Fatalf("pending=%d, want 0", got)
 	}
 	e.SetHomeState(false, nil)
 
-	camera := NodeByAny("camera")
-	ns := e.node(mustB(camera.WireLE))
+	bedroom := NodeByAny("bedroom")
+	ns := e.node(mustB(bedroom.WireLE))
 	e.cacheTLVs(ns, []TLV{
 		{Tag: "6280", Val: []byte{0x08, 0x66}},
 		{Tag: "6200", Val: []byte{0x07, 0x08}},
 		{Tag: "6240", Val: []byte{0x00}},
-	}, "", ClassData, "camera", "bridge", "")
-	if err := e.EnqueueMode("camera", 4, 2); !errors.Is(err, ErrHeatingBlockUnavailable) {
+	}, "", ClassData, "bedroom", "bridge", "")
+	if err := e.EnqueueMode("bedroom", 4, 2); !errors.Is(err, ErrHeatingBlockUnavailable) {
 		t.Errorf("partial block error = %v, want ErrHeatingBlockUnavailable", err)
 	}
 
 	confirmed, _, _ := newTestEmu(t)
-	seedHeatingBlock(confirmed, mustB(camera.WireLE))
-	if err := confirmed.EnqueueMode("camera", 4, 2); err != nil {
+	seedHeatingBlock(confirmed, mustB(bedroom.WireLE))
+	if err := confirmed.EnqueueMode("bedroom", 4, 2); err != nil {
 		t.Fatal(err)
 	}
-	if err := confirmed.EnqueueOpenWindow("camera", 4, true); !errors.Is(err, ErrHeatingBlockPending) {
+	if err := confirmed.EnqueueOpenWindow("bedroom", 4, true); !errors.Is(err, ErrHeatingBlockPending) {
 		t.Errorf("pending block error = %v, want ErrHeatingBlockPending", err)
 	}
-	pendingWire, pendingLabel, err := confirmed.resolve("camera")
+	pendingWire, pendingLabel, err := confirmed.resolve("bedroom")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -834,17 +834,17 @@ func TestModeAndOpenWindowNeedCompleteHeatingBlock(t *testing.T) {
 	}
 	confirmedHead := confirmed.queue[hexEUI(pendingWire)][0]
 	confirmed.confirmByMID(pendingWire, &CoAPMessage{Type: "ACK", Code: "2.04", MID: confirmedHead.mid, Token: confirmedHead.responseToken})
-	if err := confirmed.EnqueueOpenWindow("camera", 4, true); err != nil {
+	if err := confirmed.EnqueueOpenWindow("bedroom", 4, true); err != nil {
 		t.Errorf("2.04 confirmation error = %v", err)
 	}
 
 	failed, _, _ := newTestEmu(t)
 	failed.SetHomeState(true, nil)
-	seedHeatingBlock(failed, mustB(camera.WireLE))
-	if err := failed.EnqueueMode("camera", 4, 2); err != nil {
+	seedHeatingBlock(failed, mustB(bedroom.WireLE))
+	if err := failed.EnqueueMode("bedroom", 4, 2); err != nil {
 		t.Fatal(err)
 	}
-	failedWire, failedLabel, err := failed.resolve("camera")
+	failedWire, failedLabel, err := failed.resolve("bedroom")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -853,7 +853,7 @@ func TestModeAndOpenWindowNeedCompleteHeatingBlock(t *testing.T) {
 	}
 	failedHead := failed.queue[hexEUI(failedWire)][0]
 	failed.confirmByMID(failedWire, &CoAPMessage{Type: "ACK", Code: "4.05", MID: failedHead.mid, Token: failedHead.responseToken})
-	if err := failed.EnqueueOpenWindow("camera", 4, true); !errors.Is(err, ErrHeatingBlockUnavailable) {
+	if err := failed.EnqueueOpenWindow("bedroom", 4, true); !errors.Is(err, ErrHeatingBlockUnavailable) {
 		t.Errorf("4.xx confirmation error = %v, want ErrHeatingBlockUnavailable", err)
 	}
 	failedNode := failed.node(failedWire)
@@ -861,24 +861,24 @@ func TestModeAndOpenWindowNeedCompleteHeatingBlock(t *testing.T) {
 		t.Errorf("invalidated typed block = %v %v %v %v", failedNode.LastSetpointC, failedNode.LastSchedC, failedNode.LastOverlay, failedNode.LastOpenWindow)
 	}
 
-	if err := e.EnqueueSetpoint("camera", SetpointParams{ID: 4, Setpoint: 5, Sched: 18, Overlay: 2, OpenWindow: 0}); err != nil {
+	if err := e.EnqueueSetpoint("bedroom", SetpointParams{ID: 4, Setpoint: 5, Sched: 18, Overlay: 2, OpenWindow: 0}); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.EnqueueMode("camera", 4, 3); !errors.Is(err, ErrHeatingBlockUnavailable) {
+	if err := e.EnqueueMode("bedroom", 4, 3); !errors.Is(err, ErrHeatingBlockUnavailable) {
 		t.Errorf("unconfirmed bootstrap error = %v, want ErrHeatingBlockUnavailable", err)
 	}
-	wire, label, err := e.resolve("camera")
+	wire, label, err := e.resolve("bedroom")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := e.nextDownlink(wire, label); !ok {
 		t.Fatal("bootstrap downlink missing")
 	}
-	seq := e.Queue("camera")[0].Seq
+	seq := e.Queue("bedroom")[0].Seq
 	e.OnFrame(BuildEnhAck(seq, BridgeEUI, wire, 0))
 	q := e.queue[hexEUI(wire)][0]
 	e.confirmByMID(wire, &CoAPMessage{Type: "ACK", Code: "2.04", MID: q.mid, Token: q.responseToken})
-	if err := e.EnqueueMode("camera", 4, 3); err != nil {
+	if err := e.EnqueueMode("bedroom", 4, 3); err != nil {
 		t.Fatalf("confirmed bootstrap mode: %v", err)
 	}
 	ns = e.node(wire)
@@ -891,7 +891,7 @@ func TestModeAndOpenWindowNeedCompleteHeatingBlock(t *testing.T) {
 		if _, ok := e.nextDownlink(wire, label); !ok {
 			t.Fatal("downlink missing")
 		}
-		seq := e.Queue("camera")[0].Seq
+		seq := e.Queue("bedroom")[0].Seq
 		e.OnFrame(BuildEnhAck(seq, BridgeEUI, wire, 0))
 	}
 	ackHead()
@@ -901,14 +901,14 @@ func TestModeAndOpenWindowNeedCompleteHeatingBlock(t *testing.T) {
 	modeHead := e.queue[hexEUI(wire)][0]
 	e.confirmByMID(wire, &CoAPMessage{Type: "ACK", Code: "2.04", MID: modeHead.mid, Token: []byte{0xff}})
 	e.confirmByMID(wire, &CoAPMessage{Type: "ACK", Code: "2.05", MID: modeHead.mid, Token: modeHead.responseToken})
-	if got := e.Pending("camera"); got != 1 {
+	if got := e.Pending("bedroom"); got != 1 {
 		t.Fatalf("mode pending after mismatched CoAP responses = %d, want 1", got)
 	}
 	e.confirmByMID(wire, &CoAPMessage{Type: "ACK", Code: "2.04", MID: modeHead.mid, Token: modeHead.responseToken})
 	if ns.LastOverlay != 3 || ns.LastOpenWindow {
 		t.Errorf("mode promotion = overlay %d openWindow %t", ns.LastOverlay, ns.LastOpenWindow)
 	}
-	if err := e.EnqueueOpenWindow("camera", 4, true); err != nil {
+	if err := e.EnqueueOpenWindow("bedroom", 4, true); err != nil {
 		t.Fatal(err)
 	}
 	ackHead()
@@ -920,7 +920,7 @@ func TestModeAndOpenWindowNeedCompleteHeatingBlock(t *testing.T) {
 	if ns.LastOverlay != 3 || !ns.LastOpenWindow {
 		t.Errorf("open-window promotion = overlay %d openWindow %t", ns.LastOverlay, ns.LastOpenWindow)
 	}
-	if err := e.EnqueueMode("camera", 4, 0); err != nil {
+	if err := e.EnqueueMode("bedroom", 4, 0); err != nil {
 		t.Fatal(err)
 	}
 	actions, ok := e.nextDownlink(wire, label)

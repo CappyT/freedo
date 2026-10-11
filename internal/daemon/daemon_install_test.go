@@ -37,20 +37,20 @@ func TestAPIAmbiguousLabel(t *testing.T) {
 		Error      string   `json:"error"`
 		Candidates []string `json:"candidates"`
 	}
-	if code := getJSON(t, url+"/api/nodes/cucina", &body); code != http.StatusBadRequest {
+	if code := getJSON(t, url+"/api/nodes/kitchen", &body); code != http.StatusBadRequest {
 		t.Fatalf("ambiguous label: got %d %+v, want 400", code, body)
 	}
 	if len(body.Candidates) != 2 {
-		t.Errorf("candidates = %v, want the two cucina valves", body.Candidates)
+		t.Errorf("candidates = %v, want the two kitchen valves", body.Candidates)
 	}
 
 	body.Candidates = nil
-	if code := postJSON(t, http.MethodPost, url+"/api/nodes/cucina/setpoint",
+	if code := postJSON(t, http.MethodPost, url+"/api/nodes/kitchen/setpoint",
 		map[string]any{"tempC": 21, "id": 5}, &body); code != http.StatusBadRequest {
 		t.Fatalf("ambiguous setpoint: got %d %+v, want 400", code, body)
 	}
 	if len(body.Candidates) != 2 {
-		t.Errorf("candidates = %v, want the two cucina valves", body.Candidates)
+		t.Errorf("candidates = %v, want the two kitchen valves", body.Candidates)
 	}
 }
 
@@ -116,26 +116,26 @@ func TestResolveIDFallsBackToInstall(t *testing.T) {
 		t.Fatal(err)
 	}
 	emu := tado.NewEmu(in.EmuConfig(), tado.NewUnhandledLogger(io.Discard))
-	camera, err := in.Resolve("VA1000000005")
+	bedroom, err := in.Resolve("VA1000000005")
 	if err != nil {
 		t.Fatal(err)
 	}
 	explicit := 7
-	if id, err := resolveID(emu, in, camera.Short(), &explicit); err != nil || id != 7 {
+	if id, err := resolveID(emu, in, bedroom.Short(), &explicit); err != nil || id != 7 {
 		t.Errorf("explicit id = %d, %v, want 7", id, err)
 	}
-	if id, err := resolveID(emu, in, camera.Short(), nil); err != nil || id != 10 {
+	if id, err := resolveID(emu, in, bedroom.Short(), nil); err != nil || id != 10 {
 		t.Errorf("membership id = %d, %v, want 10", id, err)
 	}
 
 	declaredText := strings.Replace(fixtureInstallYAML,
-		"serial: VA1000000005, label: camera}", "serial: VA1000000005, label: camera, zone: 10}", 1)
+		"serial: VA1000000005, label: bedroom}", "serial: VA1000000005, label: bedroom, zone: 10}", 1)
 	declared, err := tado.Parse([]byte(declaredText))
 	if err != nil {
 		t.Fatal(err)
 	}
 	declaredEmu := tado.NewEmu(declared.EmuConfig(), tado.NewUnhandledLogger(io.Discard))
-	if id, err := resolveID(declaredEmu, declared, camera.Short(), nil); err != nil || id != 10 {
+	if id, err := resolveID(declaredEmu, declared, bedroom.Short(), nil); err != nil || id != 10 {
 		t.Errorf("declared zone id = %d, %v, want 10", id, err)
 	}
 
@@ -168,7 +168,7 @@ func TestAPINodesListsInstall(t *testing.T) {
 	for _, v := range valves {
 		rooms[v.Room] = true
 	}
-	for _, want := range []string{"camera", "cucina", "corridoio", "ufficio"} {
+	for _, want := range []string{"bedroom", "kitchen", "hall", "office"} {
 		if !rooms[want] {
 			t.Errorf("no node labelled %q in %+v", want, valves)
 		}
@@ -215,7 +215,7 @@ func TestAPIZonesReportsInstall(t *testing.T) {
 // tag 40a0.
 func TestAPIZonesReportsDemand(t *testing.T) {
 	emu := tado.NewEmu(defaultInstall.EmuConfig(), tado.NewUnhandledLogger(io.Discard))
-	camera, err := defaultInstall.Resolve("VA1000000005")
+	bedroom, err := defaultInstall.Resolve("VA1000000005")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,13 +223,13 @@ func TestAPIZonesReportsDemand(t *testing.T) {
 		Type: "CON", Code: "0.03", MID: 0x7f01, Token: []byte{0x7f},
 		Path:    []string{"h", "7654321", "z", "10", "act"},
 		Payload: tado.TLV{Tag: "40a0", Val: []byte{100}}.Encode(),
-		SrcEUI:  camera.WireEUI(), DstEUI: defaultInstall.CoordinatorEUI(),
+		SrcEUI:  bedroom.WireEUI(), DstEUI: defaultInstall.CoordinatorEUI(),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	frame, err := tado.BuildData(defaultInstall.NetworkKey(), 0x7f, defaultInstall.CoordinatorEUI(),
-		camera.WireEUI()[:5], tado.WrapAppPayload(put, 702, nil))
+		bedroom.WireEUI()[:5], tado.WrapAppPayload(put, 702, nil))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -254,8 +254,8 @@ func TestAPIZonesReportsDemand(t *testing.T) {
 		if z.Number != 10 {
 			continue
 		}
-		if z.DemandPct != 100 || z.Reporter != camera.Short() || z.Source != camera.Short() {
-			t.Errorf("zone 10 = %+v, want demand 100 reported by %s", z, camera.Short())
+		if z.DemandPct != 100 || z.Reporter != bedroom.Short() || z.Source != bedroom.Short() {
+			t.Errorf("zone 10 = %+v, want demand 100 reported by %s", z, bedroom.Short())
 		}
 		return
 	}
@@ -353,9 +353,9 @@ home_id: 4711
 network_key: "000102030405060708090a0b0c0d0e0f"
 coordinator: {eui: "aa016a3107c51b00"}
 devices:
-  - {kind: valve, eui: "01026a3107c51b00", serial: VA2001000001, label: cucina}
+  - {kind: valve, eui: "01026a3107c51b00", serial: VA2001000001, label: kitchen}
 zones:
-  - {number: 1, name: cucina, kind: heating, circuit: 1, members: [VA2001000001], reporter: VA2001000001}
+  - {number: 1, name: kitchen, kind: heating, circuit: 1, members: [VA2001000001], reporter: VA2001000001}
 circuits: []
 `))
 	if err == nil {
@@ -368,12 +368,12 @@ home_id: 4711
 network_key: "000102030405060708090a0b0c0d0e0f"
 coordinator: {eui: "aa016a3107c51b00"}
 devices:
-  - {kind: thermostat, eui: "03046a3107c51b00", serial: RU2001000001, label: cucina}
-  - {kind: valve, eui: "01026a3107c51b00", serial: VA2001000001, label: cucina}
+  - {kind: thermostat, eui: "03046a3107c51b00", serial: RU2001000001, label: kitchen}
+  - {kind: valve, eui: "01026a3107c51b00", serial: VA2001000001, label: kitchen}
 zones:
-  - {number: 1, name: cucina, kind: heating, circuit: 1, members: [RU2001000001, VA2001000001], reporter: VA2001000001}
+  - {number: 1, name: kitchen, kind: heating, circuit: 1, members: [RU2001000001, VA2001000001], reporter: VA2001000001}
 circuits:
-  - {id: 1, name: casa, heat_source: RU2001000001}
+  - {id: 1, name: house, heat_source: RU2001000001}
 `))
 	if err != nil {
 		t.Fatal(err)

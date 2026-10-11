@@ -37,7 +37,7 @@ func populatedDesiredState(t *testing.T) tado.DesiredState {
 	cfg := defaultInstall.EmuConfig()
 	cfg.Now = func() time.Time { return stateClock }
 	emu := tado.NewEmu(cfg, tado.NewUnhandledLogger(io.Discard))
-	camera, err := defaultInstall.Resolve("VA1000000005")
+	bedroom, err := defaultInstall.Resolve("VA1000000005")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,33 +45,33 @@ func populatedDesiredState(t *testing.T) tado.DesiredState {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cameraKey := hex.EncodeToString(camera.WireEUI())
+	bedroomKey := hex.EncodeToString(bedroom.WireEUI())
 	fahrenheit := true
-	if err := emu.EnqueueConfig(cameraKey, 10, tado.ConfigWrite{TempUnitF: &fahrenheit}); err != nil {
+	if err := emu.EnqueueConfig(bedroomKey, 10, tado.ConfigWrite{TempUnitF: &fahrenheit}); err != nil {
 		t.Fatal(err)
 	}
 	offlineSchedule := false
-	if err := emu.EnqueueConfig(cameraKey, 10, tado.ConfigWrite{OfflineScheduleEnabled: &offlineSchedule}); err != nil {
+	if err := emu.EnqueueConfig(bedroomKey, 10, tado.ConfigWrite{OfflineScheduleEnabled: &offlineSchedule}); err != nil {
 		t.Fatal(err)
 	}
 	if err := emu.EnqueueFlowSetpoint(hex.EncodeToString(boiler.WireEUI()), flowCircuitID, 48); err != nil {
 		t.Fatal(err)
 	}
-	if err := emu.SetSchedule(cameraKey, []tado.ScheduleProgram{{DayMask: 0x7f, Entries: []tado.ScheduleEntry{
+	if err := emu.SetSchedule(bedroomKey, []tado.ScheduleProgram{{DayMask: 0x7f, Entries: []tado.ScheduleEntry{
 		{Minute: 0, SetpointCenti: 500, Enabled: true},
 		{Minute: 360, SetpointCenti: 700, Enabled: true},
 	}}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := emu.EnqueueBoost(cameraKey, 10, true); err != nil {
+	if err := emu.EnqueueBoost(bedroomKey, 10, true); err != nil {
 		t.Fatal(err)
 	}
 	state := emu.ExportDesiredState()
 	// The emulator fills these from received traffic, which no test frame here
 	// carries: the child lock is recorded on the valve's answer.
-	state.ChildLock[cameraKey] = true
+	state.ChildLock[bedroomKey] = true
 	state.ZoneState["10|z/s"] = []byte{1, 2, 3}
-	state.UTCSettled[cameraKey] = 60
+	state.UTCSettled[bedroomKey] = 60
 	state.InterfaceModule[hex.EncodeToString(boiler.WireEUI())] = 71
 
 	gate := tado.NewEmu(cfg, tado.NewUnhandledLogger(io.Discard))

@@ -125,8 +125,8 @@ func dropAllQueues(t *testing.T, a *installAPI) {
 func TestAwayTemperatureWrites(t *testing.T) {
 	a := newInstallAPIOn(t, windowInstall(t, nil))
 	const zone = "/api/install/zones/3"
-	ufficio := wireOf(t, a.d.inst.Load(), "VA1000000002")
-	bagno := wireOf(t, a.d.inst.Load(), "VA1000000007")
+	office := wireOf(t, a.d.inst.Load(), "VA1000000002")
+	bath := wireOf(t, a.d.inst.Load(), "VA1000000007")
 
 	var view map[string]any
 	if code := postJSON(t, http.MethodPut, a.base+"/api/zones/3/schedule",
@@ -146,20 +146,20 @@ func TestAwayTemperatureWrites(t *testing.T) {
 
 	dropAllQueues(t, a)
 	patch(12.0)
-	onlyPending(t, "a change while home", a, ufficio, 0)
+	onlyPending(t, "a change while home", a, office, 0)
 
 	setAway(true)
-	wantTags(t, "the switch to away, zone with 12 C", nextZoneWrite(t, a.d, ufficio), map[string]string{
+	wantTags(t, "the switch to away, zone with 12 C", nextZoneWrite(t, a.d, office), map[string]string{
 		"6160": "02", "6180": "00", "61e0": "01", "6200": "04b0", "6240": "00", "6440": "0001",
 	})
-	wantTags(t, "the switch to away, zone at the default", nextZoneWrite(t, a.d, bagno), map[string]string{
+	wantTags(t, "the switch to away, zone at the default", nextZoneWrite(t, a.d, bath), map[string]string{
 		"6160": "02", "6180": "00", "61e0": "00", "6240": "00", "6440": "0001",
 	}, "6200")
 
 	dropAllQueues(t, a)
 	patch(15.0)
-	onlyPending(t, "a change while away", a, ufficio, 1)
-	wantTags(t, "the change while away", nextZoneWrite(t, a.d, ufficio), map[string]string{
+	onlyPending(t, "a change while away", a, office, 1)
+	wantTags(t, "the change while away", nextZoneWrite(t, a.d, office), map[string]string{
 		"6160": "02", "61e0": "01", "6200": "05dc", "6240": "00", "6440": "0001",
 	})
 	if target := mustTarget(t, a.base, 3); target["source"] != "away" || target["targetC"] != 15.0 {
@@ -168,27 +168,27 @@ func TestAwayTemperatureWrites(t *testing.T) {
 
 	dropAllQueues(t, a)
 	patch(15.0)
-	onlyPending(t, "the same value again", a, ufficio, 0)
+	onlyPending(t, "the same value again", a, office, 0)
 
 	patch(5.0)
-	onlyPending(t, "a change to the room minimum", a, ufficio, 1)
-	wantTags(t, "the change to the room minimum", nextZoneWrite(t, a.d, ufficio), map[string]string{
+	onlyPending(t, "a change to the room minimum", a, office, 1)
+	wantTags(t, "the change to the room minimum", nextZoneWrite(t, a.d, office), map[string]string{
 		"6160": "02", "61e0": "00", "6240": "00", "6440": "0001",
 	}, "6200")
 	dropAllQueues(t, a)
 	patch(nil)
-	onlyPending(t, "a clear from the room minimum", a, ufficio, 0)
+	onlyPending(t, "a clear from the room minimum", a, office, 0)
 
 	patch(18.0)
 	dropAllQueues(t, a)
 	setAway(false)
-	wantTags(t, "the return home", nextZoneWrite(t, a.d, ufficio), map[string]string{
+	wantTags(t, "the return home", nextZoneWrite(t, a.d, office), map[string]string{
 		"6160": "01", "6180": "00", "61e0": "01", "6200": "07d0", "6240": "00", "6440": "0001",
 	})
 
 	dropAllQueues(t, a)
 	patch(21.0)
-	onlyPending(t, "a change while home again", a, ufficio, 0)
+	onlyPending(t, "a change while home again", a, office, 0)
 }
 
 // reportedBlock is the block a valve reports for a zone at home with no overlay:
@@ -209,7 +209,7 @@ func reportedBlock(centiC uint16) []tado.TLV {
 func TestAwaySwitchMarksOnlyMovedTargets(t *testing.T) {
 	a := newInstallAPIOn(t, windowInstall(t, nil))
 	in := a.d.inst.Load()
-	ufficio, camera := wireOf(t, in, "VA1000000002"), wireOf(t, in, "VA1000000005")
+	office, bedroom := wireOf(t, in, "VA1000000002"), wireOf(t, in, "VA1000000005")
 	for zone, setpoint := range map[int]float64{3: 18, 10: 20} {
 		var view map[string]any
 		if code := postJSON(t, http.MethodPut, a.base+"/api/zones/"+strconv.Itoa(zone)+"/schedule",
@@ -222,24 +222,24 @@ func TestAwaySwitchMarksOnlyMovedTargets(t *testing.T) {
 	a.mutate(http.MethodPatch, "/api/install/zones/3", map[string]any{"away_temperature_c": 18.0})
 
 	for _, tc := range []struct {
-		name         string
-		away         bool
-		ufficio, cam map[string]string
+		name        string
+		away        bool
+		office, cam map[string]string
 	}{{
-		name:    "switch to away",
-		away:    true,
-		ufficio: map[string]string{"6160": "02", "61e0": "01", "6200": "0708"},
-		cam:     map[string]string{"6160": "02", "61e0": "00", "6440": "0001"},
+		name:   "switch to away",
+		away:   true,
+		office: map[string]string{"6160": "02", "61e0": "01", "6200": "0708"},
+		cam:    map[string]string{"6160": "02", "61e0": "00", "6440": "0001"},
 	}, {
-		name:    "return home",
-		ufficio: map[string]string{"6160": "01", "61e0": "01", "6200": "0708"},
-		cam:     map[string]string{"6160": "01", "61e0": "01", "6200": "07d0", "6440": "0001"},
+		name:   "return home",
+		office: map[string]string{"6160": "01", "61e0": "01", "6200": "0708"},
+		cam:    map[string]string{"6160": "01", "61e0": "01", "6200": "07d0", "6440": "0001"},
 	}} {
 		if code, res := a.call(http.MethodPatch, "/api/home", map[string]any{"away": tc.away}); code != http.StatusOK {
 			t.Fatalf("%s: code=%d %v", tc.name, code, res)
 		}
-		wantTags(t, tc.name+", zone 3 keeps 18.00 C", deliverAck(t, a.d, in, ufficio), tc.ufficio, "6440")
-		wantTags(t, tc.name+", zone 10 moves", deliverAck(t, a.d, in, camera), tc.cam)
+		wantTags(t, tc.name+", zone 3 keeps 18.00 C", deliverAck(t, a.d, in, office), tc.office, "6440")
+		wantTags(t, tc.name+", zone 10 moves", deliverAck(t, a.d, in, bedroom), tc.cam)
 	}
 }
 
@@ -253,7 +253,7 @@ func TestAwayTemperatureChangeOnTheSameWireValue(t *testing.T) {
 		in.Options.ZoneOffsets = map[int]tado.ZoneOffset{3: {Mode: tado.OffsetModeSetpoint, SetpointCenti: -70}}
 	}))
 	in := a.d.inst.Load()
-	ufficio := wireOf(t, in, "VA1000000002")
+	office := wireOf(t, in, "VA1000000002")
 	seedBlock(t, a.d, in, "VA1000000002", 3, reportedBlock(0x07d0)...)
 	if code, res := a.call(http.MethodPatch, "/api/home", map[string]any{"away": true}); code != http.StatusOK {
 		t.Fatalf("away: code=%d %v", code, res)
@@ -262,11 +262,11 @@ func TestAwayTemperatureChangeOnTheSameWireValue(t *testing.T) {
 	for _, c := range []float64{24.5, 25} {
 		a.mutate(http.MethodPatch, "/api/install/zones/3", map[string]any{"away_temperature_c": c})
 	}
-	if n := pending(t, a.d, ufficio); n != 2 {
-		t.Fatalf("%s holds %d queued writes, want the two changes", ufficio, n)
+	if n := pending(t, a.d, office); n != 2 {
+		t.Fatalf("%s holds %d queued writes, want the two changes", office, n)
 	}
-	wantTags(t, "24.5 C", deliverAck(t, a.d, in, ufficio), map[string]string{"61e0": "01", "6200": "09c4", "6440": "0001"})
-	wantTags(t, "25 C", deliverAck(t, a.d, in, ufficio), map[string]string{"61e0": "01", "6200": "09c4"}, "6440")
+	wantTags(t, "24.5 C", deliverAck(t, a.d, in, office), map[string]string{"61e0": "01", "6200": "09c4", "6440": "0001"})
+	wantTags(t, "25 C", deliverAck(t, a.d, in, office), map[string]string{"61e0": "01", "6200": "09c4"}, "6440")
 }
 
 // TestAwayTemperatureGoesOutOnTheValveScale: the away temperature is a target on

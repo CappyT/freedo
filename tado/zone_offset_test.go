@@ -40,19 +40,19 @@ func tlvValue(list []TLV, tag string) string {
 // a write.
 func TestCalibOffsetDbg2KeepsTheConfigETag(t *testing.T) {
 	e, in := fixtureEmu(t)
-	before, ok := e.cfgDoc[cameraEUIHex]
+	before, ok := e.cfgDoc[bedroomEUIHex]
 	if !ok {
-		t.Fatal("the camera valve holds no d/config document")
+		t.Fatal("the bedroom valve holds no d/config document")
 	}
 	etag := append([]byte(nil), before.etag...)
 
-	if err := e.EnqueueCalibOffsetDbg2(cameraEUIHex, 10, -70); err != nil {
+	if err := e.EnqueueCalibOffsetDbg2(bedroomEUIHex, 10, -70); err != nil {
 		t.Fatal(err)
 	}
 	if n := queuedDownlinks(e); n != 1 {
 		t.Fatalf("queued downlinks = %d, want the dbg2 write alone", n)
 	}
-	actions, ok, err := e.NextQueuedDownlink(cameraEUIHex)
+	actions, ok, err := e.NextQueuedDownlink(bedroomEUIHex)
 	if err != nil || !ok || len(actions) == 0 {
 		t.Fatalf("no queued downlink: ok=%v err=%v", ok, err)
 	}
@@ -67,9 +67,9 @@ func TestCalibOffsetDbg2KeepsTheConfigETag(t *testing.T) {
 	if got := hex.EncodeToString(app.CoAP.Payload); got != "014002ffba" {
 		t.Errorf("dbg2 payload = %s, want the single record 014002ffba", got)
 	}
-	e.confirmByMID(mustHex(cameraEUIHex), &CoAPMessage{Type: "ACK", Code: "2.04", MID: app.CoAP.MID, Token: app.CoAP.Token})
+	e.confirmByMID(mustHex(bedroomEUIHex), &CoAPMessage{Type: "ACK", Code: "2.04", MID: app.CoAP.MID, Token: app.CoAP.Token})
 
-	after := e.cfgDoc[cameraEUIHex]
+	after := e.cfgDoc[bedroomEUIHex]
 	body := parseTLVList(after.body)
 	if !bytes.Equal(after.etag, etag) || tlvValue(body, configEtagTag) != hex.EncodeToString(etag) {
 		t.Errorf("etag = %x, 015a = %s, want both %x", after.etag, tlvValue(body, configEtagTag), etag)
@@ -78,10 +78,10 @@ func TestCalibOffsetDbg2KeepsTheConfigETag(t *testing.T) {
 		t.Errorf("served 0140 = %q, want ffba", got)
 	}
 
-	if m := servedConfigAnswer(t, e, cameraEUIHex, etag, 0xd401); m.Code != "2.03" {
+	if m := servedConfigAnswer(t, e, bedroomEUIHex, etag, 0xd401); m.Code != "2.03" {
 		t.Errorf("conditional GET with the held ETag = %s, want 2.03", m.Code)
 	}
-	full := servedConfigAnswer(t, e, cameraEUIHex, nil, 0xd402)
+	full := servedConfigAnswer(t, e, bedroomEUIHex, nil, 0xd402)
 	if full.Code != "2.05" || tlvValue(parseTLVList(full.Payload), "0140") != "ffba" {
 		t.Errorf("full GET = %s %x, want 2.05 with 0140=ffba", full.Code, full.Payload)
 	}
@@ -89,12 +89,12 @@ func TestCalibOffsetDbg2KeepsTheConfigETag(t *testing.T) {
 		t.Errorf("full GET ETag = %x, want %x", et.Val, etag)
 	}
 
-	e.DropQueue(cameraEUIHex)
+	e.DropQueue(bedroomEUIHex)
 	if _, _, err := e.SetInstall(in); err != nil {
 		t.Fatal(err)
 	}
-	if n := queuedDownlinks(e); n != 0 || !bytes.Equal(e.cfgDoc[cameraEUIHex].etag, etag) {
-		t.Errorf("reload: %d queued, etag %x, want none and %x", n, e.cfgDoc[cameraEUIHex].etag, etag)
+	if n := queuedDownlinks(e); n != 0 || !bytes.Equal(e.cfgDoc[bedroomEUIHex].etag, etag) {
+		t.Errorf("reload: %d queued, etag %x, want none and %x", n, e.cfgDoc[bedroomEUIHex].etag, etag)
 	}
 
 	restarted, _ := fixtureEmu(t)
@@ -104,7 +104,7 @@ func TestCalibOffsetDbg2KeepsTheConfigETag(t *testing.T) {
 	if _, _, err := restarted.SetInstall(in); err != nil {
 		t.Fatal(err)
 	}
-	doc := restarted.cfgDoc[cameraEUIHex]
+	doc := restarted.cfgDoc[bedroomEUIHex]
 	if n := queuedDownlinks(restarted); n != 0 || !bytes.Equal(doc.etag, etag) || tlvValue(parseTLVList(doc.body), "0140") != "ffba" {
 		t.Errorf("restart: %d queued, etag %x, 0140 %s, want none, %x, ffba",
 			n, doc.etag, tlvValue(parseTLVList(doc.body), "0140"), etag)
@@ -112,10 +112,10 @@ func TestCalibOffsetDbg2KeepsTheConfigETag(t *testing.T) {
 
 	// A real change still mints a new ETag.
 	calib := 20
-	if err := restarted.EnqueueConfig(cameraEUIHex, 10, ConfigWrite{CalibOffset: &calib}); err != nil {
+	if err := restarted.EnqueueConfig(bedroomEUIHex, 10, ConfigWrite{CalibOffset: &calib}); err != nil {
 		t.Fatal(err)
 	}
-	if bytes.Equal(restarted.cfgDoc[cameraEUIHex].etag, etag) {
+	if bytes.Equal(restarted.cfgDoc[bedroomEUIHex].etag, etag) {
 		t.Error("a d/config change kept the old ETag")
 	}
 }
@@ -133,7 +133,7 @@ func TestCalibOffsetDbg2Refuses(t *testing.T) {
 	if err := e.EnqueueCalibOffsetDbg2(thermostat, 1, -70); err == nil {
 		t.Error("the thermostat took a dbg2 write")
 	}
-	if err := e.EnqueueCalibOffsetDbg2(cameraEUIHex, 10, 1001); err == nil {
+	if err := e.EnqueueCalibOffsetDbg2(bedroomEUIHex, 10, 1001); err == nil {
 		t.Error("an offset of 10.01 C was queued")
 	}
 	if n := queuedDownlinks(e); n != 0 {

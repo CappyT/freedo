@@ -123,7 +123,7 @@ func TestActiveGetKeyedByDevice(t *testing.T) {
 	e, _, _ := newTestEmu(t)
 	saved := midCounter.Load()
 	defer midCounter.Store(saved)
-	for _, target := range []string{"camera", "bagno"} {
+	for _, target := range []string{"bedroom", "bath"} {
 		midCounter.Store(0x7000)
 		if err := e.EnqueueGet(target, "d/fw/state", []string{"d", "fw", "state"}, nil); err != nil {
 			t.Fatal(err)
@@ -214,13 +214,13 @@ func TestParseEnhAckChecksFCS(t *testing.T) {
 // another node never closes our in-flight downlink, even when the sequence
 // number matches.
 func TestEnhAckForAnotherNodeConfirmsNothing(t *testing.T) {
-	camera := mustHex(NodeByAny("camera").WireLE)
+	bedroom := mustHex(NodeByAny("bedroom").WireLE)
 	other := []byte{0x67, 0x45, 0x23, 0x31, 0x07, 0xc5, 0x1b, 0x00}
 	e, _, _ := newTestEmu(t)
-	if err := e.EnqueueChildLock("camera", 10, true); err != nil {
+	if err := e.EnqueueChildLock("bedroom", 10, true); err != nil {
 		t.Fatal(err)
 	}
-	wire, label, err := e.resolve("camera")
+	wire, label, err := e.resolve("bedroom")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -232,12 +232,12 @@ func TestEnhAckForAnotherNodeConfirmsNothing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e.OnFrame(BuildEnhAck(df.Seq, other, camera, 0x0101))
-	if n := e.Pending("camera"); n != 1 {
+	e.OnFrame(BuildEnhAck(df.Seq, other, bedroom, 0x0101))
+	if n := e.Pending("bedroom"); n != 1 {
 		t.Fatalf("an Enhanced ACK to another node closed the downlink: pending=%d", n)
 	}
-	e.OnFrame(BuildEnhAck(df.Seq, BridgeEUI, camera, 0x0101))
-	if n := e.Pending("camera"); n != 0 {
+	e.OnFrame(BuildEnhAck(df.Seq, BridgeEUI, bedroom, 0x0101))
+	if n := e.Pending("bedroom"); n != 0 {
 		t.Errorf("our own Enhanced ACK left pending=%d, want 0", n)
 	}
 }
@@ -370,7 +370,7 @@ func TestBlock2TransferServesOneDocument(t *testing.T) {
 	dev := mustHex("02a6cefa07c51b00")
 	e, _, _ := newTestEmu(t)
 	e.inst = &Install{HomeID: 7654321}
-	if err := e.SetSchedule("camera", []ScheduleProgram{{DayMask: 0x7f, Entries: scheduleEntries(500)}}); err != nil {
+	if err := e.SetSchedule("bedroom", []ScheduleProgram{{DayMask: 0x7f, Entries: scheduleEntries(500)}}); err != nil {
 		t.Fatal(err)
 	}
 	old := EncodeSchedule(EncodeScheduleDayProgram(0x7f, scheduleEntries(500)...))
@@ -384,7 +384,7 @@ func TestBlock2TransferServesOneDocument(t *testing.T) {
 		got, _ := m.Option(4)
 		if etag == nil {
 			etag = append([]byte(nil), got.Val...)
-			if err := e.SetSchedule("camera", []ScheduleProgram{{DayMask: 0x7f, Entries: scheduleEntries(600)}}); err != nil {
+			if err := e.SetSchedule("bedroom", []ScheduleProgram{{DayMask: 0x7f, Entries: scheduleEntries(600)}}); err != nil {
 				t.Fatal(err)
 			}
 		} else if !bytes.Equal(got.Val, etag) {
@@ -407,7 +407,7 @@ func TestBlock2WithoutTransferRefused(t *testing.T) {
 	dev := mustHex("02a6cefa07c51b00")
 	e, _, _ := newTestEmu(t)
 	e.inst = &Install{HomeID: 7654321}
-	if err := e.SetSchedule("camera", []ScheduleProgram{{DayMask: 0x7f, Entries: scheduleEntries(500)}}); err != nil {
+	if err := e.SetSchedule("bedroom", []ScheduleProgram{{DayMask: 0x7f, Entries: scheduleEntries(500)}}); err != nil {
 		t.Fatal(err)
 	}
 	m := servedAnswer(t, e.OnFrame(scheduleBlockGET(t, dev, 1)), 0x7501)

@@ -43,9 +43,9 @@ func syntheticInstall(t *testing.T) *tado.Install {
 		},
 	}
 	thermostats := []struct{ eui, serial, label string }{
-		{"05a2cafa07c51b00", "RU2001000001", "soggiorno"},
-		{"41c8693107c51b00", "RU2001000002", "corridoio primo piano"},
-		{"5e12693107c51b00", "RU2001000003", "ufficio"},
+		{"05a2cafa07c51b00", "RU2001000001", "living"},
+		{"41c8693107c51b00", "RU2001000002", "first floor hall"},
+		{"5e12693107c51b00", "RU2001000003", "office"},
 	}
 	for _, d := range thermostats {
 		in.Devices = append(in.Devices, tado.Device{
@@ -53,16 +53,16 @@ func syntheticInstall(t *testing.T) *tado.Install {
 		})
 	}
 	labels := []string{
-		"soggiorno", "soggiorno", "soggiorno", "soggiorno",
-		"cucina", "cucina", "cucina", "cucina",
-		"sala da pranzo", "sala da pranzo", "sala da pranzo", "sala da pranzo",
-		"camera matrimoniale", "camera matrimoniale", "camera matrimoniale", "camera matrimoniale",
-		"corridoio primo piano", "corridoio primo piano", "corridoio primo piano", "corridoio primo piano",
-		"bagno", "bagno", "bagno", "bagno",
-		"ufficio", "ufficio", "ufficio",
-		"taverna", "taverna", "taverna",
+		"living", "living", "living", "living",
+		"kitchen", "kitchen", "kitchen", "kitchen",
+		"dining room", "dining room", "dining room", "dining room",
+		"master bedroom", "master bedroom", "master bedroom", "master bedroom",
+		"first floor hall", "first floor hall", "first floor hall", "first floor hall",
+		"bath", "bath", "bath", "bath",
+		"office", "office", "office",
+		"basement", "basement", "basement",
 	}
-	cucina := 2
+	kitchen := 2
 	for i, label := range labels {
 		d := tado.Device{
 			Kind:   tado.KindValve,
@@ -71,36 +71,36 @@ func syntheticInstall(t *testing.T) *tado.Install {
 			Label:  label,
 			Notes:  "synthetic",
 		}
-		if label == "cucina" {
-			d.Zone = &cucina
+		if label == "kitchen" {
+			d.Zone = &kitchen
 		}
 		in.Devices = append(in.Devices, d)
 	}
 	valve := func(n int) string { return fmt.Sprintf("VA20010000%02d", n) }
 	specs := []zoneSpec{
-		{number: 0, name: "acqua calda", kind: tado.ZoneHotWater, members: []string{"RU2001000001"}},
-		{number: 1, name: "soggiorno", kind: tado.ZoneHeating, circuit: 1,
+		{number: 0, name: "hot water", kind: tado.ZoneHotWater, members: []string{"RU2001000001"}},
+		{number: 1, name: "living", kind: tado.ZoneHeating, circuit: 1,
 			members:  []string{"RU2001000001", valve(1), valve(2), valve(3), valve(4)},
 			reporter: "RU2001000001", measuring: "RU2001000001"},
-		{number: 2, name: "cucina", kind: tado.ZoneHeating, circuit: 1,
+		{number: 2, name: "kitchen", kind: tado.ZoneHeating, circuit: 1,
 			members:  []string{valve(5), valve(6), valve(7), valve(8)},
 			reporter: valve(5), measuring: valve(6)},
-		{number: 3, name: "sala da pranzo", kind: tado.ZoneHeating, circuit: 1,
+		{number: 3, name: "dining room", kind: tado.ZoneHeating, circuit: 1,
 			members:  []string{valve(9), valve(10), valve(11), valve(12)},
 			reporter: valve(9)},
-		{number: 5, name: "camera matrimoniale", kind: tado.ZoneHeating, circuit: 2,
+		{number: 5, name: "master bedroom", kind: tado.ZoneHeating, circuit: 2,
 			members:  []string{valve(13), valve(14), valve(15), valve(16)},
 			reporter: valve(13)},
-		{number: 6, name: "corridoio primo piano", kind: tado.ZoneHeating, circuit: 2,
+		{number: 6, name: "first floor hall", kind: tado.ZoneHeating, circuit: 2,
 			members:  []string{"RU2001000002", valve(17), valve(18), valve(19), valve(20)},
 			reporter: "RU2001000002"},
-		{number: 8, name: "bagno", kind: tado.ZoneHeating, circuit: 4,
+		{number: 8, name: "bath", kind: tado.ZoneHeating, circuit: 4,
 			members:  []string{valve(21), valve(22), valve(23), valve(24)},
 			reporter: valve(21)},
-		{number: 9, name: "ufficio", kind: tado.ZoneHeating, circuit: 4,
+		{number: 9, name: "office", kind: tado.ZoneHeating, circuit: 4,
 			members:  []string{"RU2001000003", valve(25), valve(26), valve(27)},
 			reporter: "RU2001000003"},
-		{number: 10, name: "taverna", kind: tado.ZoneHeating, circuit: 4,
+		{number: 10, name: "basement", kind: tado.ZoneHeating, circuit: 4,
 			members:  []string{valve(28), valve(29), valve(30)},
 			reporter: valve(28)},
 	}
@@ -119,9 +119,9 @@ func syntheticInstall(t *testing.T) *tado.Install {
 		in.Zones = append(in.Zones, z)
 	}
 	in.Circuits = []tado.Circuit{
-		{ID: 1, Name: "piano terra", HeatSource: "RU2001000001"},
-		{ID: 2, Name: "primo piano", HeatSource: "RU2001000002"},
-		{ID: 4, Name: "taverna e uffici", HeatSource: "RU2001000003"},
+		{ID: 1, Name: "ground floor", HeatSource: "RU2001000001"},
+		{ID: 2, Name: "first floor", HeatSource: "RU2001000002"},
+		{ID: 4, Name: "basement and offices", HeatSource: "RU2001000003"},
 	}
 	offset := 60
 	in.Options.UTCOffsetMin = &offset
@@ -545,7 +545,7 @@ CREATE TABLE zone (
 		stateSchemaDDL,
 		noOpenWindow,
 		`INSERT INTO meta (key, value) VALUES ('schema_version', '2')`,
-		`INSERT INTO zone (number, name, kind) VALUES (4, 'studio', 'heating')`,
+		`INSERT INTO zone (number, name, kind) VALUES (4, 'study', 'heating')`,
 	} {
 		if _, err := old.Exec(stmt); err != nil {
 			t.Fatal(err)

@@ -239,15 +239,15 @@ func TestEnhAckFromUnknownNodeKeepsNoState(t *testing.T) {
 // we authored. An ACK addressed to us carries a MID of our space, so it never
 // closes a zone relay.
 func TestRelayedAckConfirmsOnlyRelays(t *testing.T) {
-	camera := mustHex(NodeByAny("camera").WireLE)
+	bedroom := mustHex(NodeByAny("bedroom").WireLE)
 	peer := mustHex(NodeByAny("a205").WireLE)
 
 	t.Run("relay path", func(t *testing.T) {
 		e, _, _ := newTestEmu(t)
-		if err := e.EnqueueChildLock("camera", 10, true); err != nil {
+		if err := e.EnqueueChildLock("bedroom", 10, true); err != nil {
 			t.Fatal(err)
 		}
-		wire, label, err := e.resolve("camera")
+		wire, label, err := e.resolve("bedroom")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -260,8 +260,8 @@ func TestRelayedAckConfirmsOnlyRelays(t *testing.T) {
 			t.Fatal(err)
 		}
 		ours := ParseApp(df.Plaintext).CoAP
-		e.OnFrame(zoneUplink(t, camera, peer, CoAPReq{Type: "ACK", Code: "2.04", MID: ours.MID, Token: ours.Token}))
-		if n := e.Pending("camera"); n != 1 {
+		e.OnFrame(zoneUplink(t, bedroom, peer, CoAPReq{Type: "ACK", Code: "2.04", MID: ours.MID, Token: ours.Token}))
+		if n := e.Pending("bedroom"); n != 1 {
 			t.Errorf("a relayed ACK closed our own downlink: pending=%d", n)
 		}
 	})
@@ -293,10 +293,10 @@ func TestRelayedAckConfirmsOnlyRelays(t *testing.T) {
 // under the same MID gets the same RST.
 func TestResetEndsOurExchange(t *testing.T) {
 	e, _, _ := newTestEmu(t)
-	if err := e.EnqueueSetpoint("camera", SetpointParams{ID: 4, Setpoint: 5, Sched: 5, Overlay: 2}); err != nil {
+	if err := e.EnqueueSetpoint("bedroom", SetpointParams{ID: 4, Setpoint: 5, Sched: 5, Overlay: 2}); err != nil {
 		t.Fatal(err)
 	}
-	wire, label, err := e.resolve("camera")
+	wire, label, err := e.resolve("bedroom")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -310,14 +310,14 @@ func TestResetEndsOurExchange(t *testing.T) {
 	}
 	ours := ParseApp(df.Plaintext).CoAP
 	e.OnFrame(deviceUplink(t, wire, CoAPReq{Type: "RST", Code: "0.00", MID: ours.MID + 1, Token: []byte{}}))
-	if n := e.Pending("camera"); n != 1 {
+	if n := e.Pending("bedroom"); n != 1 {
 		t.Fatalf("an RST with another MID ended the exchange: pending=%d", n)
 	}
 	e.OnFrame(deviceUplink(t, wire, CoAPReq{Type: "RST", Code: "0.00", MID: ours.MID, Token: []byte{}}))
-	if n := e.Pending("camera"); n != 0 {
+	if n := e.Pending("bedroom"); n != 0 {
 		t.Fatalf("the RST left pending=%d, want 0", n)
 	}
-	h := e.QueueHistory("camera")
+	h := e.QueueHistory("bedroom")
 	if len(h) != 1 || h[0].Result != "dropped" || h[0].Reason != "coap-rst" {
 		t.Errorf("history=%+v, want dropped/coap-rst", h)
 	}
@@ -329,9 +329,9 @@ func TestResetEndsOurExchange(t *testing.T) {
 // TestPingGetsReset: a CON empty message is a CoAP ping, and the answer is an
 // RST with its MID (RFC 7252, 4.3).
 func TestPingGetsReset(t *testing.T) {
-	camera := mustHex(NodeByAny("camera").WireLE)
+	bedroom := mustHex(NodeByAny("bedroom").WireLE)
 	e, log, _ := newTestEmu(t)
-	actions := e.OnFrame(deviceUplink(t, camera, CoAPReq{Type: "CON", Code: "0.00", MID: 0x4242, Token: []byte{}}))
+	actions := e.OnFrame(deviceUplink(t, bedroom, CoAPReq{Type: "CON", Code: "0.00", MID: 0x4242, Token: []byte{}}))
 	m := servedAnswer(t, actions, 0x4242)
 	if want := []byte{0x70, 0x00, 0x42, 0x42}; !bytes.Equal(m.Raw, want) {
 		t.Errorf("answer=%x, want the empty RST %x; unhandled:\n%s", m.Raw, want, log.Summary())

@@ -43,7 +43,7 @@ func icmpDownlink(t *testing.T, actions []Action, reason string) (*Frame, []byte
 // commercial bridge sends (the pairing capture): link-local addresses
 // elided, hop limit 64.
 func TestEchoRequestAnswered(t *testing.T) {
-	dev := mustB(NodeByAny("camera").WireLE)
+	dev := mustB(NodeByAny("bedroom").WireLE)
 	src, dst := linkLocalFromWire(dev), linkLocalFromWire(BridgeEUI)
 	req := icmpMsg(src, dst, []byte{icmpEchoRequest, 0, 0, 0, 0x40, 0x40, 0x07, 0x08})
 	e, _, _ := newTestEmu(t)
@@ -75,7 +75,7 @@ func TestEchoRequestAnswered(t *testing.T) {
 
 // TestEchoRequestRejected: a bad checksum or an Echo Reply gets no answer.
 func TestEchoRequestRejected(t *testing.T) {
-	dev := mustB(NodeByAny("camera").WireLE)
+	dev := mustB(NodeByAny("bedroom").WireLE)
 	src, dst := linkLocalFromWire(dev), linkLocalFromWire(BridgeEUI)
 	bad := icmpMsg(src, dst, []byte{icmpEchoRequest, 0, 0, 0, 0, 1, 0, 2})
 	bad[3] ^= 1
@@ -108,7 +108,7 @@ func neighborSolicit(dev, target []byte) []byte {
 // bridge EUI-64 as target link-layer address, hop limit 255, both addresses
 // elided: the bytes of the captured advertisement.
 func TestNeighborSolicitationAnswered(t *testing.T) {
-	dev := mustB(NodeByAny("camera").WireLE)
+	dev := mustB(NodeByAny("bedroom").WireLE)
 	self := linkLocalFromWire(BridgeEUI)
 	ns, err := BuildBroadcast(NetworkKey, 0x6e, dev, 6, bcastSecCtrl, WrapBroadcastPayload(neighborSolicit(dev, self), 0))
 	if err != nil {
@@ -136,8 +136,8 @@ func TestNeighborSolicitationAnswered(t *testing.T) {
 // TestNeighborSolicitationForOthersIgnored: a solicitation for another address
 // is not the bridge's to answer.
 func TestNeighborSolicitationForOthersIgnored(t *testing.T) {
-	dev := mustB(NodeByAny("camera").WireLE)
-	other := linkLocalFromWire(mustB(NodeByAny("bagno").WireLE))
+	dev := mustB(NodeByAny("bedroom").WireLE)
+	other := linkLocalFromWire(mustB(NodeByAny("bath").WireLE))
 	ns, err := BuildBroadcast(NetworkKey, 0x6e, dev, 6, bcastSecCtrl, WrapBroadcastPayload(neighborSolicit(dev, other), 0))
 	if err != nil {
 		t.Fatal(err)

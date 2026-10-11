@@ -9,7 +9,7 @@ import (
 func TestDesiredStateRoundTrip(t *testing.T) {
 	in := fixtureInstall(t)
 	e := NewEmu(in.EmuConfig(), nil)
-	camera, err := in.Resolve("VA1000000005")
+	bedroom, err := in.Resolve("VA1000000005")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -17,35 +17,35 @@ func TestDesiredStateRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cameraKey := hexEUI(camera.WireEUI())
-	if err := e.EnqueueChildLock(cameraKey, 10, true); err != nil {
+	bedroomKey := hexEUI(bedroom.WireEUI())
+	if err := e.EnqueueChildLock(bedroomKey, 10, true); err != nil {
 		t.Fatal(err)
 	}
 	fahrenheit := true
-	if err := e.EnqueueConfig(cameraKey, 10, ConfigWrite{TempUnitF: &fahrenheit}); err != nil {
+	if err := e.EnqueueConfig(bedroomKey, 10, ConfigWrite{TempUnitF: &fahrenheit}); err != nil {
 		t.Fatal(err)
 	}
 	if err := e.EnqueueFlowSetpoint(hexEUI(ru.WireEUI()), 1, 48); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.SetSchedule(cameraKey, []ScheduleProgram{{DayMask: 0x7f, Entries: []ScheduleEntry{{Minute: 0, SetpointCenti: 500, Enabled: true}, {Minute: 360, SetpointCenti: 700, Enabled: true}}}}); err != nil {
+	if err := e.SetSchedule(bedroomKey, []ScheduleProgram{{DayMask: 0x7f, Entries: []ScheduleEntry{{Minute: 0, SetpointCenti: 500, Enabled: true}, {Minute: 360, SetpointCenti: 700, Enabled: true}}}}); err != nil {
 		t.Fatal(err)
 	}
 	e.zoneState[zoneKey(10, "z/s")] = []byte{1, 2, 3}
-	e.utcSettled[cameraKey] = 60
-	if err := e.EnqueueBoost(cameraKey, 10, true); err != nil {
+	e.utcSettled[bedroomKey] = 60
+	if err := e.EnqueueBoost(bedroomKey, 10, true); err != nil {
 		t.Fatal(err)
 	}
-	e.sessions[cameraKey] = issuedSession{id: sessionID(camera.WireEUI()), at: time.Unix(1_700_000_000, 0).UTC()}
+	e.sessions[bedroomKey] = issuedSession{id: sessionID(bedroom.WireEUI()), at: time.Unix(1_700_000_000, 0).UTC()}
 
 	want := e.ExportDesiredState()
 	copyTest := e.ExportDesiredState()
-	copyTest.ChildLock[cameraKey] = false
-	copyTest.Config[cameraKey] = DesiredConfigDocument{Body: []byte{0}, ETag: []byte{0}}
-	copyTest.Schedule[cameraKey] = DesiredScheduleDocument{Body: []byte{0}, ETag: []byte{0}}
+	copyTest.ChildLock[bedroomKey] = false
+	copyTest.Config[bedroomKey] = DesiredConfigDocument{Body: []byte{0}, ETag: []byte{0}}
+	copyTest.Schedule[bedroomKey] = DesiredScheduleDocument{Body: []byte{0}, ETag: []byte{0}}
 	copyTest.ZoneState[zoneKey(10, "z/s")][0] = 9
-	copyTest.Boost[cameraKey] = DesiredBoostTimer{ID: 9, ExpiresAt: time.Unix(1, 0)}
-	copyTest.Session[cameraKey].ID[0] ^= 0xff
+	copyTest.Boost[bedroomKey] = DesiredBoostTimer{ID: 9, ExpiresAt: time.Unix(1, 0)}
+	copyTest.Session[bedroomKey].ID[0] ^= 0xff
 	if got := e.ExportDesiredState(); !reflect.DeepEqual(got, want) {
 		t.Fatal("export aliases emulator state")
 	}
@@ -58,18 +58,18 @@ func TestDesiredStateRoundTrip(t *testing.T) {
 		t.Errorf("restored state differs\n got: %#v\nwant: %#v", got, want)
 	}
 	// A node first heard after the restore carries the served session id.
-	if ns := restored.node(camera.WireEUI()); !reflect.DeepEqual(ns.SessionID, want.Session[cameraKey].ID) {
-		t.Errorf("restored node session = %x, want %x", ns.SessionID, want.Session[cameraKey].ID)
+	if ns := restored.node(bedroom.WireEUI()); !reflect.DeepEqual(ns.SessionID, want.Session[bedroomKey].ID) {
+		t.Errorf("restored node session = %x, want %x", ns.SessionID, want.Session[bedroomKey].ID)
 	}
 }
 
 func TestRestoreDesiredStateRejectsInvalidSession(t *testing.T) {
 	in := fixtureInstall(t)
-	camera, err := in.Resolve("VA1000000005")
+	bedroom, err := in.Resolve("VA1000000005")
 	if err != nil {
 		t.Fatal(err)
 	}
-	key, id := hexEUI(camera.WireEUI()), sessionID(camera.WireEUI())
+	key, id := hexEUI(bedroom.WireEUI()), sessionID(bedroom.WireEUI())
 	for _, c := range []struct {
 		name, key string
 		session   DesiredSession
@@ -77,7 +77,7 @@ func TestRestoreDesiredStateRejectsInvalidSession(t *testing.T) {
 		{"short id", key, DesiredSession{ID: id[:3], IssuedAt: time.Unix(1, 0)}},
 		{"long id", key, DesiredSession{ID: make([]byte, 9), IssuedAt: time.Unix(1, 0)}},
 		{"no time", key, DesiredSession{ID: id}},
-		{"no wire EUI", "camera", DesiredSession{ID: id, IssuedAt: time.Unix(1, 0)}},
+		{"no wire EUI", "bedroom", DesiredSession{ID: id, IssuedAt: time.Unix(1, 0)}},
 	} {
 		e := NewEmu(in.EmuConfig(), nil)
 		bad := e.ExportDesiredState()
@@ -106,7 +106,7 @@ func TestRestoreDesiredStateRejectsInvalidState(t *testing.T) {
 func TestRestoreDesiredStateKeepsStateOnLateValidationFailure(t *testing.T) {
 	in := fixtureInstall(t)
 	e := NewEmu(in.EmuConfig(), nil)
-	camera, err := in.Resolve("VA1000000005")
+	bedroom, err := in.Resolve("VA1000000005")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,31 +114,31 @@ func TestRestoreDesiredStateKeepsStateOnLateValidationFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cameraKey := hexEUI(camera.WireEUI())
-	if err := e.EnqueueChildLock(cameraKey, 10, true); err != nil {
+	bedroomKey := hexEUI(bedroom.WireEUI())
+	if err := e.EnqueueChildLock(bedroomKey, 10, true); err != nil {
 		t.Fatal(err)
 	}
 	fahrenheit := true
-	if err := e.EnqueueConfig(cameraKey, 10, ConfigWrite{TempUnitF: &fahrenheit}); err != nil {
+	if err := e.EnqueueConfig(bedroomKey, 10, ConfigWrite{TempUnitF: &fahrenheit}); err != nil {
 		t.Fatal(err)
 	}
 	if err := e.EnqueueFlowSetpoint(hexEUI(ru.WireEUI()), 1, 48); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.SetSchedule(cameraKey, []ScheduleProgram{{DayMask: 0x7f, Entries: []ScheduleEntry{{Minute: 0, SetpointCenti: 500, Enabled: true}}}}); err != nil {
+	if err := e.SetSchedule(bedroomKey, []ScheduleProgram{{DayMask: 0x7f, Entries: []ScheduleEntry{{Minute: 0, SetpointCenti: 500, Enabled: true}}}}); err != nil {
 		t.Fatal(err)
 	}
 	e.zoneState[zoneKey(10, "z/s")] = []byte{1, 2, 3}
-	e.utcSettled[cameraKey] = 60
-	if err := e.EnqueueBoost(cameraKey, 10, true); err != nil {
+	e.utcSettled[bedroomKey] = 60
+	if err := e.EnqueueBoost(bedroomKey, 10, true); err != nil {
 		t.Fatal(err)
 	}
 	before := e.ExportDesiredState()
 
 	bad := NewEmu(in.EmuConfig(), nil).ExportDesiredState()
 	bad.FlowC["1"] = 55
-	bad.ChildLock[cameraKey] = false
-	bad.UTCSettled[cameraKey] = 120
+	bad.ChildLock[bedroomKey] = false
+	bad.UTCSettled[bedroomKey] = 120
 	bad.ZoneState["not-a-zone-key"] = []byte{9}
 	if err := e.RestoreDesiredState(bad); err == nil {
 		t.Fatal("invalid zone resource key accepted")

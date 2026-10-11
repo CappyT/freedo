@@ -74,9 +74,9 @@ func TestBuildCoAPRoundTrip(t *testing.T) {
 // TestBuildSetpointCoAPRoundTrip: a from-scratch setpoint command frames,
 // encrypts, decrypts and parses back to the TLVs that were asked for.
 func TestBuildSetpointCoAPRoundTrip(t *testing.T) {
-	valve := NodeByAny("camera")
+	valve := NodeByAny("bedroom")
 	if valve == nil {
-		t.Fatal("camera node not found")
+		t.Fatal("bedroom node not found")
 	}
 	dst, _ := hex.DecodeString(valve.WireLE)
 
@@ -159,7 +159,7 @@ const (
 // TestBuildSetpointCoAPMatchesCaptureBlock pins the TLV block against the two
 // captured downlinks. Neither carries 6200.
 func TestBuildSetpointCoAPMatchesCaptureBlock(t *testing.T) {
-	dst := mustHex(NodeByAny("camera").WireLE)
+	dst := mustHex(NodeByAny("bedroom").WireLE)
 	for _, tc := range []struct {
 		name string
 		c    SetpointCoAP
@@ -748,7 +748,7 @@ func TestBuildZoneRelayMatchesCapture(t *testing.T) {
 // when the caller sets them. The default block is what the capture pins, so a
 // leak here would break TestBuildCoAPMatchesCapture.
 func TestBuildSetpointCoAPZoneTagsOptIn(t *testing.T) {
-	dst := mustHex(NodeByAny("camera").WireLE)
+	dst := mustHex(NodeByAny("bedroom").WireLE)
 	base := SetpointCoAP{ID: 10, Setpoint: 21.5, Overlay: 2, MID: 0x0101, Token: []byte{1}, DstEUI: dst}
 
 	tlvs := func(c SetpointCoAP) map[string]string {

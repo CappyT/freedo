@@ -279,27 +279,27 @@ func TestEarlyStartCustomCap(t *testing.T) {
 // block change at 07:00 pushes nothing more.
 func TestEarlyStartPushesOnce(t *testing.T) {
 	d, url, clock, in := newEarlyDaemon(t, true, nil, nil)
-	ufficio := wireOf(t, in, earlyValve)
+	office := wireOf(t, in, earlyValve)
 	learned(t, d, 3, 4)
 	at(t, d, in, clock, "05:55", 17.0, 0)
-	if n := pending(t, d, ufficio); n != 0 {
+	if n := pending(t, d, office); n != 0 {
 		t.Fatalf("05:55 queued %d writes, want none", n)
 	}
 	at(t, d, in, clock, "06:00", math.NaN(), 0)
-	if n := pending(t, d, ufficio); n != 1 {
+	if n := pending(t, d, office); n != 1 {
 		t.Fatalf("06:00 queued %d writes, want the early block", n)
 	}
-	wantTags(t, "the early block", nextZoneWrite(t, d, ufficio), map[string]string{"6200": "0834", "6240": "00", "61e0": "01"})
+	wantTags(t, "the early block", nextZoneWrite(t, d, office), map[string]string{"6200": "0834", "6240": "00", "61e0": "01"})
 	var view map[string]any
 	if code := getJSON(t, url+"/api/zones/3/early-start", &view); code != http.StatusOK || view["active"] == nil {
 		t.Errorf("view during the early start = %v, want it active", view)
 	}
-	dropQueue(t, d, ufficio)
+	dropQueue(t, d, office)
 
 	at(t, d, in, clock, "06:30", 18.5, 60)
 	at(t, d, in, clock, "07:00", math.NaN(), 0)
 	at(t, d, in, clock, "07:01", math.NaN(), 0)
-	if n := pending(t, d, ufficio); n != 0 {
+	if n := pending(t, d, office); n != 0 {
 		t.Errorf("the 07:00 block change queued %d writes, want none", n)
 	}
 	if code := getJSON(t, url+"/api/zones/3/early-start", &view); code != http.StatusOK || view["active"] != nil {
@@ -331,21 +331,21 @@ func TestEarlyStartHeld(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			d, url, clock, in := newEarlyDaemon(t, tc.enabled, nil, nil)
-			ufficio := wireOf(t, in, earlyValve)
+			office := wireOf(t, in, earlyValve)
 			learned(t, d, tc.episodes, 4)
 			if tc.setup != nil {
 				tc.setup(t, d, url, in)
 			}
-			dropQueue(t, d, ufficio)
+			dropQueue(t, d, office)
 			at(t, d, in, clock, "06:30", 17.0, 0)
-			if n := pending(t, d, ufficio); n != 0 {
+			if n := pending(t, d, office); n != 0 {
 				t.Fatalf("06:30 queued %d writes, want none", n)
 			}
 			if _, ok := earlyPlanOf(t, d); ok {
 				t.Errorf("a plan is due, want none")
 			}
 			at(t, d, in, clock, "07:00", math.NaN(), 0)
-			if n := pending(t, d, ufficio); n != 1 {
+			if n := pending(t, d, office); n != 1 {
 				t.Errorf("07:00 queued %d writes, want the block change", n)
 			}
 		})

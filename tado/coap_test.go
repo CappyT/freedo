@@ -165,12 +165,12 @@ func TestChecksumVerifiesEveryGoldenFrame(t *testing.T) {
 // TestBuildContextAckMatchesCapture: the answer the builder emits for a zone
 // uplink is byte-identical to the one the real bridge sent, checksum included.
 func TestBuildContextAckMatchesCapture(t *testing.T) {
-	// bridge -> camera, the ACK 2.04 that closes a zone transaction, taken from
+	// bridge -> bedroom, the ACK 2.04 that closes a zone transaction, taken from
 	// the capture with its Tado shim and app trailer stripped.
 	const wantPkt = "7ef700f0163316336a9660442722c12a"
 
-	camera := mustB(NodeByAny("camera").WireLE)
-	got, err := BuildContextAck("2.04", 0x2722, nil, BridgeEUI, camera, 5683, 5683)
+	bedroom := mustB(NodeByAny("bedroom").WireLE)
+	got, err := BuildContextAck("2.04", 0x2722, nil, BridgeEUI, bedroom, 5683, 5683)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +184,7 @@ func TestBuildContextAckMatchesCapture(t *testing.T) {
 	if !m.Contexted() || m.Type != "ACK" || m.Code != "2.04" || m.MID != 0x2722 {
 		t.Errorf("parsed back as %s %s mid=%04x ctx=%v", m.Type, m.Code, m.MID, m.Contexted())
 	}
-	if ck, ok := m.RecomputeChecksum(BridgeEUI, camera); !ok || ck != m.Checksum {
+	if ck, ok := m.RecomputeChecksum(BridgeEUI, bedroom); !ok || ck != m.Checksum {
 		t.Errorf("built checksum %04x does not verify (recomputed %04x, ok=%v)", m.Checksum, ck, ok)
 	}
 }

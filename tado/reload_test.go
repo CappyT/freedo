@@ -12,16 +12,16 @@ import (
 // The fixture lines the reload tests edit. Each one must survive verbatim in
 // fixtureInstallYAML, which variantInstall checks.
 const (
-	bagnoDevice   = "  - {kind: valve, eui: \"04a3defa07c51b00\", serial: VA1000000007, label: bagno}\n"
-	ufficioDevice = "  - {kind: valve, eui: \"08a4defa07c51b00\", serial: VA1000000002, label: ufficio}\n"
-	studioDevice  = "  - {kind: valve, eui: \"11226a3107c51b00\", serial: VA9000000001, label: studio}\n"
-	zone2         = "  - {number: 2, name: bagno, kind: heating, circuit: 1, members: [VA1000000007], reporter: VA1000000007}\n"
-	zone3         = "  - {number: 3, name: ufficio, kind: heating, circuit: 1, members: [VA1000000002], reporter: VA1000000002}\n"
-	zone3Extended = "  - {number: 3, name: ufficio, kind: heating, circuit: 1, members: [VA1000000002, VA9000000001], reporter: VA1000000002}\n"
-	zone5         = "  - {number: 5, name: cucina, kind: heating, circuit: 1, members: [VA1000000001, VA1000000006], reporter: VA1000000006}\n"
-	zone5Reelect  = "  - {number: 5, name: cucina, kind: heating, circuit: 1, members: [VA1000000001, VA1000000006], reporter: VA1000000001}\n"
-	zone10        = "  - {number: 10, name: camera, kind: heating, circuit: 1, members: [VA1000000005], reporter: VA1000000005}\n"
-	zone5NoWindow = "  - {number: 5, name: cucina, kind: heating, circuit: 1, members: [VA1000000001, VA1000000006], reporter: VA1000000006, open_window_detection: false}\n"
+	bathDevice    = "  - {kind: valve, eui: \"04a3defa07c51b00\", serial: VA1000000007, label: bath}\n"
+	officeDevice  = "  - {kind: valve, eui: \"08a4defa07c51b00\", serial: VA1000000002, label: office}\n"
+	studyDevice   = "  - {kind: valve, eui: \"11226a3107c51b00\", serial: VA9000000001, label: study}\n"
+	zone2         = "  - {number: 2, name: bath, kind: heating, circuit: 1, members: [VA1000000007], reporter: VA1000000007}\n"
+	zone3         = "  - {number: 3, name: office, kind: heating, circuit: 1, members: [VA1000000002], reporter: VA1000000002}\n"
+	zone3Extended = "  - {number: 3, name: office, kind: heating, circuit: 1, members: [VA1000000002, VA9000000001], reporter: VA1000000002}\n"
+	zone5         = "  - {number: 5, name: kitchen, kind: heating, circuit: 1, members: [VA1000000001, VA1000000006], reporter: VA1000000006}\n"
+	zone5Reelect  = "  - {number: 5, name: kitchen, kind: heating, circuit: 1, members: [VA1000000001, VA1000000006], reporter: VA1000000001}\n"
+	zone10        = "  - {number: 10, name: bedroom, kind: heating, circuit: 1, members: [VA1000000005], reporter: VA1000000005}\n"
+	zone5NoWindow = "  - {number: 5, name: kitchen, kind: heating, circuit: 1, members: [VA1000000001, VA1000000006], reporter: VA1000000006, open_window_detection: false}\n"
 )
 
 // electedRoleRec is the 015e role byte of an elected demand reporter, plainRoleRec
@@ -33,11 +33,11 @@ const (
 
 // The wire EUIs the tests name.
 const (
-	cameraEUIHex  = "02a6cefa07c51b00" // VA1000000005, zone 10
-	bagnoEUIHex   = "04a3defa07c51b00" // VA1000000007, zone 2
-	studioEUIHex  = "11226a3107c51b00" // VA9000000001, added to zone 3
-	cucinaAEUIHex = "060acefa07c51b00" // VA1000000001, zone 5
-	cucinaBEUIHex = "010acefa07c51b00" // VA1000000006, zone 5 reporter
+	bedroomEUIHex  = "02a6cefa07c51b00" // VA1000000005, zone 10
+	bathEUIHex     = "04a3defa07c51b00" // VA1000000007, zone 2
+	studyEUIHex    = "11226a3107c51b00" // VA9000000001, added to zone 3
+	kitchenAEUIHex = "060acefa07c51b00" // VA1000000001, zone 5
+	kitchenBEUIHex = "010acefa07c51b00" // VA1000000006, zone 5 reporter
 )
 
 // variantInstall edits the synthetic fixture and validates the result.
@@ -99,7 +99,7 @@ func zoneRole(t *testing.T, e *EmuState, euiHex string, zone int) (byte, bool) {
 // on the merge path and on the EnqueueConfig path a known logical id takes.
 func TestSetInstallUnchangedIsNoOp(t *testing.T) {
 	e, in := fixtureEmu(t)
-	e.node(mustHex(cameraEUIHex)).LastID = 10 // takes the EnqueueConfig path
+	e.node(mustHex(bedroomEUIHex)).LastID = 10 // takes the EnqueueConfig path
 
 	etags := cfgEtags(e)
 	zones := e.ZoneDirectory()
@@ -132,23 +132,23 @@ func TestSetInstallUnchangedIsNoOp(t *testing.T) {
 func TestSetInstallKeepsRestoredConfigDocument(t *testing.T) {
 	pushed, in := fixtureEmu(t)
 	fahrenheit := true
-	if err := pushed.EnqueueConfig(cameraEUIHex, 10, ConfigWrite{TempUnitF: &fahrenheit}); err != nil {
+	if err := pushed.EnqueueConfig(bedroomEUIHex, 10, ConfigWrite{TempUnitF: &fahrenheit}); err != nil {
 		t.Fatalf("EnqueueConfig: %v", err)
 	}
-	want := pushed.cfgDoc[cameraEUIHex]
+	want := pushed.cfgDoc[bedroomEUIHex]
 	if len(want.body) == 0 {
 		t.Fatal("the push recorded no document")
 	}
 
 	e, _ := fixtureEmu(t)
-	e.node(mustHex(cameraEUIHex)).LastID = 10 // takes the EnqueueConfig path
+	e.node(mustHex(bedroomEUIHex)).LastID = 10 // takes the EnqueueConfig path
 	if err := e.RestoreDesiredState(pushed.ExportDesiredState()); err != nil {
 		t.Fatalf("RestoreDesiredState: %v", err)
 	}
 	if _, _, err := e.SetInstall(in); err != nil {
 		t.Fatalf("SetInstall: %v", err)
 	}
-	got := e.cfgDoc[cameraEUIHex]
+	got := e.cfgDoc[bedroomEUIHex]
 	if !bytes.Equal(got.body, want.body) {
 		t.Errorf("reloaded document = %x, want the restored %x", got.body, want.body)
 	}
@@ -193,31 +193,31 @@ func TestSetInstallKeepsRuntimeConfig(t *testing.T) {
 // its place in the zone routing table.
 func TestSetInstallAddsDevice(t *testing.T) {
 	e, _ := fixtureEmu(t)
-	if _, ok := e.cfgDoc[studioEUIHex]; ok {
+	if _, ok := e.cfgDoc[studyEUIHex]; ok {
 		t.Fatal("the new device already has a config document")
 	}
 
 	next := variantInstall(t,
-		[2]string{ufficioDevice, ufficioDevice + studioDevice},
+		[2]string{officeDevice, officeDevice + studyDevice},
 		[2]string{zone3, zone3Extended},
 	)
 	added, removed, err := e.SetInstall(next)
 	if err != nil {
 		t.Fatalf("SetInstall: %v", err)
 	}
-	if !reflect.DeepEqual(added, []string{studioEUIHex}) {
-		t.Errorf("added = %v, want [%s]", added, studioEUIHex)
+	if !reflect.DeepEqual(added, []string{studyEUIHex}) {
+		t.Errorf("added = %v, want [%s]", added, studyEUIHex)
 	}
 	if len(removed) != 0 {
 		t.Errorf("removed = %v, want none", removed)
 	}
-	if _, ok := e.cfgDoc[studioEUIHex]; !ok {
+	if _, ok := e.cfgDoc[studyEUIHex]; !ok {
 		t.Fatal("the new device got no config document")
 	}
-	if role, ok := zoneRole(t, e, studioEUIHex, 3); !ok || role != plainRoleRec {
+	if role, ok := zoneRole(t, e, studyEUIHex, 3); !ok || role != plainRoleRec {
 		t.Errorf("015e role for zone 3 = %#02x (present=%v), want %#02x", role, ok, plainRoleRec)
 	}
-	if !e.zones[3][studioEUIHex] {
+	if !e.zones[3][studyEUIHex] {
 		t.Errorf("zone 3 members = %v, want the new device", e.ZoneMembers(3))
 	}
 }
@@ -227,12 +227,12 @@ func TestSetInstallAddsDevice(t *testing.T) {
 // still on the air has to keep showing.
 func TestSetInstallRemovesDevice(t *testing.T) {
 	e, _ := fixtureEmu(t)
-	e.node(mustHex(bagnoEUIHex)).LastID = 2
-	e.childLock[bagnoEUIHex] = true
-	e.utcSettled[bagnoEUIHex] = 60
-	e.getRes[bagnoEUIHex+"|d/config"] = []byte{1}
+	e.node(mustHex(bathEUIHex)).LastID = 2
+	e.childLock[bathEUIHex] = true
+	e.utcSettled[bathEUIHex] = 60
+	e.getRes[bathEUIHex+"|d/config"] = []byte{1}
 
-	next := variantInstall(t, [2]string{bagnoDevice, ""}, [2]string{zone2, ""})
+	next := variantInstall(t, [2]string{bathDevice, ""}, [2]string{zone2, ""})
 	added, removed, err := e.SetInstall(next)
 	if err != nil {
 		t.Fatalf("SetInstall: %v", err)
@@ -240,19 +240,19 @@ func TestSetInstallRemovesDevice(t *testing.T) {
 	if len(added) != 0 {
 		t.Errorf("added = %v, want none", added)
 	}
-	if !reflect.DeepEqual(removed, []string{bagnoEUIHex}) {
-		t.Errorf("removed = %v, want [%s]", removed, bagnoEUIHex)
+	if !reflect.DeepEqual(removed, []string{bathEUIHex}) {
+		t.Errorf("removed = %v, want [%s]", removed, bathEUIHex)
 	}
-	if _, ok := e.cfgDoc[bagnoEUIHex]; ok {
+	if _, ok := e.cfgDoc[bathEUIHex]; ok {
 		t.Error("the removed device kept its config document")
 	}
-	if e.childLock[bagnoEUIHex] || e.utcSettled[bagnoEUIHex] != 0 {
+	if e.childLock[bathEUIHex] || e.utcSettled[bathEUIHex] != 0 {
 		t.Error("the removed device kept its durable state")
 	}
-	if _, ok := e.getRes[bagnoEUIHex+"|d/config"]; ok {
+	if _, ok := e.getRes[bathEUIHex+"|d/config"]; ok {
 		t.Error("the removed device kept a cached GET result")
 	}
-	if _, ok := e.nodes[bagnoEUIHex]; !ok {
+	if _, ok := e.nodes[bathEUIHex]; !ok {
 		t.Error("the removed device lost its NodeState")
 	}
 }
@@ -285,7 +285,7 @@ func TestSetInstallRemovesZone(t *testing.T) {
 	if _, ok := e.zoneRep[1]; !ok {
 		t.Error("a surviving zone lost its demand report")
 	}
-	if _, ok := e.cfgDoc[cameraEUIHex]; !ok {
+	if _, ok := e.cfgDoc[bedroomEUIHex]; !ok {
 		t.Error("the device of the removed zone lost its config document while still declared")
 	}
 }
@@ -315,15 +315,15 @@ func TestSetInstallKeepsLearnedZoneMember(t *testing.T) {
 }
 
 // TestSetInstallReelectsDemandReporter: moving the election changes the 015e
-// record of both cucina valves and reaches each of them as a config write,
+// record of both kitchen valves and reaches each of them as a config write,
 // because both know a logical id. A second reload with the same installation
 // adds nothing.
 func TestSetInstallReelectsDemandReporter(t *testing.T) {
 	e, _ := fixtureEmu(t)
-	e.node(mustHex(cucinaAEUIHex)).LastID = 5
-	e.node(mustHex(cucinaBEUIHex)).LastID = 5
+	e.node(mustHex(kitchenAEUIHex)).LastID = 5
+	e.node(mustHex(kitchenBEUIHex)).LastID = 5
 
-	if role, _ := zoneRole(t, e, cucinaBEUIHex, 5); role != electedRoleRec {
+	if role, _ := zoneRole(t, e, kitchenBEUIHex, 5); role != electedRoleRec {
 		t.Fatalf("the fixture reporter starts at role %#02x, want %#02x", role, electedRoleRec)
 	}
 
@@ -331,14 +331,14 @@ func TestSetInstallReelectsDemandReporter(t *testing.T) {
 	if _, _, err := e.SetInstall(next); err != nil {
 		t.Fatalf("SetInstall: %v", err)
 	}
-	if role, _ := zoneRole(t, e, cucinaAEUIHex, 5); role != electedRoleRec {
+	if role, _ := zoneRole(t, e, kitchenAEUIHex, 5); role != electedRoleRec {
 		t.Errorf("the new reporter has role %#02x, want %#02x", role, electedRoleRec)
 	}
-	if role, _ := zoneRole(t, e, cucinaBEUIHex, 5); role != plainRoleRec {
+	if role, _ := zoneRole(t, e, kitchenBEUIHex, 5); role != plainRoleRec {
 		t.Errorf("the demoted reporter has role %#02x, want %#02x", role, plainRoleRec)
 	}
 	if got := queuedDownlinks(e); got != 2 {
-		t.Fatalf("%d config writes queued, want one per cucina valve", got)
+		t.Fatalf("%d config writes queued, want one per kitchen valve", got)
 	}
 	etags := cfgEtags(e)
 	if _, _, err := e.SetInstall(next); err != nil {
@@ -382,7 +382,7 @@ func TestSetInstallRejectsUnusableInstall(t *testing.T) {
 // what makes the device read h/<home>/z/N/config again.
 func TestSetInstallPokesZoneOnOpenWindowChange(t *testing.T) {
 	e, in := fixtureEmu(t)
-	members := []string{cucinaAEUIHex, cucinaBEUIHex}
+	members := []string{kitchenAEUIHex, kitchenBEUIHex}
 	for _, eui := range members {
 		e.node(mustHex(eui)).LastID = 5
 	}
@@ -426,7 +426,7 @@ func TestSetInstallPokesZoneOnOpenWindowChange(t *testing.T) {
 	}
 
 	// The zone the poke did not name keeps its members quiet.
-	if q := e.queue[cameraEUIHex]; len(q) != 0 {
+	if q := e.queue[bedroomEUIHex]; len(q) != 0 {
 		t.Errorf("zone 10 got %d downlinks, want none", len(q))
 	}
 	// A second reload on the same installation changes nothing, so it pokes nobody.

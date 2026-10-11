@@ -51,7 +51,7 @@ func TestAnalyzerBothDirections(t *testing.T) {
 		"battery_mV=", // uplink telemetry
 		"humidity_pct=",
 		"devices: 9",
-		"camera",
+		"bedroom",
 	} {
 		if !strings.Contains(rep, want) {
 			t.Errorf("report lacks %q", want)
@@ -99,7 +99,7 @@ func TestAnalyzerReassembly(t *testing.T) {
 				c.wantDir + " ",
 				"coap://", // the reassembled resource listing
 				"ACK 2.05 x1",
-				"ufficio",
+				"office",
 			} {
 				if !strings.Contains(rep, want) {
 					t.Errorf("report lacks %q:\n%s", want, rep)
@@ -160,7 +160,7 @@ func TestAnalyzerCorrupt(t *testing.T) {
 func TestAnalyzerUnhandled(t *testing.T) {
 	log := NewUnhandledLogger(nil)
 	a := NewAnalyzer(log)
-	valve := mustHex(NodeByAny("camera").WireLE)
+	valve := mustHex(NodeByAny("bedroom").WireLE)
 	a.Add(uplinkFrame(t, valve, "0.03", []string{"d", "VA1000000005", "config"}, []string{"id=10"},
 		TLV{Tag: "9999", Val: []byte{0x01}}.Encode()))
 
