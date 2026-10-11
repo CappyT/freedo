@@ -55,7 +55,7 @@
       },
       "temperatures": {
         "title": "Sensore di temperatura di ogni zona",
-        "description": "Seleziona un sensore di temperatura per ogni zona di riscaldamento. La zona regola quindi su quel sensore invece che sul sensore della valvola. Lascia vuota una zona per mantenere il sensore della valvola. La zona richiede la modalità di compensazione setpoint. La correzione è lenta. Una differenza di 2 °C richiede circa 4 ore."
+        "description": "Seleziona un sensore di temperatura per ogni zona di riscaldamento. La zona regola quindi su quel sensore invece che sul sensore della valvola. Lascia vuota una zona per mantenere il sensore della valvola. La zona richiede la modalità di compensazione Spostamento del setpoint. Le opzioni non cambiano la modalità. Impostala con la selezione Modalità di compensazione della temperatura della zona. La correzione è lenta. Una differenza di 2 °C richiede circa 4 ore."
       }
     },
     "abort": {
@@ -162,7 +162,7 @@
         "name": "Sensore ambiente esterno",
         "state": {
           "active": "In uso",
-          "wrong_offset_mode": "La modalità di compensazione non è setpoint",
+          "wrong_offset_mode": "La modalità di compensazione non è Spostamento del setpoint",
           "no_reading": "Nessuna lettura",
           "stale": "Lettura troppo vecchia"
         }
@@ -225,6 +225,14 @@
           "manual": "Manuale",
           "until_next": "Fino al blocco orario successivo",
           "timer": "Timer"
+        }
+      },
+      "offset_mode": {
+        "name": "Modalità di compensazione della temperatura",
+        "state": {
+          "config": "Configurazione della valvola (corsa completa del motore)",
+          "dbg2": "Record di debug della valvola",
+          "setpoint": "Spostamento del setpoint"
         }
       }
     },

@@ -86,6 +86,7 @@ The integration and the options of the add-on have English, Italian, German and 
 | select Device change end rule, number Device change timer | heating zone | `/api/install/zones` `device_overlay_end`, `device_overlay_end_sec`; writes `PATCH /api/install/zones/{n}` |
 | number Away temperature | heating zone | `/api/install/zones` `away_temperature_c`; writes `PATCH /api/install/zones/{n}` |
 | number Temperature offset | heating zone | `/api/install/zones` `setpoint_offset_c`; writes `POST /api/zones/{n}/offset` |
+| select Temperature offset mode | heating zone | `/api/install/zones` `offset_mode`; writes `PATCH /api/install/zones/{n}` |
 | sensor External room sensor | heating zone | `/api/zones` `declared[].externalTemp`, `/api/install/zones` `offset_mode` |
 
 ### Valve display
@@ -320,6 +321,36 @@ daemon answers. They exist only while the daemon holds an installation.
   entity needs a daemon that serves `away_temperature_c` in
   `GET /api/install/zones`. The hot water zone has no away temperature and
   gets no number.
+- Select Temperature offset mode is how the temperature correction of the zone
+  reaches it (`offset_mode`). The hot water zone has no correction and gets no
+  select.
+  - Valve configuration (`config`, the default) writes tag `0140` in the whole
+    d/config document of the measuring device. The valve rereads its
+    configuration and homes its motor, a full stroke, on each change of the
+    number Temperature offset. The wall thermostat ignores the document of a
+    d/config write, so the daemon serves it a new document and the thermostat
+    rereads it.
+  - Valve debug record (`dbg2`) writes the single record `0140` with
+    `PUT d/dbg2/tlvs`. The valve does not home its motor. No capture shows this
+    write on air. The wall thermostat has no such resource: the daemon accepts
+    the mode for its zone and refuses the offset write with 400.
+  - Setpoint shift (`setpoint`) writes nothing to the device. The daemon keeps
+    the offset, subtracts it from each setpoint it writes to the zone, and adds
+    it to the temperature and the target it reports. The valve keeps the
+    `0140` it holds, and the shift adds to it. The room temperature sensors of
+    the options need this mode.
+  - A change of the mode writes no offset to the device. Leaving `setpoint`
+    drops the stored offset, rewrites the zone without the shift (the valves get
+    new setpoints) and ends the room temperature reading of the zone. Entering
+    `setpoint` starts the offset at 0 and leaves the `0140` on the valve. To
+    clear a `0140` written earlier, set the number Temperature offset to 0
+    before the change.
+  - A zone without a measuring device gets the number Temperature offset only in
+    mode `setpoint`: reload the integration after the change.
+  - The daemon answers 400 to a mode other than the three, 404 to an unknown
+    zone, 503 while it holds no installation, and 500 when the running daemon
+    does not take the saved change. The select shows the answer as an error and
+    keeps the mode.
 
 ### Pairing mode
 
@@ -549,11 +580,12 @@ target on the reading of that sensor.
   sent. A value outside -10..50 C is not sent, because the daemon rejects it.
   The integration logs the first failed push of a zone and stays silent until a
   push succeeds.
-- The zone needs the offset mode `setpoint`. In the modes `config` and `dbg2`
-  the daemon answers 409, because those modes write tag `0140` and make a valve
-  home its motor. Home Assistant has no entity or service for the offset mode.
-  Set it on the daemon with `PATCH /api/install/zones/{n}` and
-  `{"offset_mode": "setpoint"}`.
+- The zone needs the offset mode `setpoint`. Set it with the select Temperature
+  offset mode of the zone (option Setpoint shift). See Zone settings. The
+  options do not change the mode. In the modes `config` and `dbg2` the daemon
+  answers 409 to a reading, because those modes write tag `0140` to the device.
+  The integration keeps the mapping and logs the first refusal of a zone. The
+  sensor External room sensor shows `wrong_offset_mode`.
 - The correction is slow by design, because a valve next to a radiator swings
   by several degrees. The daemon cannot change what the valve measures, so it
   filters the difference with a time constant of 2 hours, shifts the setpoints

@@ -55,7 +55,7 @@
       },
       "temperatures": {
         "title": "Capteur de température de chaque zone",
-        "description": "Sélectionnez un capteur de température pour chaque zone de chauffage. La zone régule alors sur ce capteur au lieu du capteur de la vanne. Laissez une zone vide pour garder le capteur de la vanne. La zone exige le mode de décalage setpoint. La correction est lente. Un écart de 2 °C prend environ 4 heures."
+        "description": "Sélectionnez un capteur de température pour chaque zone de chauffage. La zone régule alors sur ce capteur au lieu du capteur de la vanne. Laissez une zone vide pour garder le capteur de la vanne. La zone exige le mode de décalage Décalage de la consigne. Les options ne changent pas le mode. Réglez-le avec la sélection Mode de décalage de température de la zone. La correction est lente. Un écart de 2 °C prend environ 4 heures."
       }
     },
     "abort": {
@@ -162,7 +162,7 @@
         "name": "Capteur de pièce externe",
         "state": {
           "active": "Utilisé",
-          "wrong_offset_mode": "Le mode de décalage n'est pas setpoint",
+          "wrong_offset_mode": "Le mode de décalage n'est pas Décalage de la consigne",
           "no_reading": "Aucune mesure",
           "stale": "Mesure trop ancienne"
         }
@@ -225,6 +225,14 @@
           "manual": "Manuel",
           "until_next": "Jusqu'au prochain bloc horaire",
           "timer": "Minuteur"
+        }
+      },
+      "offset_mode": {
+        "name": "Mode de décalage de température",
+        "state": {
+          "config": "Configuration de la vanne (course complète du moteur)",
+          "dbg2": "Enregistrement de débogage de la vanne",
+          "setpoint": "Décalage de la consigne"
         }
       }
     },

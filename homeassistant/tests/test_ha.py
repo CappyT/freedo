@@ -45,7 +45,7 @@ from pytest_homeassistant_custom_component.common import (  # noqa: E402
 
 import custom_components.freedo  # noqa: E402,F401  # the target of the client patch
 from custom_components.freedo.api import FreedoApiError, FreedoConnectionError  # noqa: E402
-from custom_components.freedo.model import ZONE_OVERLAY_RULES  # noqa: E402
+from custom_components.freedo.model import OFFSET_MODES, ZONE_OVERLAY_RULES  # noqa: E402
 from test_model import (  # noqa: E402
     BOILER,
     CIRCUITS,
@@ -1074,6 +1074,7 @@ async def test_zone_settings_only_for_heating_zones_with_a_row(hass, client):
         assert not has_entity(hass, entry, "switch", f"zone9_{key}")
     assert not has_entity(hass, entry, "number", "zone9_open_window_duration_sec")
     assert not has_entity(hass, entry, "select", "zone9_device_overlay_end")
+    assert not has_entity(hass, entry, "select", "zone9_offset_mode")
     await hass.config_entries.async_unload(entry.entry_id)
 
     # The daemon holds no installation (503 on GET /api/install/zones).
@@ -1081,6 +1082,7 @@ async def test_zone_settings_only_for_heating_zones_with_a_row(hass, client):
     entry = await setup_entry(hass, client)
     assert not has_entity(hass, entry, "switch", "zone1_early_start")
     assert not has_entity(hass, entry, "select", "zone1_device_overlay_end")
+    assert not has_entity(hass, entry, "select", "zone1_offset_mode")
 
 
 async def test_open_window_duration_number(hass, client):
@@ -1213,6 +1215,63 @@ async def test_zone_setting_error_is_a_home_assistant_error(hass, client):
     with pytest.raises(HomeAssistantError, match="not a heating zone"):
         await turn(hass, "turn_on", early)
     assert hass.states.get(early).state == "off"
+
+
+async def test_offset_mode_select(hass, client):
+    entry = await setup_entry(hass, client)
+    registry = er.async_get(hass)
+    living = entity_id(hass, entry, "select", "zone1_offset_mode")
+    bedroom = entity_id(hass, entry, "select", "zone2_offset_mode")
+    assert hass.states.get(living).state == "setpoint"
+    assert hass.states.get(bedroom).state == "config"
+    assert registry.async_get(living).entity_category == "config"
+    assert hass.states.get(living).attributes["options"] == list(OFFSET_MODES)
+    # The hot water zone has no correction.
+    assert not has_entity(hass, entry, "select", "zone9_offset_mode")
+
+    async def select(entity, option):
+        await hass.services.async_call(
+            "select", "select_option", {ATTR_ENTITY_ID: entity, "option": option}, blocking=True
+        )
+        await hass.async_block_till_done()
+
+    await select(living, "dbg2")
+    assert client.calls == [("patch_zone", 1, {"offset_mode": "dbg2"})]
+    assert hass.states.get(living).state == "dbg2"
+    await select(living, "config")
+    assert client.calls[-1] == ("patch_zone", 1, {"offset_mode": "config"})
+    assert hass.states.get(living).state == "config"
+    # The other zone keeps its mode.
+    assert hass.states.get(bedroom).state == "config"
+
+
+async def test_offset_mode_select_updates_the_room_sensor_state(hass, client):
+    entry = await setup_entry(hass, client)
+    bedroom = entity_id(hass, entry, "select", "zone2_offset_mode")
+    assert external_room_sensor(hass, entry, 2).state == "wrong_offset_mode"
+
+    await hass.services.async_call(
+        "select", "select_option", {ATTR_ENTITY_ID: bedroom, "option": "setpoint"}, blocking=True
+    )
+    await hass.async_block_till_done()
+    assert client.calls == [("patch_zone", 2, {"offset_mode": "setpoint"})]
+    # The mode now accepts a reading and none came yet.
+    assert external_room_sensor(hass, entry, 2).state == "no_reading"
+
+
+async def test_offset_mode_select_error_is_a_home_assistant_error(hass, client):
+    entry = await setup_entry(hass, client)
+    living = entity_id(hass, entry, "select", "zone1_offset_mode")
+
+    async def refuse(zone, **fields):
+        raise FreedoApiError(400, 'offset_mode: bad mode "cloud": want config, dbg2 or setpoint')
+
+    client.patch_install_zone = refuse
+    with pytest.raises(HomeAssistantError, match="bad mode"):
+        await hass.services.async_call(
+            "select", "select_option", {ATTR_ENTITY_ID: living, "option": "dbg2"}, blocking=True
+        )
+    assert hass.states.get(living).state == "setpoint"
 
 
 # --- weekly schedule ---
@@ -2215,3 +2274,4 @@ def test_translations_match_strings():
     strings = json.loads((folder / "strings.json").read_text())
     assert json.loads((folder / "translations" / "en.json").read_text()) == strings
     assert set(strings["selector"]["overlay_end_rule"]["options"]) == set(ZONE_OVERLAY_RULES)
+    assert set(strings["entity"]["select"]["offset_mode"]["state"]) == set(OFFSET_MODES)

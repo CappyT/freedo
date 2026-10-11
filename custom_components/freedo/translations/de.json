@@ -55,7 +55,7 @@
       },
       "temperatures": {
         "title": "Temperatursensor jeder Zone",
-        "description": "Wähle für jede Heizzone einen Temperatursensor aus. Die Zone regelt dann nach diesem Sensor statt nach dem Sensor des Ventils. Lasse eine Zone leer, um den Sensor des Ventils zu behalten. Die Zone braucht den Offset-Modus setpoint. Die Korrektur ist langsam. Eine Differenz von 2 °C braucht etwa 4 Stunden."
+        "description": "Wähle für jede Heizzone einen Temperatursensor aus. Die Zone regelt dann nach diesem Sensor statt nach dem Sensor des Ventils. Lasse eine Zone leer, um den Sensor des Ventils zu behalten. Die Zone braucht den Offset-Modus Sollwertverschiebung. Die Optionen ändern den Modus nicht. Stelle ihn mit der Auswahl Temperaturoffset-Modus der Zone ein. Die Korrektur ist langsam. Eine Differenz von 2 °C braucht etwa 4 Stunden."
       }
     },
     "abort": {
@@ -162,7 +162,7 @@
         "name": "Externer Raumsensor",
         "state": {
           "active": "In Verwendung",
-          "wrong_offset_mode": "Offset-Modus ist nicht setpoint",
+          "wrong_offset_mode": "Offset-Modus ist nicht Sollwertverschiebung",
           "no_reading": "Kein Messwert",
           "stale": "Messwert zu alt"
         }
@@ -225,6 +225,14 @@
           "manual": "Manuell",
           "until_next": "Bis zum nächsten Zeitblock",
           "timer": "Timer"
+        }
+      },
+      "offset_mode": {
+        "name": "Temperaturoffset-Modus",
+        "state": {
+          "config": "Ventilkonfiguration (voller Motorhub)",
+          "dbg2": "Debug-Datensatz des Ventils",
+          "setpoint": "Sollwertverschiebung"
         }
       }
     },

@@ -42,6 +42,8 @@ DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 # The daemon rejects a zone temperature correction beyond +-10 C (tag 0140).
 OFFSET_LIMIT_C = 10.0
 OFFSET_MODE_SETPOINT = "setpoint"
+# GET /api/install/zones offset_mode: how the correction of a zone reaches it.
+OFFSET_MODES = ("config", "dbg2", OFFSET_MODE_SETPOINT)
 
 # The end rules of a change made on a device (GET /api/install/zones
 # device_overlay_end), and the timer length the daemon accepts in seconds.

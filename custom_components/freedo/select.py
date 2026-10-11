@@ -1,5 +1,5 @@
 """Display orientation of each valve (d/config tag 0149). End rule of a change
-made on a device, of each heating zone."""
+made on a device and offset mode, of each heating zone."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from .coordinator import FreedoConfigEntry, FreedoCoordinator
 from .entity import FreedoDisplayEntity, FreedoZoneSettingEntity
 from .model import (
     KIND_VALVE,
+    OFFSET_MODES,
     ORIENTATIONS,
     OVERLAY_END_DEFAULT_SEC,
     OVERLAY_END_RULES,
@@ -36,6 +37,11 @@ async def async_setup_entry(
         DeviceOverlayEndSelect(coordinator, zone)
         for zone in coordinator.data.heating_zones()
         if zone_setting(coordinator.data, zone, "device_overlay_end") in OVERLAY_END_RULES
+    )
+    entities.extend(
+        ZoneOffsetModeSelect(coordinator, zone)
+        for zone in coordinator.data.heating_zones()
+        if zone_setting(coordinator.data, zone, "offset_mode") in OFFSET_MODES
     )
     async_add_entities(entities)
 
@@ -80,3 +86,30 @@ class DeviceOverlayEndSelect(FreedoZoneSettingEntity, SelectEntity):
             return
         seconds = (self._setting or {}).get("device_overlay_end_sec") or OVERLAY_END_DEFAULT_SEC
         await self._write(device_overlay_end=option, device_overlay_end_sec=seconds)
+
+
+class ZoneOffsetModeSelect(FreedoZoneSettingEntity, SelectEntity):
+    """How the temperature correction of the zone reaches it (offset_mode).
+    config writes the whole d/config document, and a valve homes its motor, a
+    full stroke, on each change of the offset. dbg2 writes one record and the
+    valve does not home. setpoint shifts the setpoints in the daemon and writes
+    nothing to the device. Leaving setpoint drops the correction of the daemon
+    and rewrites the zone. The room temperature sensors of the options need
+    setpoint. The change moves the temperatures of the zone, so it asks for a
+    new poll."""
+
+    _attr_translation_key = "offset_mode"
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_options = list(OFFSET_MODES)
+
+    def __init__(self, coordinator: FreedoCoordinator, zone: Zone) -> None:
+        super().__init__(coordinator, zone, "offset_mode")
+
+    @property
+    def current_option(self) -> str | None:
+        value = (self._setting or {}).get("offset_mode")
+        return value if value in OFFSET_MODES else None
+
+    async def async_select_option(self, option: str) -> None:
+        await self._write(offset_mode=option)
+        await self.coordinator.async_request_refresh()

@@ -55,7 +55,7 @@
       },
       "temperatures": {
         "title": "Temperature sensor of each zone",
-        "description": "Select a temperature sensor for each heating zone. The zone then regulates on that sensor instead of the valve sensor. Leave a zone empty to keep the valve sensor. The zone needs offset mode setpoint. The correction is slow. A difference of 2 C takes about 4 hours."
+        "description": "Select a temperature sensor for each heating zone. The zone then regulates on that sensor instead of the valve sensor. Leave a zone empty to keep the valve sensor. The zone needs the offset mode Setpoint shift. The options do not change the mode. Set it with the select Temperature offset mode of the zone. The correction is slow. A difference of 2 C takes about 4 hours."
       }
     },
     "abort": {
@@ -116,7 +116,7 @@
         "name": "External room sensor",
         "state": {
           "active": "In use",
-          "wrong_offset_mode": "Offset mode is not setpoint",
+          "wrong_offset_mode": "Offset mode is not Setpoint shift",
           "no_reading": "No reading",
           "stale": "Reading too old"
         }
@@ -159,6 +159,14 @@
           "manual": "Manual",
           "until_next": "Until next time block",
           "timer": "Timer"
+        }
+      },
+      "offset_mode": {
+        "name": "Temperature offset mode",
+        "state": {
+          "config": "Valve configuration (full motor stroke)",
+          "dbg2": "Valve debug record",
+          "setpoint": "Setpoint shift"
         }
       }
     },
