@@ -14,3 +14,8 @@ The full text of each licence is in the `LICENSE-*.txt` file next to the font.
 | `ibm-plex-mono-latin-500-normal.woff2` | IBM Plex Mono 500 | `@fontsource/ibm-plex-mono` | https://github.com/IBM/plex | OFL 1.1, `LICENSE-ibm-plex-mono.txt` |
 
 The `latin` subset covers English, Italian, German and French.
+
+The licence asks that its text accompany every copy of a font. The daemon embeds the fonts, so the
+build copies the `LICENSE-*.txt` files to `licenses/` in the bundle (`scripts/brand.mjs`). The daemon
+serves them at `licenses/LICENSE-sora.txt`, `licenses/LICENSE-ibm-plex-sans.txt` and
+`licenses/LICENSE-ibm-plex-mono.txt`, next to `index.html`. `npm run prefix-check` checks it.

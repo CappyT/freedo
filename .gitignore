@@ -91,3 +91,4 @@ tado_capture/capture-*-marks.txt
 /dashboard/static/icon-maskable-512.png
 /internal/web/dist/*
 !/internal/web/dist/.gitkeep
+/dashboard/static/licenses/

@@ -137,6 +137,16 @@ try {
 	const immutable = await fetch([...seen].find((u) => u.includes('/_app/immutable/') && u.endsWith('.js')));
 	check(/immutable/.test(immutable.headers.get('cache-control') ?? ''), 'hashed files are cached as immutable');
 
+	// The fonts travel with their licence texts.
+	for (const name of ['sora', 'ibm-plex-sans', 'ibm-plex-mono']) {
+		const answer = await fetch(`${root}licenses/LICENSE-${name}.txt`);
+		const text = await answer.text();
+		check(
+			answer.status === 200 && /^text\/plain/.test(answer.headers.get('content-type') ?? '') && /SIL OPEN FONT LICENSE/i.test(text),
+			`the licence of ${name} is served with the bundle`
+		);
+	}
+
 	// 2. Nested unknown paths go back to the root, whatever the prefix is.
 	const nested = await fetch(root + 'zones/1', { redirect: 'manual' });
 	const location = nested.headers.get('location') ?? '';
