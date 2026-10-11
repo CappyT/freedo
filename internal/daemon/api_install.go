@@ -53,6 +53,9 @@ type installPatch struct {
 	// FlowAutoAdapt switches the adaptation of the flow limit to the room
 	// feedback, for every circuit.
 	FlowAutoAdapt *bool `json:"flow_auto_adapt"`
+	// FlowDefaultCurve switches the default weather curve on for every circuit
+	// without a curve of its own. It needs flow_limit_c.
+	FlowDefaultCurve *bool `json:"flow_default_curve"`
 	// FlowCurves sets the weather compensation curve per circuit id; null
 	// removes it.
 	FlowCurves map[int]*tado.FlowCurve `json:"flow_curves"`
@@ -275,6 +278,7 @@ func installView(in *tado.Install, rev uint64) map[string]any {
 		"flow_hysteresis_c":        in.Options.FlowHysteresis(),
 		"flow_min_interval_sec":    int(in.Options.FlowMinInterval() / time.Second),
 		"flow_auto_adapt":          in.Options.FlowAutoAdaptEnabled(),
+		"flow_default_curve":       in.Options.FlowDefaultCurveEnabled(),
 		"flow_curves":              flowCurvesView(in.Options.FlowCurves),
 		"early_start_max_lead_sec": int(in.Options.EarlyStartMaxLead() / time.Second),
 		"early_start_min_episodes": in.Options.EarlyStartMinEpisodeCount(),

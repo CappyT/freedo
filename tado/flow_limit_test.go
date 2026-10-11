@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -183,6 +184,74 @@ func TestFlowCurveFlowAt(t *testing.T) {
 		if got := c.FlowAt(tc.outdoor); got != tc.want {
 			t.Errorf("FlowAt(%g) = %d, want %d", tc.outdoor, got, tc.want)
 		}
+	}
+}
+
+// TestDefaultFlowAt: the default curve gives the manual maximum minus a
+// reduction of 3.2 + 0.33 per degree outdoors, rounded and clamped to 0..8 C.
+func TestDefaultFlowAt(t *testing.T) {
+	for _, tc := range []struct {
+		limit   int
+		outdoor float64
+		want    int
+	}{
+		{56, -60, 56}, // the line is negative, no reduction
+		{56, -10, 56}, // 0.1, rounds to 0
+		{56, -9.7, 56},
+		{56, -5, 54}, // 1.55 rounds to 2
+		{56, 0, 53},  // 3.2 rounds to 3
+		{56, 3, 52},  // 4.19 rounds to 4
+		{56, 10, 49}, // 6.5 rounds up to 7
+		{56, 10.6, 49},
+		{56, 14, 48}, // 7.82 rounds to 8, the cap
+		{56, 15.6, 48},
+		{56, 16, 48},
+		{56, 20, 48}, // 9.8, capped at 8
+		{56, 60, 48},
+		{60, 3, 56},
+		{33, 20, 30}, // 25 is under the window, clamped to its lowest value
+		{30, 20, 30},
+	} {
+		if got := DefaultFlowAt(tc.limit, tc.outdoor); got != tc.want {
+			t.Errorf("DefaultFlowAt(%d, %g) = %d, want %d", tc.limit, tc.outdoor, got, tc.want)
+		}
+	}
+	for limit := int(FlowMinC); limit <= int(FlowMaxC); limit++ {
+		for outdoor := -60.0; outdoor <= 60; outdoor += 0.25 {
+			got := DefaultFlowAt(limit, outdoor)
+			if lowest := max(limit-defaultCurveMaxReductionC, int(FlowMinC)); got > limit || got < lowest {
+				t.Fatalf("DefaultFlowAt(%d, %g) = %d, want %d..%d", limit, outdoor, got, lowest, limit)
+			}
+		}
+	}
+}
+
+// TestFlowDefaultCurveNeedsTheManualMaximum: the switch is refused without
+// options.flow_limit_c, and it does nothing while that is unset.
+func TestFlowDefaultCurveNeedsTheManualMaximum(t *testing.T) {
+	on, off, limit := true, false, 56
+	in := synthInstall(t)
+	in.Options.FlowDefaultCurve = &on
+	if err := in.Validate(); err == nil || !strings.Contains(err.Error(), "options.flow_default_curve") {
+		t.Errorf("the default curve without flow_limit_c: %v, want an error that names it", err)
+	}
+	if in.Options.FlowDefaultCurveEnabled() {
+		t.Error("the default curve is enabled without flow_limit_c")
+	}
+	in.Options.FlowLimitC = &limit
+	if err := in.Validate(); err != nil {
+		t.Errorf("the default curve with flow_limit_c: %v", err)
+	}
+	if !in.Options.FlowDefaultCurveEnabled() {
+		t.Error("the default curve is not enabled")
+	}
+	in.Options.FlowDefaultCurve = &off
+	if in.Options.FlowDefaultCurveEnabled() || (Options{}).FlowDefaultCurveEnabled() {
+		t.Error("the default curve is enabled while off or unset")
+	}
+	in.Options.FlowLimitC = nil
+	if err := in.Validate(); err != nil {
+		t.Errorf("the switch off without flow_limit_c: %v", err)
 	}
 }
 

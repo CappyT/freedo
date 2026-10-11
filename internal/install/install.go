@@ -159,6 +159,13 @@ func ReadInstall(ctx context.Context, q Querier) (*tado.Install, uint64, error) 
 		}
 		in.Options.FlowAutoAdapt = &enabled
 	}
+	if raw, ok := kv["flow_default_curve"]; ok {
+		enabled, err := strconv.ParseBool(raw)
+		if err != nil {
+			return nil, 0, fmt.Errorf("install flow_default_curve %q: %w", raw, err)
+		}
+		in.Options.FlowDefaultCurve = &enabled
+	}
 	if raw, ok := kv["external_window_max_sec"]; ok {
 		sec, err := strconv.Atoi(raw)
 		if err != nil {
@@ -643,6 +650,9 @@ func (s *Store) ReplaceInstall(ctx context.Context, in *tado.Install) (uint64, e
 	}
 	if o := in.Options.FlowAutoAdapt; o != nil {
 		values = append(values, [2]string{"flow_auto_adapt", strconv.FormatInt(boolInt(*o), 10)})
+	}
+	if o := in.Options.FlowDefaultCurve; o != nil {
+		values = append(values, [2]string{"flow_default_curve", strconv.FormatInt(boolInt(*o), 10)})
 	}
 	if o := in.Options.ExternalWindowMaxSec; o != nil {
 		values = append(values, [2]string{"external_window_max_sec", strconv.Itoa(*o)})

@@ -2,7 +2,9 @@ package daemon
 
 // flow_limit: the heating flow limit (tag 2040) each circuit is served. A
 // circuit with an enabled curve follows the outdoor temperature Home Assistant
-// pushes, and falls back to options.flow_limit_c when the reading is stale. A
+// pushes, and falls back to options.flow_limit_c when the reading is stale. With
+// options.flow_default_curve a circuit without a curve of its own follows the
+// default curve, a reduction under options.flow_limit_c, on the same terms. A
 // circuit that no curve and no adaptation manages is served options.flow_limit_c
 // when it is set, and no limit otherwise.
 // With options.flow_auto_adapt the room feedback trims that limit, see
@@ -38,20 +40,25 @@ func flowBase(o tado.Options) int {
 	return tado.DefaultFlowLimitC
 }
 
-// flowTarget is the flow limit a curve asks for now: flowBase without a fresh
-// outdoor reading.
-func (d *daemon) flowTarget(o tado.Options, curve tado.FlowCurve, now time.Time) int {
-	if d.outdoor == nil || now.Sub(d.outdoor.at) > o.OutdoorMaxAge() {
-		return flowBase(o)
-	}
-	return curve.FlowAt(d.outdoor.tempC)
+// flowDefaultCurve says whether circuit id follows the default weather curve:
+// it is switched on and the circuit has no enabled curve of its own.
+func flowDefaultCurve(o tado.Options, id int) bool {
+	_, own := o.EnabledFlowCurve(id)
+	return o.FlowDefaultCurveEnabled() && !own
 }
 
 // flowCeiling is the flow limit the manual value or the curve gives circuit id
-// now. The adaptation never goes above it.
+// now: flowBase without a fresh outdoor reading. The adaptation never goes
+// above it.
 func (d *daemon) flowCeiling(o tado.Options, id int, now time.Time) int {
-	if curve, ok := o.EnabledFlowCurve(id); ok {
-		return d.flowTarget(o, curve, now)
+	if outdoor := d.freshOutdoor(o, now); outdoor != nil {
+		if curve, ok := o.EnabledFlowCurve(id); ok {
+			return curve.FlowAt(*outdoor)
+		}
+		if flowDefaultCurve(o, id) {
+			limit, _ := o.FlowLimit()
+			return tado.DefaultFlowAt(limit, *outdoor)
+		}
 	}
 	return flowBase(o)
 }
@@ -60,7 +67,7 @@ func (d *daemon) flowCeiling(o tado.Options, id int, now time.Time) int {
 // circuit id, which then refuses a manual value.
 func flowManaged(o tado.Options, id int) bool {
 	_, curved := o.EnabledFlowCurve(id)
-	return curved || o.FlowAutoAdaptEnabled()
+	return curved || o.FlowAutoAdaptEnabled() || o.FlowDefaultCurveEnabled()
 }
 
 // flowWanted is the flow limit circuit id asks for now: the ceiling, trimmed
@@ -184,7 +191,9 @@ func (d *daemon) postOutdoor(w http.ResponseWriter, r *http.Request) {
 // highest value it accepts (minC and maxC: the boiler can cut the top), when
 // either last changed it and whether the thermostat has fetched it. adaptedC, adaptedAt
 // and adaptReason describe the adaptation: its limit, and when and why it last
-// moved.
+// moved. defaultCurve says that the circuit follows the default curve, and
+// reductionC how far under options.flow_limit_c it puts the limit now: null
+// while the outdoor reading is missing or stale.
 func (d *daemon) flowLimitView(e *tado.EmuState) map[string]any {
 	out := map[string]any{"outdoor": nil, "circuits": []map[string]any{}}
 	inst := d.inst.Load()
@@ -214,6 +223,7 @@ func (d *daemon) flowLimitView(e *tado.EmuState) map[string]any {
 			"id": id, "curve": false, "computedC": nil, "servedC": nil, "minC": minC, "maxC": maxC,
 			"changedAt": nil, "fetched": fetched,
 			"adapt": inst.Options.FlowAutoAdaptEnabled(), "adaptedC": nil, "adaptedAt": nil, "adaptReason": nil,
+			"defaultCurve": flowDefaultCurve(inst.Options, id), "reductionC": nil,
 		}
 		if isServed {
 			view["servedC"] = served
@@ -223,6 +233,10 @@ func (d *daemon) flowLimitView(e *tado.EmuState) map[string]any {
 		}
 		if target, ok := d.flowWanted(inst.Options, id, now); ok {
 			view["computedC"] = target
+		}
+		if outdoor := d.freshOutdoor(inst.Options, now); outdoor != nil && flowDefaultCurve(inst.Options, id) {
+			limit, _ := inst.Options.FlowLimit()
+			view["reductionC"] = limit - tado.DefaultFlowAt(limit, *outdoor)
 		}
 		if a := d.flowAdapt[id]; a != nil && inst.Options.FlowAutoAdaptEnabled() {
 			view["adaptedC"], view["adaptedAt"], view["adaptReason"] = a.c, a.at.UTC().Format(time.RFC3339), a.reason

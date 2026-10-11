@@ -117,6 +117,34 @@ func (c FlowCurve) Validate() error {
 	return nil
 }
 
+// The default weather curve gives a circuit the manual maximum minus a
+// reduction that grows with the outdoor temperature:
+// reduction = defaultCurveBaseC + defaultCurveSlopeCPerC x outdoor, clamped.
+// It is a line fitted to the monthly means of one heating season on one plant,
+// not the vendor algorithm.
+const (
+	// defaultCurveBaseC and defaultCurveSlopeCPerC are the least-squares line
+	// through the seven monthly points.
+	defaultCurveBaseC      = 3.2
+	defaultCurveSlopeCPerC = 0.33
+	// defaultCurveMinReductionC keeps the limit at or under the manual maximum.
+	// The data stops at a monthly mean of 3 C and the line reaches 0 at -9.7 C,
+	// so a colder day gets the full manual maximum.
+	defaultCurveMinReductionC = 0
+	// defaultCurveMaxReductionC is the plateau: 8 C at 19 to 21 C, and the
+	// lower end of the 8 to 9 C seen from 13.6 C, so the limit stays higher.
+	defaultCurveMaxReductionC = 8
+)
+
+// DefaultFlowAt returns the flow limit the default curve gives at outdoorC under
+// the manual maximum limitC, in whole degrees. It stays inside the window a
+// circuit accepts.
+func DefaultFlowAt(limitC int, outdoorC float64) int {
+	reduction := int(math.Round(defaultCurveBaseC + defaultCurveSlopeCPerC*outdoorC))
+	reduction = min(max(reduction, defaultCurveMinReductionC), defaultCurveMaxReductionC)
+	return max(limitC-reduction, int(FlowMinC))
+}
+
 // FlowLimit is the flow limit of a circuit that nothing else sets. ok is false
 // while the option is unset: the circuit is then served no limit.
 func (o Options) FlowLimit() (limit int, ok bool) {
@@ -130,6 +158,13 @@ func (o Options) FlowLimit() (limit int, ok bool) {
 func (o Options) EnabledFlowCurve(id int) (FlowCurve, bool) {
 	c, ok := o.FlowCurves[id]
 	return c, ok && c.Enabled
+}
+
+// FlowDefaultCurveEnabled reports whether the circuits without a curve of their
+// own follow the default weather curve. The curve reduces options.flow_limit_c
+// and does nothing while that is unset.
+func (o Options) FlowDefaultCurveEnabled() bool {
+	return o.FlowDefaultCurve != nil && *o.FlowDefaultCurve && o.FlowLimitC != nil
 }
 
 func (o Options) OutdoorMaxAge() time.Duration {
@@ -165,6 +200,9 @@ func (in *Install) checkFlowOptions(c *issues) {
 		if err := flowInRange(float64(*o)); err != nil {
 			c.errf("options.flow_limit_c", "%s", strings.TrimPrefix(err.Error(), "tado: "))
 		}
+	}
+	if o := in.Options; o.FlowDefaultCurve != nil && *o.FlowDefaultCurve && o.FlowLimitC == nil {
+		c.errf("options.flow_default_curve", "needs options.flow_limit_c, the manual maximum the curve reduces")
 	}
 	for _, o := range []struct {
 		path string

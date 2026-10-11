@@ -504,8 +504,14 @@ func patchFlowOptions(ctx context.Context, tx querier, p installPatch) error {
 			return err
 		}
 	}
-	if p.FlowAutoAdapt != nil {
-		if err := setInstallValue(ctx, tx, "flow_auto_adapt", strconv.FormatInt(boolInt(*p.FlowAutoAdapt), 10)); err != nil {
+	for key, v := range map[string]*bool{
+		"flow_auto_adapt":    p.FlowAutoAdapt,
+		"flow_default_curve": p.FlowDefaultCurve,
+	} {
+		if v == nil {
+			continue
+		}
+		if err := setInstallValue(ctx, tx, key, strconv.FormatInt(boolInt(*v), 10)); err != nil {
 			return err
 		}
 	}

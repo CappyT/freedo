@@ -216,6 +216,10 @@ type Options struct {
 	// circuit from the room feedback, below the limit the manual value or the
 	// curve gives. Unset is off.
 	FlowAutoAdapt *bool `yaml:"flow_auto_adapt"`
+	// FlowDefaultCurve lets every heating circuit without an enabled curve of
+	// its own follow the default weather curve under FlowLimitC, which it
+	// needs. Unset is off.
+	FlowDefaultCurve *bool `yaml:"flow_default_curve"`
 	// EarlyStartZones holds the heating zones whose warmer program blocks the
 	// daemon starts early, from the heat-up rate it learns per zone. A zone
 	// outside the map starts each block on time.

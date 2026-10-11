@@ -235,10 +235,11 @@ allows it.
 | `room_temp_max_age_sec` | 1800 | Age at which an external room temperature expires. |
 | `low_battery_cell_mv` | 1100 | Battery alarm threshold per cell. |
 | `offline_after_sec` | 3600 | Silence after which a device is `offline`. |
-| `flow_limit_c` | none | Flow limit of every circuit that no manual value, curve or adaptation sets, 30 to 75 C. While it is unset, such a circuit is served no limit: see [Flow limit](#flow-limit). A `null` does not clear a set value. |
+| `flow_limit_c` | none | Flow limit of every circuit that no manual value, curve or adaptation sets, 30 to 75 C. It is also the manual maximum that the default curve reduces. While it is unset, such a circuit is served no limit: see [Flow limit](#flow-limit). A `null` does not clear a set value. |
 | `outdoor_max_age_sec` | 3600 | Age at which the outdoor temperature expires. |
 | `flow_hysteresis_c`, `flow_min_interval_sec` | 1, 1800 | Smallest change and shortest interval of the served flow limit. |
 | `flow_curves`, `flow_auto_adapt` | none, `false` | Weather curve per circuit, and the automatic adaptation. |
+| `flow_default_curve` | `false` | Built-in weather curve for every circuit without a curve of its own. It needs `flow_limit_c`: see [Flow limit](#flow-limit). |
 | `early_start_min_episodes`, `early_start_max_lead_sec` | 3, 7200 | Early start thresholds. |
 | `boiler_max_power_kw`, `boiler_min_power_kw` | none, 0 | Boiler output at 100 % and 0 % modulation. |
 | `boiler_max_gas_m3h`, `boiler_min_gas_m3h` | none | Fuel flow at 100 % and 0 % modulation, in `fuel_unit` per hour. |
@@ -626,11 +627,11 @@ applies it as the OpenTherm MaxTSet, in whole degrees, only when it opens the bo
 session again. Each application closes and opens the session.
 
 - `flow_limit_c` has no default. A circuit gets `flow_limit_c` when it is set, unless
-  `POST /api/boiler/flow` set a value, a curve or the adaptation manages the circuit. While
-  `flow_limit_c` is unset, a circuit that nothing manages is served no `2040`. The code notes
-  that the thermostat then applies a MaxTSet of 70 C when its boiler interface starts. No
-  measurement on a boiler confirms this value. Set `flow_limit_c` to a value that suits the
-  boiler.
+  `POST /api/boiler/flow` set a value, or a curve, the default curve or the adaptation manages
+  the circuit. While `flow_limit_c` is unset, a circuit that nothing manages is served no
+  `2040`. The code notes that the thermostat then applies a MaxTSet of 70 C when its boiler
+  interface starts. No measurement on a boiler confirms this value. Set `flow_limit_c` to a
+  value that suits the boiler.
 - A circuit with an enabled curve, or with the adaptation on, falls back to 48 C while
   `flow_limit_c` is unset. The fallback applies to a stale outdoor reading and to the start of
   the adaptation.
@@ -648,7 +649,7 @@ session again. Each application closes and opens the session.
   returns the circuit to `flow_limit_c` (48 C while that option is unset).
 - The served limit changes by at least `flow_hysteresis_c` and at most once per
   `flow_min_interval_sec`. The interval also starts at daemon start.
-- A circuit with an active curve refuses `POST /api/boiler/flow` with `409`. An `id` that the
+- A circuit with an active curve of its own refuses `POST /api/boiler/flow` with `409`. An `id` that the
   installation does not declare gets `400`.
 - `GET /api/boiler` shows under `flowLimit` the outdoor temperature and its age, `defaultC`
   (`null` while `flow_limit_c` is unset) and, for each circuit, the computed and the served
@@ -656,13 +657,47 @@ session again. Each application closes and opens the session.
   change and whether the thermostat read it. `servedC` is `null` while the circuit is served
   no limit.
 
+`flow_default_curve` (default `false`) gives every circuit without an enabled curve of its own a
+built-in weather curve, so that you do not define two points. The curve is a fit on the monthly
+figures of one heating season on one plant with radiators and a condensing boiler. It is not the
+algorithm of the tado cloud, which is not public.
+
+- The curve is relative. The limit is `flow_limit_c` minus a reduction. The reduction is
+  `3.2 + 0.33 x outdoor` (outdoor temperature in C), rounded to whole degrees and clamped to 0 to
+  8 C. The limit never goes above `flow_limit_c` and never below 30 C.
+- The line is the least-squares fit through seven monthly means, from 3 to 21 C outdoors. A monthly
+  mean hides the daily swing, so the true curve can be steeper than the line. Below 3 C the line is
+  an extrapolation. It gives a reduction of 0 from about -9.7 C down, so a cold day gets
+  `flow_limit_c`. The cap of 8 C applies from about 14.5 C: the figures show 8 C at 19 to 21 C and
+  8 to 9 C from 13.6 C.
+- For `flow_limit_c` 56 C, the limit is 54 C at -5 C outdoors, 52 C at 3 C, 49 C at 10 C and 48 C
+  at 16 C and above.
+- The option needs `flow_limit_c`, the reference of the reduction. A `PATCH /api/install` that
+  switches it on while `flow_limit_c` is unset gets `400`. Send both in one request, or set
+  `flow_limit_c` first.
+- A circuit with an enabled curve of its own follows that curve. The default curve does not apply
+  to it.
+- The outdoor temperature comes from `POST /api/outdoor`. Home Assistant must feed it: the
+  integration pushes the sensor that you select in its options. With no reading, or a reading older
+  than `outdoor_max_age_sec`, the circuit returns to `flow_limit_c`, as with a curve of your own.
+- The curve uses the same rules as the other curves: `flow_hysteresis_c`, `flow_min_interval_sec`,
+  the cut to `maxC` and the single writer of tag `2040`. A new `flow_limit_c` reaches a circuit at
+  its next allowed change.
+- With `flow_auto_adapt` on, the curve value is the ceiling and the adaptation trims below it.
+- `POST /api/boiler/flow` answers `409` for a circuit that follows the default curve. Switching the
+  option off returns the circuit to `flow_limit_c`.
+- Each item of `flowLimit.circuits` also shows `defaultCurve` (`true` while the circuit follows the
+  default curve) and `reductionC` (the reduction in force now, `null` while the outdoor reading is
+  missing or stale or the circuit does not follow the curve). `computedC` is the limit that results.
+- The fit is not verified on a plant. No test on air covers the curve.
+
 `flow_auto_adapt` (default `false`) switches on an automatic adaptation of the limit of each
 circuit. It is a local controller. It is not the algorithm of the tado cloud, which is not
 public.
 
 - The served limit is `min(adapted, ceiling)`. The ceiling is the limit the daemon serves
-  without adaptation: `flow_limit_c` (48 C while it is unset), or the curve value while the
-  outdoor reading is fresh.
+  without adaptation: `flow_limit_c` (48 C while it is unset), or the value of the curve or of
+  the default curve while the outdoor reading is fresh.
 - The adapted limit starts at the served limit, or at the ceiling while the circuit is served
   none.
 - It moves down by 2 C (minimum 40 C) when 12 hours passed since the last move, the circuit

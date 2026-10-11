@@ -2984,6 +2984,10 @@ func (d *daemon) postBoilerFlow(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusConflict, fmt.Sprintf("circuit %d adapts its flow limit: set flow_limit_c, or disable flow_auto_adapt first", id))
 		return
 	}
+	if flowDefaultCurve(d.inst.Load().Options, id) {
+		writeErr(w, http.StatusConflict, fmt.Sprintf("circuit %d follows the default weather curve: set flow_limit_c, or disable flow_default_curve first", id))
+		return
+	}
 	target := hex.EncodeToString(dev.WireEUI())
 	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		if err := e.EnqueueFlowSetpoint(target, id, b.TempC); err != nil {

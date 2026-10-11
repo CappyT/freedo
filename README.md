@@ -40,8 +40,8 @@ Tested only with automated tests and synthetic fixtures:
   configuration of a heating zone with no circuit.
 - Weekly schedules on the devices and the offline schedule (devices run the program alone).
 - Firmware transfer to a device. No block was ever sent on air.
-- Early start, the weather curve and automatic flow adaptation, the external room temperature and the
-  controller gain suggestion.
+- Early start, the weather curves (your own and the default curve), automatic flow adaptation, the
+  external room temperature and the controller gain suggestion.
 - The energy and gas estimate. No comparison with a gas meter exists.
 - The Home Assistant integration and the presence blueprint. The repository documents automated tests only.
 
@@ -169,6 +169,7 @@ what is not verified on air. The routes are in [`docs/API.md`](docs/API.md). The
 | Firmware version and update | partial | A transfer route exists. No block was sent on air. freedo distributes no image. |
 | Flow limit | equal | The fixed limit is verified on air through the OpenTherm reading. |
 | Weather curve and automatic flow adaptation | partial | The curve has two points. The adaptation is a local controller and not the cloud algorithm. It is off by default. Not verified on air. |
+| Default weather curve for the flow limit | partial | A built-in curve under `flow_limit_c`, fitted on one plant and one season of monthly means. It is not the cloud algorithm. Home Assistant must feed the outdoor temperature. It is off by default. Not verified on air. |
 | Boiler telemetry and faults | partial | Boiler fault codes are in the API only. |
 | Energy and gas estimate | partial | Estimated from modulation and name-plate data. Not a measurement. Price and cost stay in the Home Assistant Energy panel. |
 | History and reports | partial | Home Assistant records the history. The daemon keeps no time series. |
