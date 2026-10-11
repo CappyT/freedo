@@ -40,6 +40,7 @@ from .model import (
     GAS_REASONS,
     KIND_BRIDGE,
     KIND_VALVE,
+    ROOM_TEMP_STATES,
     FreedoData,
     Zone,
     boiler_energy,
@@ -52,7 +53,9 @@ from .model import (
     node_firmware,
     node_humidity,
     node_temperature,
+    room_temp_state,
     zone_demand_pct,
+    zone_offset_mode,
 )
 
 
@@ -262,6 +265,11 @@ async def async_setup_entry(
         if dev.get("kind") == KIND_VALVE:
             entities.append(CalibrationSensor(coordinator, short))
     entities.extend(ZoneDemandSensor(coordinator, zone) for zone in data.heating_zones())
+    entities.extend(
+        ZoneRoomTemperatureSensor(coordinator, zone)
+        for zone in data.heating_zones()
+        if zone.number in data.room_temps
+    )
     async_add_entities(entities)
 
     # A device that reports a humidity gets its sensor once it has: the node
@@ -523,3 +531,49 @@ class ZoneDemandSensor(FreedoEntity, SensorEntity):
     def native_value(self) -> int | None:
         zone = self.coordinator.data.zones.get(self._number)
         return zone_demand_pct(self.coordinator.data, zone) if zone else None
+
+
+class ZoneRoomTemperatureSensor(FreedoEntity, SensorEntity):
+    """GET /api/zones declared[].externalTemp: whether the zone regulates on the
+    room temperature of an external sensor, and the cause when it does not.
+    The attributes are the view of the daemon, in degrees Celsius: the reading
+    (temperature_c, age_sec), the temperature the zone reports on the wire scale
+    (device_temperature_c), the shift applied to the setpoints (shift_c) and
+    the filtered one it moves toward (wanted_shift_c)."""
+
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = list(ROOM_TEMP_STATES)
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_translation_key = "external_room_sensor"
+
+    def __init__(self, coordinator: FreedoCoordinator, zone: Zone) -> None:
+        super().__init__(coordinator, f"zone{zone.number}_external_room_sensor")
+        self._number = zone.number
+        self._attr_device_info = self.zone_device(zone)
+
+    @property
+    def _zone(self) -> Zone | None:
+        return self.coordinator.data.zones.get(self._number)
+
+    @property
+    def available(self) -> bool:
+        return super().available and self._zone is not None
+
+    @property
+    def native_value(self) -> str | None:
+        zone = self._zone
+        return room_temp_state(self.coordinator.data, zone) if zone else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        data = self.coordinator.data
+        zone = self._zone
+        view = data.room_temps.get(self._number) or {}
+        return {
+            "offset_mode": zone_offset_mode(data, zone) if zone else None,
+            "temperature_c": view.get("tempC"),
+            "age_sec": view.get("ageSec"),
+            "device_temperature_c": view.get("deviceC"),
+            "shift_c": view.get("shiftC"),
+            "wanted_shift_c": view.get("wantedC"),
+        }

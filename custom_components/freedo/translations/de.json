@@ -52,6 +52,10 @@
       "windows": {
         "title": "Zone jedes Fenstersensors",
         "description": "Wähle die Heizzone jedes Sensors aus. Eine Zone ist offen, wenn einer ihrer Sensoren offen ist."
+      },
+      "temperatures": {
+        "title": "Temperatursensor jeder Zone",
+        "description": "Wähle für jede Heizzone einen Temperatursensor aus. Die Zone regelt dann nach diesem Sensor statt nach dem Sensor des Ventils. Lasse eine Zone leer, um den Sensor des Ventils zu behalten. Die Zone braucht den Offset-Modus setpoint. Die Korrektur ist langsam. Eine Differenz von 2 °C braucht etwa 4 Stunden."
       }
     },
     "abort": {
@@ -153,6 +157,15 @@
       },
       "heating_demand": {
         "name": "Heizbedarf"
+      },
+      "external_room_sensor": {
+        "name": "Externer Raumsensor",
+        "state": {
+          "active": "In Verwendung",
+          "wrong_offset_mode": "Offset-Modus ist nicht setpoint",
+          "no_reading": "Kein Messwert",
+          "stale": "Messwert zu alt"
+        }
       },
       "calibration": {
         "name": "Kalibrierung",

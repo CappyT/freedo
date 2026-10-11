@@ -59,6 +59,14 @@ OPEN_WINDOW_MAX_SEC = 0xFFFF
 # The daemon rejects an outdoor temperature outside -60..60 C with 400.
 OUTDOOR_BOUND_C = 60.0
 
+# The daemon rejects an external room temperature outside -10..50 C with 400.
+ROOM_TEMP_MIN_C = -10.0
+ROOM_TEMP_MAX_C = 50.0
+
+# The state of the external room temperature of a zone: in use, or the cause it
+# is not. See room_temp_state.
+ROOM_TEMP_STATES = ("active", "wrong_offset_mode", "no_reading", "stale")
+
 # The daemon rejects a pair window longer than this with 400.
 PAIR_WINDOW_MAX_SEC = 600
 
@@ -129,6 +137,8 @@ class FreedoData:
     demand: dict[int, dict[str, Any]] = field(default_factory=dict)
     # GET /api/zones "declared"[].window, heating zones only.
     windows: dict[int, dict[str, Any]] = field(default_factory=dict)
+    # GET /api/zones "declared"[].externalTemp, heating zones only.
+    room_temps: dict[int, dict[str, Any]] = field(default_factory=dict)
     # GET /api/zones "declared"[].target: what the zone targets now.
     targets: dict[int, dict[str, Any]] = field(default_factory=dict)
     # GET /api/nodes: ValveView by short address.
@@ -213,6 +223,8 @@ def parse(
         )
         if isinstance(z.get("window"), Mapping):
             data.windows[number] = dict(z["window"])
+        if isinstance(z.get("externalTemp"), Mapping):
+            data.room_temps[number] = dict(z["externalTemp"])
         if isinstance(z.get("target"), Mapping):
             data.targets[number] = dict(z["target"])
     for view in zones.get("demand") or []:
@@ -422,6 +434,26 @@ def zone_offset_mode(data: FreedoData, zone: Zone) -> str | None:
     return (data.zone_settings.get(zone.number) or {}).get("offset_mode")
 
 
+def room_temp_state(data: FreedoData, zone: Zone) -> str | None:
+    """"active" while the zone regulates on the external room temperature, else
+    the cause: the offset mode is not setpoint (the daemon refuses a reading
+    then), no reading came, or the reading is older than room_temp_max_age_sec.
+    None when the daemon does not serve the view or the offset mode."""
+    view = data.room_temps.get(zone.number)
+    if view is None:
+        return None
+    if view.get("inUse"):
+        return "active"
+    mode = zone_offset_mode(data, zone)
+    if mode is None:
+        return None
+    if mode != OFFSET_MODE_SETPOINT:
+        return "wrong_offset_mode"
+    if view.get("tempC") is None:
+        return "no_reading"
+    return "stale" if view.get("stale") else None
+
+
 def flow_circuit(data: FreedoData, circuit: int) -> Mapping[str, Any] | None:
     """GET /api/boiler flowLimit.circuits[] of one circuit."""
     for view in (data.boiler.get("flowLimit") or {}).get("circuits") or []:
@@ -489,12 +521,9 @@ def boiler_unsupported(data: FreedoData) -> set[str]:
     return set(data.boiler.get("Unsupported") or ())
 
 
-def outdoor_payload(state: str | None, unit: str | None) -> dict[str, float] | None:
-    """Map an outdoor temperature state to the POST /api/outdoor body.
-
-    An unavailable, unknown, non-numeric or out-of-range state gives None:
-    the caller does not push it.
-    """
+def _celsius(state: str | None, unit: str | None) -> float | None:
+    """The temperature of a sensor state in degrees Celsius, None for an
+    unavailable, unknown or non-numeric state."""
     if state is None:
         return None
     try:
@@ -507,9 +536,45 @@ def outdoor_payload(state: str | None, unit: str | None) -> dict[str, float] | N
         value = (value - 32.0) * 5.0 / 9.0
     elif unit == "K":
         value -= 273.15
-    if abs(value) > OUTDOOR_BOUND_C:
+    return value
+
+
+def outdoor_payload(state: str | None, unit: str | None) -> dict[str, float] | None:
+    """Map an outdoor temperature state to the POST /api/outdoor body.
+
+    An unavailable, unknown, non-numeric or out-of-range state gives None:
+    the caller does not push it.
+    """
+    value = _celsius(state, unit)
+    if value is None or abs(value) > OUTDOOR_BOUND_C:
         return None
     return {"tempC": round(value, 2)}
+
+
+def room_temp_payload(state: str | None, unit: str | None) -> dict[str, float] | None:
+    """Map a room temperature state to the POST /api/zones/{n}/temperature body.
+
+    An unavailable, unknown, non-numeric or out-of-range state gives None:
+    the caller does not push it.
+    """
+    value = _celsius(state, unit)
+    if value is None or not ROOM_TEMP_MIN_C <= value <= ROOM_TEMP_MAX_C:
+        return None
+    return {"tempC": round(value, 2)}
+
+
+def room_temp_zones(mapping: Mapping[str, Any]) -> dict[int, str]:
+    """Read the options mapping zone -> entity id. An entry with no number or
+    no entity is dropped."""
+    out: dict[int, str] = {}
+    for zone, entity_id in mapping.items():
+        try:
+            number = int(zone)
+        except (TypeError, ValueError):
+            continue
+        if entity_id:
+            out[number] = entity_id
+    return out
 
 
 def window_zones(mapping: Mapping[str, Any]) -> dict[int, list[str]]:

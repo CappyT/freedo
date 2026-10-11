@@ -34,6 +34,7 @@ from homeassistant.const import (  # noqa: E402
     CONF_HOST,
     CONF_PORT,
 )
+from homeassistant.data_entry_flow import FlowResultType  # noqa: E402
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError  # noqa: E402
 from homeassistant.helpers import device_registry as dr, entity_registry as er  # noqa: E402
 from homeassistant.util import dt as dt_util  # noqa: E402
@@ -93,6 +94,11 @@ class FakeClient:
         self.window_gate: asyncio.Event | None = None
         # Errors the next window pushes raise, one per push.
         self.window_errors: list[Exception] = []
+        # Room temperature pushes and clears as the daemon receives them.
+        self.room_temps: list[tuple[int, float]] = []
+        self.room_temp_clears: list[int] = []
+        # Errors the next room temperature pushes and clears raise, one per call.
+        self.room_temp_errors: list[Exception] = []
         # GET /api/pair/window, None for a daemon without the route. The times are
         # left out while the window never opened.
         self.pair_window_json: dict | None = {"open": False, "responder": False, "joiners": []}
@@ -225,6 +231,18 @@ class FakeClient:
 
     async def push_outdoor(self, temp_c):
         return {}
+
+    async def push_room_temp(self, zone, temp_c):
+        if self.room_temp_errors:
+            raise self.room_temp_errors.pop(0)
+        self.room_temps.append((zone, temp_c))
+        return {"tempC": temp_c}
+
+    async def clear_room_temp(self, zone):
+        if self.room_temp_errors:
+            raise self.room_temp_errors.pop(0)
+        self.room_temp_clears.append(zone)
+        return {"tempC": None}
 
     async def set_away(self, away):
         return {"away": away}
@@ -451,6 +469,268 @@ async def test_refused_window_push_is_not_retried(hass, client):
     async_fire_time_changed(hass, dt_util.utcnow() + timedelta(minutes=1))
     await hass.async_block_till_done()
     assert client.windows == [(1, False)]
+
+
+# --- room temperature pushes ---
+
+ROOM_SENSOR = "sensor.living_temperature"
+HALL_SENSOR = "sensor.hall_temperature"
+
+
+def set_room_sensor(hass, state, unit="°C", entity=ROOM_SENSOR):
+    hass.states.async_set(entity, state, {"unit_of_measurement": unit})
+
+
+async def tick(hass, minutes):
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(minutes=minutes))
+    await hass.async_block_till_done()
+
+
+async def test_room_temperature_is_pushed_to_its_zone(hass, client):
+    set_room_sensor(hass, "21.4")
+    await setup_entry(hass, client, options={"room_temperatures": {"1": ROOM_SENSOR}})
+    # The integration sends the state it finds at start.
+    assert client.room_temps == [(1, 21.4)]
+
+    set_room_sensor(hass, "21.9")
+    await hass.async_block_till_done()
+    assert client.room_temps == [(1, 21.4), (1, 21.9)]
+
+    # The periodic push keeps the reading fresh while the sensor stays still.
+    await tick(hass, 16)
+    assert client.room_temps == [(1, 21.4), (1, 21.9), (1, 21.9)]
+
+
+async def test_room_temperature_in_fahrenheit_is_converted(hass, client):
+    set_room_sensor(hass, "70.7", "°F")
+    await setup_entry(hass, client, options={"room_temperatures": {"1": ROOM_SENSOR}})
+    assert client.room_temps == [(1, 21.5)]
+
+
+async def test_room_temperature_that_is_not_a_reading_is_not_pushed(hass, client):
+    set_room_sensor(hass, "21.4")
+    await setup_entry(hass, client, options={"room_temperatures": {"1": ROOM_SENSOR}})
+    assert client.room_temps == [(1, 21.4)]
+
+    # The daemon answers 400 to a value outside -10..50 C.
+    for state in ("unavailable", "unknown", "not a number", "99"):
+        set_room_sensor(hass, state)
+        await hass.async_block_till_done()
+    await tick(hass, 16)
+    assert client.room_temps == [(1, 21.4)]
+
+    hass.states.async_remove(ROOM_SENSOR)
+    await tick(hass, 32)
+    assert client.room_temps == [(1, 21.4)]
+
+
+async def test_one_sensor_can_serve_two_zones(hass, client):
+    set_room_sensor(hass, "20.5", entity=HALL_SENSOR)
+    await setup_entry(
+        hass, client, options={"room_temperatures": {"1": HALL_SENSOR, "2": HALL_SENSOR}}
+    )
+    assert sorted(client.room_temps) == [(1, 20.5), (2, 20.5)]
+    set_room_sensor(hass, "20.8", entity=HALL_SENSOR)
+    await hass.async_block_till_done()
+    assert sorted(client.room_temps[2:]) == [(1, 20.8), (2, 20.8)]
+
+
+async def test_failed_room_temperature_push_does_not_break_the_listener(hass, client, caplog):
+    set_room_sensor(hass, "21.4")
+    await setup_entry(hass, client, options={"room_temperatures": {"1": ROOM_SENSOR}})
+
+    # A refusal and a lost connection: the zone logs the first one only.
+    client.room_temp_errors = [
+        FreedoApiError(409, "zone 1: an external room temperature needs offset_mode setpoint"),
+        FreedoConnectionError("daemon down"),
+    ]
+    for state in ("21.5", "21.6"):
+        set_room_sensor(hass, state)
+        await hass.async_block_till_done()
+    assert client.room_temps == [(1, 21.4)]
+    warnings = [r for r in caplog.records if "Room temperature push for zone 1 failed" in r.message]
+    assert len(warnings) == 1
+    assert "needs offset_mode setpoint" in warnings[0].message
+
+    # The next change reaches the daemon.
+    set_room_sensor(hass, "21.7")
+    await hass.async_block_till_done()
+    assert client.room_temps == [(1, 21.4), (1, 21.7)]
+
+
+async def test_no_room_temperature_push_without_a_mapping(hass, client):
+    set_room_sensor(hass, "21.4")
+    await setup_entry(hass, client)
+    set_room_sensor(hass, "21.9")
+    await tick(hass, 16)
+    assert client.room_temps == []
+
+
+async def start_options(hass, entry, user_input=None):
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert result["step_id"] == "init"
+    return await hass.config_entries.options.async_configure(result["flow_id"], user_input or {})
+
+
+async def test_options_offer_a_temperature_sensor_for_each_heating_zone(hass, client):
+    entry = await setup_entry(hass, client, options={"room_temperatures": {"2": HALL_SENSOR}})
+    result = await start_options(hass, entry)
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "temperatures"
+    fields = {str(key): key for key in result["data_schema"].schema}
+    # The hot water zone has no field.
+    assert list(fields) == ["1: Living", "2: Bedroom"]
+    assert not (fields["1: Living"].description or {}).get("suggested_value")
+    assert fields["2: Bedroom"].description["suggested_value"] == HALL_SENSOR
+    selector_config = result["data_schema"].schema[fields["1: Living"]].config
+    assert selector_config["domain"] == ["sensor"]
+    assert selector_config["device_class"] == ["temperature"]
+    hass.config_entries.options.async_abort(result["flow_id"])
+
+
+async def test_options_map_a_sensor_to_a_zone(hass, client):
+    set_room_sensor(hass, "21.4")
+    entry = await setup_entry(hass, client)
+    assert client.room_temps == []
+    with patch("custom_components.freedo.FreedoClient", return_value=client):
+        result = await start_options(hass, entry)
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], {"1: Living": ROOM_SENSOR}
+        )
+        await hass.async_block_till_done()
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.options == {"windows": {}, "room_temperatures": {"1": ROOM_SENSOR}}
+    # The reload sends the reading to the zone of the sensor.
+    assert client.room_temps == [(1, 21.4)]
+    assert client.room_temp_clears == []
+
+
+async def test_removing_the_sensor_clears_the_reading_and_stops_the_pushes(hass, client):
+    set_room_sensor(hass, "21.4")
+    set_room_sensor(hass, "20.1", entity=HALL_SENSOR)
+    entry = await setup_entry(
+        hass, client, options={"room_temperatures": {"1": ROOM_SENSOR, "2": HALL_SENSOR}}
+    )
+    assert sorted(client.room_temps) == [(1, 21.4), (2, 20.1)]
+    with patch("custom_components.freedo.FreedoClient", return_value=client):
+        result = await start_options(hass, entry)
+        # Zone 1 loses its sensor, zone 2 keeps it.
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], {"2: Bedroom": HALL_SENSOR}
+        )
+        await hass.async_block_till_done()
+        assert result["type"] is FlowResultType.CREATE_ENTRY
+        assert entry.options == {"windows": {}, "room_temperatures": {"2": HALL_SENSOR}}
+        assert client.room_temp_clears == [1]
+
+        client.room_temps.clear()
+        set_room_sensor(hass, "22.0")
+        await tick(hass, 16)
+        assert client.room_temps == [(2, 20.1)]
+
+        # No sensor left: the zone is cleared and nothing is pushed.
+        result = await start_options(hass, entry)
+        await hass.config_entries.options.async_configure(result["flow_id"], {})
+        await hass.async_block_till_done()
+    assert entry.options == {"windows": {}}
+    assert client.room_temp_clears == [1, 2]
+    client.room_temps.clear()
+    set_room_sensor(hass, "22.5", entity=HALL_SENSOR)
+    await tick(hass, 16)
+    assert client.room_temps == []
+
+
+async def test_a_refused_clear_does_not_block_the_options(hass, client, caplog):
+    set_room_sensor(hass, "21.4")
+    entry = await setup_entry(hass, client, options={"room_temperatures": {"1": ROOM_SENSOR}})
+    with patch("custom_components.freedo.FreedoClient", return_value=client):
+        result = await start_options(hass, entry)
+        client.room_temp_errors = [FreedoConnectionError("daemon down")]
+        result = await hass.config_entries.options.async_configure(result["flow_id"], {})
+        await hass.async_block_till_done()
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.options == {"windows": {}}
+    assert "Room temperature release for zone 1 failed" in caplog.text
+
+
+async def test_options_keep_the_sensors_while_the_entry_is_not_loaded(hass, client):
+    entry = await setup_entry(hass, client, options={"room_temperatures": {"1": ROOM_SENSOR}})
+    await hass.config_entries.async_unload(entry.entry_id)
+    with patch("custom_components.freedo.FreedoClient", return_value=client):
+        result = await start_options(hass, entry, {"outdoor_entity": "sensor.outdoor"})
+        await hass.async_block_till_done()
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.options == {
+        "windows": {},
+        "outdoor_entity": "sensor.outdoor",
+        "room_temperatures": {"1": ROOM_SENSOR},
+    }
+    assert client.room_temp_clears == []
+
+
+# --- external room sensor ---
+
+
+def external_room_sensor(hass, entry, zone):
+    return hass.states.get(entity_id(hass, entry, "sensor", f"zone{zone}_external_room_sensor"))
+
+
+async def test_external_room_sensor_shows_the_daemon_view(hass, client):
+    entry = await setup_entry(hass, client)
+    registry = er.async_get(hass)
+
+    active = external_room_sensor(hass, entry, 1)
+    assert active.state == "active"
+    assert active.attributes["offset_mode"] == "setpoint"
+    assert active.attributes["temperature_c"] == 21.4
+    assert active.attributes["age_sec"] == 120
+    assert active.attributes["device_temperature_c"] == 20.9
+    assert active.attributes["shift_c"] == 0.2
+    assert active.attributes["wanted_shift_c"] == 0.4
+    assert registry.async_get(active.entity_id).entity_category == "diagnostic"
+
+    # Zone 2 is in mode config: the daemon takes no reading, and the sensor says why.
+    wrong_mode = external_room_sensor(hass, entry, 2)
+    assert wrong_mode.state == "wrong_offset_mode"
+    assert wrong_mode.attributes["offset_mode"] == "config"
+    assert wrong_mode.attributes["temperature_c"] is None
+
+    # The hot water zone has none.
+    assert not has_entity(hass, entry, "sensor", "zone9_external_room_sensor")
+
+
+@pytest.mark.parametrize(
+    ("view", "state"),
+    [
+        ({"tempC": None, "at": None, "ageSec": None, "inUse": False}, "no_reading"),
+        ({"inUse": False, "stale": True, "ageSec": 1900}, "stale"),
+        ({"inUse": True, "stale": False}, "active"),
+    ],
+)
+async def test_external_room_sensor_shows_the_cause(hass, client, view, state):
+    entry = await setup_entry(hass, client)
+    client.zones_json["declared"][0]["externalTemp"].update(view)
+    await refresh(hass, entry)
+    assert external_room_sensor(hass, entry, 1).state == state
+
+
+async def test_external_room_sensor_follows_the_offset_mode(hass, client):
+    entry = await setup_entry(hass, client)
+    # Zone 1 leaves mode setpoint: the daemon forgets the reading.
+    client.install_json["zones"][0]["offset_mode"] = "dbg2"
+    client.zones_json["declared"][0]["externalTemp"].update(
+        {"tempC": None, "at": None, "ageSec": None, "inUse": False, "wantedC": None}
+    )
+    await refresh(hass, entry)
+    assert external_room_sensor(hass, entry, 1).state == "wrong_offset_mode"
+
+
+async def test_no_external_room_sensor_on_a_daemon_without_the_view(hass, client):
+    for zone in client.zones_json["declared"]:
+        zone.pop("externalTemp", None)
+    entry = await setup_entry(hass, client)
+    for zone in (1, 2):
+        assert not has_entity(hass, entry, "sensor", f"zone{zone}_external_room_sensor")
 
 
 # --- offline schedule switch ---

@@ -127,6 +127,23 @@ def test_write_payloads():
     ]
 
 
+def test_room_temperature_payloads():
+    view = {"tempC": 20.4, "inUse": True}
+    session = FakeSession(
+        {
+            ("POST", "/api/zones/3/temperature"): (200, view),
+            ("DELETE", "/api/zones/3/temperature"): (200, {"tempC": None, "inUse": False}),
+        }
+    )
+    client = FreedoClient(session, "h", 8080)
+    assert run(client.push_room_temp(3, 20.4)) == view
+    assert run(client.clear_room_temp(3)) == {"tempC": None, "inUse": False}
+    assert [(c["method"], c["url"].split(":8080", 1)[-1], c["json"]) for c in session.calls] == [
+        ("POST", "/api/zones/3/temperature", {"tempC": 20.4}),
+        ("DELETE", "/api/zones/3/temperature", None),
+    ]
+
+
 def test_pair_window():
     closed = {"open": False, "responder": False, "joiners": []}
     opened = {"open": True, "opened": "2026-01-01T00:00:00Z", "until": "2026-01-01T00:10:00Z",

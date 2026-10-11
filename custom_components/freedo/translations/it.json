@@ -52,6 +52,10 @@
       "windows": {
         "title": "Zona di ciascun sensore di finestra",
         "description": "Seleziona la zona di riscaldamento di ciascun sensore. Una zona è aperta quando uno dei suoi sensori è aperto."
+      },
+      "temperatures": {
+        "title": "Sensore di temperatura di ogni zona",
+        "description": "Seleziona un sensore di temperatura per ogni zona di riscaldamento. La zona regola quindi su quel sensore invece che sul sensore della valvola. Lascia vuota una zona per mantenere il sensore della valvola. La zona richiede la modalità di compensazione setpoint. La correzione è lenta. Una differenza di 2 °C richiede circa 4 ore."
       }
     },
     "abort": {
@@ -153,6 +157,15 @@
       },
       "heating_demand": {
         "name": "Domanda di riscaldamento"
+      },
+      "external_room_sensor": {
+        "name": "Sensore ambiente esterno",
+        "state": {
+          "active": "In uso",
+          "wrong_offset_mode": "La modalità di compensazione non è setpoint",
+          "no_reading": "Nessuna lettura",
+          "stale": "Lettura troppo vecchia"
+        }
       },
       "calibration": {
         "name": "Calibrazione",

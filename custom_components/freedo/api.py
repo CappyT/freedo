@@ -196,6 +196,14 @@ class FreedoClient:
     async def push_outdoor(self, temp_c: float) -> dict[str, Any]:
         return await self._request("POST", "/api/outdoor", {"tempC": temp_c})
 
+    async def push_room_temp(self, zone: int, temp_c: float) -> dict[str, Any]:
+        return await self._request(
+            "POST", f"/api/zones/{int(zone)}/temperature", {"tempC": temp_c}
+        )
+
+    async def clear_room_temp(self, zone: int) -> dict[str, Any]:
+        return await self._request("DELETE", f"/api/zones/{int(zone)}/temperature")
+
     async def push_window(self, zone: int, is_open: bool) -> dict[str, Any]:
         return await self._request(
             "POST", f"/api/zones/{int(zone)}/window", {"open": is_open}

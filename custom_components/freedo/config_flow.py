@@ -23,12 +23,14 @@ from homeassistant.helpers.service_info.hassio import HassioServiceInfo
 from .api import FreedoAuthError, FreedoClient, FreedoConnectionError, FreedoError
 from .const import (
     CONF_OUTDOOR_ENTITY,
+    CONF_ROOM_TEMPS,
     CONF_TOKEN,
     CONF_WINDOW_ENTITIES,
     CONF_WINDOWS,
     DEFAULT_PORT,
     DOMAIN,
 )
+from .model import room_temp_zones
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -159,6 +161,7 @@ class FreedoOptionsFlow(OptionsFlowWithReload):
     def __init__(self) -> None:
         self._outdoor: str | None = None
         self._window_entities: list[str] = []
+        self._windows: dict[str, int] = {}
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -168,7 +171,7 @@ class FreedoOptionsFlow(OptionsFlowWithReload):
             self._window_entities = list(user_input.get(CONF_WINDOW_ENTITIES) or [])
             if self._window_entities:
                 return await self.async_step_windows()
-            return self._save({})
+            return await self.async_step_temperatures()
         options = self.config_entry.options
         schema = vol.Schema(
             {
@@ -200,7 +203,8 @@ class FreedoOptionsFlow(OptionsFlowWithReload):
         if not zones:
             return self.async_abort(reason="no_heating_zone")
         if user_input is not None:
-            return self._save({e: int(user_input[e]) for e in self._window_entities})
+            self._windows = {e: int(user_input[e]) for e in self._window_entities}
+            return await self.async_step_temperatures()
         zone_selector = selector.SelectSelector(
             selector.SelectSelectorConfig(
                 options=[
@@ -223,8 +227,58 @@ class FreedoOptionsFlow(OptionsFlowWithReload):
             fields[key] = zone_selector
         return self.async_show_form(step_id="windows", data_schema=vol.Schema(fields))
 
-    def _save(self, windows: dict[str, int]) -> ConfigFlowResult:
-        data: dict[str, Any] = {CONF_WINDOWS: windows}
+    async def async_step_temperatures(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """One optional temperature sensor per heating zone. The field keys are
+        the zone labels. Without the zones (the entry is not loaded) the step
+        keeps the saved sensors."""
+        runtime = getattr(self.config_entry, "runtime_data", None)
+        data = runtime.coordinator.data if runtime is not None else None
+        zones = data.heating_zones() if data is not None else []
+        current = room_temp_zones(self.config_entry.options.get(CONF_ROOM_TEMPS) or {})
+        if not zones:
+            return self._save({str(z): e for z, e in current.items()})
+        labels = {f"{z.number}: {z.name}": z.number for z in zones}
+        if user_input is not None:
+            chosen = {
+                number: user_input[label]
+                for label, number in labels.items()
+                if user_input.get(label)
+            }
+            await self._release(
+                {z for z in current if z in labels.values() and z not in chosen}
+            )
+            return self._save({str(z): e for z, e in chosen.items()})
+        schema = vol.Schema(
+            {
+                vol.Optional(label): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="sensor", device_class="temperature")
+                )
+                for label in labels
+            }
+        )
+        suggested = {label: current.get(number) for label, number in labels.items()}
+        return self.async_show_form(
+            step_id="temperatures",
+            data_schema=self.add_suggested_values_to_schema(schema, suggested),
+        )
+
+    async def _release(self, zones: set[int]) -> None:
+        """Clear the external temperature of the zones that lose their sensor.
+        The daemon ends the correction by itself when the reading gets too old,
+        but this call starts the release at once."""
+        client = self.config_entry.runtime_data.client
+        for zone in sorted(zones):
+            try:
+                await client.clear_room_temp(zone)
+            except FreedoError as err:
+                _LOGGER.warning("Room temperature release for zone %s failed: %s", zone, err)
+
+    def _save(self, room_temps: dict[str, str]) -> ConfigFlowResult:
+        data: dict[str, Any] = {CONF_WINDOWS: self._windows}
         if self._outdoor:
             data[CONF_OUTDOOR_ENTITY] = self._outdoor
+        if room_temps:
+            data[CONF_ROOM_TEMPS] = room_temps
         return self.async_create_entry(data=data)

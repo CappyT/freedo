@@ -52,6 +52,10 @@
       "windows": {
         "title": "Zone de chaque capteur de fenêtre",
         "description": "Sélectionnez la zone de chauffage de chaque capteur. Une zone est ouverte quand l'un de ses capteurs est ouvert."
+      },
+      "temperatures": {
+        "title": "Capteur de température de chaque zone",
+        "description": "Sélectionnez un capteur de température pour chaque zone de chauffage. La zone régule alors sur ce capteur au lieu du capteur de la vanne. Laissez une zone vide pour garder le capteur de la vanne. La zone exige le mode de décalage setpoint. La correction est lente. Un écart de 2 °C prend environ 4 heures."
       }
     },
     "abort": {
@@ -153,6 +157,15 @@
       },
       "heating_demand": {
         "name": "Demande de chauffage"
+      },
+      "external_room_sensor": {
+        "name": "Capteur de pièce externe",
+        "state": {
+          "active": "Utilisé",
+          "wrong_offset_mode": "Le mode de décalage n'est pas setpoint",
+          "no_reading": "Aucune mesure",
+          "stale": "Mesure trop ancienne"
+        }
       },
       "calibration": {
         "name": "Calibration",

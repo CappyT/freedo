@@ -24,6 +24,9 @@ from model import (
     node_temperature,
     outdoor_payload,
     parse,
+    room_temp_payload,
+    room_temp_state,
+    room_temp_zones,
     schedule_payload,
     schedule_programs,
     window_payload,
@@ -66,12 +69,18 @@ ZONES = {
          "target": {"targetC": 25.0, "source": "boost", "programC": 20.0, "programOff": False,
                     "boost": True, "known": True,
                     "overlay": {"kind": "boost", "on": True, "setpointC": 25.0,
-                                "endsAt": "2026-01-01T00:30:00Z"}}},
+                                "endsAt": "2026-01-01T00:30:00Z"}},
+         "externalTemp": {"tempC": 21.4, "at": "2026-01-01T00:00:00Z", "ageSec": 120,
+                          "stale": False, "inUse": True, "deviceC": 20.9, "wantedC": 0.4,
+                          "shiftC": 0.2, "offsetC": 0.0}},
         {"number": 2, "name": "Bedroom", "kind": "heating", "members": ["dddd"],
          "window": {"open": False, "source": None, "since": None, "deadline": None,
                     "undelivered": []},
          "target": {"targetC": 17.0, "source": "program", "programC": 17.0,
-                    "programOff": False, "boost": False, "known": True, "overlay": None}},
+                    "programOff": False, "boost": False, "known": True, "overlay": None},
+         "externalTemp": {"tempC": None, "at": None, "ageSec": None, "stale": False,
+                          "inUse": False, "deviceC": None, "wantedC": None, "shiftC": 0.0,
+                          "offsetC": 0.0}},
         {"number": 9, "name": "Hot water", "kind": "hotwater", "members": ["cccc"],
          "target": {"targetC": None, "source": "overlay", "programC": 55.0,
                     "programOff": False, "boost": False, "known": True, "on": False,
@@ -393,6 +402,25 @@ def test_outdoor_payload():
     assert outdoor_payload("61", "°C") is None
 
 
+def test_room_temp_payload():
+    assert room_temp_payload("21.456", "°C") == {"tempC": 21.46}
+    assert room_temp_payload("-3", None) == {"tempC": -3.0}
+    assert room_temp_payload("68.9", "°F") == {"tempC": 20.5}
+    assert room_temp_payload("294.15", "K") == {"tempC": 21.0}
+    for state in ("unavailable", "unknown", "", None, "nan", "inf"):
+        assert room_temp_payload(state, "°C") is None
+    # The daemon answers 400 outside -10..50 C: never pushed.
+    assert room_temp_payload("-10", "°C") == {"tempC": -10.0}
+    assert room_temp_payload("50", "°C") == {"tempC": 50.0}
+    assert room_temp_payload("-10.1", "°C") is None
+    assert room_temp_payload("50.1", "°C") is None
+
+
+def test_room_temp_zones():
+    mapping = {"1": "sensor.a", 2: "sensor.b", "x": "sensor.bad", "3": "", "4": None}
+    assert room_temp_zones(mapping) == {1: "sensor.a", 2: "sensor.b"}
+
+
 def test_window_payload():
     assert window_payload(["off", "off"]) == {"open": False}
     assert window_payload(["off", "on"]) == {"open": True}
@@ -446,6 +474,31 @@ def test_zone_settings_rows():
     assert zone_offset_mode(d, d.zones[2]) == "config"
     # No installation read (503): no row.
     assert zone_offset_mode(data(), d.zones[1]) is None
+
+
+def _room_temp(**fields):
+    """Zone 1 of the fixture with its external temperature view changed."""
+    zones = copy.deepcopy(ZONES)
+    zones["declared"][0]["externalTemp"].update(fields)
+    return parse(HEALTH, zones, NODES, BOILER, HOME, INSTALL_ZONES)
+
+
+def test_room_temp_state():
+    d = parse(HEALTH, ZONES, NODES, BOILER, HOME, INSTALL_ZONES)
+    assert sorted(d.room_temps) == [1, 2]
+    assert room_temp_state(d, d.zones[1]) == "active"
+    # Zone 2 is in mode config: the daemon takes no reading.
+    assert room_temp_state(d, d.zones[2]) == "wrong_offset_mode"
+    # The hot water zone has no view.
+    assert room_temp_state(d, d.zones[9]) is None
+
+    no_reading = {"tempC": None, "at": None, "ageSec": None, "inUse": False}
+    assert room_temp_state(_room_temp(**no_reading), d.zones[1]) == "no_reading"
+    stale = _room_temp(inUse=False, stale=True, ageSec=1900)
+    assert room_temp_state(stale, d.zones[1]) == "stale"
+    assert room_temp_state(_room_temp(inUse=False), d.zones[1]) is None
+    # No installation read: the mode is unknown, and so is the cause.
+    assert room_temp_state(parse(HEALTH, ZONES, NODES, BOILER, HOME), d.zones[2]) is None
 
 
 WEEK = [
