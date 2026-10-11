@@ -64,6 +64,23 @@ class FreedoEntity(CoordinatorEntity[FreedoCoordinator]):
         )
 
 
+class FreedoNodeEntity(FreedoEntity):
+    """An entity of one device, by its short address."""
+
+    def __init__(self, coordinator: FreedoCoordinator, short: str, key: str) -> None:
+        super().__init__(coordinator, f"{short}_{key}")
+        self._short = short
+        self._attr_device_info = self.node_device(short)
+
+    @property
+    def _node(self) -> Mapping[str, Any]:
+        return self.coordinator.data.nodes.get(self._short) or {}
+
+    @property
+    def available(self) -> bool:
+        return super().available and self._short in self.coordinator.data.nodes
+
+
 class FreedoDisplayEntity(FreedoEntity):
     """A display setting of one valve: GET /api/nodes Display, written with
     PUT /api/nodes/{id}/display."""

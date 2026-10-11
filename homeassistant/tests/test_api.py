@@ -188,3 +188,26 @@ def test_display_payloads():
         ("PUT", "/api/nodes/aaaa/display", {"orientation": "vertical"}),
         ("PUT", "/api/nodes/aaaa/display", {"notification": False}),
     ]
+
+
+def test_valve_command_payloads():
+    ok = (200, {"queued": True, "pending": 1})
+    session = FakeSession(
+        {
+            ("POST", "/api/nodes/aaaa/childlock"): ok,
+            ("POST", "/api/nodes/aaaa/identify"): ok,
+            ("POST", "/api/nodes/aaaa/calibrate"): ok,
+            ("POST", "/api/zones/3/offset"): (200, {"rev": 8}),
+        }
+    )
+    client = FreedoClient(session, "h", 8080)
+    run(client.set_child_lock("aaaa", True))
+    run(client.identify("aaaa"))
+    run(client.calibrate("aaaa"))
+    assert run(client.set_zone_offset(3, -0.7)) == {"rev": 8}
+    assert [(c["method"], c["url"].split(":8080", 1)[-1], c["json"]) for c in session.calls] == [
+        ("POST", "/api/nodes/aaaa/childlock", {"on": True}),
+        ("POST", "/api/nodes/aaaa/identify", None),
+        ("POST", "/api/nodes/aaaa/calibrate", None),
+        ("POST", "/api/zones/3/offset", {"offsetC": -0.7}),
+    ]

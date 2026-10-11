@@ -1,19 +1,22 @@
 """Away switch: the home state of GET and PATCH /api/home. Offline schedule
 switch: options.offline_schedule of GET and PATCH /api/install. Notification
-switch of each valve: the change notification of d/config tag 0158."""
+switch of each valve: the change notification of d/config tag 0158. Child lock
+switch of each valve: d/lock."""
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.const import EntityCategory
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
+from .const import PENDING_SEC
 from .coordinator import FreedoConfigEntry, FreedoCoordinator
-from .entity import FreedoDisplayEntity, FreedoEntity, call_api
-from .model import KIND_VALVE
+from .entity import FreedoDisplayEntity, FreedoEntity, FreedoNodeEntity, call_api
+from .model import KIND_VALVE, node_child_lock
 
 
 async def async_setup_entry(
@@ -29,6 +32,9 @@ async def async_setup_entry(
     for short, dev in sorted(coordinator.data.devices.items()):
         if dev.get("kind") == KIND_VALVE:
             entities.append(NotificationSwitch(coordinator, short))
+            # The node view serves ChildLock on a valve alone.
+            if node_child_lock(coordinator.data, short) is not None:
+                entities.append(ChildLockSwitch(coordinator, short))
     async_add_entities(entities)
 
 
@@ -101,3 +107,43 @@ class NotificationSwitch(FreedoDisplayEntity, SwitchEntity):
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         await self._write(notification=False)
+
+
+class ChildLockSwitch(FreedoNodeEntity, SwitchEntity):
+    """GET /api/nodes ChildLock, written with POST /api/nodes/{id}/childlock.
+    The valve takes the write at its next wake-up and the daemon reports the
+    new state once the valve confirms it."""
+
+    _attr_translation_key = "child_lock"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, coordinator: FreedoCoordinator, short: str) -> None:
+        super().__init__(coordinator, short, "child_lock")
+        self._pending: tuple[bool, float] | None = None
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        if self._pending and (
+            time.monotonic() > self._pending[1]
+            or node_child_lock(self.coordinator.data, self._short) == self._pending[0]
+        ):
+            self._pending = None
+        super()._handle_coordinator_update()
+
+    @property
+    def is_on(self) -> bool | None:
+        if self._pending:
+            return self._pending[0]
+        return node_child_lock(self.coordinator.data, self._short)
+
+    async def _set(self, on: bool) -> None:
+        await call_api(self.coordinator.client.set_child_lock(self._short, on))
+        self._pending = (on, time.monotonic() + PENDING_SEC)
+        self.async_write_ha_state()
+        await self.coordinator.async_request_refresh()
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self._set(True)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self._set(False)

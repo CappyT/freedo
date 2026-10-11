@@ -21,6 +21,10 @@ KIND_VALVE = "valve"
 # The values of GET /api/nodes Display.orientation that a write accepts.
 ORIENTATIONS = ("horizontal", "vertical")
 
+# The daemon rejects a zone temperature correction beyond +-10 C (tag 0140).
+OFFSET_LIMIT_C = 10.0
+OFFSET_MODE_SETPOINT = "setpoint"
+
 # The daemon rejects an outdoor temperature outside -60..60 C with 400.
 OUTDOOR_BOUND_C = 60.0
 
@@ -61,6 +65,8 @@ class FreedoData:
     devices: dict[str, dict[str, Any]] = field(default_factory=dict)
     # GET /api/health "zoneFallback": active fallbacks by zone number.
     fallback: dict[int, dict[str, Any]] = field(default_factory=dict)
+    # GET /api/install/zones zones[]: the installation row by zone number.
+    zone_settings: dict[int, dict[str, Any]] = field(default_factory=dict)
     boiler: dict[str, Any] = field(default_factory=dict)
     away: bool = False
     # GET /api/install offline_schedule: d/config tag 02b3 of every device
@@ -96,10 +102,9 @@ def parse(
     offline = (settings or {}).get("offline_schedule")
     if isinstance(offline, bool):
         data.offline_schedule = offline
-    shifts = {
-        int(z["number"]): float(z.get("setpoint_offset_c") or 0)
-        for z in (install or {}).get("zones") or []
-    }
+    rows = {int(z["number"]): dict(z) for z in (install or {}).get("zones") or []}
+    data.zone_settings = rows
+    shifts = {n: float(row.get("setpoint_offset_c") or 0) for n, row in rows.items()}
     for z in zones.get("declared") or []:
         number = int(z["number"])
         data.zones[number] = Zone(
@@ -242,6 +247,32 @@ def node_display(data: FreedoData, short: str) -> Mapping[str, Any] | None:
     None on any other device."""
     display = (data.nodes.get(short) or {}).get("Display")
     return display if isinstance(display, Mapping) else None
+
+
+def node_child_lock(data: FreedoData, short: str) -> bool | None:
+    """GET /api/nodes ChildLock: the state the valve confirmed, None on a
+    device that is not a valve."""
+    value = (data.nodes.get(short) or {}).get("ChildLock")
+    return value if isinstance(value, bool) else None
+
+
+# Tag 01fa of the d/<serial>/mnt report, which GET /api/nodes carries under
+# Telemetry calib_state.
+CALIBRATION_STATES = {"0": "none", "1": "started", "2": "done", "3": "failed"}
+
+
+def node_calibration(data: FreedoData, short: str) -> tuple[str | None, int | None]:
+    """The motor calibration state and its error code (Telemetry calib_state
+    and calib_error), None until the valve reports them."""
+    telemetry = (data.nodes.get(short) or {}).get("Telemetry") or {}
+    state = CALIBRATION_STATES.get(telemetry.get("calib_state", ""))
+    error = telemetry.get("calib_error", "")
+    return state, int(error) if error.isdigit() else None
+
+
+def zone_offset_mode(data: FreedoData, zone: Zone) -> str | None:
+    """GET /api/install/zones offset_mode: config, dbg2 or setpoint."""
+    return (data.zone_settings.get(zone.number) or {}).get("offset_mode")
 
 
 def boiler_unsupported(data: FreedoData) -> set[str]:

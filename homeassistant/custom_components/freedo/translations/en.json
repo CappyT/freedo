@@ -73,7 +73,22 @@
       "flow_limit_default": { "name": "Default flow limit" },
       "flow_limit_served": { "name": "Circuit {circuit} flow limit served" },
       "flow_limit_computed": { "name": "Circuit {circuit} flow limit computed" },
-      "battery_voltage": { "name": "Battery voltage" }
+      "battery_voltage": { "name": "Battery voltage" },
+      "calibration": {
+        "name": "Calibration",
+        "state": {
+          "none": "None",
+          "started": "Started",
+          "done": "Done",
+          "failed": "Failed"
+        }
+      }
+    },
+    "button": {
+      "calibrate": { "name": "Calibrate motor" }
+    },
+    "number": {
+      "temperature_offset": { "name": "Temperature offset" }
     },
     "select": {
       "orientation": {
@@ -87,7 +102,8 @@
     "switch": {
       "away": { "name": "Away" },
       "offline_schedule": { "name": "Offline schedule" },
-      "notification": { "name": "Change notification" }
+      "notification": { "name": "Change notification" },
+      "child_lock": { "name": "Child lock" }
     }
   },
   "services": {

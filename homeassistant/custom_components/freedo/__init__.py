@@ -15,7 +15,9 @@ from .environment import async_setup_environment
 
 PLATFORMS = [
     Platform.BINARY_SENSOR,
+    Platform.BUTTON,
     Platform.CLIMATE,
+    Platform.NUMBER,
     Platform.SELECT,
     Platform.SENSOR,
     Platform.SWITCH,

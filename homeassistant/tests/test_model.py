@@ -5,6 +5,8 @@ The fixtures are synthetic and follow the JSON the daemon writes.
 
 from model import (
     boiler_unsupported,
+    node_calibration,
+    node_child_lock,
     node_display,
     outdoor_payload,
     parse,
@@ -14,6 +16,7 @@ from model import (
     zone_current_temperature,
     zone_demand_pct,
     zone_mode,
+    zone_offset_mode,
     zone_operation,
     zone_overlay_end,
     zone_program_temperature,
@@ -69,8 +72,8 @@ ZONES = {
 NODES = [
     {"Short": "aaaa", "TempC": 20.9, "SetpointC": 21, "Mode": "manual",
      "HumidityPct": 0, "BatteryMV": 2100, "BatteryPct": 20, "LastSeenUnix": 1700000000,
-     "Telemetry": {"temp_C": "20.90C"},
-     "Display": {"orientation": "vertical", "notification": False}},
+     "Telemetry": {"temp_C": "20.90C", "calib_state": "2", "calib_error": "0"},
+     "Display": {"orientation": "vertical", "notification": False}, "ChildLock": False},
     {"Short": "bbbb", "TempC": 20.7, "SetpointC": 0, "Mode": "",
      "HumidityPct": 48.5, "BatteryMV": 2900, "BatteryPct": 90, "LastSeenUnix": 1700000000,
      "Telemetry": {"temp_C": "20.70C", "humidity_pct": "48.50%"}},
@@ -323,3 +326,27 @@ def test_node_display():
     assert node_display(d, "aaaa") == {"orientation": "vertical", "notification": False}
     assert node_display(d, "bbbb") is None
     assert node_display(d, "ffff") is None
+
+
+def test_valve_device_values():
+    d = data()
+    # A valve serves the child lock, the other devices serve null or nothing.
+    assert node_child_lock(d, "aaaa") is False
+    assert node_child_lock(d, "bbbb") is None
+    assert node_calibration(d, "aaaa") == ("done", 0)
+    assert node_calibration(d, "bbbb") == (None, None)
+    nodes = [dict(NODES[0], Telemetry={"calib_state": "3", "calib_error": "4"})]
+    assert node_calibration(parse(HEALTH, ZONES, nodes, BOILER, HOME), "aaaa") == ("failed", 4)
+    # A state the daemon does not name is unknown.
+    nodes = [dict(NODES[0], Telemetry={"calib_state": "9"})]
+    assert node_calibration(parse(HEALTH, ZONES, nodes, BOILER, HOME), "aaaa") == (None, None)
+
+
+def test_zone_settings_rows():
+    d = parse(HEALTH, ZONES, NODES, BOILER, HOME, INSTALL_ZONES)
+    assert sorted(d.zone_settings) == [1, 2, 9]
+    assert d.zone_settings[1]["offset_mode"] == "setpoint"
+    assert zone_offset_mode(d, d.zones[1]) == "setpoint"
+    assert zone_offset_mode(d, d.zones[2]) == "config"
+    # No installation read (503): no row.
+    assert zone_offset_mode(data(), d.zones[1]) is None

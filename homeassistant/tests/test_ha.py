@@ -32,8 +32,8 @@ from homeassistant.const import (  # noqa: E402
     CONF_HOST,
     CONF_PORT,
 )
-from homeassistant.exceptions import ServiceValidationError  # noqa: E402
-from homeassistant.helpers import device_registry as dr  # noqa: E402
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError  # noqa: E402
+from homeassistant.helpers import device_registry as dr, entity_registry as er  # noqa: E402
 from homeassistant.util import dt as dt_util  # noqa: E402
 from pytest_homeassistant_custom_component.common import (  # noqa: E402
     MockConfigEntry,
@@ -118,6 +118,22 @@ class FakeClient:
         self.calls.append(("boost", zone, on))
         return {"queued": True}
 
+    async def set_child_lock(self, node, on):
+        self.calls.append(("child_lock", node, on))
+        return {"queued": True}
+
+    async def identify(self, node):
+        self.calls.append(("identify", node))
+        return {"queued": True}
+
+    async def calibrate(self, node):
+        self.calls.append(("calibrate", node))
+        return {"queued": True}
+
+    async def set_zone_offset(self, zone, offset_c):
+        self.calls.append(("offset", zone, offset_c))
+        return {"rev": 8}
+
     async def push_window(self, zone, is_open):
         if self.window_errors:
             raise self.window_errors.pop(0)
@@ -158,6 +174,22 @@ async def setup_entry(hass, client, options=None) -> MockConfigEntry:
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
     return entry
+
+
+def entity_id(hass, entry, platform, key):
+    """The entity id of the entity with the unique id <entry>_<key>."""
+    found = er.async_get(hass).async_get_entity_id(platform, DOMAIN, f"{entry.entry_id}_{key}")
+    assert found, f"no {platform} entity {key}"
+    return found
+
+
+def has_entity(hass, entry, platform, key):
+    return er.async_get(hass).async_get_entity_id(platform, DOMAIN, f"{entry.entry_id}_{key}") is not None
+
+
+async def refresh(hass, entry):
+    await entry.runtime_data.coordinator.async_refresh()
+    await hass.async_block_till_done()
 
 
 async def call(hass, service, data):
@@ -436,3 +468,125 @@ async def test_overlay_attributes_show_the_end_rule(hass, client):
     assert attrs["overlay"] == "boost"
     assert attrs["overlay_ends_at"] == "2026-01-01T00:30:00Z"
     assert hass.states.get(BEDROOM).attributes["overlay"] == "auto"
+
+
+# --- device controls of a valve ---
+
+
+async def test_child_lock_switch(hass, client):
+    entry = await setup_entry(hass, client)
+    lock = entity_id(hass, entry, "switch", "aaaa_child_lock")
+    assert hass.states.get(lock).state == "off"
+
+    await hass.services.async_call("switch", "turn_on", {ATTR_ENTITY_ID: lock}, blocking=True)
+    await hass.async_block_till_done()
+    assert client.calls == [("child_lock", "aaaa", True)]
+    # The valve has not confirmed: the entity keeps the requested state.
+    await refresh(hass, entry)
+    assert hass.states.get(lock).state == "on"
+
+    client.nodes_json[0]["ChildLock"] = True
+    await refresh(hass, entry)
+    assert hass.states.get(lock).state == "on"
+
+    # Once the daemon reports the lock, it follows the daemon again.
+    client.nodes_json[0]["ChildLock"] = False
+    await refresh(hass, entry)
+    assert hass.states.get(lock).state == "off"
+
+    await hass.services.async_call("switch", "turn_off", {ATTR_ENTITY_ID: lock}, blocking=True)
+    assert client.calls[-1] == ("child_lock", "aaaa", False)
+
+
+async def test_child_lock_only_where_the_node_serves_it(hass, client):
+    # The node view serves ChildLock as null on a device that is not a valve.
+    client.nodes_json[0]["ChildLock"] = None
+    entry = await setup_entry(hass, client)
+    assert not has_entity(hass, entry, "switch", "aaaa_child_lock")
+    # The thermostat has none either.
+    assert not has_entity(hass, entry, "switch", "cccc_child_lock")
+
+
+async def test_valve_buttons(hass, client):
+    entry = await setup_entry(hass, client)
+    for key, call_name in (("identify", "identify"), ("calibrate", "calibrate")):
+        button = entity_id(hass, entry, "button", f"aaaa_{key}")
+        await hass.services.async_call(
+            "button", "press", {ATTR_ENTITY_ID: button}, blocking=True
+        )
+        assert client.calls[-1] == (call_name, "aaaa")
+    # A wall thermostat has neither.
+    assert not has_entity(hass, entry, "button", "cccc_identify")
+    assert not has_entity(hass, entry, "button", "cccc_calibrate")
+
+
+async def test_button_error_is_a_home_assistant_error(hass, client):
+    entry = await setup_entry(hass, client)
+    button = entity_id(hass, entry, "button", "aaaa_calibrate")
+
+    async def refuse(node):
+        raise FreedoApiError(400, "aaaa is a thermostat: only a valve calibrates")
+
+    client.calibrate = refuse
+    with pytest.raises(HomeAssistantError, match="only a valve calibrates"):
+        await hass.services.async_call("button", "press", {ATTR_ENTITY_ID: button}, blocking=True)
+
+
+async def test_calibration_sensor(hass, client):
+    entry = await setup_entry(hass, client)
+    sensor = entity_id(hass, entry, "sensor", "aaaa_calibration")
+    state = hass.states.get(sensor)
+    assert state.state == "done"
+    assert state.attributes["error_code"] == 0
+
+    client.nodes_json[0]["Telemetry"].update(calib_state="3", calib_error="4")
+    await refresh(hass, entry)
+    state = hass.states.get(sensor)
+    assert (state.state, state.attributes["error_code"]) == ("failed", 4)
+
+    # The valve has not reported a calibration yet.
+    client.nodes_json[0]["Telemetry"] = {"temp_C": "20.90C"}
+    await refresh(hass, entry)
+    state = hass.states.get(sensor)
+    assert state.state == "unknown"
+    assert state.attributes["error_code"] is None
+
+
+async def test_offset_number_setpoint_mode(hass, client):
+    entry = await setup_entry(hass, client)
+    offset = entity_id(hass, entry, "number", "zone1_offset")
+    # Zone 1 corrects its temperature by +0.5 C itself.
+    assert float(hass.states.get(offset).state) == 0.5
+
+    await hass.services.async_call(
+        "number", "set_value", {ATTR_ENTITY_ID: offset, "value": -0.7}, blocking=True
+    )
+    assert client.calls == [("offset", 1, -0.7)]
+
+
+async def test_offset_number_in_config_mode(hass, client):
+    # Zone 2 states no measuring device: the route has nothing to write.
+    entry = await setup_entry(hass, client)
+    assert not has_entity(hass, entry, "number", "zone2_offset")
+    await hass.config_entries.async_unload(entry.entry_id)
+
+    # With one, the correction goes to the device and the daemon reports none.
+    client.zones_json["declared"][1]["measuringDevice"] = "dddd"
+    entry = await setup_entry(hass, client)
+    offset = entity_id(hass, entry, "number", "zone2_offset")
+    assert hass.states.get(offset).state == "unknown"
+    await hass.services.async_call(
+        "number", "set_value", {ATTR_ENTITY_ID: offset, "value": 0.3}, blocking=True
+    )
+    assert client.calls == [("offset", 2, 0.3)]
+    assert float(hass.states.get(offset).state) == 0.3
+
+
+async def test_offset_number_refuses_beyond_the_daemon_limit(hass, client):
+    entry = await setup_entry(hass, client)
+    offset = entity_id(hass, entry, "number", "zone1_offset")
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(
+            "number", "set_value", {ATTR_ENTITY_ID: offset, "value": 10.5}, blocking=True
+        )
+    assert client.calls == []

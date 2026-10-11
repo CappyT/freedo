@@ -24,8 +24,15 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import FreedoConfigEntry, FreedoCoordinator
-from .entity import FreedoEntity
-from .model import KIND_BRIDGE, FreedoData, boiler_unsupported
+from .entity import FreedoEntity, FreedoNodeEntity
+from .model import (
+    CALIBRATION_STATES,
+    KIND_BRIDGE,
+    KIND_VALVE,
+    FreedoData,
+    boiler_unsupported,
+    node_calibration,
+)
 
 
 def _boiler(key: str) -> Callable[[FreedoData], Any]:
@@ -128,6 +135,8 @@ async def async_setup_entry(
             continue
         entities.append(BatterySensor(coordinator, short))
         entities.append(BatteryVoltageSensor(coordinator, short))
+        if dev.get("kind") == KIND_VALVE:
+            entities.append(CalibrationSensor(coordinator, short))
     async_add_entities(entities)
 
 
@@ -233,3 +242,25 @@ class BatteryVoltageSensor(_BatteryBase):
     def native_value(self) -> int | None:
         dev = self.coordinator.data.devices.get(self._short) or {}
         return dev.get("batteryMV") or None
+
+
+class CalibrationSensor(FreedoNodeEntity, SensorEntity):
+    """The motor calibration state of a valve: Telemetry calib_state of
+    GET /api/nodes, from the d/<serial>/mnt report the valve sends after a
+    calibration. calib_error is the error code of a failed run."""
+
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = list(CALIBRATION_STATES.values())
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_translation_key = "calibration"
+
+    def __init__(self, coordinator: FreedoCoordinator, short: str) -> None:
+        super().__init__(coordinator, short, "calibration")
+
+    @property
+    def native_value(self) -> str | None:
+        return node_calibration(self.coordinator.data, self._short)[0]
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {"error_code": node_calibration(self.coordinator.data, self._short)[1]}

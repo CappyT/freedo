@@ -127,6 +127,20 @@ class FreedoClient:
             payload["notification"] = notification
         return await self._request("PUT", f"/api/nodes/{node}/display", payload)
 
+    async def set_child_lock(self, node: str, on: bool) -> dict[str, Any]:
+        return await self._request("POST", f"/api/nodes/{node}/childlock", {"on": on})
+
+    async def identify(self, node: str) -> dict[str, Any]:
+        return await self._request("POST", f"/api/nodes/{node}/identify")
+
+    async def calibrate(self, node: str) -> dict[str, Any]:
+        return await self._request("POST", f"/api/nodes/{node}/calibrate")
+
+    async def set_zone_offset(self, zone: int, offset_c: float) -> dict[str, Any]:
+        return await self._request(
+            "POST", f"/api/zones/{int(zone)}/offset", {"offsetC": offset_c}
+        )
+
     async def push_outdoor(self, temp_c: float) -> dict[str, Any]:
         return await self._request("POST", "/api/outdoor", {"tempC": temp_c})
 
