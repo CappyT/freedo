@@ -1975,7 +1975,7 @@ func (d *daemon) deviceHealth(e *tado.EmuState) ([]map[string]any, []map[string]
 		devices = append(devices, map[string]any{
 			"device": name, "short": dev.Short(), "kind": string(dev.Kind), "label": dev.Label,
 			"batteryMV": vv.BatteryMV, "lowBattery": vv.LowBattery,
-			"fault": vv.Fault, "faultWord": vv.FaultWord,
+			"fault": vv.Fault, "faultWord": vv.FaultWord, "commsWarnings": vv.CommsWarnings,
 			"offline": vv.Offline, "lastSeen": lastSeen,
 			"fallbackMode": vv.FallbackMode,
 		})
@@ -1998,8 +1998,10 @@ func (d *daemon) deviceHealth(e *tado.EmuState) ([]map[string]any, []map[string]
 	return devices, alerts
 }
 
-// applyAlerts sets the fault and offline flags of one device from the
-// installation thresholds; the engine rates the battery. A device never heard
+// applyAlerts sets the fault, communication warning and offline flags of one
+// device; the engine rates the battery. The fault word splits in two: the bits
+// that only say the radio link is weak are warnings, any other bit is a fault.
+// Offline comes from the installation thresholds. A device never heard
 // since the start counts its silence from the start, so a restart does not flag
 // every device at once. A bridge raises none: it must stay off the air while
 // freedo coordinates.
@@ -2007,7 +2009,7 @@ func (d *daemon) applyAlerts(vv *tado.ValveView, kind tado.DeviceKind, opts tado
 	if kind == tado.KindBridge {
 		return
 	}
-	vv.Fault = vv.FaultWord != 0
+	vv.CommsWarnings, vv.Fault = tado.DecodeFaultWord(vv.FaultWord)
 	seen := d.started
 	if vv.LastSeenUnix != 0 {
 		seen = time.Unix(vv.LastSeenUnix, 0)

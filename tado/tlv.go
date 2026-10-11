@@ -238,6 +238,7 @@ var tags = withHVACTags(map[string]tagInfo{
 	"027c": {"valve_ctr_027c", rawDec},   // stays above 0273, observed 2300..2480
 	"0280": {"valve_const_0280", rawDec}, // near constant, observed 1786..1794
 	// fault report (d/<serial>/err), u32. The capture holds no non-zero sample.
+	// The bits the valve firmware sets are the Fault* constants below.
 	"01a3": {"device_fault_word", rawDec}, // 0 = no fault
 	// circuit lead zone (c/N/act): the wall thermostat publishes the target and the
 	// temperature of the zone that drives the circuit, not its own. In the capture
@@ -402,6 +403,30 @@ var tags = withHVACTags(map[string]tagInfo{
 	"025f": {"cloud_session_minutes", rawDec}, // session lifetime, minutes (u16 BE)
 	"0261": {"challenge_key_rotate", hexVal},  // new challenge key id2, 16B
 })
+
+// Bits of the fault word, tag 01a3 of d/<serial>/err, as app_state_flags_recompute
+// (valve firmware, @0x2e0fc) sets them. Both describe the radio link, not the
+// device: a missed answer clears itself at the next one.
+const (
+	// FaultNoNeighbour: no IPv6 source address, or no neighbour, at the 60 s check.
+	FaultNoNeighbour uint32 = 0x02
+	// FaultNoConfigAnswer: no answer to the valve's own d/config GET for 90 min
+	// (5400 s timer, cleared by any answer code), and from boot until the first answer.
+	FaultNoConfigAnswer uint32 = 0x80
+)
+
+// DecodeFaultWord splits a fault word into the communication warnings it
+// carries, by bit order, and whether any other bit is set. A bit this table does
+// not know counts as a device fault.
+func DecodeFaultWord(w uint32) (warnings []string, fault bool) {
+	if w&FaultNoNeighbour != 0 {
+		warnings = append(warnings, "noNeighbour")
+	}
+	if w&FaultNoConfigAnswer != 0 {
+		warnings = append(warnings, "noConfigAnswer")
+	}
+	return warnings, w&^(FaultNoNeighbour|FaultNoConfigAnswer) != 0
+}
 
 // The boiler bus resources of the wall thermostat.
 const (

@@ -17,16 +17,17 @@ import (
 )
 
 type deviceHealth struct {
-	Device       string  `json:"device"`
-	Short        string  `json:"short"`
-	Kind         string  `json:"kind"`
-	BatteryMV    int     `json:"batteryMV"`
-	LowBattery   bool    `json:"lowBattery"`
-	Fault        bool    `json:"fault"`
-	FaultWord    uint32  `json:"faultWord"`
-	Offline      bool    `json:"offline"`
-	LastSeen     *string `json:"lastSeen"`
-	FallbackMode int     `json:"fallbackMode"`
+	Device        string   `json:"device"`
+	Short         string   `json:"short"`
+	Kind          string   `json:"kind"`
+	BatteryMV     int      `json:"batteryMV"`
+	LowBattery    bool     `json:"lowBattery"`
+	Fault         bool     `json:"fault"`
+	FaultWord     uint32   `json:"faultWord"`
+	CommsWarnings []string `json:"commsWarnings"`
+	Offline       bool     `json:"offline"`
+	LastSeen      *string  `json:"lastSeen"`
+	FallbackMode  int      `json:"fallbackMode"`
 }
 
 type deviceAlert struct {
@@ -179,6 +180,56 @@ func TestHealthDeviceAlerts(t *testing.T) {
 	}
 	if code := getJSON(t, url+"/api/nodes/VA1000000002", &node); code != http.StatusOK || !node.Fault || node.FaultWord != 4 {
 		t.Errorf("node API of the faulty valve = %d %+v, want fault 4", code, node)
+	}
+}
+
+// TestHealthFaultWordBits: bits 0x02 and 0x80 of the fault word say the radio
+// link is weak, so they are communication warnings and raise no fault alert.
+// Any other bit is a device fault. The raw word stays visible in both cases.
+func TestHealthFaultWordBits(t *testing.T) {
+	clock := newTestClock(windowStart)
+	in := windowInstall(t, nil)
+	d, url := newAlertDaemon(t, in, clock)
+
+	cases := []struct {
+		serial   string
+		word     uint32
+		warnings []string
+		fault    bool
+	}{
+		{"VA1000000001", 0x80, []string{"noConfigAnswer"}, false},
+		{"VA1000000002", 0x02, []string{"noNeighbour"}, false},
+		{"VA1000000003", 0x82, []string{"noNeighbour", "noConfigAnswer"}, false},
+		{"VA1000000004", 0x04, nil, true},
+		{"VA1000000005", 0x84, []string{"noConfigAnswer"}, true},
+		{"VA1000000006", 0, nil, false},
+	}
+	for i, tc := range cases {
+		deviceReport(t, d, in, tc.serial, "err", uint16(0x6300+i), faultWord(tc.word))
+	}
+
+	h := alertHealthOf(t, url)
+	alerts := h.alerts()
+	for _, tc := range cases {
+		got := h.device(t, tc.serial)
+		if got.FaultWord != tc.word || got.Fault != tc.fault || !reflect.DeepEqual(got.CommsWarnings, tc.warnings) {
+			t.Errorf("fault word %#x = fault %v word %#x warnings %v, want fault %v warnings %v",
+				tc.word, got.Fault, got.FaultWord, got.CommsWarnings, tc.fault, tc.warnings)
+		}
+		if _, raised := alerts[tc.serial]; raised != tc.fault {
+			t.Errorf("fault word %#x raised alerts %v, want a fault alert: %v", tc.word, alerts[tc.serial], tc.fault)
+		}
+	}
+
+	// The node API carries the same split.
+	var node struct {
+		Fault         bool
+		FaultWord     uint32
+		CommsWarnings []string
+	}
+	if code := getJSON(t, url+"/api/nodes/VA1000000001", &node); code != http.StatusOK ||
+		node.Fault || node.FaultWord != 0x80 || !reflect.DeepEqual(node.CommsWarnings, []string{"noConfigAnswer"}) {
+		t.Errorf("node API of the valve with word 0x80 = %d %+v, want warning and no fault", code, node)
 	}
 }
 

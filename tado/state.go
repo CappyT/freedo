@@ -51,11 +51,14 @@ type ValveView struct {
 	SessionAdopted    bool  `json:"SessionAdopted"`
 	SessionIssuedUnix int64 `json:"SessionIssuedUnix"`
 	// LowBattery follows the installation's low battery voltage with a
-	// hysteresis of BatteryHysteresisCellMV. Fault and Offline come from the
-	// daemon: the engine leaves them false.
-	LowBattery bool `json:"LowBattery"`
-	Fault      bool `json:"Fault"`
-	Offline    bool `json:"Offline"`
+	// hysteresis of BatteryHysteresisCellMV. Fault, CommsWarnings and Offline
+	// come from the daemon: the engine leaves them false and null. Fault is set
+	// by the bits of FaultWord that are no communication warning, which
+	// CommsWarnings names (see DecodeFaultWord), null with none.
+	LowBattery    bool     `json:"LowBattery"`
+	Fault         bool     `json:"Fault"`
+	CommsWarnings []string `json:"CommsWarnings"`
+	Offline       bool     `json:"Offline"`
 	// Display is the display part of a valve's served d/config, set by the
 	// daemon; null on any other device.
 	Display *DisplaySettings `json:"Display"`
