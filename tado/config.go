@@ -205,9 +205,14 @@ type Options struct {
 	// FlowHysteresisC is the smallest change of a computed flow limit that is
 	// served. Unset takes DefaultFlowHysteresisC.
 	FlowHysteresisC *int `yaml:"flow_hysteresis_c"`
-	// FlowMinIntervalSec is the shortest time between two curve changes of a
-	// circuit's flow limit. Unset takes DefaultFlowMinIntervalSec.
+	// FlowMinIntervalSec is the shortest time between two changes of a
+	// circuit's flow limit by a curve or by the adaptation. Unset takes
+	// DefaultFlowMinIntervalSec.
 	FlowMinIntervalSec *int `yaml:"flow_min_interval_sec"`
+	// FlowAutoAdapt lets the daemon trim the flow limit of every heating
+	// circuit from the room feedback, below the limit the manual value or the
+	// curve gives. Unset is off.
+	FlowAutoAdapt *bool `yaml:"flow_auto_adapt"`
 	// EarlyStartZones holds the heating zones whose warmer program blocks the
 	// daemon starts early, from the heat-up rate it learns per zone. A zone
 	// outside the map starts each block on time.

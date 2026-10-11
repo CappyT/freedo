@@ -47,6 +47,9 @@ type installPatch struct {
 	OutdoorMaxAgeSec   *int `json:"outdoor_max_age_sec"`
 	FlowHysteresisC    *int `json:"flow_hysteresis_c"`
 	FlowMinIntervalSec *int `json:"flow_min_interval_sec"`
+	// FlowAutoAdapt switches the adaptation of the flow limit to the room
+	// feedback, for every circuit.
+	FlowAutoAdapt *bool `json:"flow_auto_adapt"`
 	// FlowCurves sets the weather compensation curve per circuit id; null
 	// removes it.
 	FlowCurves map[int]*tado.FlowCurve `json:"flow_curves"`
@@ -260,6 +263,7 @@ func installView(in *tado.Install, rev uint64) map[string]any {
 		"outdoor_max_age_sec":      int(in.Options.OutdoorMaxAge() / time.Second),
 		"flow_hysteresis_c":        in.Options.FlowHysteresis(),
 		"flow_min_interval_sec":    int(in.Options.FlowMinInterval() / time.Second),
+		"flow_auto_adapt":          in.Options.FlowAutoAdaptEnabled(),
 		"flow_curves":              flowCurvesView(in.Options.FlowCurves),
 		"early_start_max_lead_sec": int(in.Options.EarlyStartMaxLead() / time.Second),
 		"early_start_min_episodes": in.Options.EarlyStartMinEpisodeCount(),

@@ -495,6 +495,11 @@ func patchFlowOptions(ctx context.Context, tx querier, p installPatch) error {
 			return err
 		}
 	}
+	if p.FlowAutoAdapt != nil {
+		if err := setInstallValue(ctx, tx, "flow_auto_adapt", strconv.FormatInt(boolInt(*p.FlowAutoAdapt), 10)); err != nil {
+			return err
+		}
+	}
 	for id, curve := range p.FlowCurves {
 		if curve == nil {
 			if err := clearInstallValue(ctx, tx, install.FlowCurveKey(id)); err != nil {

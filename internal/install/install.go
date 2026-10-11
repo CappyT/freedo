@@ -149,6 +149,13 @@ func ReadInstall(ctx context.Context, q Querier) (*tado.Install, uint64, error) 
 		}
 		in.Options.OfflineSchedule = &enabled
 	}
+	if raw, ok := kv["flow_auto_adapt"]; ok {
+		enabled, err := strconv.ParseBool(raw)
+		if err != nil {
+			return nil, 0, fmt.Errorf("install flow_auto_adapt %q: %w", raw, err)
+		}
+		in.Options.FlowAutoAdapt = &enabled
+	}
 	if raw, ok := kv["external_window_max_sec"]; ok {
 		sec, err := strconv.Atoi(raw)
 		if err != nil {
@@ -620,6 +627,9 @@ func (s *Store) ReplaceInstall(ctx context.Context, in *tado.Install) (uint64, e
 	}
 	if o := in.Options.OfflineSchedule; o != nil {
 		values = append(values, [2]string{"offline_schedule", strconv.FormatInt(boolInt(*o), 10)})
+	}
+	if o := in.Options.FlowAutoAdapt; o != nil {
+		values = append(values, [2]string{"flow_auto_adapt", strconv.FormatInt(boolInt(*o), 10)})
 	}
 	if o := in.Options.ExternalWindowMaxSec; o != nil {
 		values = append(values, [2]string{"external_window_max_sec", strconv.Itoa(*o)})

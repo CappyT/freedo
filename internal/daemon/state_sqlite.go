@@ -453,6 +453,31 @@ func (s *stateStore) SetThermalModel(ctx context.Context, zone int, m *thermalMo
 	return err
 }
 
+// storedFlowAdapt is the JSON of one circuit's adapted flow limit in meta
+// flow_adapt.
+type storedFlowAdapt struct {
+	C      int    `json:"c"`
+	AtMs   int64  `json:"atMs"`
+	Reason string `json:"reason"`
+}
+
+// FlowAdapt returns the adapted flow limit of each circuit.
+func (s *stateStore) FlowAdapt(ctx context.Context) (map[int]storedFlowAdapt, error) {
+	var stored map[int]storedFlowAdapt
+	err := s.metaJSON(ctx, "flow_adapt", &stored)
+	return stored, err
+}
+
+// SetFlowAdapt replaces the stored adapted flow limits.
+func (s *stateStore) SetFlowAdapt(ctx context.Context, stored map[int]storedFlowAdapt) error {
+	raw, err := json.Marshal(stored)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `INSERT OR REPLACE INTO meta (key, value) VALUES ('flow_adapt', ?)`, string(raw))
+	return err
+}
+
 // DeleteThermalModel forgets the heat-up model of zone.
 func (s *stateStore) DeleteThermalModel(ctx context.Context, zone int) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM meta WHERE key = ?`, thermalModelPrefix+strconv.Itoa(zone))

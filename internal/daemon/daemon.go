@@ -138,11 +138,13 @@ type daemon struct {
 	windows    map[int]zoneWindow
 	windowOwed map[windowWrite]*windowOwed
 	// outdoor is the last outdoor temperature pushed, flowChanged when a curve
-	// last changed each circuit's flow limit, and flowEpoch the engine start.
-	// All three belong to the engine goroutine; see flow_limit.go.
+	// or the adaptation last changed each circuit's flow limit, flowEpoch the
+	// engine start and flowAdapt the adaptation of each circuit. All four
+	// belong to the engine goroutine; see flow_limit.go and flow_adapt.go.
 	outdoor     *outdoorReading
 	flowChanged map[int]time.Time
 	flowEpoch   time.Time
+	flowAdapt   map[int]*flowAdapt
 	// thermal holds the heat-up model of each zone, heating the episode each
 	// zone runs now, thermalTarget the target each zone followed at the last
 	// tick, and early the block each zone started early. All four belong to
@@ -251,6 +253,7 @@ func newDaemon(in *tado.Install, emu *tado.EmuState, radio radio.Radio, dryRun b
 		windows:          make(map[int]zoneWindow),
 		windowOwed:       make(map[windowWrite]*windowOwed),
 		flowChanged:      make(map[int]time.Time),
+		flowAdapt:        make(map[int]*flowAdapt),
 		thermal:          make(map[int]*thermalModel),
 		heating:          make(map[int]*heatEpisode),
 		thermalTarget:    make(map[int]float64),
@@ -279,7 +282,7 @@ func (d *daemon) setInstall(in *tado.Install) (added, removed []string, err erro
 		return nil, nil, err
 	}
 	d.inst.Store(in)
-	d.releaseFlowCurves(d.emu, before, in)
+	d.releaseFlowLimits(d.emu, before, in)
 	d.reconcile(added, removed)
 	if before != nil {
 		d.restateShiftedZones(d.emu, before, in)
@@ -2509,10 +2512,11 @@ func (d *daemon) tickHomeState(e *tado.EmuState) {
 }
 
 // restoreHomeState loads the home state the engine keeps in the database: the
-// away flag, the hot-water program, the windows, the heat-up models, the block
-// each zone last took, the zone rewrites still owed and the early starts
-// running. With that baseline the first tick writes each zone whose program
-// moved while the daemon was down, and each owed write, and no other.
+// away flag, the hot-water program, the windows, the heat-up models, the
+// adapted flow limits, the block each zone last took, the zone rewrites still
+// owed and the early starts running. With that baseline the first tick writes
+// each zone whose program moved while the daemon was down, and each owed write,
+// and no other.
 func (d *daemon) restoreHomeState(e *tado.EmuState) error {
 	if d.state == nil {
 		return nil
@@ -2529,6 +2533,9 @@ func (d *daemon) restoreHomeState(e *tado.EmuState) error {
 		return err
 	}
 	if d.thermal, err = d.state.ThermalModels(ctx); err != nil {
+		return err
+	}
+	if err := d.restoreFlowAdapt(); err != nil {
 		return err
 	}
 	blocks, stored, err := d.state.ProgramBlocks(ctx)
@@ -2926,6 +2933,10 @@ func (d *daemon) postBoilerFlow(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, ok := d.inst.Load().Options.EnabledFlowCurve(id); ok {
 		writeErr(w, http.StatusConflict, fmt.Sprintf("circuit %d follows its weather curve: disable options.flow_curves.%d first", id, id))
+		return
+	}
+	if d.inst.Load().Options.FlowAutoAdaptEnabled() {
+		writeErr(w, http.StatusConflict, fmt.Sprintf("circuit %d adapts its flow limit: set flow_limit_c, or disable flow_auto_adapt first", id))
 		return
 	}
 	target := hex.EncodeToString(dev.WireEUI())

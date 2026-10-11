@@ -88,6 +88,12 @@ func (o Options) FlowHysteresis() int {
 	return *o.FlowHysteresisC
 }
 
+// FlowAutoAdaptEnabled reports whether the flow limit adapts to the room
+// feedback.
+func (o Options) FlowAutoAdaptEnabled() bool {
+	return o.FlowAutoAdapt != nil && *o.FlowAutoAdapt
+}
+
 func (o Options) FlowMinInterval() time.Duration {
 	return optSeconds(o.FlowMinIntervalSec, DefaultFlowMinIntervalSec)
 }

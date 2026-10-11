@@ -3,8 +3,9 @@ package daemon
 // flow_limit: the heating flow limit (tag 2040) each circuit is served. A
 // circuit with an enabled curve follows the outdoor temperature Home Assistant
 // pushes, and falls back to options.flow_limit_c when the reading is stale.
-// The thermostat applies a new value only by re-opening its OpenTherm session,
-// so a curve change needs a minimum step and a minimum interval.
+// With options.flow_auto_adapt the room feedback trims that limit, see
+// flow_adapt.go. The thermostat applies a new value only by re-opening its
+// OpenTherm session, so a change needs a minimum step and a minimum interval.
 
 import (
 	"encoding/hex"
@@ -35,11 +36,39 @@ func (d *daemon) flowTarget(o tado.Options, curve tado.FlowCurve, now time.Time)
 	return curve.FlowAt(d.outdoor.tempC)
 }
 
-// tickFlowLimits serves the target of each circuit with an enabled curve,
-// when it differs from the served value by the hysteresis and the last change
-// is older than the minimum interval. The engine start opens the interval, so
-// a restart does not change a value at once. It reports whether a served
-// value changed.
+// flowCeiling is the flow limit the manual value or the curve gives circuit id
+// now. The adaptation never goes above it.
+func (d *daemon) flowCeiling(o tado.Options, id int, now time.Time) int {
+	if curve, ok := o.EnabledFlowCurve(id); ok {
+		return d.flowTarget(o, curve, now)
+	}
+	return o.FlowLimit()
+}
+
+// flowManaged says whether a curve or the adaptation sets the flow limit of
+// circuit id, which then refuses a manual value.
+func flowManaged(o tado.Options, id int) bool {
+	_, curved := o.EnabledFlowCurve(id)
+	return curved || o.FlowAutoAdaptEnabled()
+}
+
+// flowWanted is the flow limit circuit id asks for now: the ceiling, trimmed
+// by the adaptation. It is false when nothing manages the circuit.
+func (d *daemon) flowWanted(o tado.Options, id int, now time.Time) (int, bool) {
+	if !flowManaged(o, id) {
+		return 0, false
+	}
+	ceiling := d.flowCeiling(o, id, now)
+	if a := d.flowAdapt[id]; a != nil && o.FlowAutoAdaptEnabled() {
+		return a.limit(ceiling), true
+	}
+	return ceiling, true
+}
+
+// tickFlowLimits serves the target of each managed circuit, when it differs
+// from the served value by the hysteresis and the last change is older than
+// the minimum interval. The engine start opens the interval, so a restart
+// does not change a value at once. It reports whether a served value changed.
 func (d *daemon) tickFlowLimits(e *tado.EmuState) bool {
 	inst := d.inst.Load()
 	if inst == nil {
@@ -49,11 +78,13 @@ func (d *daemon) tickFlowLimits(e *tado.EmuState) bool {
 	changed := false
 	for i := range inst.Circuits {
 		c := &inst.Circuits[i]
-		curve, ok := inst.Options.EnabledFlowCurve(c.ID)
+		if inst.Options.FlowAutoAdaptEnabled() {
+			d.adaptFlow(e, inst, c.ID, now)
+		}
+		target, ok := d.flowWanted(inst.Options, c.ID, now)
 		if !ok {
 			continue
 		}
-		target := d.flowTarget(inst.Options, curve, now)
 		served, _ := e.ServedFlow(c.ID)
 		if math.Abs(float64(target)-served) < float64(inst.Options.FlowHysteresis()) {
 			continue
@@ -81,17 +112,29 @@ func (d *daemon) tickFlowLimits(e *tado.EmuState) bool {
 	return changed
 }
 
-// releaseFlowCurves hands a circuit whose curve the new installation disables
-// or drops back to options.flow_limit_c.
-func (d *daemon) releaseFlowCurves(e *tado.EmuState, before, after *tado.Install) {
+// releaseFlowLimits hands a circuit that the new installation no longer
+// manages back to options.flow_limit_c, and drops the adaptation of a circuit
+// it no longer adapts.
+func (d *daemon) releaseFlowLimits(e *tado.EmuState, before, after *tado.Install) {
 	if before == nil {
 		return
 	}
-	for id, curve := range before.Options.FlowCurves {
-		if _, still := after.Options.EnabledFlowCurve(id); curve.Enabled && !still {
+	dropped := false
+	for i := range before.Circuits {
+		id := before.Circuits[i].ID
+		_, err := after.CircuitByID(id)
+		declared := err == nil
+		if flowManaged(before.Options, id) && !(declared && flowManaged(after.Options, id)) {
 			e.ClearFlowSetpoint(id)
 			delete(d.flowChanged, id)
 		}
+		if _, ok := d.flowAdapt[id]; ok && !(declared && after.Options.FlowAutoAdaptEnabled()) {
+			delete(d.flowAdapt, id)
+			dropped = true
+		}
+	}
+	if dropped {
+		d.saveFlowAdapt()
 	}
 }
 
@@ -124,8 +167,10 @@ func (d *daemon) postOutdoor(w http.ResponseWriter, r *http.Request) {
 }
 
 // flowLimitView renders the outdoor reading and, per circuit, the flow limit
-// its curve computes, the one it is served, when a curve last changed it and
-// whether the thermostat has fetched it.
+// the curve and the adaptation compute, the one it is served, when either last
+// changed it and whether the thermostat has fetched it. adaptedC, adaptedAt
+// and adaptReason describe the adaptation: its limit, and when and why it last
+// moved.
 func (d *daemon) flowLimitView(e *tado.EmuState) map[string]any {
 	out := map[string]any{"outdoor": nil, "circuits": []map[string]any{}}
 	inst := d.inst.Load()
@@ -150,10 +195,16 @@ func (d *daemon) flowLimitView(e *tado.EmuState) map[string]any {
 		view := map[string]any{
 			"id": id, "curve": false, "computedC": nil, "servedC": served,
 			"changedAt": nil, "fetched": fetched,
+			"adapt": inst.Options.FlowAutoAdaptEnabled(), "adaptedC": nil, "adaptedAt": nil, "adaptReason": nil,
 		}
-		if curve, ok := inst.Options.EnabledFlowCurve(id); ok {
-			target := d.flowTarget(inst.Options, curve, now)
-			view["curve"], view["computedC"] = true, target
+		if _, ok := inst.Options.EnabledFlowCurve(id); ok {
+			view["curve"] = true
+		}
+		if target, ok := d.flowWanted(inst.Options, id, now); ok {
+			view["computedC"] = target
+		}
+		if a := d.flowAdapt[id]; a != nil && inst.Options.FlowAutoAdaptEnabled() {
+			view["adaptedC"], view["adaptedAt"], view["adaptReason"] = a.c, a.at.UTC().Format(time.RFC3339), a.reason
 		}
 		if t, ok := d.flowChanged[id]; ok {
 			view["changedAt"] = t.UTC().Format(time.RFC3339)
