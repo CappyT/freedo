@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" role="img" viewBox="0 0 512 512" width="512" height="512">
+  <title>freedo favicon</title>
+  <defs>
+    <linearGradient id="freedo-ground" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3D9EFF"/><stop offset="1" stop-color="#1B45C6"/></linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="116" fill="url(#freedo-ground)"/>
+  <path d="M166 363.2 A140 140 0 1 1 346 363.2" fill="none" stroke="#FFFFFF" stroke-width="64" stroke-linecap="round"/>
+  <circle cx="363.2" cy="166" r="44" fill="#0B1B3A" stroke="#FFFFFF" stroke-width="16"/>
+</svg>
