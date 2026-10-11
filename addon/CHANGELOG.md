@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.2
+
+- Web dashboard, served by the daemon and shown in the Home Assistant sidebar. It shows the
+  home, the zones with their schedules, hot water, the boiler and the devices, and sends the
+  everyday commands. Inside Home Assistant it needs no token for those commands only; every
+  other route still needs the token.
+- The hot water and room cards always offer the temperature control. On a zone with no target
+  the control starts at the lowest temperature, which is not sent until you choose one.
+- `GET /api/zones` reports `target.hasProgram`. `GET /api/boiler` reports `DHWSetpointC`, the
+  hot water setpoint that the thermostat holds.
+
 ## 0.3.1
 
 - A serial reply that the USB link cuts no longer stops the daemon. It discards the reply and
