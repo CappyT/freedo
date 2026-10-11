@@ -44,9 +44,10 @@ Tested only with automated tests and synthetic fixtures:
   external room temperature and the controller gain suggestion.
 - The energy and gas estimate. No comparison with a gas meter exists.
 - The web dashboard. `npm test` covers the API client and the schedule editor logic. `npm run prefix-check`
-  starts the daemon with no radio and a seeded synthetic installation, and opens each page in headless
-  Chrome under a path prefix. It has not run against a real plant, and the Home Assistant ingress path
-  has not run inside Home Assistant.
+  and `npm run ui-check` start the daemon with no radio and a seeded synthetic installation. They open each
+  page in headless Chrome under a path prefix, and drive the schedule editor, the presence switch, the
+  child lock and Turn off. It has not run against a real plant, and the Home Assistant ingress path has
+  not run inside Home Assistant.
 - The Home Assistant integration and the presence blueprint. The repository documents automated tests only.
 
 freedo has not run for several days as the only coordinator of a plant.

@@ -11,14 +11,10 @@
 //    token, accepts one, shows the seeded zones and opens each page.
 //
 // Usage: FREEDO_BIN=./freedo node scripts/prefix-check.mjs
-import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
 import http from 'node:http';
-import net from 'node:net';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { findChrome, launch } from './browser.mjs';
+import { freePort, startDaemon } from './harness.mjs';
 import { seed } from './seed.mjs';
 
 const TOKEN = 'check-token-' + randomBytes(8).toString('hex');
@@ -33,17 +29,6 @@ const check = (ok, message) => {
 	console.log((ok ? 'ok   ' : 'FAIL ') + message);
 	if (!ok) failures.push(message);
 };
-
-function freePort() {
-	return new Promise((resolve, reject) => {
-		const server = net.createServer();
-		server.listen(0, '127.0.0.1', () => {
-			const { port } = server.address();
-			server.close(() => resolve(port));
-		});
-		server.on('error', reject);
-	});
-}
 
 const prefix = '/api/hassio_ingress/' + randomBytes(24).toString('base64url');
 const escaped = [];
@@ -73,34 +58,14 @@ function startProxy(port, target) {
 	return new Promise((resolve) => server.listen(port, '127.0.0.1', () => resolve(server)));
 }
 
-async function waitForDaemon(base) {
-	for (let i = 0; i < 100; i++) {
-		try {
-			if ((await fetch(base + '/api/health')).status === 401) return;
-		} catch {
-			// not listening yet
-		}
-		await new Promise((r) => setTimeout(r, 100));
-	}
-	throw new Error('the daemon did not start');
-}
-
-const work = mkdtempSync(join(tmpdir(), 'freedo-prefix-'));
-const daemonPort = await freePort();
 const proxyPort = await freePort();
-const daemon = spawn(
-	bin,
-	['--addr', `127.0.0.1:${daemonPort}`, '--state', join(work, 'state.db'), '--unhandled', join(work, 'unhandled.log')],
-	{ env: { ...process.env, FREEDO_API_TOKEN: TOKEN }, stdio: ['ignore', 'ignore', 'inherit'] }
-);
+const daemon = await startDaemon(bin, { token: TOKEN });
 let proxy;
 let browser;
 
 try {
-	const direct = `http://127.0.0.1:${daemonPort}`;
-	await waitForDaemon(direct);
-	await seed(direct, TOKEN);
-	proxy = await startProxy(proxyPort, daemonPort);
+	await seed(daemon.base, TOKEN);
+	proxy = await startProxy(proxyPort, daemon.port);
 	const origin = `http://127.0.0.1:${proxyPort}`;
 	const root = origin + prefix + '/';
 
@@ -220,14 +185,7 @@ try {
 	const cleanups = [
 		() => browser?.close(),
 		() => proxy?.close(),
-		async () => {
-			daemon.kill('SIGTERM');
-			await new Promise((resolve) => {
-				daemon.once('exit', resolve);
-				setTimeout(resolve, 5000);
-			});
-		},
-		() => rmSync(work, { recursive: true, force: true })
+		() => daemon.stop()
 	];
 	for (const cleanup of cleanups) {
 		try {

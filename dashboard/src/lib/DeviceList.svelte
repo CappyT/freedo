@@ -70,7 +70,12 @@
 								<input
 									type="checkbox"
 									checked={device.childLock}
-									onchange={(e) => act(() => api.childLock(device.short, e.currentTarget.checked))}
+									onchange={async (e) => {
+										const box = e.currentTarget;
+										const done = await act(() => api.childLock(device.short, box.checked));
+										// A checkbox keeps the click when the request fails: show what the daemon reports.
+										if (!done) box.checked = device.childLock === true;
+									}}
 								/>
 								<Icon name="lock" size={18} />{t('devices.childLock')}
 							</label>

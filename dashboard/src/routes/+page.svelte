@@ -9,15 +9,24 @@
 
 	let confirmBoost: ConfirmDialog | undefined = $state();
 	let busy = $state(false);
+	let homeRadio: HTMLInputElement | undefined = $state();
+	let awayRadio: HTMLInputElement | undefined = $state();
 
 	const zones = $derived(data.models);
 	const heating = $derived(data.heating);
 
-	async function setAway(away: boolean) {
-		if (away === data.away || busy) return;
+	/** Shows the presence that the daemon reports. A radio keeps the click when the request fails. */
+	function showPresence() {
+		if (homeRadio) homeRadio.checked = !data.away;
+		if (awayRadio) awayRadio.checked = data.away;
+	}
+
+	async function setAway(value: boolean) {
+		if (value === data.away || busy) return;
 		busy = true;
-		await act(() => api.setAway(away));
+		const done = await act(() => api.setAway(value));
 		busy = false;
+		if (!done) showPresence();
 	}
 
 	const boostAll = () => actMany(heating.map((m) => () => api.boost(m.zone.number, true)));
@@ -31,11 +40,11 @@
 			<fieldset class="segmented" disabled={busy || !data.home}>
 				<legend class="sr-only">{t('home.presence')}</legend>
 				<label>
-					<input type="radio" name="presence" checked={!data.away} onchange={() => setAway(false)} />
+					<input type="radio" name="presence" bind:this={homeRadio} checked={!data.away} onchange={() => setAway(false)} />
 					<Icon name="home" size={18} />{t('home.atHome')}
 				</label>
 				<label>
-					<input type="radio" name="presence" checked={data.away} onchange={() => setAway(true)} />
+					<input type="radio" name="presence" bind:this={awayRadio} checked={data.away} onchange={() => setAway(true)} />
 					<Icon name="away" size={18} />{t('home.away')}
 				</label>
 			</fieldset>

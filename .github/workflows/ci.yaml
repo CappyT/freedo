@@ -51,6 +51,10 @@ jobs:
         env:
           FREEDO_BIN: ${{ runner.temp }}/freedo
           REQUIRE_BROWSER: "1"
+      - run: npm run ui-check
+        env:
+          FREEDO_BIN: ${{ runner.temp }}/freedo
+          REQUIRE_BROWSER: "1"
 
   integration:
     runs-on: ubuntu-latest

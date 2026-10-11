@@ -14,7 +14,8 @@
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"test": "vitest run",
 		"embed": "node scripts/embed.mjs",
-		"prefix-check": "node scripts/prefix-check.mjs"
+		"prefix-check": "node scripts/prefix-check.mjs",
+		"ui-check": "node scripts/ui-check.mjs"
 	},
 	"imports": {
 		"#lib/*": "./src/lib/*"
