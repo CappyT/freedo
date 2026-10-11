@@ -79,3 +79,12 @@ copy_schedule:
           integration: freedo
           domain: climate
           multiple: true
+
+boost_all:
+  fields:
+    "on":
+      default: true
+      selector:
+        boolean:
+
+resume_all:

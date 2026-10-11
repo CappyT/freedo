@@ -970,3 +970,57 @@ async def test_flow_limit_error_is_a_home_assistant_error(hass, client):
         await hass.services.async_call(
             "number", "set_value", {ATTR_ENTITY_ID: flow, "value": 50}, blocking=True
         )
+
+
+# --- home level services ---
+
+HOT_WATER = "water_heater.hot_water"
+
+
+async def test_boost_all_zones(hass, client):
+    await setup_entry(hass, client)
+    await call_freedo(hass, "boost_all", {})
+    # Every heating zone, not the hot water.
+    assert sorted(client.calls) == [("boost", 1, True), ("boost", 2, True)]
+    client.calls.clear()
+    await call_freedo(hass, "boost_all", {"on": False})
+    assert sorted(client.calls) == [("boost", 1, False), ("boost", 2, False)]
+
+
+async def test_resume_all_zones(hass, client):
+    await setup_entry(hass, client)
+    # A target requested on the entity does not outlive the return to schedule.
+    await call(hass, SERVICE_SET_TEMPERATURE, {ATTR_ENTITY_ID: BEDROOM, ATTR_TEMPERATURE: 22})
+    client.calls.clear()
+    await call_freedo(hass, "resume_all", {})
+    assert sorted(client.calls) == [("auto", 1), ("auto", 2), ("auto", 9)]
+    state = hass.states.get(BEDROOM)
+    assert state.state == HVACMode.AUTO
+    assert state.attributes[ATTR_TEMPERATURE] == 17
+
+
+async def test_home_services_go_on_after_a_refused_zone(hass, client):
+    await setup_entry(hass, client)
+    real = client.zone_boost
+
+    async def refuse_zone_one(zone, on):
+        if zone == 1:
+            raise FreedoApiError(400, "zone 1 elects no demand reporter")
+        return await real(zone, on)
+
+    client.zone_boost = refuse_zone_one
+    with pytest.raises(HomeAssistantError, match="zone 1 elects no demand reporter"):
+        await call_freedo(hass, "boost_all", {})
+    # Zone 2 still got its boost.
+    assert client.calls == [("boost", 2, True)]
+
+
+async def test_home_services_without_a_loaded_zone(hass, client):
+    entry = await setup_entry(hass, client)
+    await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+    # The services belong to the integration, not to an entry.
+    with pytest.raises(ServiceValidationError, match="No freedo zone"):
+        await call_freedo(hass, "boost_all", {})
+    with pytest.raises(ServiceValidationError, match="No freedo zone"):
+        await call_freedo(hass, "resume_all", {})

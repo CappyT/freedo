@@ -19,6 +19,8 @@ CONF_WINDOWS = "windows"
 PENDING_SEC = 15 * 60
 
 SERVICE_BOOST = "boost"
+SERVICE_BOOST_ALL = "boost_all"
+SERVICE_RESUME_ALL = "resume_all"
 SERVICE_SET_OVERLAY = "set_overlay"
 SERVICE_GET_SCHEDULE = "get_schedule"
 SERVICE_SET_SCHEDULE = "set_schedule"
