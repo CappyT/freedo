@@ -23,7 +23,8 @@ services:
       - freedo_api_token
     environment:
       # Example value: set the IANA zone of the installation. Tag 02b2 follows
-      # it, else UTC. The install option timezone overrides it.
+      # it. Without TZ the container runs in UTC and the daemon warns at start.
+      # The install options utc_offset_min and timezone override it.
       TZ: Europe/Rome
       # Alternative to the secret. A variable that is set and blank stops the start.
       # FREEDO_API_TOKEN: ${FREEDO_API_TOKEN:?set FREEDO_API_TOKEN}
