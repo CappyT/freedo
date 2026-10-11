@@ -11,7 +11,8 @@ the routes. For the radio facts behind a rule, see [PROTOCOL.md](PROTOCOL.md).
 ### Address and authentication
 
 - The daemon listens on `http_listen` (default `127.0.0.1:8080`). The flag `--addr` overrides it.
-- Every request carries `Authorization: Bearer <token>`.
+- Every request under `/api` carries `Authorization: Bearer <token>`. The daemon serves the
+  [dashboard](OPERATION.md#dashboard) at every other path, without a token.
 - The daemon reads the token from one source, in this order: the file of `--api-token-file`,
   the variable `FREEDO_API_TOKEN`, the file of the key `api_token_file`.
 - The daemon removes spaces at both ends of the token. An empty token stops the start.
@@ -19,6 +20,9 @@ the routes. For the radio facts behind a rule, see [PROTOCOL.md](PROTOCOL.md).
   `WWW-Authenticate: Bearer`.
 - `--health-public` makes `GET /api/health` readable without a token, for a container
   health check. The default is off.
+- `--ingress` makes the daemon accept a request from the connection address `172.30.32.2`, the Home
+  Assistant ingress gateway, without a token. Only the add-on start script sets it. Every other source
+  needs the token. See [Access](OPERATION.md#access).
 - With no token, the daemon accepts a loopback address only and warns at start. An address
   that is not loopback stops the start. `--insecure-no-auth` removes this limit. With it,
   every host that reaches the port controls the plant.

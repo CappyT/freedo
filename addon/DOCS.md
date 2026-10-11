@@ -36,11 +36,23 @@ The add-on starts in dry-run. Turn Transmit on only after the
 [first radio session](https://github.com/CappyT/freedo/blob/main/docs/OPERATION.md#first-radio-session)
 checks.
 
+## Web interface
+
+The add-on has a web interface for the zones, the hot water, the boiler and the devices. Select Open
+Web UI on the add-on page, or the entry freedo in the sidebar. The page asks for no token: Home
+Assistant has already signed you in, and the add-on accepts the requests of the Home Assistant gateway.
+
+The sidebar entry shows for administrators only. Every Home Assistant user who opens the page controls
+the heating, so give that right with care. The port 18080 does not share this rule: a client of that
+port needs the token. The page is also at `http://<host>:18080/` when the Network tab publishes the
+port. It then asks for the token once. See [Dashboard](https://github.com/CappyT/freedo/blob/main/docs/OPERATION.md#dashboard).
+
 ## API and token
 
 The HTTP API listens on port 18080. The Network tab changes the host port. Clear the host port to
 keep the API inside Home Assistant: the integration reaches the add-on by its host name and does
-not need the host port. Every request needs `Authorization: Bearer <token>`.
+not need the host port. Every API request needs `Authorization: Bearer <token>`. Only the requests of
+the [web interface](#web-interface) through Home Assistant need none.
 
 With an empty `api_token`, the add-on creates a random token on the first start and keeps it in its
 data folder. The add-on gives that token to Home Assistant through discovery, so the integration

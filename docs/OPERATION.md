@@ -87,7 +87,8 @@ The tools never create an identity. Only the daemon does.
 
 The image `ghcr.io/cappyt/freedo` exists for `linux/amd64` and `linux/arm64`, with the
 version tag (for example `0.2.0`) and `latest`. The `Dockerfile` builds a static binary into an
-Alpine image. The process runs as user 10001. The image holds the daemon only. The second target `addon` builds the Home Assistant add-on image. Its start
+Alpine image. The process runs as user 10001. The image holds the daemon with the [dashboard](#dashboard)
+embedded. The second target `addon` builds the Home Assistant add-on image. Its start
 command reads the add-on options, so use it only inside Home Assistant.
 
 ```sh
@@ -116,6 +117,50 @@ docker compose up -d
 
 The container starts in dry-run. To use an image built locally, replace the `image:` line with
 `build: .` and run `docker compose up -d --build`.
+
+## Dashboard
+
+The daemon serves a web interface at the root of its HTTP address. It shows the zones, the hot
+water, the boiler and the devices. It sets temperatures with the four end rules, switches a zone off,
+returns it to its program, switches the home between home and away, and edits the weekly schedules. It
+calls the routes of [API.md](API.md) and no other. Installation management stays in the API.
+
+A `go build` on a machine without Node has no dashboard. The daemon then answers every page request
+with `404`, and the API works as before. To build the dashboard, see
+[`dashboard/README.md`](../dashboard/README.md). The container images include it.
+
+### Open it
+
+- Container: open `http://<host>:8080/`. The page asks for the API token once. Enter the content of
+  `freedo_api_token`. The browser keeps the token in its storage, and the page sends it as the bearer
+  token. A wrong token shows a message and the page asks again. Settings removes the stored token.
+- Home Assistant add-on: select Open Web UI on the add-on page, or the entry freedo in the sidebar. The
+  page asks for no token.
+
+The page works under any path prefix, as long as the proxy removes the prefix before it forwards the
+request, as Home Assistant ingress does. The route is in the URL fragment (`#/zones/2`).
+
+### Access
+
+The files of the dashboard need no token, because they hold no data. Every path under `/api` keeps
+its rules from [API.md](API.md#address-and-authentication).
+
+Home Assistant ingress shows the page inside Home Assistant, under `/api/hassio_ingress/<token>/`.
+Home Assistant authenticates the user. The Supervisor then forwards the request to the add-on from the
+fixed address `172.30.32.2`. The developer documentation for apps tells an app to accept ingress
+connections from that address only and to treat the user as authenticated. The daemon follows it:
+
+- The flag `--ingress` makes the daemon accept an API request from the connection address `172.30.32.2`
+  without a token. Only `addon/run.sh` sets the flag. The bootstrap file and the environment have no
+  such setting, and the container image does not set it.
+- Every other source still needs the token: other apps, the host, the LAN, and the published port 18080.
+- The daemon reads the address of the TCP connection. A header such as `X-Forwarded-For` or
+  `X-Ingress-Path` has no effect.
+
+The daemon cannot tell the Home Assistant users apart. Every user who can open the panel controls the
+plant. The add-on keeps `panel_admin` at its default `true`, so the sidebar entry shows for
+administrators only. Do not set `--ingress` in another setup. A reverse proxy on the host shows the
+daemon its own address, not the address of the client.
 
 ## Time zone
 

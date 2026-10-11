@@ -20,6 +20,19 @@ The three commands are the gate. A change passes when all three succeed. CI runs
 it also runs the Home Assistant tests, compiles the bridge firmware and builds both container
 images.
 
+The dashboard needs Node 22.17 or later. The three Go commands work without Node, because
+`internal/web/dist` holds only a placeholder. A change to `dashboard/` passes these checks, and CI also
+runs `npm run prefix-check`:
+
+```sh
+cd dashboard
+npm ci
+npm run check
+npm test
+```
+
+See [`dashboard/README.md`](dashboard/README.md) for the build and the prefix check.
+
 The Home Assistant tests need Python and a test plugin:
 
 ```sh

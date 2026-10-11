@@ -43,6 +43,8 @@ Tested only with automated tests and synthetic fixtures:
 - Early start, the weather curves (your own and the default curve), automatic flow adaptation, the
   external room temperature and the controller gain suggestion.
 - The energy and gas estimate. No comparison with a gas meter exists.
+- The web dashboard. A headless browser drove it against the daemon with a replayed synthetic capture. It
+  has not run against a real plant, and the Home Assistant ingress path has not run inside Home Assistant.
 - The Home Assistant integration and the presence blueprint. The repository documents automated tests only.
 
 freedo has not run for several days as the only coordinator of a plant.
@@ -136,6 +138,19 @@ the token.
 4. Switch the commercial bridge off, add `--tx` (or the add-on option Transmit) and run one safe command.
 5. Pair the devices as described in [`docs/OPERATION.md`](docs/OPERATION.md#pairing-a-device).
 
+## Dashboard
+
+The daemon serves a web interface at its HTTP address. It shows the zones, the hot water, the boiler and
+the devices. It sets temperatures, switches the home between home and away, and edits the weekly
+schedules. It has English, Italian, German and French texts and a light and a dark theme.
+
+- Container: open `http://<host>:8080/` and enter the API token once.
+- Home Assistant add-on: select Open Web UI, or the entry freedo in the sidebar. No token is needed.
+
+The dashboard monitors and controls. Installation management stays in the API. See
+[`docs/OPERATION.md`](docs/OPERATION.md#dashboard) for the access rules and
+[`dashboard/README.md`](dashboard/README.md) to build it.
+
 ## Features
 
 The table compares the functions of the tado app with freedo. "equal" means the function exists in the
@@ -208,10 +223,11 @@ Heating is safety relevant.
 
 ## Documentation
 
-- [`docs/OPERATION.md`](docs/OPERATION.md): configuration, container, calibration, pairing.
+- [`docs/OPERATION.md`](docs/OPERATION.md): configuration, container, dashboard, calibration, pairing.
 - [`docs/API.md`](docs/API.md): the HTTP API and the rules behind its routes.
 - [`docs/PROTOCOL.md`](docs/PROTOCOL.md): radio protocol facts for developers.
 - [`addon/DOCS.md`](addon/DOCS.md) and [`custom_components/freedo/README.md`](custom_components/freedo/README.md): Home Assistant.
+- [`dashboard/README.md`](dashboard/README.md): the web dashboard, its build and its tests.
 - [`firmware/cc1101_bridge/README.md`](firmware/cc1101_bridge/README.md): bridge firmware.
 - [`hardware/radio/README.md`](hardware/radio/README.md): radio board design.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`SECURITY.md`](SECURITY.md).
