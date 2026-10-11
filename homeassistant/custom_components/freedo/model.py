@@ -361,6 +361,13 @@ def zone_demand_pct(data: FreedoData, zone: Zone) -> int | None:
     return int(report.get("DemandPct") or 0)
 
 
+def zone_heating(data: FreedoData, zone: Zone) -> bool | None:
+    """Whether the zone calls for heat: its demand is above 0. None until the
+    zone reports."""
+    demand = zone_demand_pct(data, zone)
+    return None if demand is None else demand > 0
+
+
 def in_zone(data: FreedoData, short: str) -> bool:
     """Whether a zone declares the device as a member. The daemon answers 400
     "id required" to an identify, child lock or display write of a device

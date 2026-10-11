@@ -29,6 +29,7 @@ from model import (
     zone_boost,
     zone_current_temperature,
     zone_demand_pct,
+    zone_heating,
     zone_mode,
     zone_offset_mode,
     zone_operation,
@@ -246,6 +247,18 @@ def test_zone_values():
     assert zone_program_temperature(d, bedroom) == 17.0
     assert zone_demand_pct(d, living) == 40
     assert zone_demand_pct(d, bedroom) is None
+
+
+def test_zone_heating_follows_the_demand():
+    d = parse({}, ZONES, NODES, {}, {})
+    living, bedroom = d.zones[1], d.zones[2]
+    assert zone_heating(d, living) is True
+    # Zone 2 has not reported a zone report.
+    assert zone_heating(d, bedroom) is None
+    d.demand[2].update(UpdatedUnix=1700000000, DemandPct=0)
+    assert zone_heating(d, bedroom) is False
+    d.demand[1]["DemandPct"] = 1
+    assert zone_heating(d, living) is True
 
 
 def test_zone_reporter_order():

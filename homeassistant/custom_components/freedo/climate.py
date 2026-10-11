@@ -36,7 +36,7 @@ from .model import (
     zone_boost,
     zone_current_humidity,
     zone_current_temperature,
-    zone_demand_pct,
+    zone_heating,
     zone_mode,
     zone_operation,
     zone_overlay_end,
@@ -180,10 +180,10 @@ class FreedoZoneClimate(FreedoScheduleEntity, ClimateEntity):
     @property
     def hvac_action(self) -> HVACAction | None:
         zone = self._zone
-        demand = zone_demand_pct(self.coordinator.data, zone) if zone else None
-        if demand is None:
+        heating = zone_heating(self.coordinator.data, zone) if zone else None
+        if heating is None:
             return None
-        return HVACAction.HEATING if demand > 0 else HVACAction.IDLE
+        return HVACAction.HEATING if heating else HVACAction.IDLE
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:

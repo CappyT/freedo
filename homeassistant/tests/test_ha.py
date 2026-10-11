@@ -1304,6 +1304,28 @@ async def test_zone_demand_sensor(hass, client):
     assert not has_entity(hass, entry, "sensor", "zone9_demand")
 
 
+async def test_zone_heating_binary_sensor(hass, client):
+    entry = await setup_entry(hass, client)
+    living = entity_id(hass, entry, "binary_sensor", "zone1_heating")
+    state = hass.states.get(living)
+    assert (state.state, state.attributes["device_class"]) == ("on", "running")
+    assert er.async_get(hass).async_get(living).entity_category is None
+    assert hass.states.get(LIVING).attributes["hvac_action"] == "heating"
+    # Zone 2 has not reported a zone report.
+    bedroom = entity_id(hass, entry, "binary_sensor", "zone2_heating")
+    assert hass.states.get(bedroom).state == "unknown"
+    assert "hvac_action" not in hass.states.get(BEDROOM).attributes
+    # The hot water zone has no heating sensor.
+    assert not has_entity(hass, entry, "binary_sensor", "zone9_heating")
+
+    for view in client.zones_json["demand"]:
+        view.update(DemandPct=0, UpdatedUnix=1700000060)
+    await refresh(hass, entry)
+    for sensor, climate in ((living, LIVING), (bedroom, BEDROOM)):
+        assert hass.states.get(sensor).state == "off"
+        assert hass.states.get(climate).attributes["hvac_action"] == "idle"
+
+
 async def test_comms_warning_binary_sensor(hass, client):
     entry = await setup_entry(hass, client)
     warning = entity_id(hass, entry, "binary_sensor", "aaaa_commsWarnings")

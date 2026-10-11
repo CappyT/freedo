@@ -1,4 +1,4 @@
-"""Binary sensors: zone window and fallback, device alerts."""
+"""Binary sensors: zone window, heating and fallback, device alerts."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import FreedoConfigEntry, FreedoCoordinator
 from .entity import FreedoEntity
-from .model import KIND_BRIDGE, Zone
+from .model import KIND_BRIDGE, Zone, zone_heating
 
 
 async def async_setup_entry(
@@ -27,6 +27,7 @@ async def async_setup_entry(
     entities: list[BinarySensorEntity] = []
     for zone in data.heating_zones():
         entities.append(ZoneWindow(coordinator, zone))
+        entities.append(ZoneHeating(coordinator, zone))
     for zone in sorted(data.zones.values(), key=lambda z: z.number):
         entities.append(ZoneFallback(coordinator, zone))
     for short, dev in sorted(data.devices.items()):
@@ -75,6 +76,25 @@ class ZoneWindow(FreedoEntity, BinarySensorEntity):
             "deadline": window.get("deadline"),
             "undelivered": window.get("undelivered") or [],
         }
+
+
+class ZoneHeating(FreedoEntity, BinarySensorEntity):
+    """GET /api/zones demand DemandPct above 0: the zone calls for heat, as the
+    hvac_action of the climate entity. The recorder keeps the state of this
+    entity, which history_stats counts, and not an attribute."""
+
+    _attr_device_class = BinarySensorDeviceClass.RUNNING
+    _attr_translation_key = "zone_heating"
+
+    def __init__(self, coordinator: FreedoCoordinator, zone: Zone) -> None:
+        super().__init__(coordinator, f"zone{zone.number}_heating")
+        self._number = zone.number
+        self._attr_device_info = self.zone_device(zone)
+
+    @property
+    def is_on(self) -> bool | None:
+        zone = self.coordinator.data.zones.get(self._number)
+        return zone_heating(self.coordinator.data, zone) if zone else None
 
 
 class ZoneFallback(FreedoEntity, BinarySensorEntity):
