@@ -3250,6 +3250,10 @@ func (e *EmuState) EnqueueChildLock(target string, id int, on bool) error {
 	return nil
 }
 
+// ChildLocked reports the d/lock state freedo serves to the device with the
+// wire EUI key.
+func (e *EmuState) ChildLocked(key string) bool { return e.childLock[key] }
+
 // noteDelivered records what a delivered downlink d to key sets on the device.
 func (e *EmuState) noteDelivered(key string, d *queuedDownlink) {
 	if d.zoneBlock {

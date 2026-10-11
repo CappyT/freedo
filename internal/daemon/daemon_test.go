@@ -2521,6 +2521,68 @@ func TestChildLockRefusedOnThermostat(t *testing.T) {
 	if n := pending(t, d, wireOf(t, in, dhwNode)); n != 0 {
 		t.Errorf("thermostat pending = %d, want 0", n)
 	}
+	response.Error = ""
+	code = postJSON(t, http.MethodPost, url+"/api/nodes/"+dhwNode+"/childlock", map[string]any{"on": true}, &response)
+	if code != http.StatusBadRequest || !strings.Contains(response.Error, "only a valve has a child lock") {
+		t.Errorf("child lock on the thermostat without an id: got %d %+v, want 400 naming the device kind", code, response)
+	}
+}
+
+// TestNodeViewChildLock: a valve reads its served d/lock state in /api/nodes
+// and in the per-node route, off until the valve takes the write. A wall
+// thermostat reads null.
+func TestNodeViewChildLock(t *testing.T) {
+	in := windowInstall(t, nil)
+	d, url := newWindowDaemon(t, in, newTestClock(windowStart), nil)
+	lock := func(ref string) *bool {
+		t.Helper()
+		var one tado.ValveView
+		if code := getJSON(t, url+"/api/nodes/"+ref, &one); code != http.StatusOK {
+			t.Fatalf("GET node %s: %d", ref, code)
+		}
+		var all []tado.ValveView
+		if code := getJSON(t, url+"/api/nodes", &all); code != http.StatusOK {
+			t.Fatalf("GET nodes: %d", code)
+		}
+		for _, v := range all {
+			if v.Serial == ref {
+				if (v.ChildLock == nil) != (one.ChildLock == nil) || v.ChildLock != nil && *v.ChildLock != *one.ChildLock {
+					t.Fatalf("%s: list reads %v, node route reads %v", ref, v.ChildLock, one.ChildLock)
+				}
+				return v.ChildLock
+			}
+		}
+		t.Fatalf("%s is missing from /api/nodes", ref)
+		return nil
+	}
+	setLock := func(on bool) {
+		t.Helper()
+		var response struct {
+			Queued bool `json:"queued"`
+		}
+		if code := postJSON(t, http.MethodPost, url+"/api/nodes/VA1000000005/childlock", map[string]any{"on": on, "id": 10}, &response); code != http.StatusOK || !response.Queued {
+			t.Fatalf("child lock %t: got %d %+v", on, code, response)
+		}
+		deliver(t, d, in, "VA1000000005")
+	}
+
+	if got := lock("VA1000000005"); got == nil || *got {
+		t.Fatalf("valve child lock before any write = %v, want false", got)
+	}
+	if got := lock(dhwNode); got != nil {
+		t.Fatalf("thermostat child lock = %v, want null", *got)
+	}
+	setLock(true)
+	if got := lock("VA1000000005"); got == nil || !*got {
+		t.Fatalf("valve child lock after the lock write = %v, want true", got)
+	}
+	if got := lock("VA1000000007"); got == nil || *got {
+		t.Fatalf("other valve child lock = %v, want false", got)
+	}
+	setLock(false)
+	if got := lock("VA1000000005"); got == nil || *got {
+		t.Fatalf("valve child lock after the unlock write = %v, want false", got)
+	}
 }
 
 func TestDaemonPersistsDesiredState(t *testing.T) {

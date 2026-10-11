@@ -2100,6 +2100,8 @@ func (d *daemon) nodeViews(e *tado.EmuState) []tado.ValveView {
 			if ds, err := e.DisplaySettings(dev.Short()); err == nil {
 				vv.Display = &ds
 			}
+			locked := e.ChildLocked(hex.EncodeToString(dev.WireEUI()))
+			vv.ChildLock = &locked
 		}
 		d.applyAlerts(&vv, dev.Kind, inst.Options, now)
 		out = append(out, vv)
@@ -3027,6 +3029,10 @@ func (d *daemon) postBoost(w http.ResponseWriter, r *http.Request) {
 func (d *daemon) postChildLock(w http.ResponseWriter, r *http.Request) {
 	n, target, ok := d.pathNode(w, r)
 	if !ok {
+		return
+	}
+	if n.Kind != tado.KindValve {
+		writeErr(w, http.StatusBadRequest, fmt.Sprintf("%s is a %s: only a valve has a child lock (d/lock)", n.Ref(), n.Kind))
 		return
 	}
 	var b struct {

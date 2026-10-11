@@ -62,6 +62,10 @@ type ValveView struct {
 	// Display is the display part of a valve's served d/config, set by the
 	// daemon; null on any other device.
 	Display *DisplaySettings `json:"Display"`
+	// ChildLock is the d/lock state freedo serves to a valve, set by the daemon:
+	// what the valve took on its last confirmed write, false with none. Null on
+	// any other device.
+	ChildLock *bool `json:"ChildLock"`
 }
 
 // BoilerView is the single heat source, assembled from whichever node reports
