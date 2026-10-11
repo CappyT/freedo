@@ -18,16 +18,27 @@ from homeassistant.components.climate import (
     HVACMode,
 )
 from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant, SupportsResponse, callback
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv, entity_platform
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import DOMAIN, SERVICE_BOOST, SERVICE_SET_OVERLAY
+from .const import (
+    DOMAIN,
+    SERVICE_BOOST,
+    SERVICE_COPY_SCHEDULE,
+    SERVICE_GET_SCHEDULE,
+    SERVICE_SET_OVERLAY,
+    SERVICE_SET_SCHEDULE,
+)
 from .coordinator import FreedoConfigEntry, FreedoCoordinator
 from .entity import FreedoEntity, call_api
 from .model import (
+    ZONE_MAX_C,
+    ZONE_MIN_C,
     Zone,
+    schedule_payload,
+    schedule_programs,
     zone_boost,
     zone_current_humidity,
     zone_current_temperature,
@@ -43,9 +54,6 @@ from .model import (
 END_RULES = ("manual", "timer", "until_next")
 # The daemon bounds a timer overlay at 7 days (tado.OverlayMaxDuration).
 MAX_OVERLAY = timedelta(days=7)
-
-MIN_TEMP = 5.0
-MAX_TEMP = 25.0
 
 # A write reaches a valve at its next CSL wake-up, so the reported values lag.
 # The entity shows the requested value until the valve reports it, or at most
@@ -78,7 +86,7 @@ async def async_setup_entry(
                 [HVACMode.HEAT, HVACMode.OFF]
             ),
             vol.Optional(ATTR_TEMPERATURE): vol.All(
-                vol.Coerce(float), vol.Range(min=MIN_TEMP, max=MAX_TEMP)
+                vol.Coerce(float), vol.Range(min=ZONE_MIN_C, max=ZONE_MAX_C)
             ),
             vol.Optional("end_rule", default="manual"): vol.In(END_RULES),
             vol.Optional("duration"): vol.All(
@@ -86,6 +94,18 @@ async def async_setup_entry(
             ),
         },
         "async_set_overlay",
+    )
+    platform = entity_platform.async_get_current_platform()
+    platform.async_register_entity_service(
+        SERVICE_GET_SCHEDULE, None, "async_get_schedule", supports_response=SupportsResponse.ONLY
+    )
+    platform.async_register_entity_service(
+        SERVICE_SET_SCHEDULE,
+        {vol.Required("programs"): vol.All(cv.ensure_list, [dict])},
+        "async_set_schedule",
+    )
+    platform.async_register_entity_service(
+        SERVICE_COPY_SCHEDULE, {vol.Required("to"): cv.entity_ids}, "async_copy_schedule"
     )
 
 
@@ -100,8 +120,8 @@ class FreedoZoneClimate(FreedoEntity, ClimateEntity):
         | ClimateEntityFeature.TURN_OFF
         | ClimateEntityFeature.TURN_ON
     )
-    _attr_min_temp = MIN_TEMP
-    _attr_max_temp = MAX_TEMP
+    _attr_min_temp = ZONE_MIN_C
+    _attr_max_temp = ZONE_MAX_C
     _attr_target_temperature_step = 0.1
 
     def __init__(self, coordinator: FreedoCoordinator, zone: Zone) -> None:
@@ -286,6 +306,56 @@ class FreedoZoneClimate(FreedoEntity, ClimateEntity):
         self.async_write_ha_state()
         await self.coordinator.async_request_refresh()
 
+    async def async_get_schedule(self) -> dict[str, Any]:
+        """The weekly schedule of the zone, no programs when it has none."""
+        zone = self._zone
+        if zone is None:
+            return {}
+        view = await call_api(self.coordinator.client.zone_schedule(zone.number))
+        return {"zone": zone.number, "programs": schedule_programs(view or {})}
+
+    async def async_set_schedule(self, programs: list[dict[str, Any]]) -> None:
+        zone = self._zone
+        if zone is None:
+            return
+        await self._put_schedule(zone, _checked_schedule(programs))
+
+    async def async_copy_schedule(self, to: list[str]) -> None:
+        """Copy the weekly schedule of the zone to the zones of other freedo
+        climate entities. The daemon has no copy route: it reads this zone and
+        writes each target."""
+        zone = self._zone
+        if zone is None:
+            return
+        targets: list[FreedoZoneClimate] = []
+        for entity_id in dict.fromkeys(to):
+            target = self.platform.entities.get(entity_id)
+            if not isinstance(target, FreedoZoneClimate) or target._zone is None:
+                raise ServiceValidationError(
+                    translation_domain=DOMAIN,
+                    translation_key="not_a_zone",
+                    translation_placeholders={"entity_id": entity_id},
+                )
+            if target is self:
+                raise ServiceValidationError(
+                    translation_domain=DOMAIN, translation_key="copy_to_itself"
+                )
+            targets.append(target)
+        view = await call_api(self.coordinator.client.zone_schedule(zone.number))
+        if view is None:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="no_schedule",
+                translation_placeholders={"zone": zone.name},
+            )
+        programs = _checked_schedule(schedule_programs(view))
+        for target in targets:
+            await target._put_schedule(target._zone, programs)
+
+    async def _put_schedule(self, zone: Zone, programs: list[dict[str, Any]]) -> None:
+        await call_api(self.coordinator.client.set_zone_schedule(zone.number, programs))
+        await self.coordinator.async_request_refresh()
+
     async def async_turn_on(self) -> None:
         """Return the zone to its program."""
         await self.async_set_hvac_mode(HVACMode.AUTO)
@@ -305,3 +375,15 @@ class FreedoZoneClimate(FreedoEntity, ClimateEntity):
             await self.async_boost(True)
         elif self.preset_mode == PRESET_BOOST:
             await self.async_boost(False)
+
+
+def _checked_schedule(programs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The daemon body of a schedule, or a service error naming the problem."""
+    try:
+        return schedule_payload(programs)
+    except ValueError as err:
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="invalid_schedule",
+            translation_placeholders={"reason": str(err)},
+        ) from err

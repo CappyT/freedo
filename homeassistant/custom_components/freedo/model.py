@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
+from datetime import time
 from typing import Any
 
 KIND_HEATING = "heating"
@@ -20,6 +21,12 @@ KIND_VALVE = "valve"
 
 # The values of GET /api/nodes Display.orientation that a write accepts.
 ORIENTATIONS = ("horizontal", "vertical")
+
+# The daemon rejects a room setpoint outside this range with 400.
+ZONE_MIN_C = 5.0
+ZONE_MAX_C = 25.0
+
+DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 
 # The daemon rejects a zone temperature correction beyond +-10 C (tag 0140).
 OFFSET_LIMIT_C = 10.0
@@ -344,3 +351,106 @@ def window_payload(states: Iterable[str | None]) -> dict[str, bool] | None:
     if not known:
         return None
     return {"open": any(known)}
+
+
+def _entry_body(entry: Any, where: str) -> tuple[int, dict[str, Any]]:
+    """One entry of a schedule: the minute of the day and the daemon body."""
+    if not isinstance(entry, Mapping):
+        raise ValueError(f"{where} must be a mapping with time and temperature")
+    unknown = set(entry) - {"time", "temperature", "enabled"}
+    if unknown:
+        raise ValueError(f"{where} has unknown fields: {', '.join(sorted(unknown))}")
+    value = entry.get("time")
+    if isinstance(value, str):
+        try:
+            value = time.fromisoformat(value.strip())
+        except ValueError:
+            raise ValueError(f"{where}.time {value!r} is not a time of day, use HH:MM") from None
+    if not isinstance(value, time):
+        raise ValueError(f"{where}.time is required, as HH:MM")
+    if value.second or value.microsecond:
+        raise ValueError(f"{where}.time must be a whole minute")
+    temp = entry.get("temperature")
+    if isinstance(temp, bool) or not isinstance(temp, (int, float)):
+        raise ValueError(f"{where}.temperature is required, as a number")
+    if not ZONE_MIN_C <= temp <= ZONE_MAX_C:
+        raise ValueError(f"{where}.temperature must be within {ZONE_MIN_C:g}..{ZONE_MAX_C:g} C")
+    if abs(temp * 100 - round(temp * 100)) > 1e-9:
+        raise ValueError(f"{where}.temperature must have at most two decimal places")
+    enabled = entry.get("enabled", True)
+    if not isinstance(enabled, bool):
+        raise ValueError(f"{where}.enabled must be true or false")
+    minute = value.hour * 60 + value.minute
+    return minute, {"minute": minute, "setpoint_c": temp, "enabled": enabled}
+
+
+def schedule_payload(programs: Any) -> list[dict[str, Any]]:
+    """Check a weekly schedule against the rules the daemon enforces and map it
+    to the body of PUT /api/zones/{n}/schedule. Raises ValueError with the
+    first problem.
+
+    A schedule is a list of programs, each with the days it runs on and its
+    entries: {"days": ["mon", "tue"], "entries": [{"time": "00:00",
+    "temperature": 17, "enabled": true}]}. The programs cover each of the seven
+    days once, and the entries of a program start at 00:00 and increase.
+    """
+    if not isinstance(programs, list) or not programs:
+        raise ValueError("programs must be a list with at least one program")
+    seen: set[str] = set()
+    body: list[dict[str, Any]] = []
+    for i, program in enumerate(programs):
+        where = f"programs[{i}]"
+        if not isinstance(program, Mapping):
+            raise ValueError(f"{where} must be a mapping with days and entries")
+        unknown = set(program) - {"days", "entries"}
+        if unknown:
+            raise ValueError(f"{where} has unknown fields: {', '.join(sorted(unknown))}")
+        days = program.get("days")
+        if not isinstance(days, list) or not days:
+            raise ValueError(f"{where}.days must be a list of days")
+        names: list[str] = []
+        for day in days:
+            name = day.strip().lower() if isinstance(day, str) else day
+            if name not in DAYS:
+                raise ValueError(f"{where}.days: {day!r} is not a day, use {', '.join(DAYS)}")
+            if name in seen:
+                raise ValueError(f"{where}.days: {name} is in more than one program")
+            seen.add(name)
+            names.append(name)
+        entries = program.get("entries")
+        if not isinstance(entries, list) or not entries:
+            raise ValueError(f"{where}.entries must be a list with at least one entry")
+        out: list[dict[str, Any]] = []
+        previous = -1
+        for j, entry in enumerate(entries):
+            minute, item = _entry_body(entry, f"{where}.entries[{j}]")
+            if not out and minute != 0:
+                raise ValueError(f"{where}.entries[0].time must be 00:00")
+            if minute <= previous:
+                raise ValueError(f"{where}.entries[{j}].time must be later than the entry before")
+            previous = minute
+            out.append(item)
+        body.append({"days": names, "entries": out})
+    if len(seen) != len(DAYS):
+        missing = ", ".join(d for d in DAYS if d not in seen)
+        raise ValueError(f"programs must cover all seven days, missing: {missing}")
+    return body
+
+
+def schedule_programs(view: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """The programs of GET /api/zones/{n}/schedule in the form of
+    schedule_payload."""
+    return [
+        {
+            "days": list(program["days"]),
+            "entries": [
+                {
+                    "time": f"{entry['minute'] // 60:02d}:{entry['minute'] % 60:02d}",
+                    "temperature": entry["setpoint_c"],
+                    "enabled": entry["enabled"],
+                }
+                for entry in program["entries"]
+            ],
+        }
+        for program in view.get("programs") or []
+    ]

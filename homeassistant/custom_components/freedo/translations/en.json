@@ -150,6 +150,30 @@
           "description": "Length of the timer, up to 7 days. Required with end rule timer, not allowed with the other end rules."
         }
       }
+    },
+    "get_schedule": {
+      "name": "Get schedule",
+      "description": "Returns the weekly schedule of a zone: programs with the days they run on and their time blocks. A zone with no schedule has no programs."
+    },
+    "set_schedule": {
+      "name": "Set schedule",
+      "description": "Replaces the weekly schedule of a zone. The programs cover each of the seven days once. Each program starts at 00:00 and its times increase.",
+      "fields": {
+        "programs": {
+          "name": "Programs",
+          "description": "A list of programs. Each has days (mon to sun) and entries. Each entry has time (HH:MM), temperature (5 to 25 C) and enabled (default true, false switches the zone off)."
+        }
+      }
+    },
+    "copy_schedule": {
+      "name": "Copy schedule",
+      "description": "Copies the weekly schedule of a zone to other zones.",
+      "fields": {
+        "to": {
+          "name": "Copy to",
+          "description": "The zones that get the schedule."
+        }
+      }
     }
   },
   "selector": {
@@ -171,6 +195,10 @@
     "overlay_temperature_required": { "message": "Set a temperature with mode heat." },
     "overlay_temperature_not_allowed": { "message": "A temperature is not allowed with mode off." },
     "overlay_duration_required": { "message": "Set a duration with end rule timer." },
-    "overlay_duration_not_allowed": { "message": "A duration needs end rule timer." }
+    "overlay_duration_not_allowed": { "message": "A duration needs end rule timer." },
+    "invalid_schedule": { "message": "The schedule is not valid: {reason}" },
+    "no_schedule": { "message": "The zone {zone} has no schedule to copy." },
+    "not_a_zone": { "message": "{entity_id} is not a freedo heating zone." },
+    "copy_to_itself": { "message": "A zone cannot copy its schedule to itself." }
   }
 }

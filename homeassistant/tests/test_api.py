@@ -224,3 +224,25 @@ def test_install_zone_patch():
         ("PATCH", "/api/install/zones/1",
          {"device_overlay_end": "timer", "device_overlay_end_sec": 3600}),
     ]
+
+
+def test_zone_schedule():
+    view = {"zone": 1, "members": ["aaaa"], "programs": []}
+    session = FakeSession(
+        {
+            ("GET", "/api/zones/1/schedule"): (200, view),
+            ("GET", "/api/zones/2/schedule"): (404, {"error": "zone 2 has no schedule"}),
+            ("GET", "/api/zones/3/schedule"): (503, {"error": "no installation"}),
+            ("PUT", "/api/zones/1/schedule"): (200, view),
+        }
+    )
+    client = FreedoClient(session, "h", 8080)
+    assert run(client.zone_schedule(1)) == view
+    # A zone with no schedule reads as none, any other error stays one.
+    assert run(client.zone_schedule(2)) is None
+    with pytest.raises(FreedoApiError):
+        run(client.zone_schedule(3))
+    programs = [{"days": ["mon"], "entries": [{"minute": 0, "setpoint_c": 17, "enabled": True}]}]
+    assert run(client.set_zone_schedule(1, programs)) == view
+    assert session.calls[-1]["method"] == "PUT"
+    assert session.calls[-1]["json"] == {"programs": programs}

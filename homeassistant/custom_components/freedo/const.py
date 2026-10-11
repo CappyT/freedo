@@ -20,3 +20,6 @@ PENDING_SEC = 15 * 60
 
 SERVICE_BOOST = "boost"
 SERVICE_SET_OVERLAY = "set_overlay"
+SERVICE_GET_SCHEDULE = "get_schedule"
+SERVICE_SET_SCHEDULE = "set_schedule"
+SERVICE_COPY_SCHEDULE = "copy_schedule"

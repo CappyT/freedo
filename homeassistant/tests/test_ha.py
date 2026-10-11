@@ -42,7 +42,17 @@ from pytest_homeassistant_custom_component.common import (  # noqa: E402
 
 import custom_components.freedo  # noqa: E402,F401  # the target of the client patch
 from custom_components.freedo.api import FreedoApiError, FreedoConnectionError  # noqa: E402
-from test_model import BOILER, HEALTH, HOME, INSTALL, INSTALL_ZONES, NODES, ZONES  # noqa: E402
+from test_model import (  # noqa: E402
+    BOILER,
+    HEALTH,
+    HOME,
+    INSTALL,
+    INSTALL_ZONES,
+    NODES,
+    SCHEDULE,
+    WEEK,
+    ZONES,
+)
 
 DOMAIN = "freedo"
 LIVING = "climate.living"
@@ -61,6 +71,8 @@ class FakeClient:
         self.home_json = copy.deepcopy(HOME)
         self.install_json = copy.deepcopy(INSTALL_ZONES)
         self.settings_json = copy.deepcopy(INSTALL)
+        # GET /api/zones/{n}/schedule by zone: zone 1 holds a schedule, zone 2 none.
+        self.schedules = {1: copy.deepcopy(SCHEDULE)}
         # The error GET /api/install raises, None to answer settings_json.
         self.settings_error: Exception | None = None
         self.calls: list[tuple] = []
@@ -146,6 +158,14 @@ class FakeClient:
             raise FreedoApiError(400, "device_overlay_end: mode timer needs a duration_sec")
         row.update(fields)
         return {"rev": 9, "warnings": [], "zone": copy.deepcopy(row)}
+
+    async def zone_schedule(self, zone):
+        self.calls.append(("get_schedule", zone))
+        return copy.deepcopy(self.schedules.get(zone))
+
+    async def set_zone_schedule(self, zone, programs):
+        self.calls.append(("set_schedule", zone, programs))
+        return {"zone": zone, "programs": programs}
 
     async def push_window(self, zone, is_open):
         if self.window_errors:
@@ -716,3 +736,70 @@ async def test_zone_setting_error_is_a_home_assistant_error(hass, client):
     with pytest.raises(HomeAssistantError, match="not a heating zone"):
         await turn(hass, "turn_on", early)
     assert hass.states.get(early).state == "off"
+
+
+# --- weekly schedule ---
+
+
+async def test_get_schedule(hass, client):
+    await setup_entry(hass, client)
+    response = await hass.services.async_call(
+        DOMAIN, "get_schedule", {ATTR_ENTITY_ID: [LIVING, BEDROOM]},
+        blocking=True, return_response=True,
+    )
+    living = response[LIVING]
+    assert living["zone"] == 1
+    assert living["programs"][0]["days"] == ["mon", "tue", "wed", "thu", "fri"]
+    assert living["programs"][0]["entries"][1] == {"time": "06:30", "temperature": 21.0, "enabled": True}
+    # A zone with no schedule has no programs.
+    assert response[BEDROOM] == {"zone": 2, "programs": []}
+
+
+async def test_set_schedule(hass, client):
+    await setup_entry(hass, client)
+    await call_freedo(hass, "set_schedule", {ATTR_ENTITY_ID: BEDROOM, "programs": WEEK})
+    [(name, zone, body)] = client.calls
+    assert (name, zone) == ("set_schedule", 2)
+    assert body[0]["entries"][1] == {"minute": 390, "setpoint_c": 21.5, "enabled": True}
+    assert body[1]["days"] == ["sat", "sun"]
+
+
+@pytest.mark.parametrize(
+    "programs",
+    [
+        WEEK[:1],
+        [{"days": ["mon"], "entries": [{"time": "06:00", "temperature": 21}]}],
+        [dict(WEEK[0], entries=[{"time": "00:00", "temperature": 40}]), WEEK[1]],
+    ],
+)
+async def test_set_schedule_refuses_before_the_daemon(hass, client, programs):
+    await setup_entry(hass, client)
+    with pytest.raises(ServiceValidationError, match="not valid"):
+        await call_freedo(hass, "set_schedule", {ATTR_ENTITY_ID: BEDROOM, "programs": programs})
+    assert client.calls == []
+
+
+async def test_copy_schedule(hass, client):
+    await setup_entry(hass, client)
+    await call_freedo(hass, "copy_schedule", {ATTR_ENTITY_ID: LIVING, "to": [BEDROOM, BEDROOM]})
+    assert [c[:2] for c in client.calls] == [("get_schedule", 1), ("set_schedule", 2)]
+    body = client.calls[1][2]
+    assert body[0]["entries"][1] == {"minute": 390, "setpoint_c": 21.0, "enabled": True}
+    assert body[0]["entries"][2]["enabled"] is False
+    assert [p["days"] for p in body] == [p["days"] for p in SCHEDULE["programs"]]
+
+
+@pytest.mark.parametrize(
+    ("source", "targets", "message"),
+    [
+        (LIVING, [LIVING], "itself"),
+        (LIVING, ["climate.nowhere"], "not a freedo heating zone"),
+        (LIVING, ["switch.freedo_offline_schedule"], "not a freedo heating zone"),
+        (BEDROOM, [LIVING], "no schedule"),
+    ],
+)
+async def test_copy_schedule_refuses(hass, client, source, targets, message):
+    await setup_entry(hass, client)
+    with pytest.raises(ServiceValidationError, match=message):
+        await call_freedo(hass, "copy_schedule", {ATTR_ENTITY_ID: source, "to": targets})
+    assert not [c for c in client.calls if c[0] == "set_schedule"]

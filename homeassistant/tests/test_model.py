@@ -3,6 +3,8 @@
 The fixtures are synthetic and follow the JSON the daemon writes.
 """
 
+import pytest
+
 from model import (
     boiler_unsupported,
     node_calibration,
@@ -10,6 +12,8 @@ from model import (
     node_display,
     outdoor_payload,
     parse,
+    schedule_payload,
+    schedule_programs,
     window_payload,
     window_zones,
     zone_boost,
@@ -108,6 +112,20 @@ INSTALL_ZONES = {
          "open_window_detection": True, "open_window_duration_sec": 900,
          "early_start": False, "device_overlay_end": None,
          "device_overlay_end_sec": None},
+    ],
+}
+
+# GET /api/zones/{n}/schedule of zone 1.
+SCHEDULE = {
+    "zone": 1,
+    "members": ["aaaa", "bbbb"],
+    "programs": [
+        {"days": ["mon", "tue", "wed", "thu", "fri"], "mask": 31,
+         "entries": [{"minute": 0, "setpoint_c": 17.0, "enabled": True},
+                     {"minute": 390, "setpoint_c": 21.0, "enabled": True},
+                     {"minute": 1320, "setpoint_c": 17.0, "enabled": False}]},
+        {"days": ["sat", "sun"], "mask": 96,
+         "entries": [{"minute": 0, "setpoint_c": 18.5, "enabled": True}]},
     ],
 }
 
@@ -359,3 +377,81 @@ def test_zone_settings_rows():
     assert zone_offset_mode(d, d.zones[2]) == "config"
     # No installation read (503): no row.
     assert zone_offset_mode(data(), d.zones[1]) is None
+
+
+WEEK = [
+    {"days": ["mon", "tue", "wed", "thu", "fri"],
+     "entries": [{"time": "00:00", "temperature": 17},
+                 {"time": "06:30", "temperature": 21.5, "enabled": True},
+                 {"time": "22:00", "temperature": 17, "enabled": False}]},
+    {"days": ["Sat", "sun"], "entries": [{"time": "00:00:00", "temperature": 18}]},
+]
+
+
+def test_schedule_payload():
+    assert schedule_payload(WEEK) == [
+        {"days": ["mon", "tue", "wed", "thu", "fri"],
+         "entries": [{"minute": 0, "setpoint_c": 17, "enabled": True},
+                     {"minute": 390, "setpoint_c": 21.5, "enabled": True},
+                     {"minute": 1320, "setpoint_c": 17, "enabled": False}]},
+        {"days": ["sat", "sun"], "entries": [{"minute": 0, "setpoint_c": 18, "enabled": True}]},
+    ]
+
+
+def test_schedule_view_round_trips():
+    programs = schedule_programs(SCHEDULE)
+    assert programs[0]["entries"][1] == {"time": "06:30", "temperature": 21.0, "enabled": True}
+    assert programs[0]["entries"][2]["enabled"] is False
+    body = schedule_payload(programs)
+    assert [p["days"] for p in body] == [p["days"] for p in SCHEDULE["programs"]]
+    assert body[0]["entries"][1] == {"minute": 390, "setpoint_c": 21.0, "enabled": True}
+    assert schedule_programs({}) == []
+
+
+def _week(**change):
+    """WEEK with the fields of one entry or program replaced."""
+    import copy
+
+    week = copy.deepcopy(WEEK)
+    for path, value in change.items():
+        target = week
+        *head, last = path.split(".")
+        for key in head:
+            target = target[int(key)] if key.isdigit() else target[key]
+        if last.isdigit():
+            target[int(last)] = value
+        else:
+            target[last] = value
+    return week
+
+
+@pytest.mark.parametrize(
+    ("programs", "message"),
+    [
+        ([], "at least one program"),
+        ("mon", "list"),
+        (_week(**{"0.days": []}), "list of days"),
+        (_week(**{"0.days": ["mon", "funday"]}), "not a day"),
+        (_week(**{"1.days": ["sat"]}), "all seven days"),
+        (_week(**{"1.days": ["fri", "sat", "sun"]}), "more than one program"),
+        (_week(**{"0.entries": []}), "at least one entry"),
+        (_week(**{"0.entries.0.time": "00:05"}), "must be 00:00"),
+        (_week(**{"0.entries.1.time": "00:00"}), "later than the entry before"),
+        (_week(**{"0.entries.2.time": "06:30"}), "later than the entry before"),
+        (_week(**{"0.entries.1.time": "25:00"}), "not a time of day"),
+        (_week(**{"0.entries.1.time": "06:30:15"}), "whole minute"),
+        (_week(**{"0.entries.1.time": 390}), "as HH:MM"),
+        (_week(**{"0.entries.1.temperature": 26}), "within 5..25"),
+        (_week(**{"0.entries.1.temperature": 4.9}), "within 5..25"),
+        (_week(**{"0.entries.1.temperature": 21.123}), "two decimal places"),
+        (_week(**{"0.entries.1.temperature": "21"}), "as a number"),
+        (_week(**{"0.entries.1.temperature": True}), "as a number"),
+        (_week(**{"0.entries.1.enabled": "yes"}), "true or false"),
+        (_week(**{"0.entries.1.mode": "x"}), "unknown fields: mode"),
+        (_week(**{"0.zone": 1}), "unknown fields: zone"),
+        ([5], "must be a mapping"),
+    ],
+)
+def test_schedule_payload_refuses(programs, message):
+    with pytest.raises(ValueError, match=message):
+        schedule_payload(programs)

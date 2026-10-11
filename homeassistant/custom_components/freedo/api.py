@@ -146,6 +146,22 @@ class FreedoClient:
         open_window_duration_sec, device_overlay_end, device_overlay_end_sec."""
         return await self._request("PATCH", f"/api/install/zones/{int(zone)}", fields)
 
+    async def zone_schedule(self, zone: int) -> dict[str, Any] | None:
+        """The weekly schedule of a zone, None when no member holds one."""
+        try:
+            return await self._request("GET", f"/api/zones/{int(zone)}/schedule")
+        except FreedoApiError as err:
+            if err.status == 404:
+                return None
+            raise
+
+    async def set_zone_schedule(
+        self, zone: int, programs: list[dict[str, Any]]
+    ) -> dict[str, Any]:
+        return await self._request(
+            "PUT", f"/api/zones/{int(zone)}/schedule", {"programs": programs}
+        )
+
     async def push_outdoor(self, temp_c: float) -> dict[str, Any]:
         return await self._request("POST", "/api/outdoor", {"tempC": temp_c})
 

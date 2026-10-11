@@ -43,3 +43,39 @@ set_overlay:
     duration:
       selector:
         duration:
+
+get_schedule:
+  target:
+    entity:
+      integration: freedo
+      domain: climate
+
+set_schedule:
+  target:
+    entity:
+      integration: freedo
+      domain: climate
+  fields:
+    programs:
+      required: true
+      example: >-
+        [{"days": ["mon", "tue", "wed", "thu", "fri"], "entries":
+        [{"time": "00:00", "temperature": 17}, {"time": "06:30", "temperature": 21},
+        {"time": "22:00", "temperature": 17}]}, {"days": ["sat", "sun"], "entries":
+        [{"time": "00:00", "temperature": 18}, {"time": "08:00", "temperature": 21}]}]
+      selector:
+        object:
+
+copy_schedule:
+  target:
+    entity:
+      integration: freedo
+      domain: climate
+  fields:
+    to:
+      required: true
+      selector:
+        entity:
+          integration: freedo
+          domain: climate
+          multiple: true
