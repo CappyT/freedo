@@ -127,6 +127,87 @@ func TestBeaconSharesUnicastFrameCounter(t *testing.T) {
 	}
 }
 
+// A restart continues the interval of the burst an earlier process sent: it is
+// not due at once, it is due when the stored interval ends, and a stored instant
+// or interval that cannot hold (a clock set back, a shorter --beacon) is cut.
+func TestRestoreRouterAdvertContinuesTheInterval(t *testing.T) {
+	now := time.Unix(1000, 0)
+	newEmu := func() *EmuState {
+		return NewEmu(EmuConfig{Now: func() time.Time { return now }, RouterAdvertInterval: 600 * time.Second},
+			NewUnhandledLogger(io.Discard))
+	}
+	due := func(e *EmuState) bool {
+		_, due, err := e.MaybeBeacon()
+		if err != nil {
+			t.Fatal(err)
+		}
+		e.CompleteBeacon(false)
+		return due
+	}
+	tests := []struct {
+		name   string
+		last   time.Time
+		next   time.Duration
+		dueAt  time.Duration // after now
+		notDue time.Duration // negative: due at once
+	}{
+		{"interval in progress", now.Add(-100 * time.Second), 300 * time.Second, 200 * time.Second, 199 * time.Second},
+		{"interval over", now.Add(-400 * time.Second), 300 * time.Second, 0, -1},
+		{"clock set back", now.Add(time.Hour), 300 * time.Second, 300 * time.Second, 299 * time.Second},
+		{"shorter beacon option", now, time.Hour, 600 * time.Second, 599 * time.Second},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			now = time.Unix(1000, 0)
+			e := newEmu()
+			e.RestoreRouterAdvert(tt.last, tt.next)
+			if tt.notDue >= 0 {
+				now = now.Add(tt.notDue)
+				if due(e) {
+					t.Fatalf("burst due %s after the restore, want it later", tt.notDue)
+				}
+			}
+			now = time.Unix(1000, 0).Add(tt.dueAt)
+			if !due(e) {
+				t.Fatalf("burst not due %s after the restore", tt.dueAt)
+			}
+		})
+	}
+	t.Run("nothing restored", func(t *testing.T) {
+		now = time.Unix(1000, 0)
+		if !due(newEmu()) {
+			t.Fatal("a first start sends no burst")
+		}
+	})
+}
+
+// CompleteBeacon says whether a burst went on air, so the daemon stores the
+// instant of a real burst only.
+func TestCompleteBeaconReportsABurstOnAir(t *testing.T) {
+	e := NewEmu(EmuConfig{RouterAdvertInterval: 600 * time.Second}, NewUnhandledLogger(io.Discard))
+	if e.CompleteBeacon(true) {
+		t.Fatal("CompleteBeacon reported a burst that was never built")
+	}
+	if _, due, err := e.MaybeBeacon(); err != nil || !due {
+		t.Fatalf("due=%v err=%v", due, err)
+	}
+	if e.CompleteBeacon(false) {
+		t.Fatal("CompleteBeacon reported a burst that stayed off the air")
+	}
+	if _, _, ok := e.RouterAdvertState(); ok {
+		t.Fatal("a burst that stayed off the air moved the interval")
+	}
+	if _, due, err := e.MaybeBeacon(); err != nil || !due {
+		t.Fatalf("due=%v err=%v", due, err)
+	}
+	if !e.CompleteBeacon(true) {
+		t.Fatal("CompleteBeacon did not report a burst on air")
+	}
+	if _, next, ok := e.RouterAdvertState(); !ok || next < 200*time.Second || next > 600*time.Second {
+		t.Fatalf("next=%s ok=%v, want an interval of 200 to 600 s", next, ok)
+	}
+}
+
 // Each periodic advertisement follows the last one after a random time
 // between a third of the interval and all of it (RFC 4861, Contiki 200-600 s).
 func TestRouterAdvertIntervalIsRandom(t *testing.T) {

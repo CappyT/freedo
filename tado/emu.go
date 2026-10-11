@@ -5401,18 +5401,39 @@ func (e *EmuState) BeaconBurst() ([]Action, error) {
 	return actions, nil
 }
 
-func (e *EmuState) CompleteBeacon(sent bool) {
+// CompleteBeacon ends the burst BeaconBurst built. It reports whether the burst
+// went on air and so moved the interval of the next one.
+func (e *EmuState) CompleteBeacon(sent bool) bool {
 	if !e.routerAdvertPending {
-		return
+		return false
 	}
 	e.routerAdvertPending = false
 	if !sent {
-		return
+		return false
 	}
 	e.lastRouterAdvert = e.cfg.Now()
 	e.nextRouterAdvert = routerAdvertDelay(e.cfg.RouterAdvertInterval)
 	e.routerAdvertSent = true
 	e.stats.RouterAdvertisementsSent++
+	return true
+}
+
+// RouterAdvertState returns the instant of the last advertisement burst on air
+// and the delay drawn for the next one. ok is false before the first burst.
+func (e *EmuState) RouterAdvertState() (last time.Time, next time.Duration, ok bool) {
+	return e.lastRouterAdvert, e.nextRouterAdvert, e.routerAdvertSent
+}
+
+// RestoreRouterAdvert continues the interval of a burst that an earlier process
+// sent, so a restart does not start a new interval with a burst. A clock set
+// back since then cannot hold the next burst past one interval.
+func (e *EmuState) RestoreRouterAdvert(last time.Time, next time.Duration) {
+	if now := e.cfg.Now(); last.After(now) {
+		last = now
+	}
+	e.lastRouterAdvert = last
+	e.nextRouterAdvert = min(next, e.cfg.RouterAdvertInterval)
+	e.routerAdvertSent = true
 }
 
 // routerAdvertDelay draws the time to the next periodic advertisement,

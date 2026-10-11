@@ -6,10 +6,12 @@ package daemon
 import (
 	"context"
 	"errors"
+	"io"
 	"testing"
 	"time"
 
 	"freedo/internal/install"
+	"freedo/internal/radio"
 	"freedo/tado"
 )
 
@@ -167,5 +169,55 @@ func TestMIDResumesPastStored(t *testing.T) {
 	}
 	if want := stored + 1; v.(uint16) != want {
 		t.Errorf("first MID after the restart = %#x, want %#x", v, want)
+	}
+}
+
+// TestRouterAdvertIntervalSurvivesARestart: a daemon that restarts in a loop
+// sends one burst, then waits out the interval it drew, and does not send a
+// burst at every start.
+func TestRouterAdvertIntervalSurvivesARestart(t *testing.T) {
+	path := t.TempDir() + "/state.db"
+	in := windowInstall(t, nil)
+	clock := newTestClock(windowStart)
+	start := func() (*daemon, *tado.EmuState) {
+		cfg := in.EmuConfig()
+		cfg.Now = clock.now
+		cfg.RouterAdvertInterval = 10 * time.Minute
+		emu := tado.NewEmu(cfg, tado.NewUnhandledLogger(io.Discard))
+		d := newDaemon(in, emu, radio.NewMock(nil), false, "live")
+		if err := d.attachState(newTestStore(t, path)); err != nil {
+			t.Fatal(err)
+		}
+		if err := d.restoreRouterAdvert(emu); err != nil {
+			t.Fatal(err)
+		}
+		return d, emu
+	}
+	due := func(emu *tado.EmuState) bool {
+		_, due, err := emu.MaybeBeacon()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return due
+	}
+
+	d, emu := start()
+	if !due(emu) {
+		t.Fatal("a first start sends no burst")
+	}
+	d.completeBeacon(true)
+	_, next, _ := emu.RouterAdvertState()
+
+	for i := range 3 {
+		clock.advance(20 * time.Second)
+		_, emu = start()
+		if due(emu) {
+			t.Fatalf("restart %d, %s after the burst: a burst is due before the interval of %s ends", i+1, time.Duration(i+1)*20*time.Second, next)
+		}
+	}
+	clock.advance(next)
+	_, emu = start()
+	if !due(emu) {
+		t.Fatal("no burst is due after the interval ended")
 	}
 }

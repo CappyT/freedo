@@ -32,6 +32,11 @@ Echo Request with an Echo Reply and a Neighbor Solicitation for its address with
 Neighbor Advertisement. The advertisements need `--tx`. In dry-run the daemon logs the
 solicitation in the unhandled log.
 
+A restart continues the interval of the last burst. The daemon stores the instant of each
+burst and the interval it drew, and sends no burst at start until that interval ends. A daemon
+that restarts in a loop sends one burst for each interval, as the commercial coordinator does,
+and not one at every start. A start after a longer stop sends the burst at once.
+
 The advertisement carries an IPv4 gateway and an IPv4 DNS address. The installation options
 `router_gateway` and `router_dns` set them. Both default to `0.0.0.0`. Write them with
 `PATCH /api/install` (see [API.md](API.md#installation-options)). Not verified on a device.

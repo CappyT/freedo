@@ -809,7 +809,7 @@ func (d *daemon) txActions(actions []tado.Action) {
 		if frames != nil {
 			if batcher, ok := d.radio.(asyncBatchRadio); ok {
 				err := batcher.SendBatch(frames)
-				d.emu.CompleteBeacon(err == nil)
+				d.completeBeacon(err == nil)
 				if err != nil {
 					log.Printf("async batch tx: %v", err)
 				}
@@ -820,7 +820,7 @@ func (d *daemon) txActions(actions []tado.Action) {
 	for _, a := range actions {
 		d.tx(a)
 	}
-	d.emu.CompleteBeacon(!d.dryRun)
+	d.completeBeacon(!d.dryRun)
 }
 
 func (d *daemon) frame(fr []byte) {
@@ -846,7 +846,7 @@ func (d *daemon) handleFrame(fr []byte, paired bool) {
 		for _, a := range actions {
 			d.tx(a)
 		}
-		d.emu.CompleteBeacon(!d.dryRun)
+		d.completeBeacon(!d.dryRun)
 		return
 	}
 	batch := make([]tado.Action, 0, len(actions))
@@ -871,7 +871,7 @@ func (d *daemon) handleFrame(fr []byte, paired bool) {
 	result, err := batcher.SendImmediate(batch, !d.emu.BridgeSeen())
 	d.revertUnsubmitted(batch, append(append([]tado.Action(nil), result.Submitted...), result.Accepted...))
 	markAwaitingCSL(d.emu, result)
-	d.emu.CompleteBeacon(err == nil)
+	d.completeBeacon(err == nil)
 	if err != nil {
 		log.Printf("immediate tx: %v", err)
 		return
@@ -1377,6 +1377,47 @@ func (d *daemon) restoreCounters(e *tado.EmuState) error {
 		return nil
 	}
 	return d.leaseCounters(e, true)
+}
+
+const (
+	metaRouterAdvertAt   = "router_advert_at"   // unix seconds of the last burst on air
+	metaRouterAdvertNext = "router_advert_next" // seconds drawn for the next burst
+)
+
+// completeBeacon ends a router advertisement burst and stores its instant.
+func (d *daemon) completeBeacon(sent bool) {
+	if !d.emu.CompleteBeacon(sent) || d.state == nil {
+		return
+	}
+	last, next, _ := d.emu.RouterAdvertState()
+	if err := d.state.SetCounterResume(context.Background(), map[string]uint64{
+		metaRouterAdvertAt: uint64(last.Unix()), metaRouterAdvertNext: uint64(next / time.Second),
+	}); err != nil {
+		log.Printf("persist router advertisement instant: %v", err)
+	}
+}
+
+// restoreRouterAdvert continues the interval of the last burst across a
+// restart. The coordinator advertises every 200 to 600 s (PROTOCOL.md, Router
+// advertisement). A daemon that restarts in a loop would otherwise send a
+// 254-frame burst at every start and hold the radio for a second each time.
+func (d *daemon) restoreRouterAdvert(e *tado.EmuState) error {
+	if d.state == nil {
+		return nil
+	}
+	ctx := context.Background()
+	at, foundAt, err := install.ReadMetaUint(ctx, d.state.db, metaRouterAdvertAt)
+	if err != nil {
+		return err
+	}
+	next, foundNext, err := install.ReadMetaUint(ctx, d.state.db, metaRouterAdvertNext)
+	if err != nil {
+		return err
+	}
+	if foundAt && foundNext && at <= math.MaxInt64 && next <= uint64(math.MaxInt64/time.Second) {
+		e.RestoreRouterAdvert(time.Unix(int64(at), 0), time.Duration(next)*time.Second)
+	}
+	return nil
 }
 
 // leasesCounters reports whether the daemon stores resume points: it
@@ -4259,6 +4300,10 @@ flags:
 	if err := d.restoreCounters(emu); err != nil {
 		closeStore(store)
 		die("frame counters: %v", err)
+	}
+	if err := d.restoreRouterAdvert(emu); err != nil {
+		closeStore(store)
+		die("router advertisement: %v", err)
 	}
 	if err := d.restoreEnergy(); err != nil {
 		closeStore(store)
