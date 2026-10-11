@@ -170,12 +170,19 @@ try {
 			Boolean(await tab.waitFor(`document.querySelector('[data-testid="token-gate"]') !== null`)),
 			'the app asks for the token when the daemon refuses the request'
 		);
-		await tab.evaluate(`(() => {
-			const input = document.querySelector('[data-testid="token-gate"] input');
-			input.value = ${JSON.stringify(TOKEN)};
-			input.dispatchEvent(new Event('input', { bubbles: true }));
-			document.querySelector('[data-testid="token-gate"] form').requestSubmit();
-		})()`);
+		const enter = (value) =>
+			tab.evaluate(`(() => {
+				const input = document.querySelector('[data-testid="token-gate"] input');
+				input.value = ${JSON.stringify(value)};
+				input.dispatchEvent(new Event('input', { bubbles: true }));
+				document.querySelector('[data-testid="token-gate"] form').requestSubmit();
+			})()`);
+		await enter('not-the-token');
+		check(
+			Boolean(await tab.waitFor(`document.querySelector('[data-testid="token-gate"] [role="alert"]') !== null`)),
+			'the app says that the daemon refused a wrong token'
+		);
+		await enter(TOKEN);
 		check(
 			Boolean(await tab.waitFor(`document.body.innerText.includes('Living room')`)),
 			'the zones load through the prefix after the token is entered'
