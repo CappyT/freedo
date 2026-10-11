@@ -3,8 +3,10 @@ package daemon
 // api_schedule: the weekly schedule of a zone. The device pulls the document
 // from its own resource, so a write fans the same document out to every zone
 // member and a read takes it back from the first member that holds one. The hot
-// water program is the exception: the daemon keeps it and never serves it,
-// because the thermostat's offline engine would run it on its heating zone.
+// water program is the exception: the daemon keeps it, evaluates it and writes
+// each block change to the thermostat. No device pulls it as a sched document,
+// because the thermostat's offline engine would run it on its heating zone. The
+// HTTP routes read and write it like any other zone program.
 
 import (
 	"context"

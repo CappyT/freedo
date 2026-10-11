@@ -265,7 +265,8 @@ func (e *EmuState) TakeInterfaceModuleLearned() bool {
 }
 
 // UnknownInterfaceModules names the declared wall thermostats whose interface
-// module id is not known yet. None of them is served a d/config document.
+// module id is not known yet. Each of them is served the d/config document
+// without tag 015d.
 func (e *EmuState) UnknownInterfaceModules() []string {
 	if e.inst == nil {
 		return nil
