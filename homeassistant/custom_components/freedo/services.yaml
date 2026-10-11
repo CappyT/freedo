@@ -45,6 +45,17 @@ set_overlay:
         duration:
           enable_day: true
 
+set_window:
+  target:
+    entity:
+      integration: freedo
+      domain: climate
+  fields:
+    open:
+      default: true
+      selector:
+        boolean:
+
 get_schedule:
   target:
     entity:

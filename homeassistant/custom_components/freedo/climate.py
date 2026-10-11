@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import timedelta
 import time
 from typing import Any
@@ -23,7 +24,7 @@ from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv, entity_platform
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import DOMAIN, SERVICE_BOOST, SERVICE_SET_OVERLAY
+from .const import DOMAIN, SERVICE_BOOST, SERVICE_SET_OVERLAY, SERVICE_SET_WINDOW
 from .coordinator import FreedoConfigEntry, FreedoCoordinator
 from .entity import FreedoScheduleEntity, call_api
 from .model import (
@@ -86,6 +87,9 @@ async def async_setup_entry(
             ),
         },
         "async_set_overlay",
+    )
+    platform.async_register_entity_service(
+        SERVICE_SET_WINDOW, {vol.Optional("open", default=True): cv.boolean}, "async_set_window"
     )
 
 
@@ -285,6 +289,18 @@ class FreedoZoneClimate(FreedoScheduleEntity, ClimateEntity):
             self._pending_target = None
         self._pending_mode = (hvac_mode, deadline)
         self.async_write_ha_state()
+        await self.coordinator.async_request_refresh()
+
+    async def async_set_window(self, open: bool = True) -> None:
+        """Open the window state of the zone, or reset it. The daemon ends only
+        the hold of this source: a hold from a valve detector runs on."""
+        zone = self._zone
+        if zone is None:
+            return
+        view = await call_api(self.coordinator.client.push_window(zone.number, open))
+        if isinstance(view, Mapping):
+            self.coordinator.data.windows[zone.number] = dict(view)
+            self.coordinator.async_update_listeners()
         await self.coordinator.async_request_refresh()
 
     async def async_turn_on(self) -> None:

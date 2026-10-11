@@ -171,6 +171,16 @@
         }
       }
     },
+    "set_window": {
+      "name": "Set open window",
+      "description": "Activates or resets the open window state of a heating zone. A reset ends the state set from Home Assistant. It does not end a state the valves detected.",
+      "fields": {
+        "open": {
+          "name": "Open",
+          "description": "True activates the open window state, false resets it."
+        }
+      }
+    },
     "boost_all": {
       "name": "Boost all zones",
       "description": "Starts or stops the boost of every heating zone.",

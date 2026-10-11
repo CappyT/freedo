@@ -1062,6 +1062,52 @@ async def test_copy_schedule_refuses_a_room_hot_water_pair(hass, client, source,
     assert client.calls == []
 
 
+# --- open window by hand ---
+
+
+async def test_set_window_activates_and_resets(hass, client):
+    entry = await setup_entry(hass, client)
+    zone_window = entity_id(hass, entry, "binary_sensor", "zone2_window")
+    assert hass.states.get(zone_window).state == "off"
+
+    async def daemon_window(zone, is_open):
+        # The daemon answers with the window view of the zone and reports it.
+        client.windows.append((zone, is_open))
+        view = {"open": is_open, "source": "external" if is_open else None, "since": None,
+                "deadline": None, "undelivered": []}
+        client.zones_json["declared"][zone - 1]["window"] = view
+        return copy.deepcopy(view)
+
+    client.push_window = daemon_window
+    # The default of the field is to activate.
+    await call_freedo(hass, "set_window", {ATTR_ENTITY_ID: BEDROOM})
+    assert client.windows == [(2, True)]
+    assert hass.states.get(BEDROOM).attributes["window_open"] is True
+    assert hass.states.get(BEDROOM).attributes["window_source"] == "external"
+    assert hass.states.get(zone_window).state == "on"
+
+    await call_freedo(hass, "set_window", {ATTR_ENTITY_ID: BEDROOM, "open": False})
+    assert client.windows == [(2, True), (2, False)]
+    assert hass.states.get(BEDROOM).attributes["window_open"] is False
+    assert hass.states.get(zone_window).state == "off"
+
+
+async def test_set_window_targets_heating_zones_only(hass, client):
+    await setup_entry(hass, client)
+    # The service is an entity service of the climate entities: the hot water
+    # zone has no window and the daemon would answer 400.
+    await call_freedo(hass, "set_window", {ATTR_ENTITY_ID: [LIVING, HOT_WATER], "open": True})
+    assert client.windows == [(1, True)]
+
+
+async def test_set_window_error_is_a_home_assistant_error(hass, client):
+    await setup_entry(hass, client)
+    client.window_errors.append(FreedoApiError(400, "zone 2: the zone has no open window"))
+    with pytest.raises(HomeAssistantError, match="no open window"):
+        await call_freedo(hass, "set_window", {ATTR_ENTITY_ID: BEDROOM})
+    assert client.windows == []
+
+
 # --- diagnostics ---
 
 
@@ -1415,7 +1461,7 @@ def test_service_selectors_are_valid():
     )
     assert set(services) == {
         "boost", "boost_all", "copy_schedule", "get_schedule", "resume_all",
-        "set_overlay", "set_schedule",
+        "set_overlay", "set_schedule", "set_window",
     }
     for spec in services.values():
         for field in ((spec or {}).get("fields") or {}).values():
