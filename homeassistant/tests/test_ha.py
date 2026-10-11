@@ -6,6 +6,7 @@ They run only with pytest-homeassistant-custom-component installed.
 
 import asyncio
 import copy
+import pathlib
 from datetime import timedelta
 from unittest.mock import patch
 
@@ -1024,3 +1025,20 @@ async def test_home_services_without_a_loaded_zone(hass, client):
         await call_freedo(hass, "boost_all", {})
     with pytest.raises(ServiceValidationError, match="No freedo zone"):
         await call_freedo(hass, "resume_all", {})
+
+
+def test_service_selectors_are_valid():
+    """Home Assistant refuses a service field whose selector it cannot build."""
+    from homeassistant.helpers import selector
+    from homeassistant.util.yaml import load_yaml_dict
+
+    services = load_yaml_dict(
+        str(pathlib.Path(custom_components.freedo.__file__).parent / "services.yaml")
+    )
+    assert set(services) == {
+        "boost", "boost_all", "copy_schedule", "get_schedule", "resume_all",
+        "set_overlay", "set_schedule",
+    }
+    for spec in services.values():
+        for field in ((spec or {}).get("fields") or {}).values():
+            selector.validate_selector(field["selector"])
