@@ -34,6 +34,8 @@ from .const import (
 from .coordinator import FreedoConfigEntry, FreedoCoordinator
 from .entity import FreedoEntity, call_api
 from .model import (
+    OVERLAY_END_MAX_SEC,
+    OVERLAY_END_RULES,
     ZONE_MAX_C,
     ZONE_MIN_C,
     Zone,
@@ -51,9 +53,7 @@ from .model import (
     zone_target_temperature,
 )
 
-END_RULES = ("manual", "timer", "until_next")
-# The daemon bounds a timer overlay at 7 days (tado.OverlayMaxDuration).
-MAX_OVERLAY = timedelta(days=7)
+MAX_OVERLAY = timedelta(seconds=OVERLAY_END_MAX_SEC)
 
 # A write reaches a valve at its next CSL wake-up, so the reported values lag.
 # The entity shows the requested value until the valve reports it, or at most
@@ -76,10 +76,11 @@ async def async_setup_entry(
     async_add_entities(
         FreedoZoneClimate(coordinator, zone) for zone in coordinator.data.heating_zones()
     )
-    entity_platform.async_get_current_platform().async_register_entity_service(
+    platform = entity_platform.async_get_current_platform()
+    platform.async_register_entity_service(
         SERVICE_BOOST, {vol.Optional("on", default=True): cv.boolean}, "async_boost"
     )
-    entity_platform.async_get_current_platform().async_register_entity_service(
+    platform.async_register_entity_service(
         SERVICE_SET_OVERLAY,
         {
             vol.Optional(ATTR_HVAC_MODE, default=HVACMode.HEAT): vol.In(
@@ -88,14 +89,13 @@ async def async_setup_entry(
             vol.Optional(ATTR_TEMPERATURE): vol.All(
                 vol.Coerce(float), vol.Range(min=ZONE_MIN_C, max=ZONE_MAX_C)
             ),
-            vol.Optional("end_rule", default="manual"): vol.In(END_RULES),
+            vol.Optional("end_rule", default="manual"): vol.In(OVERLAY_END_RULES),
             vol.Optional("duration"): vol.All(
                 cv.time_period, vol.Range(min=timedelta(seconds=1), max=MAX_OVERLAY)
             ),
         },
         "async_set_overlay",
     )
-    platform = entity_platform.async_get_current_platform()
     platform.async_register_entity_service(
         SERVICE_GET_SCHEDULE, None, "async_get_schedule", supports_response=SupportsResponse.ONLY
     )
