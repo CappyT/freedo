@@ -113,6 +113,9 @@ export const en = {
 	'ends.hours': 'Hours',
 	'ends.minutes': 'Minutes',
 	'ends.timerRange': 'Choose a time from 1 minute to 7 days.',
+	'ends.noProgram': 'This zone has no schedule, so a change that ends at the next block never ends. Choose a set time, or create a schedule.',
+	'zone.off.confirm.title': 'Turn off {zone}?',
+	'zone.off.confirm.body': 'The zone does not heat while it is off. The change lasts: {rule}.',
 
 	'window.title': 'Window',
 	'window.open': 'Open',

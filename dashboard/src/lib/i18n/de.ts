@@ -113,6 +113,9 @@ export const de: Record<Key, string> = {
 	'ends.hours': 'Stunden',
 	'ends.minutes': 'Minuten',
 	'ends.timerRange': 'Wähle eine Zeit von 1 Minute bis 7 Tagen.',
+	'ends.noProgram': 'Diese Zone hat keinen Zeitplan, deshalb endet eine Änderung bis zum nächsten Block nie. Wähle eine feste Zeit oder lege einen Zeitplan an.',
+	'zone.off.confirm.title': '{zone} ausschalten?',
+	'zone.off.confirm.body': 'Die Zone heizt nicht, solange sie aus ist. Die Änderung gilt: {rule}.',
 
 	'window.title': 'Fenster',
 	'window.open': 'Offen',

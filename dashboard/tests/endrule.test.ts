@@ -1,5 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import { END_RULES, timerSeconds, validTimer } from '../src/lib/endrule.ts';
+import { END_RULES, defaultEndRule, timerSeconds, validTimer } from '../src/lib/endrule.ts';
+
+describe('the rule offered first', () => {
+	it('is the next block where the zone has a program', () => {
+		expect(defaultEndRule('heating', true)).toBe('until_next');
+		expect(defaultEndRule('hotwater', true)).toBe('until_next');
+	});
+
+	it('is "until I end it" where the zone has none, because the next block never comes', () => {
+		expect(defaultEndRule('heating', false)).toBe('manual');
+		expect(defaultEndRule('hotwater', false)).toBe('manual');
+	});
+
+	it('behaves as before when the daemon does not say', () => {
+		expect(defaultEndRule('heating', undefined)).toBe('until_next');
+		expect(defaultEndRule('hotwater', undefined)).toBe('manual');
+	});
+});
 
 describe('end rules', () => {
 	it('offer the four rule names of the API', () => {

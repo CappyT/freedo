@@ -7,14 +7,18 @@
 		rule = $bindable(),
 		hours = $bindable(),
 		minutes = $bindable(),
-		name
-	}: { rule: EndRule; hours: number; minutes: number; name: string } = $props();
+		name,
+		noProgram = false
+	}: { rule: EndRule; hours: number; minutes: number; name: string; noProgram?: boolean } = $props();
 
 	const invalid = $derived(rule === 'timer' && !validTimer(timerSeconds(hours, minutes)));
 </script>
 
 <fieldset class="ends">
 	<legend>{t('ends.legend')}</legend>
+	{#if noProgram}
+		<p class="note program-hint" data-testid="no-program">{t('ends.noProgram')}</p>
+	{/if}
 	{#each END_RULES as value (value)}
 		<label class="option">
 			<input type="radio" {name} {value} bind:group={rule} />
@@ -56,6 +60,10 @@
 		font-weight: var(--weight-medium);
 		font-size: var(--text-small-size);
 		color: var(--text-muted);
+	}
+
+	.program-hint {
+		margin: 0 0 0.35rem;
 	}
 
 	.option {

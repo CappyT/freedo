@@ -8,7 +8,8 @@
 	import DeviceList from '#lib/DeviceList.svelte';
 	import { data } from '#lib/data.svelte.ts';
 	import EndRuleField from '#lib/EndRuleField.svelte';
-	import { timerSeconds, validTimer } from '#lib/endrule.ts';
+	import ConfirmDialog from '#lib/ConfirmDialog.svelte';
+	import { defaultEndRule, timerSeconds, validTimer } from '#lib/endrule.ts';
 	import { fmt, t } from '#lib/i18n.svelte.ts';
 	import Icon from '#lib/Icon.svelte';
 	import SchedulePanel from '#lib/SchedulePanel.svelte';
@@ -26,7 +27,10 @@
 
 	let draft = $state<number | null>(null);
 	let touched = $state(false);
-	let rule = $state<EndRule>('until_next');
+	// The rule the person chose. Until then the page offers the default of the zone.
+	let chosen = $state<EndRule | null>(null);
+	const rule = $derived(chosen ?? defaultEndRule('heating', model?.zone.target.hasProgram));
+	let confirmOff: ConfirmDialog | undefined = $state();
 	let hours = $state(1);
 	let minutes = $state(0);
 	let busy = $state(false);
@@ -37,6 +41,7 @@
 	const end = $derived({ mode: rule, durationSec: timerSeconds(hours, minutes) });
 	const endOk = $derived(rule !== 'timer' || validTimer(end.durationSec));
 	const windowState = $derived(model?.zone.window);
+	const offRule = $derived(rule === 'timer' ? `${t('ends.timer')}, ${fmt.duration(end.durationSec)}` : t(`ends.${rule}`));
 
 	// Follow the zone until the user moves the dial.
 	$effect(() => {
@@ -111,13 +116,19 @@
 					</div>
 				</div>
 
-				<EndRuleField bind:rule bind:hours bind:minutes name="end-rule" />
+				<EndRuleField
+					bind:rule={() => rule, (value) => (chosen = value)}
+					bind:hours
+					bind:minutes
+					name="end-rule"
+					noProgram={model.zone.target.hasProgram === false}
+				/>
 
 				<div class="row">
 					<button class="btn primary" disabled={busy || !endOk} onclick={() => run(() => api.setpoint(number, shown, end))}>
 						<Icon name="check" size={18} />{t('zone.apply', { temp: fmt.temp(shown) })}
 					</button>
-					<button class="btn" disabled={busy || !endOk} onclick={() => run(() => api.off(number, end))}>
+					<button class="btn" disabled={busy || !endOk} onclick={() => confirmOff?.show()}>
 						<Icon name="power" size={18} />{t('zone.off')}
 					</button>
 					<button class="btn" disabled={busy} onclick={() => run(() => api.auto(number))}>
@@ -165,6 +176,14 @@
 		<SchedulePanel zone={number} {range} />
 	{/if}
 </section>
+
+<ConfirmDialog
+	bind:this={confirmOff}
+	title={t('zone.off.confirm.title', { zone: model?.zone.name ?? '' })}
+	body={t('zone.off.confirm.body', { rule: offRule })}
+	confirm={t('zone.off')}
+	onconfirm={() => run(() => api.off(number, end))}
+/>
 
 <style>
 	.back {

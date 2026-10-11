@@ -113,6 +113,9 @@ export const fr: Record<Key, string> = {
 	'ends.hours': 'Heures',
 	'ends.minutes': 'Minutes',
 	'ends.timerRange': 'Choisis une durée de 1 minute à 7 jours.',
+	'ends.noProgram': 'Cette zone n’a pas de programme, donc un changement qui se termine au bloc suivant ne se termine jamais. Choisis une durée fixe, ou crée un programme.',
+	'zone.off.confirm.title': 'Éteindre {zone} ?',
+	'zone.off.confirm.body': 'La zone ne chauffe pas tant qu’elle est éteinte. Le changement dure : {rule}.',
 
 	'window.title': 'Fenêtre',
 	'window.open': 'Ouverte',

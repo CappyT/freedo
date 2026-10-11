@@ -4,7 +4,7 @@
 	import Dial from '#lib/Dial.svelte';
 	import { data } from '#lib/data.svelte.ts';
 	import EndRuleField from '#lib/EndRuleField.svelte';
-	import { timerSeconds, validTimer } from '#lib/endrule.ts';
+	import { defaultEndRule, timerSeconds, validTimer } from '#lib/endrule.ts';
 	import { fmt, t } from '#lib/i18n.svelte.ts';
 	import Icon from '#lib/Icon.svelte';
 	import SchedulePanel from '#lib/SchedulePanel.svelte';
@@ -18,8 +18,9 @@
 
 	let draft = $state<number | null>(null);
 	let touched = $state(false);
-	// until_next needs a hot water program, which a new installation lacks.
-	let rule = $state<EndRule>('manual');
+	// The rule the person chose. Until then the page offers the default of the zone.
+	let chosen = $state<EndRule | null>(null);
+	const rule = $derived(chosen ?? defaultEndRule('hotwater', model?.zone.target.hasProgram));
 	let hours = $state(1);
 	let minutes = $state(0);
 	let busy = $state(false);
@@ -98,7 +99,13 @@
 					</div>
 				</div>
 
-				<EndRuleField bind:rule bind:hours bind:minutes name="dhw-end-rule" />
+				<EndRuleField
+					bind:rule={() => rule, (value) => (chosen = value)}
+					bind:hours
+					bind:minutes
+					name="dhw-end-rule"
+					noProgram={model.zone.target.hasProgram === false}
+				/>
 
 				<div class="row">
 					<button class="btn primary" disabled={busy || !endOk} onclick={() => run(() => api.setpoint(model.zone.number, shown, end))}>

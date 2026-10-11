@@ -89,6 +89,8 @@ export interface Target {
 	boost: boolean;
 	known: boolean;
 	on: boolean;
+	/** The daemon holds a weekly program for the zone. A daemon without the field leaves it undefined. */
+	hasProgram?: boolean;
 }
 
 export interface DeclaredZone {
