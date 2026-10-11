@@ -1935,6 +1935,15 @@ func (e *EmuState) cacheBody(ns *NodeState, srcEUI []byte, m *CoAPMessage, fallb
 
 func (e *EmuState) cacheTLVs(ns *NodeState, tlvs []TLV, uri string, class FrameClass, srcLbl, dstLbl, hexFrame string) {
 	res := ResourceOf(uri, tlvs)
+	if slices.ContainsFunc(tlvs, func(t TLV) bool { return t.Tag == maxChBoundsTag }) {
+		before := map[int]float64{}
+		for _, id := range e.flowCircuits() {
+			if v, ok := e.servedFlowC(id); ok {
+				before[id] = v
+			}
+		}
+		defer e.flowBoundsMoved(before)
+	}
 	for _, t := range tlvs {
 		ns.raw[t.Tag] = append([]byte{}, t.Val...)
 		if t.Tag == "0162" {
@@ -3225,11 +3234,13 @@ func (e *EmuState) ServedFlow(id int) (tempC float64, served, fetched bool) {
 }
 
 func (e *EmuState) servedFlowC(id int) (float64, bool) {
-	if v, ok := e.flowC[id]; ok {
-		return v, true
+	v, ok := e.flowC[id]
+	if !ok {
+		def, set := e.defaultFlowC()
+		v, ok = float64(def), set
 	}
-	def, ok := e.defaultFlowC()
-	return float64(def), ok
+	_, maxC := e.FlowBounds(id)
+	return min(v, float64(maxC)), ok
 }
 
 func (e *EmuState) defaultFlowC() (int, bool) {
@@ -3250,8 +3261,8 @@ func (e *EmuState) flowETagInput() []byte {
 	if hasDef {
 		out = binary.BigEndian.AppendUint16(out, uint16(def*100))
 	}
-	for _, id := range slices.Sorted(maps.Keys(e.flowC)) {
-		if v := e.flowC[id]; !hasDef || v != float64(def) {
+	for _, id := range e.flowCircuits() {
+		if v, ok := e.servedFlowC(id); ok && (!hasDef || v != float64(def)) {
 			out = binary.BigEndian.AppendUint16(out, uint16(id))
 			out = binary.BigEndian.AppendUint16(out, uint16(v*100+0.5))
 		}

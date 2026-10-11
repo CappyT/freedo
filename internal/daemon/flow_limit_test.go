@@ -33,6 +33,8 @@ type flowView struct {
 			Curve     bool    `json:"curve"`
 			ComputedC *int    `json:"computedC"`
 			ServedC   float64 `json:"servedC"`
+			MinC      int     `json:"minC"`
+			MaxC      int     `json:"maxC"`
 			ChangedAt *string `json:"changedAt"`
 			Fetched   bool    `json:"fetched"`
 		} `json:"circuits"`
@@ -198,6 +200,24 @@ func TestFlowLimitUnset(t *testing.T) {
 	}
 	if def, _ := flow(); def != float64(52) {
 		t.Errorf("defaultC = %v after the patch, want 52", def)
+	}
+}
+
+// TestFlowLimitBounds: each circuit reports the window it accepts, minC and
+// maxC. The window is the daemon's until the heat source reports a CH setpoint
+// bound, and then its top follows the boiler: a limit above it is served cut.
+func TestFlowLimitBounds(t *testing.T) {
+	in := windowInstall(t, func(in *tado.Install) { in.Options.FlowLimitC = new(70) })
+	d, url := newWindowDaemon(t, in, newTestClock(windowStart), nil)
+	if c := boilerFlow(t, url).FlowLimit.Circuits[0]; c.MinC != 30 || c.MaxC != 75 || c.ServedC != 70 {
+		t.Fatalf("before a report: %+v, want 30..75 and 70 served", c)
+	}
+	feed(t, d, in, "RU1000000001", false, tado.CoAPReq{
+		Type: "CON", Code: "0.03", MID: 0x7001, Path: []string{"h", "7654321", "hvac", "config"},
+		Payload: tado.TLV{Tag: "0471", Val: []byte{0x17, 0x70}}.Encode(),
+	})
+	if c := boilerFlow(t, url).FlowLimit.Circuits[0]; c.MinC != 30 || c.MaxC != 60 || c.ServedC != 60 {
+		t.Errorf("after a bound of 60: %+v, want 30..60 and 60 served", c)
 	}
 }
 

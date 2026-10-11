@@ -3,6 +3,7 @@ package tado
 import (
 	"bytes"
 	"encoding/hex"
+	"strconv"
 	"testing"
 )
 
@@ -98,6 +99,66 @@ func TestThermostatConfigETagWithoutFlowLimit(t *testing.T) {
 	if bytes.Equal(etag(), base) {
 		t.Error("a reload that sets flow_limit_c left the ETag")
 	}
+}
+
+// TestFlowBoundsFollowBoiler: the top of the served flow limit is the CH
+// setpoint bound the heat source reports in tag 0471. A bound outside the
+// window is ignored, a served value above the bound is cut to it, and the
+// thermostat ETag and the pending fetch follow. Tag 046f, the MaxTSet read
+// back, bounds nothing.
+func TestFlowBoundsFollowBoiler(t *testing.T) {
+	in := synthInstall(t)
+	limit := 70
+	in.Options.FlowLimitC = &limit
+	ru, _ := synthDevices(t, in)
+	e := NewEmu(in.EmuConfig(), nil)
+	e.OnFrame(moduleReport(t, in, ru, 71, 0x7701))
+	report := func(tag string, centi uint16) {
+		t.Helper()
+		e.cacheTLVs(e.node(ru), []TLV{{Tag: tag, Val: []byte{byte(centi >> 8), byte(centi)}}},
+			"h/7654321/hvac/config", ClassData, "", "", "")
+	}
+	etag := func() []byte { return append([]byte(nil), e.cfgDoc[hexEUI(ru)].etag...) }
+	want := func(step string, minC, maxC int, served float64) {
+		t.Helper()
+		if lo, hi := e.FlowBounds(1); lo != minC || hi != maxC {
+			t.Errorf("%s: bounds %d..%d, want %d..%d", step, lo, hi, minC, maxC)
+		}
+		if got, ok, _ := e.ServedFlow(1); !ok || got != served {
+			t.Errorf("%s: served %g %v, want %g", step, got, ok, served)
+		}
+	}
+	want("before a report", 30, 75, 70)
+	base := etag()
+
+	report("046f", 4801)
+	want("after the MaxTSet read-back", 30, 75, 70)
+	if !bytes.Equal(etag(), base) {
+		t.Error("the MaxTSet read-back moved the ETag")
+	}
+
+	report(maxChBoundsTag, 6000)
+	want("after a bound of 60", 30, 60, 60)
+	if bytes.Equal(etag(), base) {
+		t.Error("a bound under the served limit left the ETag")
+	}
+	if n := e.FlowPending(); n != 1 {
+		t.Errorf("FlowPending = %d after the bound, want 1", n)
+	}
+	if m := flowGET(t, in, e, ru, 0x7702, nil); hex.EncodeToString(m.Payload) != "2040021770" {
+		t.Errorf("c/1/config = %x, want 2040 02 1770", m.Payload)
+	}
+
+	for _, centi := range []uint16{2500, 9000} {
+		report(maxChBoundsTag, centi)
+		want("a bound of "+strconv.Itoa(int(centi)/100), 30, 75, 70)
+		if !bytes.Equal(etag(), base) {
+			t.Errorf("a bound of %d outside the window moved the ETag", centi/100)
+		}
+	}
+
+	report(maxChBoundsTag, 7200)
+	want("a bound above the limit", 30, 72, 70)
 }
 
 func TestFlowCurveFlowAt(t *testing.T) {

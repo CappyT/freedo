@@ -209,14 +209,14 @@ class FlowLimitNumber(FreedoEntity, NumberEntity):
     """POST /api/boiler/flow: the flow limit (tag 2040) the wall thermostat
     that drives the circuit is served. The thermostat takes a new value by
     re-opening its OpenTherm session, at its next poll. A circuit that follows
-    its weather curve takes no value from here: the number is unavailable."""
+    its weather curve takes no value from here: the number is unavailable. The
+    range is the circuit's minC and maxC, which the daemon cuts to the boiler's
+    highest CH setpoint; a daemon that sends none gets the fixed range."""
 
     _attr_device_class = NumberDeviceClass.TEMPERATURE
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
     _attr_entity_category = EntityCategory.CONFIG
     _attr_translation_key = "flow_limit"
-    _attr_native_min_value = FLOW_LIMIT_MIN_C
-    _attr_native_max_value = FLOW_LIMIT_MAX_C
     _attr_native_step = 1
     _attr_mode = NumberMode.BOX
 
@@ -239,6 +239,16 @@ class FlowLimitNumber(FreedoEntity, NumberEntity):
             and not view.get("curve")
             and self._circuit in self.coordinator.data.circuit_sources
         )
+
+    @property
+    def native_min_value(self) -> float:
+        value = (self._view or {}).get("minC")
+        return FLOW_LIMIT_MIN_C if value is None else value
+
+    @property
+    def native_max_value(self) -> float:
+        value = (self._view or {}).get("maxC")
+        return FLOW_LIMIT_MAX_C if value is None else value
 
     @property
     def native_value(self) -> float | None:

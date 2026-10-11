@@ -23,6 +23,59 @@ const (
 	DefaultFlowMinIntervalSec = 30 * 60
 )
 
+// maxChBoundsTag is the hvac/config tag in which the boiler reports the highest
+// CH setpoint it accepts (OpenTherm id 49), in centi-degrees. Tag 046f is not
+// that bound: it reads back the MaxTSet the thermostat applied.
+const maxChBoundsTag = "0471"
+
+// FlowBounds returns the lowest and highest flow limit, in whole degrees, that
+// circuit id is served: the daemon window with its top cut to the CH setpoint
+// bound the circuit's heat source reports, when that lies inside the window.
+func (e *EmuState) FlowBounds(id int) (minC, maxC int) {
+	minC, maxC = int(FlowMinC), int(FlowMaxC)
+	if e.inst == nil {
+		return minC, maxC
+	}
+	src, err := e.inst.HeatSource(id)
+	if err != nil {
+		return minC, maxC
+	}
+	if ns := e.nodes[hexEUI(src.WireEUI())]; ns != nil && len(ns.raw[maxChBoundsTag]) == 2 {
+		if bound := int(be(ns.raw[maxChBoundsTag])) / 100; bound >= minC && bound < maxC {
+			maxC = bound
+		}
+	}
+	return minC, maxC
+}
+
+// flowCircuits returns the ids of the circuits that can be served a limit: the
+// declared ones and the ones with a value of their own.
+func (e *EmuState) flowCircuits() []int {
+	ids := slices.Collect(maps.Keys(e.flowC))
+	if e.inst != nil {
+		for i := range e.inst.Circuits {
+			ids = append(ids, e.inst.Circuits[i].ID)
+		}
+	}
+	slices.Sort(ids)
+	return slices.Compact(ids)
+}
+
+// flowBoundsMoved marks the circuits whose served limit is not the one in
+// before as not fetched, and moves the thermostat ETag with them.
+func (e *EmuState) flowBoundsMoved(before map[int]float64) {
+	moved := false
+	for id, was := range before {
+		if now, ok := e.servedFlowC(id); ok && now != was {
+			e.flowFresh[id] = true
+			moved = true
+		}
+	}
+	if moved {
+		e.refreshThermostatDocuments()
+	}
+}
+
 // FlowCurve is the weather compensation curve of one heating circuit: the
 // line through two points, clamped to MinC..MaxC and rounded to whole degrees,
 // because the thermostat truncates the fraction of tag 2040.

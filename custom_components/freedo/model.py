@@ -22,7 +22,9 @@ KIND_VALVE = "valve"
 # The values of GET /api/nodes Display.orientation that a write accepts.
 ORIENTATIONS = ("horizontal", "vertical")
 
-# The daemon rejects a flow limit outside this range with 400 (tag 2040).
+# The daemon rejects a flow limit outside this range with 400 (tag 2040). A
+# daemon that reports minC and maxC per circuit sets the range; these are the
+# fallback.
 FLOW_LIMIT_MIN_C = 30.0
 FLOW_LIMIT_MAX_C = 75.0
 

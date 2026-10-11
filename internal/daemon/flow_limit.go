@@ -96,6 +96,8 @@ func (d *daemon) tickFlowLimits(e *tado.EmuState) bool {
 		if !ok {
 			continue
 		}
+		_, maxC := e.FlowBounds(c.ID)
+		target = min(target, maxC)
 		served, isServed, _ := e.ServedFlow(c.ID)
 		if isServed && math.Abs(float64(target)-served) < float64(inst.Options.FlowHysteresis()) {
 			continue
@@ -178,8 +180,9 @@ func (d *daemon) postOutdoor(w http.ResponseWriter, r *http.Request) {
 }
 
 // flowLimitView renders the outdoor reading and, per circuit, the flow limit
-// the curve and the adaptation compute, the one it is served, when either last
-// changed it and whether the thermostat has fetched it. adaptedC, adaptedAt
+// the curve and the adaptation compute, the one it is served, the lowest and
+// highest value it accepts (minC and maxC: the boiler can cut the top), when
+// either last changed it and whether the thermostat has fetched it. adaptedC, adaptedAt
 // and adaptReason describe the adaptation: its limit, and when and why it last
 // moved.
 func (d *daemon) flowLimitView(e *tado.EmuState) map[string]any {
@@ -206,8 +209,9 @@ func (d *daemon) flowLimitView(e *tado.EmuState) map[string]any {
 	for i := range inst.Circuits {
 		id := inst.Circuits[i].ID
 		served, isServed, fetched := e.ServedFlow(id)
+		minC, maxC := e.FlowBounds(id)
 		view := map[string]any{
-			"id": id, "curve": false, "computedC": nil, "servedC": nil,
+			"id": id, "curve": false, "computedC": nil, "servedC": nil, "minC": minC, "maxC": maxC,
 			"changedAt": nil, "fetched": fetched,
 			"adapt": inst.Options.FlowAutoAdaptEnabled(), "adaptedC": nil, "adaptedAt": nil, "adaptReason": nil,
 		}

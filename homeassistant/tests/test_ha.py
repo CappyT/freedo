@@ -1381,6 +1381,32 @@ async def test_flow_limit_number(hass, client):
     assert len(client.calls) == 1
 
 
+async def test_flow_limit_number_range_follows_the_daemon(hass, client):
+    # The daemon cuts the top to the boiler's highest CH setpoint.
+    with_flow_circuit(client, minC=32, maxC=60)
+    entry = await setup_entry(hass, client)
+    flow = entity_id(hass, entry, "number", "circuit1_flow_limit")
+    state = hass.states.get(flow)
+    assert (state.attributes["min"], state.attributes["max"]) == (32, 60)
+
+    await hass.services.async_call(
+        "number", "set_value", {ATTR_ENTITY_ID: flow, "value": 60}, blocking=True
+    )
+    for value in (31, 61):
+        with pytest.raises(ServiceValidationError):
+            await hass.services.async_call(
+                "number", "set_value", {ATTR_ENTITY_ID: flow, "value": value}, blocking=True
+            )
+    assert client.calls == [("flow", 1, 60.0, "0000000000000001")]
+
+
+async def test_flow_limit_number_range_falls_back_without_the_fields(hass, client):
+    with_flow_circuit(client)
+    entry = await setup_entry(hass, client)
+    state = hass.states.get(entity_id(hass, entry, "number", "circuit1_flow_limit"))
+    assert (state.attributes["min"], state.attributes["max"]) == (30, 75)
+
+
 async def test_flow_limit_number_follows_the_curve(hass, client):
     with_flow_circuit(client, curve=True, computedC=41)
     entry = await setup_entry(hass, client)
