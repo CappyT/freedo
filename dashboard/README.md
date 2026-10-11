@@ -5,7 +5,8 @@ The daemon embeds the files and serves them. No Node process runs at run time.
 
 ## Commands
 
-You need Node 22.17 or later. Run the commands in this directory.
+The image and CI use the Node line in `ARG NODE_VERSION` of the `Dockerfile` (24, the current LTS line).
+SvelteKit 3 needs Node 22.17 or later. Run the commands in this directory.
 
 | Command | Effect |
 |---|---|

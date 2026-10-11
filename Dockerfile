@@ -1,8 +1,12 @@
 # syntax=docker/dockerfile:1
 
+# The Node line of the dashboard build. This is the one place that names it: the CI job of
+# the dashboard reads this line. SvelteKit 3 needs Node 22.17 or later.
+ARG NODE_VERSION=24
+
 # The dashboard stage builds static files, so one build serves every platform. The
 # layout under /src follows the repository: the app imports ../assets/brand.
-FROM --platform=$BUILDPLATFORM node:22-alpine AS dashboard
+FROM --platform=$BUILDPLATFORM node:${NODE_VERSION}-alpine AS dashboard
 WORKDIR /src/dashboard
 COPY dashboard/package.json dashboard/package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci

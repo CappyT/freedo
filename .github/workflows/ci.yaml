@@ -27,9 +27,13 @@ jobs:
         working-directory: dashboard
     steps:
       - uses: actions/checkout@v7.0.1
+      # The Dockerfile names the Node line, so the image and this job use the same one.
+      - id: node
+        working-directory: .
+        run: echo "version=$(sed -n 's/^ARG NODE_VERSION=//p' Dockerfile)" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@v7.1.0
         with:
-          node-version: 22
+          node-version: ${{ steps.node.outputs.version }}
           cache: npm
           cache-dependency-path: dashboard/package-lock.json
       - uses: actions/setup-go@v7.0.0

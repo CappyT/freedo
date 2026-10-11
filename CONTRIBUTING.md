@@ -20,7 +20,8 @@ The three commands are the gate. A change passes when all three succeed. CI runs
 it also runs the Home Assistant tests, compiles the bridge firmware and builds both container
 images.
 
-The dashboard needs Node 22.17 or later. The three Go commands work without Node, because
+The dashboard needs Node 22.17 or later. The image and CI use the line in `ARG NODE_VERSION` of the
+`Dockerfile`. The three Go commands work without Node, because
 `internal/web/dist` holds only a placeholder. A change to `dashboard/` passes these checks, and CI also
 runs `npm run prefix-check`:
 
