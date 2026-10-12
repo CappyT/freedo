@@ -27,6 +27,9 @@
 	let deleteTarget = $state<Preset | null>(null);
 	let confirmDelete: ConfirmDialog | undefined = $state();
 
+	// The daemon names a set utc_offset_min "fixed offset", in English.
+	const zoneLabel = (name: string) => (name === 'fixed offset' ? t('settings.timezone.fixed') : name);
+
 	/** +120 minutes reads UTC+02:00. */
 	function offset(minutes: number): string {
 		const sign = minutes < 0 ? '-' : '+';
@@ -215,7 +218,7 @@
 				{/if}
 				<div>
 					<dt>{t('settings.timezone')}</dt>
-					<dd class="text">{health.timezone ? `${health.timezone.name}, ${offset(health.timezone.offsetMin)}` : '-'}</dd>
+					<dd class="text">{health.timezone ? `${zoneLabel(health.timezone.name)}, ${offset(health.timezone.offsetMin)}` : '-'}</dd>
 				</div>
 				<div><dt>{t('settings.uptime')}</dt><dd>{fmt.uptime(health.uptimeSec)}</dd></div>
 				<div><dt>{t('settings.frames')}</dt><dd>{fmt.number(health.frames, 0)}</dd></div>

@@ -204,7 +204,7 @@ try {
 	await clickText('Turn off');
 	await tab.waitFor(`document.querySelector('dialog[open]')`);
 	await tab.evaluate(`document.querySelector('dialog[open] button.primary').click()`);
-	check(await toast('Sent to the daemon'), 'Turn off is sent after the person confirms');
+	check(await toast('Messages waiting for the device'), 'Turn off is sent after the person confirms');
 	check(requests.filter((r) => r.endsWith('/off')).length === 1, 'the confirmed command is sent once');
 
 	// 6. The active preset from the home page.
@@ -226,7 +226,7 @@ try {
 		s.value = '${preset.id}';
 		s.dispatchEvent(new Event('change', { bubbles: true }));
 	})()`);
-	check(await toast('Sent to the daemon'), 'switching the active preset is sent');
+	check(await toast('Messages waiting for the device'), 'switching the active preset is sent');
 	await sleep(500);
 	const active = (await (await fetch(daemon.base + '/api/home')).json()).preset;
 	check(active?.name === 'Check preset', `the daemon switched the active preset (${active?.name})`);
@@ -239,9 +239,9 @@ try {
 		'the panel shows the home program is in force at home'
 	);
 	await tab.evaluate(`document.querySelectorAll('[name=schedule-mode-8]')[1].click()`);
-	await tab.waitFor(`[...document.querySelectorAll('button')].some((b) => b.textContent.includes('Create away program'))`);
+	await tab.waitFor(`[...document.querySelectorAll('button')].some((b) => b.textContent.includes('Create away schedule'))`);
 	check(true, 'the zone page offers to create the away program');
-	await clickText('Create away program');
+	await clickText('Create away schedule');
 	await tab.waitFor(`document.querySelector('.block input[type=number]')`);
 	await clickText('Save schedule');
 	check(await toast('Schedule saved'), 'the away program is saved');
@@ -252,8 +252,8 @@ try {
 	// water page passes its zone number from the model that each poll replaces.
 	await open('#/hot-water', `document.querySelector('[name=schedule-mode-0]')`);
 	await tab.evaluate(`document.querySelectorAll('[name=schedule-mode-0]')[1].click()`);
-	await tab.waitFor(`[...document.querySelectorAll('button')].some((b) => b.textContent.includes('Create away program'))`);
-	await clickText('Create away program');
+	await tab.waitFor(`[...document.querySelectorAll('button')].some((b) => b.textContent.includes('Create away schedule'))`);
+	await clickText('Create away schedule');
 	await tab.waitFor(`document.querySelector('.block input[type=number]')`);
 	await tab.evaluate(`document.querySelector('.block input[type=number]').focus(); document.querySelector('.block input[type=number]').select()`);
 	await type('45');
