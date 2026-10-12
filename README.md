@@ -176,22 +176,23 @@ what is not verified on air. The routes are in [`docs/API.md`](docs/API.md). The
 | Geofencing | partial | A blueprint uses the presence of Home Assistant for the whole home. The daemon has no geofencing code. |
 | Open window detection | partial | A reset ends only a window that Home Assistant set. A window that a valve detected lasts until its time ends. |
 | Hot water: on, temperature, program | equal | The daemon keeps the program and writes the thermostat at each block change. |
-| Child lock | equal | Valves only. |
-| Identify a device | equal | Valves in a zone only. |
+| Child lock | equal | Valves only. The wall thermostat firmware has no child lock. |
+| Identify a device | equal | Valves in a zone only. The wall thermostat firmware registers `d/identify` too, not verified on air. |
 | Display orientation and change notice | equal | A full `d/config` write homes the valve motor, as with the commercial bridge. |
 | Valve calibration | equal | The command comes from firmware and ran on one valve. A `2.xx` answer does not guarantee the stroke. |
 | Temperature correction | equal | Three modes. `config` homes the motor. `dbg2` ran on one valve and is in no capture. |
-| Room temperature from an outside sensor | extra | Only in mode `setpoint`. Filter and limits are design estimates. Not verified on air. |
-| Manage rooms and devices | partial | Through the API. Home Assistant creates entities at integration start, so reload it after a change. |
+| Automatic correction from an outside sensor | extra | In modes `config` and `dbg2`, at most once per settable interval, with a deadband. Each write in mode `config` homes the motor. Not verified on air. |
+| Room temperature from an outside sensor | extra | Mode `setpoint` shifts the setpoints. With the automatic correction the learners read the sensor. Home Assistant chooses for each room a device of the room or the sensor. Filter and limits are design estimates. Not verified on air. |
+| Manage rooms and devices | partial | Through the API. The dashboard renames devices. Home Assistant chooses the measuring device of each room. A device declared without a serial takes it from its first request. Home Assistant creates entities at integration start, so reload it after a change. |
 | Interface | partial | A web dashboard on the daemon monitors and controls the zones, the hot water, the boiler and the devices. It has no installation management yet: use the API. Not tested on a real plant. |
 | Pair a device | partial | The pair window with firmware v2.9 is not verified on air. The integration opens the window and does not send the pair command. |
 | Remove a device | partial | The API reports the effects first. The delete sends no frame. The device leaves the network only after `factoryreset`. |
-| Firmware version and update | partial | A transfer route exists. No block was sent on air. freedo distributes no image. |
+| Firmware version and update | partial | The daemon keeps the version of each device across restarts and reads it once after start from a device that never reported it. A transfer route exists. No block was sent on air. freedo distributes no image. |
 | Flow limit | equal | The fixed limit is verified on air through the OpenTherm reading. |
 | Weather curve and automatic flow adaptation | partial | The curve has two points. The adaptation is a local controller and not the cloud algorithm. It is off by default. Not verified on air. |
 | Default weather curve for the flow limit | partial | A built-in curve under `flow_limit_c`, fitted on one plant and one season of monthly means. It is not the cloud algorithm. Home Assistant must feed the outdoor temperature. It is off by default. Not verified on air. |
 | Boiler telemetry and faults | partial | Boiler fault codes are in the API only. |
-| Energy and gas estimate | partial | Estimated from modulation and name-plate data. Not a measurement. Price and cost stay in the Home Assistant Energy panel. |
+| Energy and gas estimate | partial | Estimated from modulation and name-plate data. Not a measurement. Gas meter readings give an estimated meter value and, after two readings, a correction factor. Price and cost stay in the Home Assistant Energy panel. |
 | History and reports | partial | Home Assistant records the history. The daemon keeps no time series. |
 | Notifications | partial | Binary sensors raise the alerts. Push notifications are Home Assistant automations. |
 | Several users | not implemented | One bearer token. |

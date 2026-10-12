@@ -539,7 +539,10 @@ with Uri-Port `ffff`, Content-Format 42 and no query. `d/lock` carries `0290`:
 `01` to lock and `00` to unlock. `d/identify` carries an empty payload. The device
 answers `2.04` to both. The wall thermostat has no `d/lock` resource: its firmware
 holds no `d/lock` path and it answers `4.04`. So `EnqueueChildLock` refuses it, and
-the API answers 400 for any device that is not a valve. The node view reads the
+the API answers 400 for any device that is not a valve. The thermostat has no child
+lock in any form: its image holds no `0290`, its `d/config` record callback drops
+unknown tags, and its `/lock` report suffix has no caller. It registers `d/identify`
+the same way a valve does. No capture shows its answer or a visible effect. The node view reads the
 served lock state under `ChildLock`, null on a device that is not a valve.
 
 A valve GETs `d/<serial>/lock` with Block2 0/0/128. The captured answer is a
