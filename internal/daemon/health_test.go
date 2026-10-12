@@ -338,9 +338,15 @@ func TestHealthAndExitOnEndedRadio(t *testing.T) {
 // with no zone and no offset set, and for nothing else.
 func TestHealthReportsTimezone(t *testing.T) {
 	host := time.Local
-	time.Local = time.UTC
 	t.Cleanup(func() { time.Local = host })
 	now := time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC)
+	// The host zone is set before any server runs: a write to time.Local races
+	// with a live HTTP server, whose connection goroutines call time.Now.
+	time.Local = time.FixedZone("CET", 3600)
+	if w := utcZoneWarning(tado.Options{}, now); w != "" {
+		t.Errorf("a host zone of +01:00 warns: %q", w)
+	}
+	time.Local = time.UTC
 	for name, tc := range map[string]struct {
 		edit    func(*tado.Install)
 		want    tado.UTCZone
@@ -363,9 +369,5 @@ func TestHealthReportsTimezone(t *testing.T) {
 		if code := getJSON(t, url+"/api/health", &health); code != http.StatusOK || health.Timezone != tc.want {
 			t.Errorf("%s: health timezone = %+v (code %d), want %+v", name, health.Timezone, code, tc.want)
 		}
-	}
-	time.Local = time.FixedZone("CET", 3600)
-	if w := utcZoneWarning(tado.Options{}, now); w != "" {
-		t.Errorf("a host zone of +01:00 warns: %q", w)
 	}
 }
