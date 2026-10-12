@@ -2,6 +2,7 @@ package tado
 
 import (
 	"bytes"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"time"
@@ -14,6 +15,9 @@ import (
 const (
 	fwKind          = "fw"
 	fwStateResource = "d/fw/state"
+	// fwReadSpacing is the shortest time between two automatic d/fw/state reads
+	// after start.
+	fwReadSpacing = 30 * time.Second
 )
 
 // FwReply is the terminal outcome of one queued d/fw exchange. Code is empty
@@ -195,6 +199,107 @@ func (e *EmuState) observeFwState(m *CoAPMessage, src []byte) {
 func (e *EmuState) noteFwState(store map[string]FwStateReport, key string, body []byte) {
 	e.fwSeq++
 	store[key] = FwStateReport{Body: append([]byte(nil), body...), At: e.cfg.Now(), Seq: e.fwSeq}
+	e.fwChanged = true
+}
+
+// TakeFwStateChanged reports whether a device reported fw/state since the last
+// take, so the owner persists the newest body.
+func (e *EmuState) TakeFwStateChanged() bool {
+	changed := e.fwChanged
+	e.fwChanged = false
+	return changed
+}
+
+// ReadFirmwareState queues a GET d/fw/state for the first declared valve or wall
+// thermostat that holds no report yet, and returns its wire EUI hex, "" when it
+// queues nothing. The device serves d/fw/state on GET, so the daemon reads it
+// once after start for the devices that never PUT one, one read per device per
+// run. Two reads stay fwReadSpacing apart, and an unarmed radio queues nothing.
+// A failed or unanswered read is marked done and never retried.
+func (e *EmuState) ReadFirmwareState(now time.Time) string {
+	if !e.armed() || e.cfg.NoAutoQueue || e.inst == nil || e.fwReadAt.Add(fwReadSpacing).After(now) {
+		return ""
+	}
+	for i := range e.inst.Devices {
+		dev := &e.inst.Devices[i]
+		if dev.Kind != KindValve && dev.Kind != KindThermostat {
+			continue
+		}
+		wire := dev.WireEUI()
+		if len(wire) != 8 {
+			continue
+		}
+		key := hexEUI(wire)
+		if e.fwReads[key] {
+			continue
+		}
+		e.fwReads[key] = true
+		if len(e.fwPut[key].Body) > 0 || len(e.fwGet[key].Body) > 0 || e.fwLock[key] {
+			continue
+		}
+		e.fwReadAt = now
+		if err := e.EnqueueGet(key, fwStateResource, []string{"d", "fw", "state"}, nil); err != nil {
+			e.log.Log("Fw", dev.Ref(), "", rsnBuildFail+" fw/state read "+err.Error(), "")
+			return ""
+		}
+		return key
+	}
+	return ""
+}
+
+// restoreFwState replaces the fw/state reports from a snapshot, newest body per
+// device, and refills the node fw_* telemetry from it. The stored time keeps the
+// report's age, so FreshFwState still refuses a stale one after a restart. The
+// reports are a cache that the devices rebuild, so a bad entry is dropped
+// instead of failing the restore of the whole desired state.
+func (e *EmuState) restoreFwState(in map[string]DesiredFwState) {
+	e.fwPut = make(map[string]FwStateReport, len(in))
+	e.fwGet = map[string]FwStateReport{}
+	e.fwSeq = 0
+	for key, rep := range in {
+		wire, err := hex.DecodeString(key)
+		if err != nil || len(wire) != 8 || rep.At.IsZero() {
+			continue
+		}
+		if _, err := ParseFwState(rep.Body); err != nil {
+			continue
+		}
+		e.fwSeq++
+		e.fwPut[key] = FwStateReport{Body: append([]byte(nil), rep.Body...), At: rep.At, Seq: e.fwSeq}
+		e.refillFwTelemetry(e.node(wire), rep.Body)
+	}
+}
+
+// refillFwTelemetry writes the fw_* labels of a d/fw/state body into a node's
+// telemetry, the way cacheTLVs reads them from the report on the air.
+func (e *EmuState) refillFwTelemetry(ns *NodeState, body []byte) {
+	for _, t := range ParseTLVs(body) {
+		if info, ok := tagFor(t.Tag, ResDefault); ok {
+			ns.Telemetry[info.name] = info.decode(t.Val)
+		}
+	}
+}
+
+// exportFwState returns the newest fw/state body of each device, nil when none
+// reported.
+func (e *EmuState) exportFwState() map[string]DesiredFwState {
+	if len(e.fwPut) == 0 && len(e.fwGet) == 0 {
+		return nil
+	}
+	out := make(map[string]DesiredFwState, len(e.fwPut)+len(e.fwGet))
+	for key, put := range e.fwPut {
+		if get, ok := e.fwGet[key]; ok && get.Seq > put.Seq {
+			put = get
+		}
+		out[key] = DesiredFwState{Body: append([]byte(nil), put.Body...), At: put.At}
+	}
+	for key, get := range e.fwGet {
+		if _, ok := e.fwPut[key]; ok {
+			continue
+		}
+		out[key] = DesiredFwState{Body: append([]byte(nil), get.Body...), At: get.At}
+	}
+	return out
 }
 
 // FwStateReports returns the last fw/state target PUT and the last one it

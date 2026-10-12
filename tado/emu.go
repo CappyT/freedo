@@ -604,6 +604,12 @@ type EmuState struct {
 	fwPut   map[string]FwStateReport
 	fwGet   map[string]FwStateReport
 	fwSeq   uint64
+	// fwChanged marks a fw/state the owner has not persisted yet. fwReads marks
+	// the devices the wake-up read already asked, fwReadAt spaces two reads.
+	// See emu_fw.go.
+	fwChanged bool
+	fwReads   map[string]bool
+	fwReadAt  time.Time
 	// owReports holds the open window reports received since the daemon last
 	// took them: the daemon owns the zone window state they drive.
 	owReports []OpenWindowReport
@@ -716,6 +722,7 @@ func NewEmu(cfg EmuConfig, log *UnhandledLogger) *EmuState {
 		fwReply:        map[string]FwReply{},
 		fwPut:          map[string]FwStateReport{},
 		fwGet:          map[string]FwStateReport{},
+		fwReads:        map[string]bool{},
 		schedC:         map[int]float64{},
 		zoneDelivered:  map[string]uint64{},
 		tx:             cfg.TxCounter,
@@ -1838,7 +1845,9 @@ func (e *EmuState) recordGetResult(srcEUI []byte, m *CoAPMessage) (complete, acc
 	e.getRes[pending.resultKey] = append([]byte{}, pending.body...)
 	e.getCode[pending.resultKey] = m.Code
 	if m.Code == "2.05" && pending.resultKey == hexEUI(srcEUI)+"|"+fwStateResource {
-		e.noteFwState(e.fwGet, hexEUI(srcEUI), pending.body)
+		if _, err := ParseFwState(pending.body); err == nil {
+			e.noteFwState(e.fwGet, hexEUI(srcEUI), pending.body)
+		}
 	}
 	delete(e.pendGet, midKey{hexEUI(srcEUI), m.MID})
 	return true, true

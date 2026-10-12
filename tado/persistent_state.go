@@ -31,6 +31,13 @@ type DesiredSession struct {
 	IssuedAt time.Time `json:"issuedAt"`
 }
 
+// DesiredFwState is the newest d/fw/state body one device reported and when. At
+// keeps the report's age, so an upload still refuses a stale one after a restart.
+type DesiredFwState struct {
+	Body []byte    `json:"body"`
+	At   time.Time `json:"at"`
+}
+
 // DesiredBoostTimer is the deadline of the overlay zone ID runs on one node.
 // Its key is "<wire EUI>|<zone>". A bare wire EUI is the key of a store that
 // kept one timer per node: the restore moves it to the zone ID names. Rule is
@@ -59,6 +66,10 @@ type DesiredState struct {
 	InterfaceModule map[string]uint16 `json:"interfaceModule,omitempty"`
 	// Session holds the last session id served to each device on auth/token.
 	Session map[string]DesiredSession `json:"session,omitempty"`
+	// FwState holds the newest d/fw/state each device reported, keyed by wire EUI
+	// hex. It outlives a restart, so the node fw_* telemetry survives until the
+	// device reports again.
+	FwState map[string]DesiredFwState `json:"fwState,omitempty"`
 }
 
 // ExportDesiredState returns a detached snapshot safe for persistence.
@@ -76,6 +87,7 @@ func (e *EmuState) ExportDesiredState() DesiredState {
 		OfflineSchedule: cloneBoolMap(e.offlineSched),
 		InterfaceModule: make(map[string]uint16, len(e.moduleID)),
 		Session:         make(map[string]DesiredSession, len(e.sessions)),
+		FwState:         e.exportFwState(),
 	}
 	for k, v := range e.sessions {
 		out.Session[k] = DesiredSession{ID: append([]byte(nil), v.id...), IssuedAt: v.at}
@@ -195,6 +207,7 @@ func (e *EmuState) RestoreDesiredState(in DesiredState) error {
 			ns.SessionID = append([]byte(nil), s.id...)
 		}
 	}
+	e.restoreFwState(in.FwState)
 	e.withheldLogged = map[string]bool{}
 	e.refreshThermostatDocuments()
 	return nil

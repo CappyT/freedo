@@ -615,6 +615,15 @@ thermostat or from a `d/config` document of the thermostat, and stores it.
   answer appears in `result` and, decoded, in `decoded`. The version is `major<<6 | minor`.
   The status nibble is: bit 0 pending, bit 1 image, bit 2 active, bit 3 confirmed. Valves and
   thermostat both report type 8, so the type does not tell the hardware.
+- The daemon keeps the newest `d/fw/state` of each device with the durable desired state, with
+  the time it arrived. A restart refills the node `Telemetry` fields (`fw_run_version`,
+  `fw_build_hash`, the slot fields) from the stored body, so `GET /api/nodes` names the running
+  firmware before the device reports again. The stored time is kept, so a transfer still
+  refuses a report older than 5 minutes.
+- A device PUTs `d/<serial>/fw/state` only at boot and on an image slot change, so after start
+  the daemon reads `d/fw/state` once from each declared valve and wall thermostat that holds no
+  stored report. The reads need an armed transmitter and automatic queueing, go one device at a
+  time 30 s apart, and never repeat in a run. A failed read is not retried.
 - `POST /api/nodes/{id}/fw` starts the transfer of an image to one device. The body needs
   `confirm: true`, `version` (M.m), `imageKind` and `image` in base64. The daemon refuses the
   request in dry-run, after it heard the commercial bridge on air, and when the last

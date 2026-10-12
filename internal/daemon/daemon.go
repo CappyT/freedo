@@ -417,6 +417,7 @@ func (d *daemon) run(ctx context.Context) {
 			d.tickEnergy()
 			flowChanged := d.tickFlowLimits(d.emu)
 			utcChanged := d.tickUTCOffset(d.emu)
+			d.tickFwRead(d.emu)
 			targets, err := d.emu.ExpireBoosts(d.retryNow())
 			if err != nil {
 				log.Printf("boost restore: %v", err)
@@ -1470,14 +1471,18 @@ func (d *daemon) saveDesiredStateSnapshot(ctx context.Context, state tado.Desire
 // device that echoes it. A changed z/s block is saved too, at most once per
 // zoneStateSaveEvery: after a restart the window engine and the zone rewrites
 // restate the overlay from it. So is a delivered child lock or d/dbg2 record,
-// which moves the desired state on the device's answer. The tick saves what
-// the bound held back.
+// which moves the desired state on the device's answer, and a fw/state report,
+// so a restart keeps the running version. The tick saves what the bound held
+// back.
 func (d *daemon) saveLearned(e *tado.EmuState) {
 	learned, issued := e.TakeInterfaceModuleLearned(), e.TakeSessionIssued()
 	if e.TakeZoneStateChanged() {
 		d.unsaved = true
 	}
 	if e.TakeDeliveredChanged() {
+		d.unsaved = true
+	}
+	if e.TakeFwStateChanged() {
 		d.unsaved = true
 	}
 	if learned || issued {
@@ -2669,6 +2674,15 @@ func (d *daemon) tickUTCOffset(e *tado.EmuState) bool {
 		d.requestQueuedDispatch(target)
 	}
 	return changed || target != ""
+}
+
+// tickFwRead reads d/fw/state once from each declared valve and wall thermostat
+// that holds no report yet, one spaced read at a time. An unarmed radio queues
+// nothing.
+func (d *daemon) tickFwRead(e *tado.EmuState) {
+	if target := e.ReadFirmwareState(d.retryNow()); target != "" {
+		d.requestQueuedDispatch(target)
+	}
 }
 
 // rewriteZones queues one z/s write per zone, to its zoneWriteTargets. The
@@ -4088,7 +4102,7 @@ func Main(args []string) {
 	unhandled := fs.String("unhandled", "freedo-unhandled.log", "append the unhandled-frame log to this file (overrides unhandled_log)")
 	duration := fs.Duration("duration", 0, "stop the daemon after this long (0 = until Ctrl-C)")
 	beacon := fs.Duration("beacon", defaultBeaconInterval, "longest interval of the 0x49e8 router advertisement, each one random from a third of it, transmitted with --tx alone (0 = disabled; overrides beacon_sec)")
-	noAutoQueue := fs.Bool("no-auto-queue", false, "never queue automatic UTC-offset writes or zone forwarding")
+	noAutoQueue := fs.Bool("no-auto-queue", false, "never queue automatic writes: UTC-offset, zone forwarding, firmware reads")
 	tuneDebug := fs.Bool("tune-debug", false, "log the FREQEST reading of every received frame (overrides tune_debug)")
 	debugAPI := fs.Bool("debug-api", false, "serve /api/debug/dissect, /api/debug/decrypt and /api/debug/rx; they decrypt any frame a caller sends and stream live traffic (overrides debug_api)")
 	faultTimeDelay := fs.Duration("fault-time-delay", 0, "FAULT INJECTION (test F12): hold our answer to the \"time\" resource back by this long; past 5 s the device discards it and asks again")

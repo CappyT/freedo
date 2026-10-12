@@ -265,6 +265,7 @@ func (e *EmuState) dropDevice(key string) {
 	delete(e.fwReply, key)
 	delete(e.fwPut, key)
 	delete(e.fwGet, key)
+	delete(e.fwReads, key)
 	prefix := key + "|"
 	for k := range e.boostTimers {
 		if strings.HasPrefix(k, prefix) {
