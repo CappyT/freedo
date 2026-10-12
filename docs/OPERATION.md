@@ -92,6 +92,10 @@ Alpine image. The process runs as user 10001. The image holds the daemon with th
 embedded. The second target `addon` builds the Home Assistant add-on image. Its start
 command reads the add-on options, so use it only inside Home Assistant.
 
+Every release also attaches the daemon binary of each platform, `freedo-linux-amd64` and
+`freedo-linux-arm64`, taken from the image of the same release, with `SHA256SUMS`. The add-on beta
+channel downloads them when the add-on option `channel` is `beta`.
+
 ```sh
 docker pull ghcr.io/cappyt/freedo:latest
 docker build -t freedo:local .

@@ -31,10 +31,36 @@ before you use it.
 | `serial_port` | empty | The serial port of the radio bridge. Empty means no radio: the daemon only serves its API. |
 | `api_token` | empty | The bearer token of the API. Empty means the add-on creates one on the first start. |
 | `transmit` | off | Send frames on air. Off is dry-run: the daemon listens and decides, and sends nothing. |
+| `channel` | stable | The daemon channel. Stable runs the daemon of the image. Beta runs the newest pre-release from the GitHub releases of the repository. |
 
 The add-on starts in dry-run. Turn Transmit on only after the
 [first radio session](https://github.com/CappyT/freedo/blob/main/docs/OPERATION.md#first-radio-session)
 checks.
+
+## Channel
+
+One add-on and one data folder serve both channels. The channel only changes which daemon runs, so a
+paired installation stays.
+
+- `stable`: the daemon inside the add-on image.
+- `beta`: the newest pre-release of the daemon, with less testing on a real plant. The add-on
+  downloads `freedo-linux-<arch>` and `SHA256SUMS` from the GitHub releases of
+  `https://github.com/CappyT/freedo` into its data folder, checks the checksum, and runs the binary.
+  The checksum guards against a broken download. The trust is in the GitHub releases of the
+  repository. When the download fails, the add-on runs the newest beta it cached, and then the
+  daemon of the image. The add-on keeps the two newest cached versions under `/data/channel/`.
+
+Before the first start of a beta version, the add-on copies the database to
+`/data/backup/before-<version>/`, with the `-wal` and `-shm` files when they exist, and keeps the
+three newest copies.
+
+To return to stable, set `channel` to `stable`. On every start, the add-on asks the chosen daemon to
+check the schema version of the database. When the database is newer than the daemon reads, the
+add-on restores the newest copy from `/data/backup/`, moves the database written under the beta to
+`/data/backup/beta-<timestamp>/`, and starts. The data written under the beta stays in that folder:
+move it back only with the same or a newer daemon. When no copy exists, the add-on stops instead of
+starting the daemon on a database it cannot read. Keep these folders: the database holds the network
+key.
 
 ## Web interface
 

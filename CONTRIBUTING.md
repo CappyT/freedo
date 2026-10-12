@@ -66,7 +66,10 @@ in `custom_components/freedo/manifest.json` all say `X.Y.Z`. A pre-release has a
 `vX.Y.Z-beta.N`: `manifest.json` says `X.Y.Z-beta.N` and `addon/config.yaml` keeps the last stable
 version, because the add-on follows the stable releases only. The release workflow stops when the
 versions do not match these rules. It tags the images of a stable release `latest` and those of a
-pre-release `beta`, and it marks a pre-release as such on GitHub.
+pre-release `beta`, and it marks a pre-release as such on GitHub. Every release attaches the daemon
+binary of each platform, `freedo-linux-amd64` and `freedo-linux-arm64`, taken from the daemon image
+of the same release, and one `SHA256SUMS` for every released file. The add-on beta channel downloads
+those binaries.
 
 ## Rules for changes
 

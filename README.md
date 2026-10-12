@@ -114,8 +114,9 @@ The add-on and the integration follow two channels:
 - Stable: tags `vX.Y.Z`. The add-on store and HACS offer them by default.
 - Experimental: pre-release tags such as `vX.Y.Z-beta.N`, with less testing on a real plant. HACS
   offers them to the integration when you turn on the beta versions of the freedo repository. The
-  add-on stays on stable. The daemon images of a pre-release carry the version tag and `beta`, so a
-  container installation can run them.
+  add-on option `channel` set to `beta` runs the newest pre-release of the daemon without a second
+  add-on, so a paired installation stays. The daemon images of a pre-release carry the version tag
+  and `beta`, so a container installation can run them.
 
 The add-on starts in dry-run. See [`addon/DOCS.md`](addon/DOCS.md) for the options, the data and the
 backups. See [`custom_components/freedo/README.md`](custom_components/freedo/README.md) for the
