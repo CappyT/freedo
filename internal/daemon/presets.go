@@ -140,11 +140,11 @@ func (d *daemon) adoptHotWaterProgram(ctx context.Context) {
 // program store and copies the programs the coordinator already holds into it
 // as home programs: each heating zone from the served sched document of the
 // first member whose document decodes and keeps the week rules. The hot-water
-// program follows in adoptHotWaterProgram. It reads everything first and then writes
-// in one transaction, so a failed or interrupted start leaves no preset and
-// the next start migrates again. It writes only preset rows: the served
-// documents stay as they are, so a restart after the migration serves the same
-// documents and ETags as before.
+// program follows in adoptHotWaterProgram. It reads everything first and then
+// writes in one transaction, so a failed or interrupted start leaves no preset
+// and the next start migrates again. It writes only preset rows: the served
+// documents stay as they are, so a restart after the migration serves the
+// same documents and ETags as before.
 func (d *daemon) migrateDefaultPreset(ctx context.Context, e *tado.EmuState) error {
 	home := make(map[int][]tado.ScheduleProgram)
 	var moved []string
