@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.5.0
+
+- Profiles: a profile holds a home schedule and an away schedule for each room and for hot water.
+  At the first start the daemon puts the current schedules into the profile `Default` without a
+  write to the devices. Choose, create, rename and delete profiles from the home menu of the
+  dashboard and from the Programs page, which edits any profile before you activate it. Home
+  Assistant gets a Profile select and a blueprint that switches the profile by season.
+- Away schedules: while the home is away, a room with an away schedule follows it, and a room
+  without one keeps its away temperature. Hot water without an away schedule stays off.
+- Rooms in Home Assistant: Configure has two parts, Environment and Rooms. Rooms maps each room to
+  a Home Assistant area and to a room sensor, and the valves of a room follow its area. One repair
+  issue lists the rooms without an area. The Temperature source select offers the temperature
+  sensors of the area, then the devices of the room. One Room temperature correction select
+  replaces the offset mode select and the automatic correction switch, which move to the
+  diagnostic entities.
+- Identify on the wall thermostat: the thermostat shows "Hi!" on its display. The dashboard and
+  Home Assistant offer it for a thermostat in a room.
+- Dashboard: a renamed device shows its new name at once, the away schedule stays open across a
+  data poll, controls line up on desktop and phone, and the texts use one word for each thing.
+  Hot water is a card on the home page.
+- Home Assistant: shorter entity names that fit a device page, and every text says room and
+  freedo.
+- The database moves to schema 8. Version 0.4.0 cannot read it: keep the backup that Home
+  Assistant offers before the update, and restore it to go back.
+
 ## 0.4.0
 
 - Option `channel`: `beta` runs the newest pre-release of the daemon from the GitHub releases of
