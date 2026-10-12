@@ -70,7 +70,7 @@ freedo has not run for several days as the only coordinator of a plant.
   scratch. It is not available.
 - Supported hardware: the valves and the wall thermostats of the V3+ line. Other device types
   (wireless receiver, extension kit, wireless sensor) are not supported, because no capture of
-  them exists.
+  them exists. See [Device lines](#device-lines) for the other tado lines.
 - A circuit needs a wall thermostat as its heat source. A heating zone with no circuit gets a zone
   configuration without the circuit tag and without the heat source among the members. No device has
   run this configuration, and the install check warns about such a zone. A plant of valves without a
@@ -79,6 +79,25 @@ freedo has not run for several days as the only coordinator of a plant.
   relay has no estimate yet.
 - Geofencing, history reports, push notifications and multiple users are not part of the daemon. Home
   Assistant provides them. HomeKit is not implemented.
+
+### Device lines
+
+freedo replaces the tado Internet Bridge IB01 and pairs each device to its own network. The device
+models come from the tado article
+[What is a tado° Starter Kit, and what are the differences between versions?](https://support.tado.com/en/articles/3403569-what-is-a-tado-starter-kit-and-what-are-the-differences-between-versions)
+
+| Line | Sold | Devices | tado bridge | freedo |
+|---|---|---|---|---|
+| V1 | 2012-2014 | Box BX02, temperature sensor TS02 | Gateway GW01 | Not supported: a different system. |
+| V2 | 2014-2016 | Smart Thermostat RU01, extension kit BU01 | Bridge GW02 | Not tested. Probably the same radio protocol, see [#25](https://github.com/CappyT/freedo/issues/25). |
+| V3 | 2016-2018 | Smart Thermostat RU01, Smart Radiator Thermostat VA01 | Internet Bridge IB01 | Not tested. Probably works: it uses the same bridge as V3+. |
+| V3+ | since 2018 | Wired Smart Thermostat RU02, Smart Radiator Thermostat VA02, Wireless Receiver BR02/BP02, Wireless Temperature Sensor SU02 | Internet Bridge IB01 | Valves and wired thermostat supported. Wireless receiver and sensor not supported. |
+| tado X | since 2024 | RU04, RU05, VA04, SU04, SU05 and others | Bridge X IB02 | Not supported: Thread and Matter use a different radio. |
+
+V2 is probable because tado documents a swap from the GW02 to the IB01 in which the installed
+devices reconnect by themselves, and because tado sold the same RU01 with both bridges. Nobody has
+tested a RU01 with freedo yet. The RU01 drives the boiler through the extension kit BU01, while
+freedo knows the RU02, which drives the boiler over OpenTherm by itself.
 
 ## Requirements
 
