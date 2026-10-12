@@ -264,10 +264,30 @@ func (e *EmuState) restoreFwState(in map[string]DesiredFwState) {
 		if _, err := ParseFwState(rep.Body); err != nil {
 			continue
 		}
+		// A removal drops the report, but a stored state that outlives one would
+		// otherwise bring its node back with no last seen, so restore only the
+		// EUIs the installation still declares.
+		if !declaredEUI(e.inst, key) {
+			continue
+		}
 		e.fwSeq++
 		e.fwPut[key] = FwStateReport{Body: append([]byte(nil), rep.Body...), At: rep.At, Seq: e.fwSeq}
 		e.refillFwTelemetry(e.node(wire), rep.Body)
 	}
+}
+
+// declaredEUI reports whether the installation declares the wire EUI, in the hex
+// spelling of the fw/state keys.
+func declaredEUI(in *Install, key string) bool {
+	if in == nil {
+		return false
+	}
+	for i := range in.Devices {
+		if hexEUI(in.Devices[i].WireEUI()) == key {
+			return true
+		}
+	}
+	return false
 }
 
 // refillFwTelemetry writes the fw_* labels of a d/fw/state body into a node's

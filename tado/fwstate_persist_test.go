@@ -117,6 +117,34 @@ func TestRestoreDropsABadFwState(t *testing.T) {
 	}
 }
 
+// TestRestoreDropsFwStateOfAnUndeclaredDevice: a stored fw/state whose device
+// the installation no longer declares is dropped, so the restore does not bring
+// back a node with no last seen.
+func TestRestoreDropsFwStateOfAnUndeclaredDevice(t *testing.T) {
+	now := time.Unix(1000, 0)
+	cfg := fixtureInstall(t).EmuConfig()
+	cfg.Now = func() time.Time { return now }
+	e := NewEmu(cfg, NewUnhandledLogger(io.Discard))
+	putFwState(t, e, fwVersion(t, 216, 0))
+	snap := e.ExportDesiredState()
+
+	const ghostEUIHex = "0102030405060708"
+	snap.FwState[ghostEUIHex] = DesiredFwState{
+		Body: runningFwState(fwVersion(t, 216, 0), FwSlotHasImage|FwSlotActive), At: now,
+	}
+
+	restarted := NewEmu(cfg, NewUnhandledLogger(io.Discard))
+	if err := restarted.RestoreDesiredState(snap); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := restarted.nodes[ghostEUIHex]; ok {
+		t.Error("the restore created a node for a device the installation does not declare")
+	}
+	if put, _ := restarted.FwStateReports(ghostEUIHex); len(put.Body) > 0 {
+		t.Error("the restore kept the fw/state of an undeclared device")
+	}
+}
+
 // TestReadFirmwareStateOncePerDevice: after start the emulator queues one
 // d/fw/state read for each declared valve and wall thermostat that holds no
 // report, one per device, spaced, and none for a device with a report. An
