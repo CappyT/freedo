@@ -7,7 +7,9 @@ package daemon
 import "freedo/tado"
 
 // restateAwayZones writes every zone whose away temperature moved between two
-// installations, once the home is away. At home it writes nothing.
+// installations, once the home is away. At home it writes nothing, and a zone
+// that follows an away program takes nothing: the fixed temperature does not
+// apply to it.
 func (d *daemon) restateAwayZones(e *tado.EmuState, before, after *tado.Install) {
 	if !d.away {
 		return
@@ -15,6 +17,9 @@ func (d *daemon) restateAwayZones(e *tado.EmuState, before, after *tado.Install)
 	var zones []int
 	for i := range after.Zones {
 		zone := after.Zones[i].Number
+		if _, has := d.awayProgramOf(zone); has {
+			continue
+		}
 		was, _ := before.Options.AwayTemperature(zone)
 		now, _ := after.Options.AwayTemperature(zone)
 		if was != now {

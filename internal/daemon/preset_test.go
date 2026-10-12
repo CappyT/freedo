@@ -1461,3 +1461,41 @@ func TestHasProgramMeansProgramInForce(t *testing.T) {
 		t.Errorf("hasProgram of hot water with an away program, in away: %v, want true", got)
 	}
 }
+
+// TestAwayTemperatureChangeSkipsAwayProgramZones: in away a change of
+// away_temperature_c rewrites a zone without an away program at once and
+// leaves a zone that follows one alone.
+func TestAwayTemperatureChangeSkipsAwayProgramZones(t *testing.T) {
+	in := presetInstall(t, nil)
+	a := newInstallAPIOn(t, in)
+	bedroom := wireOf(t, in, "VA1000000005")
+	office := wireOf(t, in, "VA1000000002")
+	for path, c := range map[string]float64{
+		"/api/zones/10/schedule": 20, "/api/zones/10/schedule?mode=away": 16, "/api/zones/3/schedule": 19,
+	} {
+		if code, res := a.call(http.MethodPut, path, allDayProgram(map[string]any{"minute": 0, "setpoint_c": c})); code != http.StatusOK {
+			t.Fatalf("PUT %s: code=%d %v", path, code, res)
+		}
+	}
+	if code, res := a.call(http.MethodPatch, "/api/home", map[string]any{"away": true}); code != http.StatusOK {
+		t.Fatalf("away: code=%d %v", code, res)
+	}
+	dropQueue(t, a.d, bedroom)
+	dropQueue(t, a.d, office)
+
+	a.mutate(http.MethodPatch, "/api/install/zones/10", map[string]any{"away_temperature_c": 14.0})
+	a.mutate(http.MethodPatch, "/api/install/zones/3", map[string]any{"away_temperature_c": 15.0})
+	if n := pending(t, a.d, bedroom); n != 0 {
+		t.Errorf("the bedroom, on its away program, took %d writes on the away temperature change, want none", n)
+	}
+	wantTags(t, "the office on the away temperature change", nextZoneWrite(t, a.d, office), map[string]string{
+		"6160": "02", "61e0": "01", "6200": "05dc",
+	})
+	dropQueue(t, a.d, office)
+	tickHome(t, a.d)
+	for _, target := range []string{bedroom, office} {
+		if n := pending(t, a.d, target); n != 0 {
+			t.Errorf("%s took %d writes on the next tick, want none", target, n)
+		}
+	}
+}
