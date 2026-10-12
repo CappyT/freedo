@@ -278,9 +278,10 @@ def node_humidity(data: FreedoData, short: str) -> float | None:
 
 
 def node_firmware(data: FreedoData, short: str) -> str | None:
-    """The running firmware version, major.minor, from the fw/state the device
-    reports (Telemetry fw_run_version)."""
-    return ((data.nodes.get(short) or {}).get("Telemetry") or {}).get("fw_run_version")
+    """The firmware shown for a device: the running version from the fw/state it
+    reports (Telemetry fw_run_version), else the build hash (fw_build_hash)."""
+    telemetry = (data.nodes.get(short) or {}).get("Telemetry") or {}
+    return telemetry.get("fw_run_version") or telemetry.get("fw_build_hash")
 
 
 def zone_current_temperature(data: FreedoData, zone: Zone) -> float | None:

@@ -683,6 +683,10 @@ def test_device_readings():
     d = data()
     assert node_firmware(d, "aaaa") == "2.5"
     assert node_firmware(d, "bbbb") is None
+    # A report without a running version falls back to the build hash.
+    build = [dict(NODES[0])]
+    build[0]["Telemetry"] = {"fw_build_hash": "73b9b52"}
+    assert node_firmware(parse(HEALTH, ZONES, build, BOILER, HOME), "aaaa") == "73b9b52"
     # The wire scale: no zone correction.
     assert node_temperature(d, "aaaa") == 20.9
     assert node_temperature(d, "eeee") is None

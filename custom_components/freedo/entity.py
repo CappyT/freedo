@@ -22,6 +22,7 @@ from .model import (
     KIND_HOT_WATER,
     Zone,
     node_display,
+    node_firmware,
     schedule_payload,
     schedule_programs,
 )
@@ -82,6 +83,7 @@ class FreedoEntity(CoordinatorEntity[FreedoCoordinator]):
             manufacturer="tado",
             model=_MODELS.get(dev.get("kind", ""), dev.get("kind") or None),
             serial_number=dev.get("device"),
+            sw_version=node_firmware(self.coordinator.data, short),
             via_device_id=self._hub_device_id,
         )
 
