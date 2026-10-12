@@ -44,7 +44,7 @@ export function buildDevices(nodes: NodeView[], health: Health | null, models: Z
 			offline: h.offline,
 			alerts,
 			childLock: node?.ChildLock ?? null,
-			canIdentify: h.kind === 'valve' && zones.length > 0
+			canIdentify: (h.kind === 'valve' || h.kind === 'thermostat') && zones.length > 0
 		};
 	});
 }

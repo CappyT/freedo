@@ -24,6 +24,12 @@ describe('device rows', () => {
 		});
 	});
 
+	it('let a wall thermostat of a zone identify itself', () => {
+		const models = buildZones([zone()], [demand()], [], null, false);
+		const rows = buildDevices([], { devices: [device({ kind: 'thermostat', batteryMV: 0 })] } as unknown as Health, models);
+		expect(rows[0]).toMatchObject({ canIdentify: true, childLock: null });
+	});
+
 	it('leave out what a device cannot do', () => {
 		const rows = buildDevices([], { devices: [device({ kind: 'thermostat', batteryMV: 0 })] } as unknown as Health, []);
 		expect(rows[0]).toMatchObject({ batteryMV: null, batteryPct: null, childLock: null, canIdentify: false, firmware: null });
