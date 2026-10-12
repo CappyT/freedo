@@ -217,10 +217,18 @@ capture). The enable comes from `6260`, so hot water stays on. The cloud write o
 the same state in the away capture reads
 `6160=2 61e0=1 6200=38.00 6240=2 6260=1 6280=48.00` with no `6440`.
 
-freedo writes `61e0=0` and no `6200` on hot water in away. It has no away
-temperature for hot water. The away burst restates the overlay. A hot-water block
-change waits for the return home. The return home writes the block in force with
+A hot-water zone without an away program takes `61e0=0` and no `6200` from
+freedo in away. The away burst restates the overlay. A block change of its home
+program waits for the return home. The return home writes the block in force with
 the overlay (`TestHotWaterFollowsAway`, `TestHotWaterOverlayHoldsThroughAway`).
+
+A hot-water zone with an away program takes the block of that program in away:
+`6160=2 61e0=1` and the block setpoint in `6200`, with no overlay, and `61e0=0`
+with no `6200` for an off block. Each block change of the away program writes the
+zone (`TestAwayProgramHotWater`). No capture shows this shape: the cloud writes
+`61e0=1` with `6200` on hot water in away only under a manual overlay, as above.
+It is not verified that the thermostat keeps hot water on at the `6200` of a write
+with `61e0=1` and no overlay.
 
 The thermostat reports the hot water setpoint as tag `045b` on `h/<home>/hvac/mon/dhw`, in
 centi-degrees. The capture of the 53.00 C write shows `14b4` 19 s later. freedo shows the

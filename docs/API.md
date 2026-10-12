@@ -368,7 +368,8 @@ whole home and writes each zone once. The state survives a restart and appears i
 - In away, a zone with an away program follows it: the daemon evaluates it on the program
   clock and writes each block change as `6160=2`, `61e0=1` and the block temperature in
   `6200`, or `61e0=0` for an off block. The hot water zone writes its away blocks the same
-  way, instead of off in away.
+  way, instead of off in away. No capture shows the thermostat take this shape without an
+  overlay: it is not verified on a device.
 - In away, a change that moves the away value of a zone writes that zone once, also when
   its block keeps the same temperature: an away program put or removed, or a preset
   activation that adds or drops one. A hot water zone that loses its away program returns
@@ -381,7 +382,8 @@ whole home and writes each zone once. The state survives a restart and appears i
   writes the program block again.
 - An overlay with the rule `until_auto_change` ends at each switch between home and away.
   The zone then receives the return to program with the new home state.
-- Hot water follows away like a room. On its program it switches off in away. A permanent
+- Hot water follows away like a room. On its program and without an away program it
+  switches off in away. A permanent
   manual overlay (for example 48 C) stays on in away.
 
 ### Weekly schedule
