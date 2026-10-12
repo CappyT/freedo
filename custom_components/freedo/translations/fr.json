@@ -452,9 +452,9 @@
     }
   },
   "issues": {
-    "zone_no_area": {
-      "title": "La zone {zone} n'a pas de pièce",
-      "description": "La zone freedo {zone} fonctionne, mais elle n'est dans aucune pièce Home Assistant. Définissez sa pièce dans Paramètres > Appareils et services > freedo > Configurer, sur la page Pièce {zone}, ou sur la page de l'appareil de la zone. Vous pouvez ignorer ce problème."
+    "rooms_no_area": {
+      "title": "Pièces sans pièce Home Assistant",
+      "description": "Ces pièces freedo fonctionnent, mais elles ne sont dans aucune pièce Home Assistant : {rooms}. Définissez la pièce dans Paramètres > Appareils et services > freedo > Configurer > Pièces, ou sur la page de l'appareil de la pièce. Vous pouvez ignorer ce problème."
     }
   },
   "exceptions": {

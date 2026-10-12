@@ -743,9 +743,10 @@ and so does the device page of the zone. The integration reads it at each poll.
 - A zone renamed in the daemon renames its zone device at the next poll, unless
   you named the device in Home Assistant. The entity ids do not change. The hot
   water zone device keeps its translated name.
-- A heating zone with no area works as before, and Home Assistant shows one
-  repair issue for it: "Zone X has no area". You can ignore the issue. An area
-  removes it.
+- A heating zone with no area works as before. Home Assistant shows one repair
+  issue, "Rooms without an area", that lists those rooms. The list follows the
+  areas at each poll, and the issue goes when every room has an area. You can
+  ignore it, and it stays ignored when the list changes.
 - The integration sends the area to the daemon as a display label:
   `PATCH /api/install/zones/{n}` with `ha_area: {"id", "name"}`, also after an
   area rename. The freedo panel shows it, and the daemon never acts on it. The

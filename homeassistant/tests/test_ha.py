@@ -416,14 +416,13 @@ def add_sensor(hass, entry, entity, name, value, area=None, device_area=None):
     )
 
 
-def no_area_issues(hass, entry):
-    """The open repair issues of zones with no area: (zone number, placeholder)."""
-    prefix = f"zone_no_area_{entry.entry_id}_"
-    return sorted(
-        (int(issue_id.removeprefix(prefix)), issue.translation_placeholders["zone"])
-        for (domain, issue_id), issue in ir.async_get(hass).issues.items()
-        if domain == DOMAIN and issue_id.startswith(prefix) and issue.dismissed_version is None
-    )
+def no_area_issue(hass, entry):
+    """The rooms the open no-area issue lists, None without one or once the
+    user ignored it."""
+    issue = ir.async_get(hass).async_get_issue(DOMAIN, f"rooms_no_area_{entry.entry_id}")
+    if issue is None or issue.dismissed_version is not None:
+        return None
+    return issue.translation_placeholders["rooms"]
 
 
 # --- item 1 and 4: current temperature ---
@@ -700,7 +699,7 @@ async def test_hot_water_zone_takes_an_area_without_an_issue(hass, client):
     # cccc follows the hot water zone alone.
     assert node_device(hass, entry, "cccc").area_id == utility
     assert ("patch_zone", 9, {"ha_area": {"id": utility, "name": "Utility"}}) in client.calls
-    assert [n for n, _ in no_area_issues(hass, entry)] == [1, 2]
+    assert no_area_issue(hass, entry) == "Living, Bedroom"
 
 
 async def test_no_area_label_on_a_daemon_without_the_field(hass, client):
@@ -752,33 +751,44 @@ async def test_zone_rename_reaches_the_device(hass, client):
     assert zone_device(hass, entry, 9).name == "Domestic hot water"
 
 
-async def test_zone_without_an_area_raises_one_repair_issue(hass, client):
+async def test_rooms_without_an_area_raise_one_repair_issue(hass, client):
     entry = await setup_entry(hass, client)
-    # One issue per heating zone, none for the hot water zone.
-    assert no_area_issues(hass, entry) == [(1, "Living"), (2, "Bedroom")]
-    issue = ir.async_get(hass).async_get_issue(DOMAIN, f"zone_no_area_{entry.entry_id}_1")
-    assert issue.translation_key == "zone_no_area"
-    assert issue.is_fixable is False
-    assert issue.severity is ir.IssueSeverity.WARNING
+    # One issue lists the heating rooms; the hot water zone is not a room.
+    assert no_area_issue(hass, entry) == "Living, Bedroom"
+    issues = [i for (d, _), i in ir.async_get(hass).issues.items() if d == DOMAIN]
+    assert len(issues) == 1
+    assert issues[0].translation_key == "rooms_no_area"
+    assert issues[0].is_fixable is False
+    assert issues[0].severity is ir.IssueSeverity.WARNING
 
-    # The user ignores the issue of zone 2: it stays ignored at the next poll.
-    ir.async_ignore_issue(hass, DOMAIN, f"zone_no_area_{entry.entry_id}_2", True)
-    await refresh(hass, entry)
-    assert no_area_issues(hass, entry) == [(1, "Living")]
-
-    # An area ends the issue.
+    # The list follows the areas, and the issue goes with the last room.
     place_zone(hass, entry, 1, "Soggiorno")
     await refresh(hass, entry)
-    assert no_area_issues(hass, entry) == []
-    assert ir.async_get(hass).async_get_issue(DOMAIN, f"zone_no_area_{entry.entry_id}_1") is None
+    assert no_area_issue(hass, entry) == "Bedroom"
+    place_zone(hass, entry, 2, "Camera")
+    await refresh(hass, entry)
+    assert ir.async_get(hass).async_get_issue(DOMAIN, f"rooms_no_area_{entry.entry_id}") is None
 
 
-async def test_removing_the_entry_removes_its_issues(hass, client):
+async def test_an_ignored_no_area_issue_stays_ignored(hass, client):
     entry = await setup_entry(hass, client)
-    assert no_area_issues(hass, entry)
+    ir.async_ignore_issue(hass, DOMAIN, f"rooms_no_area_{entry.entry_id}", True)
+    await refresh(hass, entry)
+    assert no_area_issue(hass, entry) is None
+    # A change of the list keeps it ignored.
+    place_zone(hass, entry, 1, "Soggiorno")
+    await refresh(hass, entry)
+    issue = ir.async_get(hass).async_get_issue(DOMAIN, f"rooms_no_area_{entry.entry_id}")
+    assert issue.translation_placeholders["rooms"] == "Bedroom"
+    assert issue.dismissed_version is not None
+
+
+async def test_removing_the_entry_removes_its_issue(hass, client):
+    entry = await setup_entry(hass, client)
+    assert no_area_issue(hass, entry)
     await hass.config_entries.async_remove(entry.entry_id)
     await hass.async_block_till_done()
-    assert no_area_issues(hass, entry) == []
+    assert ir.async_get(hass).async_get_issue(DOMAIN, f"rooms_no_area_{entry.entry_id}") is None
 
 
 # --- item 5: window pushes ---
@@ -1254,7 +1264,7 @@ async def test_rooms_step_writes_the_areas_and_moves_the_devices(hass, client):
         ("patch_zone", 1, {"ha_area": {"id": living_room, "name": "Soggiorno"}}),
         ("patch_zone", 2, {"ha_area": {"id": bedroom_area, "name": "Camera"}}),
     ]
-    assert no_area_issues(hass, entry) == []
+    assert no_area_issue(hass, entry) is None
 
 
 async def test_rooms_step_keeps_a_device_placed_elsewhere(hass, client):

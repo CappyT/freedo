@@ -11,8 +11,8 @@ device page both set that area; the integration reads it at each poll.
 - The zone device of a heating zone follows the zone name of the daemon, unless
   the user named the device in Home Assistant. The hot water zone device keeps
   its translated name.
-- A heating zone without an area raises one repair issue, which the user can
-  ignore.
+- The heating zones without an area raise one repair issue per entry, which
+  lists them and which the user can ignore.
 - The area goes to the daemon as the display field ha_area of the zone row, on a
   daemon that serves it. The stored value is also the previous area of the zone
   after a restart.
@@ -39,11 +39,11 @@ from homeassistant.util import dt as dt_util
 from .api import FreedoError
 from .const import DOMAIN
 from .coordinator import FreedoConfigEntry, FreedoCoordinator
-from .model import KIND_HEATING, FreedoData, Zone, device_zones
+from .model import KIND_HEATING, FreedoData, device_zones
 
 _LOGGER = logging.getLogger(__name__)
 
-ISSUE_NO_AREA = "zone_no_area"
+ISSUE_NO_AREA = "rooms_no_area"
 # hass.data key: the node device ids each entry saw at its last poll. It
 # survives a reload, which creates the devices of a new pairing.
 _SEEN = f"{DOMAIN}_seen_devices"
@@ -59,8 +59,8 @@ def node_identifier(entry_id: str, short: str) -> tuple[str, str]:
     return (DOMAIN, f"{entry_id}_{short}")
 
 
-def _issue_id(entry_id: str, number: int) -> str:
-    return f"{ISSUE_NO_AREA}_{entry_id}_{number}"
+def issue_id(entry_id: str) -> str:
+    return f"{ISSUE_NO_AREA}_{entry_id}"
 
 
 def zone_area(hass: HomeAssistant, entry_id: str, number: int) -> str | None:
@@ -120,12 +120,9 @@ def async_set_zone_area(
 
 @callback
 def async_remove_issues(hass: HomeAssistant, entry_id: str) -> None:
-    """Delete the repair issues and the device memory of an entry that goes
+    """Delete the repair issue and the device memory of an entry that goes
     away."""
-    prefix = f"{ISSUE_NO_AREA}_{entry_id}_"
-    for domain, issue_id in list(ir.async_get(hass).issues):
-        if domain == DOMAIN and issue_id.startswith(prefix):
-            ir.async_delete_issue(hass, DOMAIN, issue_id)
+    ir.async_delete_issue(hass, DOMAIN, issue_id(entry_id))
     hass.data.get(_SEEN, {}).pop(entry_id, None)
 
 
@@ -138,7 +135,7 @@ def _created_before_load(device: dr.DeviceEntry) -> bool:
 def async_track_rooms(
     hass: HomeAssistant, coordinator: FreedoCoordinator
 ) -> Callable[[], None]:
-    """Keep the zone devices, their members, the repair issues and the daemon
+    """Keep the zone devices, their members, the repair issue and the daemon
     display field in step with the zone areas at each poll."""
     devices = dr.async_get(hass)
     areas = ar.async_get(hass)
@@ -147,8 +144,8 @@ def async_track_rooms(
     seen_by_entry: dict[str, set[str]] = hass.data.setdefault(_SEEN, {})
     # The area of each zone at the previous poll.
     previous: dict[int, str | None] = {}
-    # The zone name of each open repair issue.
-    issues: dict[int, str] = {}
+    # The room names of the open repair issue, None before the first poll.
+    issue_rooms: list[str] | None = None
     # Zones whose ha_area write runs, and zones whose last write failed.
     sending: set[int] = set()
     failed: set[int] = set()
@@ -175,25 +172,23 @@ def async_track_rooms(
             coordinator.data.zone_settings[number] = dict(row)
 
     @callback
-    def sync_issue(zone: Zone, area_id: str | None) -> None:
-        if area_id is not None:
-            # The issue may come from before a reload, so delete it even when
-            # this listener did not raise it.
-            issues.pop(zone.number, None)
-            ir.async_delete_issue(hass, DOMAIN, _issue_id(entry_id, zone.number))
+    def sync_issue(rooms: list[str]) -> None:
+        nonlocal issue_rooms
+        if rooms == issue_rooms:
             return
-        if issues.get(zone.number) == zone.name:
+        issue_rooms = rooms
+        if not rooms:
+            ir.async_delete_issue(hass, DOMAIN, issue_id(entry_id))
             return
-        issues[zone.number] = zone.name
         ir.async_create_issue(
             hass,
             DOMAIN,
-            _issue_id(entry_id, zone.number),
+            issue_id(entry_id),
             is_fixable=False,
             is_persistent=False,
             severity=ir.IssueSeverity.WARNING,
             translation_key=ISSUE_NO_AREA,
-            translation_placeholders={"zone": zone.name},
+            translation_placeholders={"rooms": ", ".join(rooms)},
         )
 
     @callback
@@ -213,6 +208,7 @@ def async_track_rooms(
             return
         seen = seen_by_entry.get(entry_id)
         present: set[str] = set()
+        unmapped: list[str] = []
         for zone in sorted(data.zones.values(), key=lambda z: z.number):
             device = devices.async_get_device_by_identifier(
                 zone_identifier(entry_id, zone.number), entry_id
@@ -243,15 +239,12 @@ def async_track_rooms(
                     if new and member.area_id is None:
                         devices.async_update_device(member.id, area_id=area_id)
             previous[zone.number] = area_id
-            if zone.kind == KIND_HEATING:
-                sync_issue(zone, area_id)
+            if zone.kind == KIND_HEATING and area_id is None:
+                unmapped.append(zone.name)
             if served:
                 sync_daemon(zone.number, area_id, row)
         seen_by_entry[entry_id] = present
-        heating = {z.number for z in data.heating_zones()}
-        for number in [n for n in issues if n not in heating]:
-            del issues[number]
-            ir.async_delete_issue(hass, DOMAIN, _issue_id(entry_id, number))
+        sync_issue(unmapped)
 
     update()
     return coordinator.async_add_listener(update)

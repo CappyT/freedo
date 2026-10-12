@@ -452,9 +452,9 @@
     }
   },
   "issues": {
-    "zone_no_area": {
-      "title": "La zona {zone} non ha un'area",
-      "description": "La zona freedo {zone} funziona, ma non è in nessuna area di Home Assistant. Imposta la sua area in Impostazioni > Dispositivi e servizi > freedo > Configura, nella pagina Stanza {zone}, oppure nella pagina del dispositivo della zona. Puoi ignorare questo problema."
+    "rooms_no_area": {
+      "title": "Stanze senza area",
+      "description": "Queste stanze di freedo funzionano, ma non sono in nessuna area di Home Assistant: {rooms}. Imposta l'area in Impostazioni > Dispositivi e servizi > freedo > Configura > Stanze, oppure nella pagina del dispositivo della stanza. Puoi ignorare questo problema."
     }
   },
   "exceptions": {
