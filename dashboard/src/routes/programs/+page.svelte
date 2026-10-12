@@ -406,6 +406,11 @@
 	}
 
 	@media (max-width: 639px) {
+		/* The fields take whole lines, so the two buttons of the form share the last one. */
+		form .field {
+			flex: 1 1 100%;
+		}
+
 		.head {
 			display: none;
 		}
