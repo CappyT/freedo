@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.4.0
+
+- Option `channel`: `beta` runs the newest pre-release of the daemon from the GitHub releases of
+  the repository, with the same data folder. The add-on copies the database before the first start
+  of a beta, and restores that copy when you return to `stable` after a beta changed the schema.
+  Every release attaches the daemon binaries and `SHA256SUMS`.
+- Automatic correction of the valve offset from an external room sensor, at an interval you set,
+  per heating zone. It reads the measuring device, never writes during a heat-up, and stops with a
+  reason when a write does not move the difference. Off by default.
+- Gas meter: record a meter reading and the daemon learns the correction factor of its gas
+  estimate. Home Assistant gets a Gas meter sensor for the Energy panel and the services
+  `freedo.calibrate_gas_meter` and `freedo.undo_gas_meter_reading`.
+- Home Assistant: a Temperature source select per room (a device of the room, or the external
+  sensor), switches for the automatic correction, the device firmware as its software version, and
+  a translated name for the hot water zone.
+- The daemon keeps the firmware version of each device across restarts, and reads it once from a
+  device that has never reported it.
+- A device declared without a serial takes it from its first request.
+- Dashboard: rename a device, a fixed translated name for hot water, and a layout pass for phones
+  and the dark theme. Inside Home Assistant the rename changes only the label.
+- The unhandled event counter no longer counts the session id changes of zone requests between
+  the devices of a zone.
+
 ## 0.3.2
 
 - Web dashboard, served by the daemon and shown in the Home Assistant sidebar. It shows the
