@@ -367,6 +367,10 @@ whole home and writes each zone once. The state survives a restart and appears i
   clock and writes each block change as `6160=2`, `61e0=1` and the block temperature in
   `6200`, or `61e0=0` for an off block. The hot water zone writes its away blocks the same
   way, instead of off in away.
+- In away, a change that moves the away value of a zone writes that zone once, also when
+  its block keeps the same temperature: an away program put or removed, or a preset
+  activation that adds or drops one. A hot water zone that loses its away program returns
+  to off in away. The daemon stores the away value each zone received with its block.
 - Without an away program, a heating zone keeps the away fallback: with
   `away_temperature_c` above 5 it receives `6160=2`, `61e0=1` and the temperature in `6200`;
   without the field, or at 5, it receives `61e0=0` and no `6200`.

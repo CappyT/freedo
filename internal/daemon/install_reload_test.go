@@ -132,19 +132,19 @@ func targetStateMaps(d *daemon, target string) []string {
 // nothing moved.
 func daemonStateSnapshot(d *daemon) map[string]any {
 	return map[string]any{
-		"retryDue":         maps(d.retryDue),
-		"retryMID":         maps(d.retryMID),
-		"coapRetryBase":    maps(d.coapRetryBase),
-		"dispatchDue":      maps(d.dispatchDue),
-		"cslAdmissionWait": maps(d.cslAdmissionWait),
-		"linkMaint":        maps(d.linkMaint),
+		"retryDue":         copyMap(d.retryDue),
+		"retryMID":         copyMap(d.retryMID),
+		"coapRetryBase":    copyMap(d.coapRetryBase),
+		"dispatchDue":      copyMap(d.dispatchDue),
+		"cslAdmissionWait": copyMap(d.cslAdmissionWait),
+		"linkMaint":        copyMap(d.linkMaint),
 		"linkMaintOrder":   append([]string(nil), d.linkMaintOrder...),
 		"linkMaintCursor":  d.linkMaintCursor,
 		"dispatchQ":        append([]string(nil), d.dispatchQ...),
 	}
 }
 
-func maps[V any](in map[string]V) map[string]V {
+func copyMap[V any](in map[string]V) map[string]V {
 	out := make(map[string]V, len(in))
 	for k, v := range in {
 		out[k] = v

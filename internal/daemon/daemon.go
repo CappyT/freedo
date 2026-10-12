@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"maps"
 	"math"
 	"net/http"
 	"os"
@@ -125,14 +126,22 @@ type daemon struct {
 	// block each zone follows now, and schedPushed the block each zone took at
 	// the last tick or zone rewrite: a program zone whose two blocks differ owes
 	// its members a write of 6200 and 61e0. schedSeeded says whether
-	// schedPushed holds a baseline. programOwed holds the zone rewrites queued
-	// and not yet confirmed, see programWrite. schedUnsaved says whether
-	// schedPushed, programOwed or early moved since the last save. All six
-	// belong to the engine goroutine.
+	// schedPushed holds a baseline. awayTarget holds the 6200 each zone keeps
+	// in away now, on the valve scale, absent for a zone that is off in away,
+	// and awayPushed the one each zone took at the last tick or zone rewrite:
+	// in away a zone whose two values differ owes its members a write, whatever
+	// its block does. awaySeeded says whether awayPushed holds a baseline.
+	// programOwed holds the zone rewrites queued and not yet confirmed, see
+	// programWrite. schedUnsaved says whether schedPushed, awayPushed,
+	// programOwed or early moved since the last save. All nine belong to the
+	// engine goroutine.
 	away         bool
 	zoneSched    map[int]scheduledBlock
 	schedPushed  map[int]scheduledBlock
 	schedSeeded  bool
+	awayTarget   map[int]float64
+	awayPushed   map[int]float64
+	awaySeeded   bool
 	programOwed  map[programWrite]uint64
 	schedUnsaved bool
 	// presets holds every program preset keyed by id, presetOrder the ids in
@@ -274,6 +283,8 @@ func newDaemon(in *tado.Install, emu *tado.EmuState, radio radio.Radio, dryRun b
 		linkMaint:        make(map[string]linkMaintEntry),
 		zoneSched:        make(map[int]scheduledBlock),
 		schedPushed:      make(map[int]scheduledBlock),
+		awayTarget:       make(map[int]float64),
+		awayPushed:       make(map[int]float64),
 		programOwed:      make(map[programWrite]uint64),
 		windows:          make(map[int]zoneWindow),
 		windowOwed:       make(map[windowWrite]*windowOwed),
@@ -2430,24 +2441,29 @@ func runningOverlay(e *tado.EmuState, short string, zone int) bool {
 
 // applyHomeState pushes the home flag, the per-zone scheduled blocks and the
 // away temperatures into the emulator, so every z/s write it builds stamps the
-// current state. It
-// returns the zones whose program holds another block than the one they last
-// took. Only tickHomeState writes them: a command between a block boundary and
-// the next tick leaves the change owed to every other zone. The first
-// evaluation with no stored baseline only seeds: there is no earlier block to
-// move away from. A block read back from the zone cache is no program: the zone
-// already holds it, and every member echo carries it back after a write drops
-// it from the cache.
+// current state. It returns the zones that owe a write: a program zone whose
+// block moved since it last took one, and in away also every zone whose away
+// 6200 moved, which a change of the away program, of its presence or of the
+// fallback can do with the block unchanged. In away a hot-water zone without
+// an away program takes no block change: its away write carries neither tag.
+// Only tickHomeState and the preset activation write them: a command between
+// a block boundary and the next tick leaves the change owed to every other
+// zone. The first evaluation with no stored baseline only seeds: there is no
+// earlier block to move away from. A block read back from the zone cache is no
+// program: the zone already holds it, and every member echo carries it back
+// after a write drops it from the cache.
 func (d *daemon) applyHomeState(e *tado.EmuState) []int {
 	blocks := make(map[int]scheduledBlock)
 	sched := make(map[int]float64)
 	off := make(map[int]bool)
 	away := make(map[int]float64)
-	var programs []int
+	programs := make(map[int]bool)
+	var zones []int
 	if inst := d.inst.Load(); inst != nil {
 		now := d.retryNow()
 		for i := range inst.Zones {
 			zone := inst.Zones[i].Number
+			zones = append(zones, zone)
 			_, hasAwayProgram := d.awayProgramOf(zone)
 			if c, fallback := inst.Options.AwayTemperature(zone); fallback && !hasAwayProgram {
 				away[zone] = d.rawSetpointC(inst, zone, c)
@@ -2458,9 +2474,7 @@ func (d *daemon) applyHomeState(e *tado.EmuState) []int {
 			}
 			block = d.earlyBlock(e, inst, zone, block, now)
 			blocks[zone], sched[zone], off[zone] = block, d.rawSetpointC(inst, zone, block.c), block.off
-			if program {
-				programs = append(programs, zone)
-			}
+			programs[zone] = program
 			// In away a zone with an away program follows it: the block in
 			// force takes the place of the fixed away temperature, and an off
 			// block writes the off of the away fallback.
@@ -2472,15 +2486,33 @@ func (d *daemon) applyHomeState(e *tado.EmuState) []int {
 	e.SetHomeState(!d.away, sched)
 	e.SetScheduleOff(off)
 	e.SetAwayTemperatures(away)
-	d.zoneSched = blocks
+	d.zoneSched, d.awayTarget = blocks, away
 	if !d.schedSeeded {
-		d.schedSeeded = true
+		d.schedSeeded, d.awaySeeded = true, true
 		d.pushedAll()
 		return nil
 	}
+	if !d.awaySeeded {
+		// Blocks stored by a daemon that kept no away 6200: the zones took the
+		// away values of today, which nothing could change while it ran.
+		d.awaySeeded, d.awayPushed, d.schedUnsaved = true, maps.Clone(away), true
+	}
 	var changed []int
-	for _, zone := range programs {
-		if prev, had := d.schedPushed[zone]; !had || prev != blocks[zone] {
+	for _, zone := range zones {
+		moved := false
+		if programs[zone] {
+			prev, had := d.schedPushed[zone]
+			moved = !had || prev != blocks[zone]
+		}
+		if d.away {
+			if _, has := d.awayProgramOf(zone); !has && d.isHotWaterZone(zone) {
+				moved = false
+			}
+			if d.awayPushed[zone] != away[zone] {
+				moved = true
+			}
+		}
+		if moved {
 			changed = append(changed, zone)
 		}
 	}
@@ -2488,39 +2520,42 @@ func (d *daemon) applyHomeState(e *tado.EmuState) []int {
 	return changed
 }
 
-// pushedAll records every zone as holding the block it follows now.
+// pushedAll records every zone as holding the block and the away 6200 it
+// follows now.
 func (d *daemon) pushedAll() {
-	same := len(d.schedPushed) == len(d.zoneSched)
-	for zone, block := range d.zoneSched {
-		if prev, had := d.schedPushed[zone]; !had || prev != block {
-			same = false
-			break
-		}
-	}
-	if same {
+	if maps.Equal(d.schedPushed, d.zoneSched) && maps.Equal(d.awayPushed, d.awayTarget) {
 		return
 	}
-	d.schedPushed = make(map[int]scheduledBlock, len(d.zoneSched))
-	for zone, block := range d.zoneSched {
-		d.schedPushed[zone] = block
-	}
+	d.schedPushed = maps.Clone(d.zoneSched)
+	d.awayPushed = maps.Clone(d.awayTarget)
 	d.schedUnsaved = true
 }
 
-// markPushed records that zone took the block it follows now: a write went to
-// every zoneWriteTargets member and stamped it.
+// markPushed records that zone took the block and the away 6200 it follows
+// now: a write went to every zoneWriteTargets member and stamped it.
 func (d *daemon) markPushed(zone int) {
 	block, ok := d.zoneSched[zone]
 	prev, had := d.schedPushed[zone]
 	switch {
 	case ok == had && prev == block:
-		return
 	case ok:
 		d.schedPushed[zone] = block
+		d.schedUnsaved = true
 	default:
 		delete(d.schedPushed, zone)
+		d.schedUnsaved = true
 	}
-	d.schedUnsaved = true
+	c, ok := d.awayTarget[zone]
+	prevC, had := d.awayPushed[zone]
+	switch {
+	case ok == had && prevC == c:
+	case ok:
+		d.awayPushed[zone] = c
+		d.schedUnsaved = true
+	default:
+		delete(d.awayPushed, zone)
+		d.schedUnsaved = true
+	}
 }
 
 // programWrite names one member of a zone that owes a zone rewrite: a program
@@ -2597,7 +2632,7 @@ func (d *daemon) saveProgramBlocks() {
 		for w := range d.programOwed {
 			owed = append(owed, w)
 		}
-		if err := d.state.SetProgramState(context.Background(), d.schedPushed, owed, d.early); err != nil {
+		if err := d.state.SetProgramState(context.Background(), d.schedPushed, d.awayPushed, owed, d.early); err != nil {
 			log.Printf("persist program blocks: %v", err)
 			return
 		}
@@ -2606,21 +2641,15 @@ func (d *daemon) saveProgramBlocks() {
 }
 
 // tickHomeState re-evaluates the weekly programs and pushes the new 6200 and
-// 61e0 to the members of every zone whose program holds another block than the
-// one it last took. Away, a hot-water zone without an away program takes no
-// block change: its away write carries neither tag, and the return home
-// rewrites every zone with the block then in force. An early start due now
+// 61e0 to the members of every zone that owes a write (applyHomeState). Away,
+// a hot-water zone without an away program takes no block change: its away
+// write carries neither tag, and the return home rewrites every zone with the
+// block then in force. An early start due now
 // goes out as a block change of its own, and the heat-up learner then sees the
 // targets this tick settled on.
 func (d *daemon) tickHomeState(e *tado.EmuState) {
 	d.planEarlyStarts(e)
 	zones := d.applyHomeState(e)
-	if d.away {
-		zones = slices.DeleteFunc(zones, func(zone int) bool {
-			_, has := d.awayProgramOf(zone)
-			return d.isHotWaterZone(zone) && !has
-		})
-	}
 	if len(zones) > 0 {
 		d.rewriteZones(e, zones, d.requestQueuedDispatch, false)
 	}
@@ -2670,6 +2699,13 @@ func (d *daemon) restoreHomeState(e *tado.EmuState) error {
 	}
 	if stored {
 		d.schedPushed, d.schedSeeded = blocks, true
+	}
+	awayPushed, stored, err := d.state.AwayTargets(ctx)
+	if err != nil {
+		return err
+	}
+	if stored {
+		d.awayPushed, d.awaySeeded = awayPushed, true
 	}
 	owed, err := d.state.ProgramOwed(ctx)
 	if err != nil {
@@ -2792,6 +2828,10 @@ func (d *daemon) patchHome(w http.ResponseWriter, r *http.Request) {
 			ended := d.endHomeChangeOverlays(e)
 			zones = slices.DeleteFunc(zones, func(zone int) bool { return slices.Contains(ended, zone) })
 			queued = d.rewriteZones(e, zones, func(target string) { d.dispatchQueued(e, target) }, true)
+			// The end of an overlay already wrote the new home state.
+			for _, zone := range ended {
+				d.markPushed(zone)
+			}
 			// The owed writes reach the database before the flag: a restart
 			// between the two rewrites the zones once more, never none.
 			d.saveProgramBlocks()

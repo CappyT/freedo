@@ -198,7 +198,7 @@ func (d *daemon) observeHeatUps(e *tado.EmuState) {
 
 // forgetRemovedZones drops what the engine keeps about each zone before
 // declares and in does not: the heat-up model, the episodes running, the early
-// start, the stored plant episodes and the program block. A zone later declared
+// start, the stored plant episodes, the program block and the away 6200. A zone later declared
 // under the same number starts from nothing. It runs on the engine goroutine,
 // which is the one that stores a model or an episode, so no late save brings
 // one back.
@@ -219,6 +219,11 @@ func (d *daemon) forgetRemovedZones(before, in *tado.Install) {
 		delete(d.zoneSched, zone)
 		if _, ok := d.schedPushed[zone]; ok {
 			delete(d.schedPushed, zone)
+			d.schedUnsaved = true
+		}
+		delete(d.awayTarget, zone)
+		if _, ok := d.awayPushed[zone]; ok {
+			delete(d.awayPushed, zone)
 			d.schedUnsaved = true
 		}
 		if d.state != nil {

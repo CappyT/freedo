@@ -256,12 +256,6 @@ func (d *daemon) activatePreset(w http.ResponseWriter, r *http.Request) {
 		if err := d.serveHomePrograms(e); err != nil {
 			return nil, err
 		}
-		if d.away {
-			changed = slices.DeleteFunc(changed, func(zone int) bool {
-				_, has := d.awayProgramOf(zone)
-				return d.isHotWaterZone(zone) && !has
-			})
-		}
 		queued := d.rewriteZones(e, changed, func(target string) { d.dispatchQueued(e, target) }, false)
 		// The owed writes reach the database with the pushed blocks: a restart
 		// re-evaluates from the stored preset and stored blocks, not from the

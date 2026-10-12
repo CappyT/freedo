@@ -633,9 +633,24 @@ func (s *stateStore) metaJSON(ctx context.Context, key string, v any) error {
 	return nil
 }
 
-// SetProgramState stores in one transaction the block each zone took, the
-// zone rewrites still owed and the early starts running.
-func (s *stateStore) SetProgramState(ctx context.Context, blocks map[int]scheduledBlock, owed []programWrite, early map[int]earlyStart) error {
+// AwayTargets returns the away 6200 each zone took at the last tick or zone
+// rewrite, and false when none is stored: a daemon before the away programs
+// kept none, so the first evaluation seeds it.
+func (s *stateStore) AwayTargets(ctx context.Context) (map[int]float64, bool, error) {
+	stored := map[int]float64(nil)
+	if err := s.metaJSON(ctx, "away_targets", &stored); err != nil {
+		return nil, false, err
+	}
+	if stored == nil {
+		return nil, false, nil
+	}
+	return stored, true, nil
+}
+
+// SetProgramState stores in one transaction the block and the away 6200 each
+// zone took, the zone rewrites still owed and the early starts running. The
+// away 6200 lives under a key of its own, so program_blocks keeps its format.
+func (s *stateStore) SetProgramState(ctx context.Context, blocks map[int]scheduledBlock, away map[int]float64, owed []programWrite, early map[int]earlyStart) error {
 	storedBlocks := make(map[int]storedBlock, len(blocks))
 	for zone, b := range blocks {
 		storedBlocks[zone] = storedBlock{C: b.c, Off: b.off}
@@ -658,7 +673,10 @@ func (s *stateStore) SetProgramState(ctx context.Context, blocks map[int]schedul
 		return err
 	}
 	defer tx.Rollback()
-	for key, v := range map[string]any{"program_blocks": storedBlocks, "program_owed": storedOwed, "early_starts": storedEarly} {
+	if away == nil {
+		away = map[int]float64{}
+	}
+	for key, v := range map[string]any{"program_blocks": storedBlocks, "away_targets": away, "program_owed": storedOwed, "early_starts": storedEarly} {
 		raw, err := json.Marshal(v)
 		if err != nil {
 			return err

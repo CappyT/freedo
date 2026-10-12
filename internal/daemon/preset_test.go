@@ -963,3 +963,170 @@ func TestHotWaterProgramMovesInWithTheZone(t *testing.T) {
 		}
 	}
 }
+
+// TestAwayTargetMovesWithoutBlockChange: in away the write a zone takes
+// depends on its away 6200, not on its block alone. A change that keeps the
+// block and moves the away value, an away program put, deleted or left behind
+// by an activation, writes the zone once with the new away head.
+func TestAwayTargetMovesWithoutBlockChange(t *testing.T) {
+	put := func(t *testing.T, url, path string, body map[string]any) {
+		t.Helper()
+		var view map[string]any
+		if code := postJSON(t, http.MethodPut, url+path, body, &view); code != http.StatusOK {
+			t.Fatalf("PUT %s: code=%d %v", path, code, view)
+		}
+	}
+	send := func(t *testing.T, method, url string) {
+		t.Helper()
+		var view map[string]any
+		if code := postJSON(t, method, url, nil, &view); code != http.StatusOK {
+			t.Fatalf("%s %s: code=%d %v", method, url, code, view)
+		}
+	}
+	goAway := func(t *testing.T, d *daemon, url string, targets ...string) {
+		t.Helper()
+		var view map[string]any
+		if code := postJSON(t, http.MethodPatch, url+"/api/home", map[string]any{"away": true}, &view); code != http.StatusOK {
+			t.Fatalf("away: code=%d %v", code, view)
+		}
+		for _, target := range targets {
+			dropQueue(t, d, target)
+		}
+	}
+	bed18 := allDayProgram(map[string]any{"minute": 0, "setpoint_c": 18.0})
+	in := presetInstall(t, nil)
+	bedroom := wireOf(t, in, "VA1000000005")
+	thermostat := wireOf(t, in, dhwNode)
+
+	t.Run("away program put with the home value", func(t *testing.T) {
+		d, url := newPresetDaemon(t, newTestClock(time.Date(2026, 1, 5, 5, 0, 0, 0, time.UTC)))
+		put(t, url, "/api/zones/10/schedule", bed18)
+		tickHome(t, d)
+		goAway(t, d, url, bedroom)
+		put(t, url, "/api/zones/10/schedule?mode=away", bed18)
+		tickHome(t, d)
+		wantTags(t, "the bedroom after its away program", nextZoneWrite(t, d, bedroom), map[string]string{
+			"6160": "02", "61e0": "01", "6200": "0708",
+		}, "6440")
+		dropQueue(t, d, bedroom)
+		tickHome(t, d)
+		if n := pending(t, d, bedroom); n != 0 {
+			t.Errorf("a second tick queued %d more writes, want none", n)
+		}
+	})
+
+	t.Run("away program deleted with the home value", func(t *testing.T) {
+		d, url := newPresetDaemon(t, newTestClock(time.Date(2026, 1, 5, 5, 0, 0, 0, time.UTC)))
+		put(t, url, "/api/zones/10/schedule", bed18)
+		put(t, url, "/api/zones/10/schedule?mode=away", bed18)
+		tickHome(t, d)
+		goAway(t, d, url, bedroom)
+		send(t, http.MethodDelete, url+"/api/zones/10/schedule?mode=away")
+		tickHome(t, d)
+		wantTags(t, "the bedroom after the away delete", nextZoneWrite(t, d, bedroom), map[string]string{
+			"6160": "02", "61e0": "00",
+		}, "6200", "6440")
+	})
+
+	t.Run("activation drops the away program with the home value", func(t *testing.T) {
+		d, url := newPresetDaemon(t, newTestClock(time.Date(2026, 1, 5, 5, 0, 0, 0, time.UTC)))
+		put(t, url, "/api/zones/10/schedule", bed18)
+		var created presetView
+		if code := postJSON(t, http.MethodPost, url+"/api/presets", map[string]any{"name": "NoAway"}, &created); code != http.StatusOK {
+			t.Fatalf("create: code=%d %v", code, created)
+		}
+		put(t, url, "/api/zones/10/schedule?mode=away", bed18)
+		tickHome(t, d)
+		goAway(t, d, url, bedroom)
+		send(t, http.MethodPost, url+"/api/presets/2/activate")
+		wantTags(t, "the bedroom after the activation", nextZoneWrite(t, d, bedroom), map[string]string{
+			"6160": "02", "61e0": "00",
+		}, "6200", "6440")
+	})
+
+	t.Run("hot water away program deleted", func(t *testing.T) {
+		d, url := newPresetDaemon(t, newTestClock(time.Date(2026, 1, 5, 5, 0, 0, 0, time.UTC)))
+		put(t, url, "/api/zones/0/schedule", allDayProgram(map[string]any{"minute": 0, "setpoint_c": 45.0}))
+		put(t, url, "/api/zones/0/schedule?mode=away", allDayProgram(map[string]any{"minute": 0, "setpoint_c": 50.0}))
+		tickHome(t, d)
+		goAway(t, d, url, thermostat)
+		send(t, http.MethodDelete, url+"/api/zones/0/schedule?mode=away")
+		tickHome(t, d)
+		wantTags(t, "the thermostat after the away delete", nextZoneWrite(t, d, thermostat), map[string]string{
+			"6160": "02", "61e0": "00",
+		}, "6200", "6440")
+		dropQueue(t, d, thermostat)
+		tickHome(t, d)
+		if n := pending(t, d, thermostat); n != 0 {
+			t.Errorf("a second tick queued %d more writes, want none", n)
+		}
+	})
+
+	t.Run("hot water activation without an away program", func(t *testing.T) {
+		d, url := newPresetDaemon(t, newTestClock(time.Date(2026, 1, 5, 5, 0, 0, 0, time.UTC)))
+		put(t, url, "/api/zones/0/schedule", allDayProgram(map[string]any{"minute": 0, "setpoint_c": 45.0}))
+		var created presetView
+		if code := postJSON(t, http.MethodPost, url+"/api/presets", map[string]any{"name": "NoAway"}, &created); code != http.StatusOK {
+			t.Fatalf("create: code=%d %v", code, created)
+		}
+		put(t, url, "/api/zones/0/schedule?mode=away", allDayProgram(map[string]any{"minute": 0, "setpoint_c": 50.0}))
+		tickHome(t, d)
+		goAway(t, d, url, thermostat)
+		send(t, http.MethodPost, url+"/api/presets/2/activate")
+		wantTags(t, "the thermostat after the activation", nextZoneWrite(t, d, thermostat), map[string]string{
+			"6160": "02", "61e0": "00",
+		}, "6200", "6440")
+	})
+}
+
+// TestAwayTargetSurvivesRestart: the away 6200 each zone took is stored with
+// its block, so an away program that appeared while the daemon was down
+// writes the zone on the first tick. Blocks stored without it, as a daemon
+// before the away programs left them, only seed it.
+func TestAwayTargetSurvivesRestart(t *testing.T) {
+	path := t.TempDir() + "/state.db"
+	in := presetInstall(t, nil)
+	bedroom := wireOf(t, in, "VA1000000005")
+	clock := newTestClock(time.Date(2026, 1, 5, 5, 0, 0, 0, time.UTC))
+	d, url, stop := startStoredDaemon(t, in, clock, newTestStore(t, path))
+	var view map[string]any
+	if code := postJSON(t, http.MethodPut, url+"/api/zones/10/schedule",
+		allDayProgram(map[string]any{"minute": 0, "setpoint_c": 18.0}), &view); code != http.StatusOK {
+		t.Fatalf("bedroom schedule: code=%d %v", code, view)
+	}
+	tickHome(t, d)
+	if code := postJSON(t, http.MethodPatch, url+"/api/home", map[string]any{"away": true}, &view); code != http.StatusOK {
+		t.Fatalf("away: code=%d %v", code, view)
+	}
+	deliverQueue(t, d, in, bedroom)
+	tickHome(t, d)
+	stop()
+
+	store := newTestStore(t, path)
+	if err := store.SetZoneProgram(context.Background(), 1, 10, true,
+		weekPrograms(tado.ScheduleEntry{Minute: 0, SetpointCenti: 1800, Enabled: true})); err != nil {
+		t.Fatal(err)
+	}
+	store.Close()
+	d, _, stop = startStoredDaemon(t, in, clock, newTestStore(t, path))
+	tickHome(t, d)
+	wantTags(t, "the bedroom after the restart", deliver(t, d, in, bedroom), map[string]string{
+		"6160": "02", "61e0": "01", "6200": "0708",
+	}, "6440")
+	tickHome(t, d)
+	stop()
+
+	store = newTestStore(t, path)
+	if err := store.DeleteZoneProgram(context.Background(), 1, 10, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.Exec(`DELETE FROM meta WHERE key = 'away_targets'`); err != nil {
+		t.Fatal(err)
+	}
+	store.Close()
+	d, _, _ = startStoredDaemon(t, in, clock, newTestStore(t, path))
+	tickHome(t, d)
+	if n := pending(t, d, bedroom); n != 0 {
+		t.Errorf("blocks stored with no away 6200 queued %d writes on the first tick, want none", n)
+	}
+}
