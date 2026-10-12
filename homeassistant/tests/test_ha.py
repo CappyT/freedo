@@ -2151,6 +2151,17 @@ async def test_offset_number_in_config_mode_survives_a_reload(hass, client):
     assert float(hass.states.get(offset).state) == 0.3
 
 
+async def test_offset_number_is_unavailable_during_the_valve_calibration(hass, client):
+    client.zones_json["declared"][1]["measuringDevice"] = "dddd"
+    entry = await setup_entry(hass, client)
+    offset = entity_id(hass, entry, "number", "zone2_offset")
+    assert hass.states.get(offset).state != "unavailable"
+    await select_option(hass, entity_id(hass, entry, "select", BEDROOM_CORRECTION), "valve_calibration")
+    assert hass.states.get(offset).state == "unavailable"
+    await select_option(hass, entity_id(hass, entry, "select", BEDROOM_CORRECTION), "none")
+    assert hass.states.get(offset).state != "unavailable"
+
+
 async def test_offset_number_refuses_beyond_the_daemon_limit(hass, client):
     entry = await setup_entry(hass, client)
     offset = entity_id(hass, entry, "number", "zone1_offset")

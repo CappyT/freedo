@@ -425,6 +425,10 @@ daemon answers. They exist only while the daemon holds an installation.
     before the change.
   - A zone without a measuring device gets the number Temperature offset only in
     mode `setpoint`: reload the integration after the change.
+  - The number Temperature offset is unavailable while the correction is Valve
+    calibration, which writes the valve offset itself. In the modes `config`
+    and `dbg2` it shows the last value set from Home Assistant, and it is empty
+    until the first write: the valve does not report its offset.
   - The daemon answers 400 to a mode other than the three, 404 to an unknown
     zone, 503 while it holds no installation, and 500 when the running daemon
     does not take the saved change. The select shows the answer as an error and

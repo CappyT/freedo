@@ -42,6 +42,7 @@ from .model import (
     flow_circuit,
     flow_managed,
     fuel_unit,
+    zone_auto_offset,
     zone_offset_mode,
     zone_setting,
 )
@@ -99,7 +100,8 @@ class ZoneOffsetNumber(FreedoEntity, RestoreNumber):
     measuring device and the daemon reports nothing: no captured device frame
     carries tag 0140, so the node Telemetry calib_offset stays empty. The
     entity shows the last value set from Home Assistant and restores it after
-    a restart.
+    a restart, so it is empty until the first write. It is unavailable during
+    the valve calibration.
     """
 
     _attr_translation_key = "temperature_offset"
@@ -122,7 +124,14 @@ class ZoneOffsetNumber(FreedoEntity, RestoreNumber):
 
     @property
     def available(self) -> bool:
-        return super().available and self._zone is not None
+        # The valve calibration writes the valve offset itself and would
+        # overwrite a manual one.
+        zone = self._zone
+        return (
+            super().available
+            and zone is not None
+            and not zone_auto_offset(self.coordinator.data, zone)
+        )
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
