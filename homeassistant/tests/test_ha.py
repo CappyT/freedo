@@ -446,6 +446,18 @@ async def test_devices_link_to_hub(hass, client, caplog):
     assert "via_device" not in caplog.text
 
 
+async def test_firmware_change_reaches_the_device_registry(hass, client):
+    entry = await setup_entry(hass, client)
+    registry = dr.async_get(hass)
+    device = registry.async_get_device_by_identifier((DOMAIN, f"{entry.entry_id}_aaaa"), entry.entry_id)
+    assert device.sw_version == "2.5"
+
+    # The device reports a new firmware after an OTA, with no reload.
+    client.nodes_json[0]["Telemetry"]["fw_run_version"] = "3.1"
+    await refresh(hass, entry)
+    assert registry.async_get(device.id).sw_version == "3.1"
+
+
 # --- item 5: window pushes ---
 
 

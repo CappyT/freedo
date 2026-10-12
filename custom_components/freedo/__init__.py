@@ -11,7 +11,7 @@ from homeassistant.helpers.typing import ConfigType
 from .api import FreedoClient
 from .const import CONF_TOKEN, DOMAIN
 from .coordinator import FreedoConfigEntry, FreedoCoordinator, FreedoRuntime
-from .entity import hub_device_info
+from .entity import async_track_firmware, hub_device_info
 from .environment import async_setup_environment
 from .services import async_setup_services
 
@@ -51,6 +51,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: FreedoConfigEntry) -> bo
         client=client, coordinator=coordinator, hub_device_id=hub.id
     )
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    entry.async_on_unload(async_track_firmware(hass, coordinator))
     async_setup_environment(hass, entry, client)
     return True
 

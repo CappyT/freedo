@@ -7,7 +7,9 @@ from functools import partial
 from typing import Any
 
 from homeassistant.const import UnitOfVolumeFlowRate
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import async_get_platforms
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -47,6 +49,32 @@ def hub_device_info(entry_id: str) -> DeviceInfo:
         manufacturer="freedo",
         model="Local coordinator",
     )
+
+
+@callback
+def async_track_firmware(
+    hass: HomeAssistant, coordinator: FreedoCoordinator
+) -> Callable[[], None]:
+    """Keep the firmware of each node device in step with the daemon. The
+    device info of an entity is read only when the entity is added, so a
+    firmware the device reports after start, or an OTA, needs this write."""
+    registry = dr.async_get(hass)
+    entry_id = coordinator.config_entry.entry_id
+    seen: dict[str, str | None] = {}
+
+    @callback
+    def update() -> None:
+        for short in coordinator.data.devices:
+            firmware = node_firmware(coordinator.data, short)
+            if short in seen and seen[short] == firmware:
+                continue
+            seen[short] = firmware
+            device = registry.async_get_device_by_identifier((DOMAIN, f"{entry_id}_{short}"), entry_id)
+            if device is not None and device.sw_version != firmware:
+                registry.async_update_device(device.id, sw_version=firmware)
+
+    update()
+    return coordinator.async_add_listener(update)
 
 
 class FreedoEntity(CoordinatorEntity[FreedoCoordinator]):
