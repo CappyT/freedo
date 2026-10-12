@@ -28,10 +28,20 @@ jobs:
         run: |
           addon=$(sed -n 's/^version: *"\{0,1\}\([^"]*\)"\{0,1\} *$/\1/p' addon/config.yaml)
           integration=$(jq -r .version custom_components/freedo/manifest.json)
-          if [ "v$addon" != "$TAG" ] || [ "$integration" != "$addon" ]; then
-            echo "::error::tag '$TAG', addon/config.yaml '$addon', manifest.json '$integration'"
+          if [ "v$integration" != "$TAG" ]; then
+            echo "::error::tag '$TAG', manifest.json '$integration'"
             exit 1
           fi
+          # A pre-release (vX.Y.Z-beta.N) leaves the add-on on the last stable version.
+          case "$TAG" in
+            *-*) ;;
+            *)
+              if [ "v$addon" != "$TAG" ]; then
+                echo "::error::tag '$TAG', addon/config.yaml '$addon'"
+                exit 1
+              fi
+              ;;
+          esac
       - name: Name the image and the tags
         id: meta
         env:
@@ -39,10 +49,15 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           name="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${IMAGE}"
+          # latest names the newest stable image, beta the newest pre-release.
+          case "$TAG" in
+            *-*) moving=beta ;;
+            *) moving=latest ;;
+          esac
           {
             echo "tags<<EOF"
             echo "${name}:${TAG#v}"
-            echo "${name}:latest"
+            echo "${name}:${moving}"
             echo "EOF"
             echo "version=${TAG#v}"
             echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -93,4 +108,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
-        run: gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes dist/*
+        run: |
+          # HACS offers a pre-release only to users who show beta versions.
+          case "$TAG" in
+            *-*) pre=--prerelease ;;
+            *) pre=--latest ;;
+          esac
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes "$pre" dist/*

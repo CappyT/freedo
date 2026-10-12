@@ -61,9 +61,12 @@ go build -ldflags "\
 `--version` prints the stamp. A build without `-ldflags` reads the revision and the date from
 the Go toolchain.
 
-A release has one version. The tag `vX.Y.Z`, `version` in `addon/config.yaml` and `version` in
-`custom_components/freedo/manifest.json` all say `X.Y.Z`. The release workflow stops when they
-differ.
+A stable release has one version. The tag `vX.Y.Z`, `version` in `addon/config.yaml` and `version`
+in `custom_components/freedo/manifest.json` all say `X.Y.Z`. A pre-release has a tag such as
+`vX.Y.Z-beta.N`: `manifest.json` says `X.Y.Z-beta.N` and `addon/config.yaml` keeps the last stable
+version, because the add-on follows the stable releases only. The release workflow stops when the
+versions do not match these rules. It tags the images of a stable release `latest` and those of a
+pre-release `beta`, and it marks a pre-release as such on GitHub.
 
 ## Rules for changes
 

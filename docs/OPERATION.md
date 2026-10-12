@@ -86,7 +86,8 @@ The tools never create an identity. Only the daemon does.
 ## Container
 
 The image `ghcr.io/cappyt/freedo` exists for `linux/amd64` and `linux/arm64`, with the
-version tag (for example `0.2.0`) and `latest`. The `Dockerfile` builds a static binary into an
+version tag (for example `0.2.0`), `latest` for the newest stable release and `beta` for the
+newest pre-release. The `Dockerfile` builds a static binary into an
 Alpine image. The process runs as user 10001. The image holds the daemon with the [dashboard](#dashboard)
 embedded. The second target `addon` builds the Home Assistant add-on image. Its start
 command reads the add-on options, so use it only inside Home Assistant.
