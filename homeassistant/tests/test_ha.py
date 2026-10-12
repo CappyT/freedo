@@ -2036,6 +2036,11 @@ async def test_child_lock_only_where_the_node_serves_it(hass, client):
 
 
 async def test_valve_buttons(hass, client):
+    # The wall thermostat is in GET /api/nodes on a live daemon.
+    client.nodes_json.append(
+        {"Short": "cccc", "TempC": 0, "SetpointC": 0, "Mode": "", "LastSeenUnix": 0,
+         "Telemetry": {}, "ChildLock": None}
+    )
     entry = await setup_entry(hass, client)
     for key, call_name in (("identify", "identify"), ("calibrate", "calibrate")):
         button = entity_id(hass, entry, "button", f"aaaa_{key}")
@@ -2043,8 +2048,12 @@ async def test_valve_buttons(hass, client):
             "button", "press", {ATTR_ENTITY_ID: button}, blocking=True
         )
         assert client.calls[-1] == (call_name, "aaaa")
-    # A wall thermostat has neither.
-    assert not has_entity(hass, entry, "button", "cccc_identify")
+    # The wall thermostat identifies itself too, and has no motor to calibrate.
+    button = entity_id(hass, entry, "button", "cccc_identify")
+    await hass.services.async_call(
+        "button", "press", {ATTR_ENTITY_ID: button}, blocking=True
+    )
+    assert client.calls[-1] == ("identify", "cccc")
     assert not has_entity(hass, entry, "button", "cccc_calibrate")
 
 

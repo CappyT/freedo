@@ -18,6 +18,7 @@ KIND_HEATING = "heating"
 KIND_HOT_WATER = "hotwater"
 KIND_BRIDGE = "bridge"
 KIND_VALVE = "valve"
+KIND_THERMOSTAT = "thermostat"
 
 # The values of GET /api/nodes Display.orientation that a write accepts.
 ORIENTATIONS = ("horizontal", "vertical")

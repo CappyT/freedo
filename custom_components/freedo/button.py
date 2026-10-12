@@ -1,4 +1,5 @@
-"""Buttons of each valve: identify and motor calibration."""
+"""Buttons of the devices: identify on the valves and the wall thermostat,
+motor calibration on the valves."""
 
 from __future__ import annotations
 
@@ -9,7 +10,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import FreedoConfigEntry
 from .entity import FreedoNodeEntity, call_api
-from .model import KIND_VALVE, in_zone
+from .model import KIND_THERMOSTAT, KIND_VALVE, in_zone
 
 
 async def async_setup_entry(
@@ -20,15 +21,17 @@ async def async_setup_entry(
     coordinator = entry.runtime_data.coordinator
     entities: list[ButtonEntity] = []
     for short, dev in sorted(coordinator.data.devices.items()):
-        if dev.get("kind") == KIND_VALVE:
-            if in_zone(coordinator.data, short):
-                entities.append(IdentifyButton(coordinator, short))
+        kind = dev.get("kind")
+        if kind in (KIND_VALVE, KIND_THERMOSTAT) and in_zone(coordinator.data, short):
+            entities.append(IdentifyButton(coordinator, short))
+        if kind == KIND_VALVE:
             entities.append(CalibrateButton(coordinator, short))
     async_add_entities(entities)
 
 
 class IdentifyButton(FreedoNodeEntity, ButtonEntity):
-    """POST /api/nodes/{id}/identify: the valve signals itself."""
+    """POST /api/nodes/{id}/identify: the device signals itself. The wall
+    thermostat shows "Hi!" on its display."""
 
     _attr_device_class = ButtonDeviceClass.IDENTIFY
     _attr_entity_category = EntityCategory.DIAGNOSTIC

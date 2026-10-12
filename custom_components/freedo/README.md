@@ -80,7 +80,7 @@ The integration and the options of the add-on have English, Italian, German and 
 | switch Pairing mode | hub | `GET /api/pair/window` `open`, `until`; writes `POST /api/pair/window` |
 | select Display orientation, switch Change notification | valve in a zone | `/api/nodes` `Display`; writes `PUT /api/nodes/{id}/display` |
 | switch Child lock | valve in a zone | `/api/nodes` `ChildLock`; writes `POST /api/nodes/{id}/childlock` |
-| button Identify | valve in a zone | `POST /api/nodes/{id}/identify` |
+| button Identify | valve or wall thermostat in a zone | `POST /api/nodes/{id}/identify` |
 | button Calibrate motor | valve | `POST /api/nodes/{id}/calibrate` |
 | sensor Calibration | valve | `/api/nodes` `Telemetry` `calib_state` and `calib_error` |
 | switch Early start, switch Open window detection, number Window time | heating zone | `/api/install/zones`; writes `PATCH /api/install/zones/{n}` |
@@ -321,7 +321,7 @@ hub, so both do not record the same reading.
   15 minutes. Only a valve has a child lock: the node view reports `ChildLock`
   as null on other devices, and they get no switch. A valve that belongs to no
   zone gets no switch either.
-- Button Identify makes the valve signal itself. Button Calibrate motor starts
+- Button Identify makes the valve or the wall thermostat signal itself; the thermostat shows "Hi!". Button Calibrate motor starts
   the motor calibration, a full stroke of the valve. A 2.xx answer of the valve
   does not guarantee the stroke: the valve drops the request in silence in some
   states.
