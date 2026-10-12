@@ -53,10 +53,23 @@
         "title": "Zone jedes Fenstersensors",
         "description": "Wähle die Heizzone jedes Sensors aus. Eine Zone ist offen, wenn einer ihrer Sensoren offen ist."
       },
-      "temperatures": {
-        "title": "Temperatursensor jeder Zone",
-        "description": "Wähle für jede Heizzone einen Temperatursensor aus. Die Zone regelt dann nach diesem Sensor statt nach dem Sensor des Ventils. Lasse eine Zone leer, um den Sensor des Ventils zu behalten. Die Zone braucht den Offset-Modus Sollwertverschiebung. Die Optionen ändern den Modus nicht. Stelle ihn mit der Auswahl Temperaturoffset-Modus der Zone ein. Die Korrektur ist langsam. Eine Differenz von 2 °C braucht etwa 4 Stunden."
+      "rooms": {
+        "title": "Raum {zone}",
+        "description": "Raum {index} von {count}. Jede Heizzone ist ein Raum. Wähle ihren Home Assistant-Bereich und, wenn du willst, einen Temperatursensor aus. Das Gerät der Zone kommt in den Bereich. Ihre Ventile und Thermostate kommen auch dorthin, außer du hast sie in einen anderen Bereich gesetzt.",
+        "data": {
+          "area": "Bereich",
+          "room_temperature": "Raumtemperatursensor",
+          "correction": "Korrektur mit der Raumtemperatur"
+        },
+        "data_description": {
+          "area": "Der Bereich des Geräts der Zone. Du kannst ihn auch auf der Geräteseite setzen.",
+          "room_temperature": "Die Sensoren im Bereich der Zone stehen zuerst. Lasse das Feld leer, um den Sensor des Ventils zu verwenden.",
+          "correction": "Kontinuierliche Verschiebung verschiebt die Sollwerte langsam nach dem Messwert. Das ist die empfohlene Methode. Ventilkalibrierung schreibt den Ventiloffset höchstens einmal pro Intervall, und jeder Schreibvorgang bewegt den Motor einmal. Ein neuer Sensor setzt Kontinuierliche Verschiebung, wenn die Zone keine Korrektur hat."
+        }
       }
+    },
+    "error": {
+      "correction_failed": "Der Daemon hat die Korrektur abgelehnt. Das Home Assistant-Protokoll zeigt den Grund."
     },
     "abort": {
       "not_loaded": "Die Integration ist nicht geladen. Lade sie und öffne die Optionen dann erneut.",
@@ -246,10 +259,18 @@
           "setpoint": "Sollwertverschiebung"
         }
       },
+      "room_temperature_correction": {
+        "name": "Raumtemperaturkorrektur",
+        "state": {
+          "none": "Keine",
+          "continuous_shift": "Kontinuierliche Verschiebung",
+          "valve_calibration": "Ventilkalibrierung"
+        }
+      },
       "temperature_source": {
         "name": "Temperaturquelle",
         "state": {
-          "external": "Externer Sensor"
+          "other_sensor": "Anderer Sensor..."
         }
       },
       "preset": {
@@ -408,6 +429,13 @@
     }
   },
   "selector": {
+    "correction_method": {
+      "options": {
+        "none": "Keine",
+        "continuous_shift": "Kontinuierliche Verschiebung",
+        "valve_calibration": "Ventilkalibrierung"
+      }
+    },
     "overlay_hvac_mode": {
       "options": {
         "heat": "Heizen",
@@ -423,7 +451,14 @@
       }
     }
   },
+  "issues": {
+    "zone_no_area": {
+      "title": "Zone {zone} hat keinen Bereich",
+      "description": "Die freedo-Zone {zone} funktioniert, ist aber in keinem Home Assistant-Bereich. Setze ihren Bereich unter Einstellungen > Geräte & Dienste > freedo > Konfigurieren auf der Seite Raum {zone} oder auf der Seite des Geräts der Zone. Du kannst dieses Problem ignorieren."
+    }
+  },
   "exceptions": {
+    "another_sensor": { "message": "Um einen Sensor aus einem anderen Bereich zu verwenden, ordne ihn unter Einstellungen > Geräte & Dienste > freedo > Konfigurieren auf der Seite Raum {zone} zu." },
     "overlay_temperature_required": {
       "message": "Lege im Modus Heizen eine Temperatur fest."
     },

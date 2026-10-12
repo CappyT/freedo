@@ -36,7 +36,12 @@ from homeassistant.const import (  # noqa: E402
 )
 from homeassistant.data_entry_flow import FlowResultType  # noqa: E402
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError  # noqa: E402
-from homeassistant.helpers import device_registry as dr, entity_registry as er  # noqa: E402
+from homeassistant.helpers import (  # noqa: E402
+    area_registry as ar,
+    device_registry as dr,
+    entity_registry as er,
+    issue_registry as ir,
+)
 from homeassistant.util import dt as dt_util  # noqa: E402
 from pytest_homeassistant_custom_component.common import (  # noqa: E402
     MockConfigEntry,
@@ -102,6 +107,8 @@ class FakeClient:
         # Room temperature pushes and clears as the daemon receives them.
         self.room_temps: list[tuple[int, float]] = []
         self.room_temp_clears: list[int] = []
+        # The source label of each push, in the order of room_temps.
+        self.room_temp_sources: list[tuple[int, str | None]] = []
         # The order of pushes and clears as the daemon receives them.
         self.room_temp_events: list[tuple] = []
         # A push that waits on the gate reaches the daemon late.
@@ -227,6 +234,14 @@ class FakeClient:
     async def patch_install_zone(self, zone, **fields):
         self.calls.append(("patch_zone", zone, dict(fields)))
         row = next(r for r in self.install_json["zones"] if r["number"] == zone)
+        # The daemon checks the correction fields against the values the
+        # request leaves.
+        mode = fields.get("offset_mode", row.get("offset_mode"))
+        auto = fields.get("auto_offset", row.get("auto_offset"))
+        if "offset_mode" in fields and mode == "setpoint" and auto:
+            raise FreedoApiError(400, f"offset_mode: zone {zone} has auto_offset on, switch it off first")
+        if fields.get("auto_offset") and mode == "setpoint":
+            raise FreedoApiError(400, f"auto_offset: zone {zone} is in offset mode setpoint")
         mode = fields.get("device_overlay_end")
         # The daemon drops the duration of a rule other than timer and refuses
         # a timer without one.
@@ -270,13 +285,14 @@ class FakeClient:
     async def push_outdoor(self, temp_c):
         return {}
 
-    async def push_room_temp(self, zone, temp_c):
+    async def push_room_temp(self, zone, temp_c, source=None):
         if self.room_temp_errors:
             raise self.room_temp_errors.pop(0)
         if self.room_temp_gate is not None:
             self.room_temp_reached.set()
             await self.room_temp_gate.wait()
         self.room_temps.append((zone, temp_c))
+        self.room_temp_sources.append((zone, source))
         self.room_temp_events.append(("push", zone, temp_c))
         return {"tempC": temp_c}
 
@@ -318,13 +334,20 @@ def client() -> FakeClient:
     return FakeClient()
 
 
-async def setup_entry(hass, client, options=None) -> MockConfigEntry:
+async def setup_entry(hass, client, options=None, enabled=()) -> MockConfigEntry:
+    """Set up an entry on the fake client. enabled lists (platform, key) of the
+    entities disabled by default to register enabled first, as an install that
+    had them before keeps them."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={CONF_HOST: "127.0.0.1", CONF_PORT: 8080},
         options=options or {},
     )
     entry.add_to_hass(hass)
+    for platform, key in enabled:
+        er.async_get(hass).async_get_or_create(
+            platform, DOMAIN, f"{entry.entry_id}_{key}", config_entry=entry
+        )
     with patch("custom_components.freedo.FreedoClient", return_value=client):
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
@@ -350,6 +373,57 @@ async def refresh(hass, entry):
 async def call(hass, service, data):
     await hass.services.async_call(CLIMATE_DOMAIN, service, data, blocking=True)
     await hass.async_block_till_done()
+
+
+def zone_device(hass, entry, number):
+    return dr.async_get(hass).async_get_device_by_identifier((DOMAIN, f"{entry.entry_id}_zone{number}"), entry.entry_id)
+
+
+def node_device(hass, entry, short):
+    return dr.async_get(hass).async_get_device_by_identifier((DOMAIN, f"{entry.entry_id}_{short}"), entry.entry_id)
+
+
+def place_zone(hass, entry, number, area_name):
+    """Set the area of a zone device as the device page does. The integration
+    reads it at the next poll."""
+    area = ar.async_get(hass).async_get_or_create(area_name)
+    dr.async_get(hass).async_update_device(zone_device(hass, entry, number).id, area_id=area.id)
+    return area.id
+
+
+def add_sensor(hass, entry, entity, name, value, area=None, device_area=None):
+    """A temperature sensor of another integration, in area itself or on a
+    device in device_area."""
+    entities = er.async_get(hass)
+    registered = entities.async_get_or_create(
+        "sensor", "test", entity, suggested_object_id=entity.split(".", 1)[1]
+    )
+    assert registered.entity_id == entity
+    device_id = None
+    if device_area is not None:
+        other = MockConfigEntry(domain="test")
+        other.add_to_hass(hass)
+        device = dr.async_get(hass).async_get_or_create(
+            config_entry_id=other.entry_id, identifiers={("test", entity)}
+        )
+        dr.async_get(hass).async_update_device(device.id, area_id=device_area)
+        device_id = device.id
+    entities.async_update_entity(entity, area_id=area, device_id=device_id)
+    hass.states.async_set(
+        entity,
+        value,
+        {"device_class": "temperature", "unit_of_measurement": "°C", "friendly_name": name},
+    )
+
+
+def no_area_issues(hass, entry):
+    """The open repair issues of zones with no area: (zone number, placeholder)."""
+    prefix = f"zone_no_area_{entry.entry_id}_"
+    return sorted(
+        (int(issue_id.removeprefix(prefix)), issue.translation_placeholders["zone"])
+        for (domain, issue_id), issue in ir.async_get(hass).issues.items()
+        if domain == DOMAIN and issue_id.startswith(prefix) and issue.dismissed_version is None
+    )
 
 
 # --- item 1 and 4: current temperature ---
@@ -485,6 +559,181 @@ async def test_firmware_change_reaches_the_device_registry(hass, client):
     assert registry.async_get(device.id).sw_version == "3.1"
 
 
+# --- rooms: zone areas, names and repair issues ---
+
+
+async def test_area_set_on_the_device_page_is_read_at_the_poll(hass, client):
+    entry = await setup_entry(hass, client)
+    client.calls.clear()
+    living_room = place_zone(hass, entry, 1, "Soggiorno")
+    await refresh(hass, entry)
+    # The valve with no area takes the area of its zone, and the daemon gets
+    # the area as its display label.
+    assert node_device(hass, entry, "aaaa").area_id == living_room
+    assert client.calls == [("patch_zone", 1, {"ha_area": {"id": living_room, "name": "Soggiorno"}})]
+    # The label went through: the next poll sends nothing.
+    client.calls.clear()
+    await refresh(hass, entry)
+    assert client.calls == []
+
+
+async def test_area_rename_reaches_the_daemon(hass, client):
+    entry = await setup_entry(hass, client)
+    living_room = place_zone(hass, entry, 1, "Soggiorno")
+    await refresh(hass, entry)
+    client.calls.clear()
+    ar.async_get(hass).async_update(living_room, name="Salotto")
+    await refresh(hass, entry)
+    assert client.calls == [("patch_zone", 1, {"ha_area": {"id": living_room, "name": "Salotto"}})]
+
+
+async def test_area_follows_the_rule_for_each_device(hass, client):
+    # bbbb and dddd become node devices: bbbb follows zone 1, and dddd (zone 2)
+    # joins zone 1 later.
+    health = client.health_json["devices"]
+    health.append(dict(health[0], device="VA0000000002", short="bbbb", label=""))
+    health.append(dict(health[0], device="VA0000000004", short="dddd", label="Bedroom"))
+    entry = await setup_entry(hass, client)
+    areas = ar.async_get(hass)
+    office = areas.async_create("Office").id
+    devices = dr.async_get(hass)
+
+    first = place_zone(hass, entry, 1, "Soggiorno")
+    await refresh(hass, entry)
+    assert node_device(hass, entry, "aaaa").area_id == first
+    assert node_device(hass, entry, "bbbb").area_id == first
+
+    # The user places bbbb in the office; a later poll leaves it there.
+    devices.async_update_device(node_device(hass, entry, "bbbb").id, area_id=office)
+    await refresh(hass, entry)
+    assert node_device(hass, entry, "bbbb").area_id == office
+
+    # dddd moves to zone 1 with no area of its own, and the zone moves area: a
+    # device with the previous area moves, a free one moves, a placed one stays.
+    client.zones_json["declared"][0]["members"] = ["aaaa", "bbbb", "dddd"]
+    client.zones_json["declared"][1]["members"] = []
+    client.install_devices_json["devices"][2]["zone"] = 1
+    second = place_zone(hass, entry, 1, "Salotto")
+    await refresh(hass, entry)
+    assert node_device(hass, entry, "aaaa").area_id == second
+    assert node_device(hass, entry, "dddd").area_id == second
+    assert node_device(hass, entry, "bbbb").area_id == office
+
+
+async def test_previous_area_survives_a_restart_on_the_daemon(hass, client):
+    # The daemon holds the area the integration sent before the restart. The
+    # zone moved while Home Assistant was down: the valve with the old area
+    # follows.
+    entry = await setup_entry(hass, client)
+    old = place_zone(hass, entry, 1, "Soggiorno")
+    await refresh(hass, entry)
+    assert client.install_json["zones"][0]["ha_area"] == {"id": old, "name": "Soggiorno"}
+    await hass.config_entries.async_unload(entry.entry_id)
+    new = place_zone(hass, entry, 1, "Salotto")
+    with patch("custom_components.freedo.FreedoClient", return_value=client):
+        await hass.config_entries.async_reload(entry.entry_id)
+        await hass.async_block_till_done()
+    assert node_device(hass, entry, "aaaa").area_id == new
+
+
+async def test_wall_thermostat_takes_the_area_of_its_heating_zone(hass, client):
+    # cccc serves zone 1 and the hot water zone 9; its row names zone 9.
+    client.zones_json["declared"][0]["members"] = ["aaaa", "bbbb", "cccc"]
+    entry = await setup_entry(hass, client)
+    living_room = place_zone(hass, entry, 1, "Soggiorno")
+    place_zone(hass, entry, 9, "Utility")
+    await refresh(hass, entry)
+    assert node_device(hass, entry, "cccc").area_id == living_room
+
+
+async def test_hot_water_zone_takes_an_area_without_an_issue(hass, client):
+    entry = await setup_entry(hass, client)
+    utility = place_zone(hass, entry, 9, "Utility")
+    await refresh(hass, entry)
+    # cccc follows the hot water zone alone.
+    assert node_device(hass, entry, "cccc").area_id == utility
+    assert ("patch_zone", 9, {"ha_area": {"id": utility, "name": "Utility"}}) in client.calls
+    assert [n for n, _ in no_area_issues(hass, entry)] == [1, 2]
+
+
+async def test_no_area_label_on_a_daemon_without_the_field(hass, client):
+    for row in client.install_json["zones"]:
+        del row["ha_area"]
+    entry = await setup_entry(hass, client)
+    living_room = place_zone(hass, entry, 1, "Soggiorno")
+    await refresh(hass, entry)
+    assert node_device(hass, entry, "aaaa").area_id == living_room
+    assert client.calls == []
+
+
+async def test_a_refused_area_label_is_sent_again(hass, client, caplog):
+    entry = await setup_entry(hass, client)
+    patch_zone = client.patch_install_zone
+
+    async def refuse(zone, **fields):
+        raise FreedoConnectionError("daemon down")
+
+    client.patch_install_zone = refuse
+    living_room = place_zone(hass, entry, 1, "Soggiorno")
+    await refresh(hass, entry)
+    await refresh(hass, entry)
+    assert caplog.text.count("Area of zone 1 not sent to the daemon") == 1
+    client.patch_install_zone = patch_zone
+    await refresh(hass, entry)
+    assert client.install_json["zones"][0]["ha_area"] == {"id": living_room, "name": "Soggiorno"}
+
+
+async def test_zone_rename_reaches_the_device(hass, client):
+    entry = await setup_entry(hass, client)
+    devices = dr.async_get(hass)
+    client.zones_json["declared"][0]["name"] = "Lounge"
+    await refresh(hass, entry)
+    device = zone_device(hass, entry, 1)
+    assert device.name == "Lounge"
+    # The entity ids stay.
+    assert hass.states.get(LIVING) is not None
+
+    # A name set in Home Assistant wins.
+    devices.async_update_device(device.id, name_by_user="Sala")
+    client.zones_json["declared"][0]["name"] = "Salon"
+    await refresh(hass, entry)
+    device = zone_device(hass, entry, 1)
+    assert (device.name, device.name_by_user) == ("Lounge", "Sala")
+    # The hot water zone keeps its translated name.
+    client.zones_json["declared"][2]["name"] = "Boiler"
+    await refresh(hass, entry)
+    assert zone_device(hass, entry, 9).name == "Domestic hot water"
+
+
+async def test_zone_without_an_area_raises_one_repair_issue(hass, client):
+    entry = await setup_entry(hass, client)
+    # One issue per heating zone, none for the hot water zone.
+    assert no_area_issues(hass, entry) == [(1, "Living"), (2, "Bedroom")]
+    issue = ir.async_get(hass).async_get_issue(DOMAIN, f"zone_no_area_{entry.entry_id}_1")
+    assert issue.translation_key == "zone_no_area"
+    assert issue.is_fixable is False
+    assert issue.severity is ir.IssueSeverity.WARNING
+
+    # The user ignores the issue of zone 2: it stays ignored at the next poll.
+    ir.async_ignore_issue(hass, DOMAIN, f"zone_no_area_{entry.entry_id}_2", True)
+    await refresh(hass, entry)
+    assert no_area_issues(hass, entry) == [(1, "Living")]
+
+    # An area ends the issue.
+    place_zone(hass, entry, 1, "Soggiorno")
+    await refresh(hass, entry)
+    assert no_area_issues(hass, entry) == []
+    assert ir.async_get(hass).async_get_issue(DOMAIN, f"zone_no_area_{entry.entry_id}_1") is None
+
+
+async def test_removing_the_entry_removes_its_issues(hass, client):
+    entry = await setup_entry(hass, client)
+    assert no_area_issues(hass, entry)
+    await hass.config_entries.async_remove(entry.entry_id)
+    await hass.async_block_till_done()
+    assert no_area_issues(hass, entry) == []
+
+
 # --- item 5: window pushes ---
 
 
@@ -569,8 +818,9 @@ async def select_option(hass, entity, option):
 async def test_room_temperature_is_pushed_to_its_zone(hass, client):
     set_room_sensor(hass, "21.4")
     await setup_entry(hass, client, options={"room_temperatures": {"1": ROOM_SENSOR}})
-    # The integration sends the state it finds at start.
+    # The integration sends the state it finds at start, with the sensor name.
     assert client.room_temps == [(1, 21.4)]
+    assert client.room_temp_sources == [(1, "living temperature")]
 
     set_room_sensor(hass, "21.9")
     await hass.async_block_till_done()
@@ -579,6 +829,14 @@ async def test_room_temperature_is_pushed_to_its_zone(hass, client):
     # The periodic push keeps the reading fresh while the sensor stays still.
     await tick(hass, 16)
     assert client.room_temps == [(1, 21.4), (1, 21.9), (1, 21.9)]
+
+
+async def test_room_temperature_without_a_source_on_an_older_daemon(hass, client):
+    # A daemon that does not serve externalTemp.source refuses the field.
+    del client.zones_json["declared"][0]["externalTemp"]["source"]
+    set_room_sensor(hass, "21.4")
+    await setup_entry(hass, client, options={"room_temperatures": {"1": ROOM_SENSOR}})
+    assert client.room_temp_sources == [(1, None)]
 
 
 async def test_room_temperature_in_fahrenheit_is_converted(hass, client):
@@ -651,34 +909,47 @@ async def test_no_room_temperature_push_without_a_mapping(hass, client):
 LIVING_SOURCE = "zone1_temperature_source"
 BEDROOM_SOURCE = "zone2_temperature_source"
 LIVING_DEVICE = "Living (VA0000000001)"
+# The label of the mapped sensors: their name from the entity id, and the reading.
+ROOM_LABEL = "living temperature (21.4 °C)"
+OTHER = "other_sensor"
 
 
 async def test_temperature_source_options_and_current(hass, client):
     set_room_sensor(hass, "21.4")
-    # Zone 2 measures on dddd (offset mode config), zone 1 maps an external
-    # sensor (offset mode setpoint).
+    set_room_sensor(hass, "20.1", entity=HALL_SENSOR)
+    # Zone 2 measures on dddd (offset mode config), zone 1 maps a sensor
+    # (offset mode setpoint). Neither zone has an area.
     client.zones_json["declared"][1]["measuringDevice"] = "dddd"
     entry = await setup_entry(
         hass, client, options={"room_temperatures": {"1": ROOM_SENSOR, "2": HALL_SENSOR}}
     )
     living = entity_id(hass, entry, "select", LIVING_SOURCE)
     bedroom = entity_id(hass, entry, "select", BEDROOM_SOURCE)
-    # The options list the devices of the room, then the external sensor.
+    # The mapped sensor, the devices of the room, then the other sensor.
     assert hass.states.get(living).attributes["options"] == [
-        LIVING_DEVICE, "VA0000000002", "external",
+        ROOM_LABEL, LIVING_DEVICE, "VA0000000002", OTHER,
     ]
     assert er.async_get(hass).async_get(living).entity_category == "config"
     # Zone 1 regulates on the mapped sensor: it is in use, the mode is setpoint.
-    assert hass.states.get(living).state == "external"
+    assert hass.states.get(living).state == ROOM_LABEL
     # Zone 2 has offset mode config: the daemon refuses a reading there.
     assert hass.states.get(bedroom).state == "Bedroom (VA0000000004)"
 
 
-async def test_temperature_source_without_a_mapped_sensor_has_no_external(hass, client):
+async def test_temperature_source_without_an_area_or_a_sensor(hass, client):
     entry = await setup_entry(hass, client)
     living = entity_id(hass, entry, "select", LIVING_SOURCE)
-    assert "external" not in hass.states.get(living).attributes["options"]
+    assert hass.states.get(living).attributes["options"] == [LIVING_DEVICE, "VA0000000002", OTHER]
     assert hass.states.get(living).state == "VA0000000002"
+
+
+async def test_temperature_source_exists_without_a_device_of_the_room(hass, client):
+    # No member of zone 2 measures in its room: the select still offers the
+    # other sensor.
+    client.install_devices_json["devices"][2]["zone"] = 3
+    entry = await setup_entry(hass, client)
+    bedroom = entity_id(hass, entry, "select", BEDROOM_SOURCE)
+    assert hass.states.get(bedroom).attributes["options"] == [OTHER]
 
 
 async def test_temperature_source_offers_members_without_an_install_zone(hass, client):
@@ -688,7 +959,7 @@ async def test_temperature_source_offers_members_without_an_install_zone(hass, c
         row["zone"] = None
     entry = await setup_entry(hass, client)
     bedroom = entity_id(hass, entry, "select", BEDROOM_SOURCE)
-    assert hass.states.get(bedroom).attributes["options"] == ["Bedroom (VA0000000004)"]
+    assert hass.states.get(bedroom).attributes["options"] == ["Bedroom (VA0000000004)", OTHER]
 
 
 async def test_temperature_source_excludes_a_device_of_another_room(hass, client):
@@ -700,14 +971,89 @@ async def test_temperature_source_excludes_a_device_of_another_room(hass, client
     )
     entry = await setup_entry(hass, client)
     bedroom = entity_id(hass, entry, "select", BEDROOM_SOURCE)
-    assert hass.states.get(bedroom).attributes["options"] == ["Bedroom (VA0000000004)"]
+    assert hass.states.get(bedroom).attributes["options"] == ["Bedroom (VA0000000004)", OTHER]
+
+
+async def test_temperature_source_lists_the_sensors_of_the_area(hass, client):
+    entry = await setup_entry(hass, client)
+    living_room = place_zone(hass, entry, 1, "Soggiorno")
+    office = ar.async_get(hass).async_create("Office").id
+    add_sensor(hass, entry, "sensor.soggiorno_thermometer", "Soggiorno thermometer", "20.4", area=living_room)
+    add_sensor(hass, entry, "sensor.aqara_living", "Aqara TH living", "20.1", device_area=living_room)
+    add_sensor(hass, entry, "sensor.office", "Office thermometer", "19.0", area=office)
+    # A sensor of another device class is no temperature.
+    hass.states.async_set("sensor.living_humidity", "48", {"device_class": "humidity"})
+    await refresh(hass, entry)
+    living = entity_id(hass, entry, "select", LIVING_SOURCE)
+    # The valve aaaa moved to the area with the zone, and its own temperature
+    # sensor is a device option, not a sensor option.
+    assert hass.states.get(living).attributes["options"] == [
+        "Aqara TH living (20.1 °C)",
+        "Soggiorno thermometer (20.4 °C)",
+        LIVING_DEVICE,
+        "VA0000000002",
+        OTHER,
+    ]
+
+
+async def test_temperature_source_other_sensor_explains_where_to_map_one(hass, client):
+    entry = await setup_entry(hass, client)
+    living = entity_id(hass, entry, "select", LIVING_SOURCE)
+    with pytest.raises(ServiceValidationError) as err:
+        await select_option(hass, living, OTHER)
+    assert err.value.translation_key == "another_sensor"
+    assert err.value.translation_placeholders == {"zone": "Living"}
+    assert client.calls == []
+    assert hass.states.get(living).state == "VA0000000002"
+
+
+async def test_temperature_source_choose_a_sensor_of_the_area(hass, client):
+    entry = await setup_entry(hass, client)
+    bedroom_area = place_zone(hass, entry, 2, "Camera")
+    add_sensor(hass, entry, "sensor.camera", "Aqara bedroom", "18.1", area=bedroom_area)
+    await refresh(hass, entry)
+    bedroom = entity_id(hass, entry, "select", BEDROOM_SOURCE)
+    client.calls.clear()
+
+    await select_option(hass, bedroom, "Aqara bedroom (18.1 °C)")
+    # Zone 2 had no correction: the choice starts the continuous shift, maps the
+    # sensor in the options and sends its reading with its name.
+    assert client.calls == [("patch_zone", 2, {"offset_mode": "setpoint"})]
+    assert entry.options["room_temperatures"] == {"2": "sensor.camera"}
+    assert 2 not in entry.options[CONF_ROOM_TEMP_PAUSED]
+    assert client.room_temps == [(2, 18.1)]
+    assert client.room_temp_sources == [(2, "Aqara bedroom")]
+    assert hass.states.get(bedroom).state == "Aqara bedroom (18.1 °C)"
+
+    # The new mapping follows the sensor without a reload.
+    add_sensor(hass, entry, "sensor.camera", "Aqara bedroom", "18.4", area=bedroom_area)
+    await hass.async_block_till_done()
+    assert client.room_temps == [(2, 18.1), (2, 18.4)]
+
+
+async def test_temperature_source_keeps_the_option_of_an_older_reading(hass, client):
+    # The sensor reads 20.9 now, but the state still shows the label of the last
+    # poll: the option maps back to the sensor until the next poll.
+    entry = await setup_entry(hass, client)
+    living_room = place_zone(hass, entry, 1, "Soggiorno")
+    add_sensor(hass, entry, "sensor.soggiorno", "Soggiorno thermometer", "20.4", area=living_room)
+    await refresh(hass, entry)
+    living = entity_id(hass, entry, "select", LIVING_SOURCE)
+    add_sensor(hass, entry, "sensor.soggiorno", "Soggiorno thermometer", "20.9", area=living_room)
+    await hass.async_block_till_done()
+
+    await select_option(hass, living, "Soggiorno thermometer (20.4 °C)")
+    assert entry.options["room_temperatures"] == {"1": "sensor.soggiorno"}
+    # Zone 1 already runs the continuous shift.
+    assert not any(c[0] == "patch_zone" and "offset_mode" in c[2] for c in client.calls)
+    assert hass.states.get(living).state == "Soggiorno thermometer (20.9 °C)"
 
 
 async def test_temperature_source_choose_device(hass, client):
     set_room_sensor(hass, "21.4")
     entry = await setup_entry(hass, client, options={"room_temperatures": {"1": ROOM_SENSOR}})
     living = entity_id(hass, entry, "select", LIVING_SOURCE)
-    assert hass.states.get(living).state == "external"
+    assert hass.states.get(living).state == ROOM_LABEL
 
     await select_option(hass, living, LIVING_DEVICE)
     # The measuring device of the zone changes, the pushes pause and the reading
@@ -746,7 +1092,7 @@ async def test_temperature_source_device_choice_serializes_the_push(hass, client
     assert entry.options[CONF_ROOM_TEMP_PAUSED] == [1]
 
 
-async def test_temperature_source_choose_external(hass, client):
+async def test_temperature_source_choose_the_paused_sensor(hass, client):
     set_room_sensor(hass, "21.8", entity=HALL_SENSOR)
     client.zones_json["declared"][1]["measuringDevice"] = "dddd"
     entry = await setup_entry(
@@ -757,12 +1103,13 @@ async def test_temperature_source_choose_external(hass, client):
     bedroom = entity_id(hass, entry, "select", BEDROOM_SOURCE)
     assert hass.states.get(bedroom).state == "Bedroom (VA0000000004)"
 
-    await select_option(hass, bedroom, "external")
-    # The mode turns to setpoint, the pause goes and the reading is sent at once.
+    await select_option(hass, bedroom, "hall temperature (21.8 °C)")
+    # The correction turns to continuous shift, the pause goes and the reading is
+    # sent at once.
     assert ("patch_zone", 2, {"offset_mode": "setpoint"}) in client.calls
     assert 2 not in entry.options.get(CONF_ROOM_TEMP_PAUSED, [])
     assert client.room_temps == [(2, 21.8)]
-    assert hass.states.get(bedroom).state == "external"
+    assert hass.states.get(bedroom).state == "hall temperature (21.8 °C)"
 
 
 async def test_temperature_source_pause_survives_a_reload(hass, client):
@@ -782,61 +1129,208 @@ async def test_temperature_source_pause_survives_a_reload(hass, client):
     assert hass.states.get(living).state == LIVING_DEVICE
 
 
-async def test_options_step_keeps_the_pause_of_a_mapped_zone(hass, client):
-    set_room_sensor(hass, "21.4")
-    entry = await setup_entry(
-        hass,
-        client,
-        options={"room_temperatures": {"1": ROOM_SENSOR}, CONF_ROOM_TEMP_PAUSED: [1]},
-    )
-    with patch("custom_components.freedo.FreedoClient", return_value=client):
-        result = await start_options(hass, entry)
-        assert result["step_id"] == "temperatures"
-        result = await hass.config_entries.options.async_configure(
-            result["flow_id"], {"1: Living": ROOM_SENSOR}
-        )
-        await hass.async_block_till_done()
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.options[CONF_ROOM_TEMP_PAUSED] == [1]
-
-
 async def start_options(hass, entry, user_input=None):
     result = await hass.config_entries.options.async_init(entry.entry_id)
     assert result["step_id"] == "init"
     return await hass.config_entries.options.async_configure(result["flow_id"], user_input or {})
 
 
-async def test_options_offer_a_temperature_sensor_for_each_heating_zone(hass, client):
+async def submit_rooms(hass, result, *pages):
+    """Submit one page of the step Rooms per item of pages, in order."""
+    for page in pages:
+        assert result["type"] is FlowResultType.FORM
+        assert result["step_id"] == "rooms"
+        result = await hass.config_entries.options.async_configure(result["flow_id"], page)
+        await hass.async_block_till_done()
+    return result
+
+
+def form_fields(result):
+    return {str(key): key for key in result["data_schema"].schema}
+
+
+def suggested(result, name):
+    return (form_fields(result)[name].description or {}).get("suggested_value")
+
+
+def sensor_choices(result):
+    key = form_fields(result)["room_temperature"]
+    return [o["value"] for o in result["data_schema"].schema[key].config["options"]]
+
+
+async def test_rooms_step_has_a_page_for_each_heating_zone(hass, client):
+    areas = ar.async_get(hass)
+    living_room = areas.async_create("living").id
     entry = await setup_entry(hass, client, options={"room_temperatures": {"2": HALL_SENSOR}})
-    result = await start_options(hass, entry)
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "temperatures"
-    fields = {str(key): key for key in result["data_schema"].schema}
-    # The hot water zone has no field.
-    assert list(fields) == ["1: Living", "2: Bedroom"]
-    assert not (fields["1: Living"].description or {}).get("suggested_value")
-    assert fields["2: Bedroom"].description["suggested_value"] == HALL_SENSOR
-    selector_config = result["data_schema"].schema[fields["1: Living"]].config
-    assert selector_config["domain"] == ["sensor"]
-    assert selector_config["device_class"] == ["temperature"]
+    bedroom_area = place_zone(hass, entry, 2, "Camera")
+    with patch("custom_components.freedo.FreedoClient", return_value=client):
+        result = await start_options(hass, entry)
+    # The zone without an area comes first. The hot water zone has no page.
+    assert result["step_id"] == "rooms"
+    assert result["description_placeholders"] == {"zone": "Living", "index": "1", "count": "2"}
+    assert list(form_fields(result)) == ["area", "room_temperature", "correction"]
+    # A zone with no area starts from the area of the same name, without case.
+    assert suggested(result, "area") == living_room
+    assert not suggested(result, "room_temperature")
+    assert form_fields(result)["correction"].default() == "continuous_shift"
+    result = await submit_rooms(hass, result, {"area": living_room, "correction": "continuous_shift"})
+    assert result["description_placeholders"] == {"zone": "Bedroom", "index": "2", "count": "2"}
+    assert suggested(result, "area") == bedroom_area
+    assert suggested(result, "room_temperature") == HALL_SENSOR
+    assert form_fields(result)["correction"].default() == "none"
     hass.config_entries.options.async_abort(result["flow_id"])
 
 
-async def test_options_map_a_sensor_to_a_zone(hass, client):
-    set_room_sensor(hass, "21.4")
+async def test_rooms_step_writes_the_areas_and_moves_the_devices(hass, client):
+    areas = ar.async_get(hass)
+    living_room = areas.async_create("Soggiorno").id
+    bedroom_area = areas.async_create("Camera").id
     entry = await setup_entry(hass, client)
-    assert client.room_temps == []
+    client.calls.clear()
     with patch("custom_components.freedo.FreedoClient", return_value=client):
         result = await start_options(hass, entry)
-        result = await hass.config_entries.options.async_configure(
-            result["flow_id"], {"1: Living": ROOM_SENSOR}
+        result = await submit_rooms(
+            hass, result,
+            {"area": living_room, "correction": "continuous_shift"},
+            {"area": bedroom_area, "correction": "none"},
         )
-        await hass.async_block_till_done()
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.options == {"windows": {}, "room_temperatures": {"1": ROOM_SENSOR}}
-    # The reload sends the reading to the zone of the sensor.
-    assert client.room_temps == [(1, 21.4)]
-    assert client.room_temp_clears == []
+    assert entry.options == {"windows": {}}
+    assert zone_device(hass, entry, 1).area_id == living_room
+    assert zone_device(hass, entry, 2).area_id == bedroom_area
+    # The valve of zone 1 moves with it. The wall thermostat follows the hot
+    # water zone, which has no area.
+    assert node_device(hass, entry, "aaaa").area_id == living_room
+    assert node_device(hass, entry, "cccc").area_id is None
+    # The corrections did not change, and the daemon gets the areas as labels.
+    assert sorted(c for c in client.calls if c[0] == "patch_zone") == [
+        ("patch_zone", 1, {"ha_area": {"id": living_room, "name": "Soggiorno"}}),
+        ("patch_zone", 2, {"ha_area": {"id": bedroom_area, "name": "Camera"}}),
+    ]
+    assert no_area_issues(hass, entry) == []
+
+
+async def test_rooms_step_keeps_a_device_placed_elsewhere(hass, client):
+    client.health_json["devices"].append(dict(client.health_json["devices"][0], device="VA0000000002", short="bbbb", label=""))
+    areas = ar.async_get(hass)
+    first = areas.async_create("Soggiorno").id
+    second = areas.async_create("Salotto").id
+    office = areas.async_create("Office").id
+    entry = await setup_entry(hass, client)
+    place_zone(hass, entry, 1, "Soggiorno")
+    await refresh(hass, entry)
+    assert node_device(hass, entry, "aaaa").area_id == first
+    assert node_device(hass, entry, "bbbb").area_id == first
+    dr.async_get(hass).async_update_device(node_device(hass, entry, "bbbb").id, area_id=office)
+
+    with patch("custom_components.freedo.FreedoClient", return_value=client):
+        result = await start_options(hass, entry)
+        # Zone 2 has no area, so it comes first.
+        result = await submit_rooms(
+            hass, result, {"correction": "none"}, {"area": second, "correction": "continuous_shift"}
+        )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    # aaaa still had the previous area of the zone and moves; the user placed
+    # bbbb in the office and it stays there.
+    assert node_device(hass, entry, "aaaa").area_id == second
+    assert node_device(hass, entry, "bbbb").area_id == office
+
+
+async def test_rooms_step_lists_the_sensors_of_the_area_first(hass, client):
+    set_room_sensor(hass, "21.4")
+    entry = await setup_entry(hass, client)
+    living_room = place_zone(hass, entry, 1, "Soggiorno")
+    office = ar.async_get(hass).async_create("Office").id
+    add_sensor(hass, entry, "sensor.soggiorno", "Soggiorno thermometer", "20.4", area=living_room)
+    add_sensor(hass, entry, "sensor.office", "Office thermometer", "19.0", area=office)
+    hass.states.async_set("sensor.attic", "15.0", {"device_class": "temperature", "friendly_name": "Attic"})
+    with patch("custom_components.freedo.FreedoClient", return_value=client):
+        result = await start_options(hass, entry)
+        # Zone 2 has no area, so it comes first; its page lists by name.
+        assert sensor_choices(result) == ["sensor.attic", "sensor.office", "sensor.soggiorno"]
+        result = await submit_rooms(hass, result, {"correction": "none"})
+        assert sensor_choices(result) == ["sensor.soggiorno", "sensor.attic", "sensor.office"]
+        key = form_fields(result)["room_temperature"]
+        labels = [o["label"] for o in result["data_schema"].schema[key].config["options"]]
+        assert labels == ["Soggiorno thermometer (20.4 °C)", "Attic (15.0)", "Office thermometer (19.0 °C), Office"]
+        result = await submit_rooms(
+            hass, result,
+            {"area": living_room, "room_temperature": "sensor.soggiorno", "correction": "continuous_shift"},
+        )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.options == {"windows": {}, "room_temperatures": {"1": "sensor.soggiorno"}}
+    # The reload sends the reading with the sensor name.
+    assert client.room_temps == [(1, 20.4)]
+    assert client.room_temp_sources == [(1, "Soggiorno thermometer")]
+
+
+async def test_rooms_step_falls_back_to_the_entity_selector(hass, client):
+    # No sensor has the device class temperature and none is mapped.
+    entry = await setup_entry(hass, client)
+    result = await start_options(hass, entry)
+    config = result["data_schema"].schema[form_fields(result)["room_temperature"]].config
+    assert config["domain"] == ["sensor"]
+    assert config["device_class"] == ["temperature"]
+    hass.config_entries.options.async_abort(result["flow_id"])
+
+
+async def test_rooms_step_starts_the_shift_for_a_new_sensor(hass, client):
+    entry = await setup_entry(hass, client)
+    add_sensor(hass, entry, HALL_SENSOR, "Hall", "20.1")
+    client.calls.clear()
+    with patch("custom_components.freedo.FreedoClient", return_value=client):
+        result = await start_options(hass, entry)
+        # Zone 2 has no correction. A new sensor with the correction left at
+        # none starts the continuous shift.
+        result = await submit_rooms(
+            hass, result,
+            {"correction": "continuous_shift"},
+            {"room_temperature": HALL_SENSOR, "correction": "none"},
+        )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert [c for c in client.calls if c[0] == "patch_zone"] == [
+        ("patch_zone", 2, {"offset_mode": "setpoint"}),
+    ]
+    assert entry.options["room_temperatures"] == {"2": HALL_SENSOR}
+
+
+async def test_rooms_step_writes_the_correction_in_one_request(hass, client):
+    entry = await setup_entry(hass, client)
+    client.calls.clear()
+    with patch("custom_components.freedo.FreedoClient", return_value=client):
+        result = await start_options(hass, entry)
+        result = await submit_rooms(
+            hass, result,
+            {"correction": "valve_calibration"},
+            {"correction": "valve_calibration"},
+        )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    # Zone 1 leaves the shift for the calibration: the fake daemon refuses
+    # auto_offset in mode setpoint, so both fields go together.
+    assert [c for c in client.calls if c[0] == "patch_zone"] == [
+        ("patch_zone", 1, {"offset_mode": "config", "auto_offset": True}),
+        ("patch_zone", 2, {"auto_offset": True}),
+    ]
+
+
+async def test_rooms_step_shows_a_refused_correction(hass, client, caplog):
+    entry = await setup_entry(hass, client)
+
+    async def refuse(zone, **fields):
+        raise FreedoApiError(503, "no installation")
+
+    with patch("custom_components.freedo.FreedoClient", return_value=client):
+        result = await start_options(hass, entry)
+        client.patch_install_zone = refuse
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], {"correction": "none"}
+        )
+    # The page of zone 1 comes back with the error, and the area is not written.
+    assert result["step_id"] == "rooms"
+    assert result["errors"] == {"base": "correction_failed"}
+    assert result["description_placeholders"]["zone"] == "Living"
+    assert "Correction of zone 1 refused" in caplog.text
+    hass.config_entries.options.async_abort(result["flow_id"])
 
 
 async def test_removing_the_sensor_clears_the_reading_and_stops_the_pushes(hass, client):
@@ -849,10 +1343,11 @@ async def test_removing_the_sensor_clears_the_reading_and_stops_the_pushes(hass,
     with patch("custom_components.freedo.FreedoClient", return_value=client):
         result = await start_options(hass, entry)
         # Zone 1 loses its sensor, zone 2 keeps it.
-        result = await hass.config_entries.options.async_configure(
-            result["flow_id"], {"2: Bedroom": HALL_SENSOR}
+        result = await submit_rooms(
+            hass, result,
+            {"correction": "continuous_shift"},
+            {"room_temperature": HALL_SENSOR, "correction": "none"},
         )
-        await hass.async_block_till_done()
         assert result["type"] is FlowResultType.CREATE_ENTRY
         assert entry.options == {"windows": {}, "room_temperatures": {"2": HALL_SENSOR}}
         assert client.room_temp_clears == [1]
@@ -864,8 +1359,7 @@ async def test_removing_the_sensor_clears_the_reading_and_stops_the_pushes(hass,
 
         # No sensor left: the zone is cleared and nothing is pushed.
         result = await start_options(hass, entry)
-        await hass.config_entries.options.async_configure(result["flow_id"], {})
-        await hass.async_block_till_done()
+        await submit_rooms(hass, result, {"correction": "continuous_shift"}, {"correction": "none"})
     assert entry.options == {"windows": {}}
     assert client.room_temp_clears == [1, 2]
     client.room_temps.clear()
@@ -880,8 +1374,9 @@ async def test_a_refused_clear_does_not_block_the_options(hass, client, caplog):
     with patch("custom_components.freedo.FreedoClient", return_value=client):
         result = await start_options(hass, entry)
         client.room_temp_errors = [FreedoConnectionError("daemon down")]
-        result = await hass.config_entries.options.async_configure(result["flow_id"], {})
-        await hass.async_block_till_done()
+        result = await submit_rooms(
+            hass, result, {"correction": "continuous_shift"}, {"correction": "none"}
+        )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert entry.options == {"windows": {}}
     assert "Room temperature release for zone 1 failed" in caplog.text
@@ -900,6 +1395,34 @@ async def test_options_keep_the_sensors_while_the_entry_is_not_loaded(hass, clie
         "room_temperatures": {"1": ROOM_SENSOR},
     }
     assert client.room_temp_clears == []
+
+
+async def test_options_of_the_old_temperature_step_carry_over(hass, client):
+    # The options as the step "Temperature sensor of each zone" saved them: the
+    # step Rooms keeps the same keys, so they need no migration.
+    set_room_sensor(hass, "21.4")
+    old = {
+        "windows": {},
+        "outdoor_entity": "sensor.outdoor",
+        "room_temperatures": {"1": ROOM_SENSOR},
+        CONF_ROOM_TEMP_PAUSED: [1],
+    }
+    entry = await setup_entry(hass, client, options=old)
+    # Zone 1 is paused: no push at start.
+    assert client.room_temps == []
+    with patch("custom_components.freedo.FreedoClient", return_value=client):
+        result = await start_options(hass, entry, {"outdoor_entity": "sensor.outdoor"})
+        # The mapped sensor has no device class, and stays the first choice.
+        assert suggested(result, "room_temperature") == ROOM_SENSOR
+        assert sensor_choices(result)[0] == ROOM_SENSOR
+        result = await submit_rooms(
+            hass, result,
+            {"room_temperature": ROOM_SENSOR, "correction": "continuous_shift"},
+            {"correction": "none"},
+        )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.options == old
+    assert client.room_temps == []
 
 
 # --- preset select ---
@@ -1627,14 +2150,36 @@ async def test_zone_setting_error_is_a_home_assistant_error(hass, client):
     assert hass.states.get(early).state == "off"
 
 
-async def test_offset_mode_select(hass, client):
+OFFSET_MODE_ENABLED = [("select", "zone1_offset_mode"), ("select", "zone2_offset_mode")]
+AUTO_OFFSET_ENABLED = [("switch", "zone1_auto_offset"), ("switch", "zone2_auto_offset")]
+
+
+async def test_old_correction_entities_are_disabled_diagnostics(hass, client):
+    # A new install gets the select Temperature offset mode and the switch
+    # Automatic correction disabled; select Room temperature correction
+    # replaces them.
     entry = await setup_entry(hass, client)
     registry = er.async_get(hass)
+    for platform, key in [*OFFSET_MODE_ENABLED, *AUTO_OFFSET_ENABLED]:
+        found = entity_id(hass, entry, platform, key)
+        assert registry.async_get(found).disabled_by is er.RegistryEntryDisabler.INTEGRATION
+        assert registry.async_get(found).entity_category == "diagnostic"
+        assert hass.states.get(found) is None
+
+
+async def test_old_correction_entities_stay_enabled_after_an_upgrade(hass, client):
+    # An install that had them keeps them enabled, so its automations work.
+    entry = await setup_entry(hass, client, enabled=OFFSET_MODE_ENABLED + AUTO_OFFSET_ENABLED)
+    assert hass.states.get(entity_id(hass, entry, "select", "zone1_offset_mode")).state == "setpoint"
+    assert hass.states.get(entity_id(hass, entry, "switch", "zone1_auto_offset")).state == "off"
+
+
+async def test_offset_mode_select(hass, client):
+    entry = await setup_entry(hass, client, enabled=OFFSET_MODE_ENABLED)
     living = entity_id(hass, entry, "select", "zone1_offset_mode")
     bedroom = entity_id(hass, entry, "select", "zone2_offset_mode")
     assert hass.states.get(living).state == "setpoint"
     assert hass.states.get(bedroom).state == "config"
-    assert registry.async_get(living).entity_category == "config"
     assert hass.states.get(living).attributes["options"] == list(OFFSET_MODES)
     # The hot water zone has no correction.
     assert not has_entity(hass, entry, "select", "zone9_offset_mode")
@@ -1656,7 +2201,7 @@ async def test_offset_mode_select(hass, client):
 
 
 async def test_offset_mode_select_updates_the_room_sensor_state(hass, client):
-    entry = await setup_entry(hass, client)
+    entry = await setup_entry(hass, client, enabled=OFFSET_MODE_ENABLED)
     bedroom = entity_id(hass, entry, "select", "zone2_offset_mode")
     assert external_room_sensor(hass, entry, 2).state == "wrong_offset_mode"
 
@@ -1670,7 +2215,7 @@ async def test_offset_mode_select_updates_the_room_sensor_state(hass, client):
 
 
 async def test_offset_mode_select_error_is_a_home_assistant_error(hass, client):
-    entry = await setup_entry(hass, client)
+    entry = await setup_entry(hass, client, enabled=OFFSET_MODE_ENABLED)
     living = entity_id(hass, entry, "select", "zone1_offset_mode")
 
     async def refuse(zone, **fields):
@@ -1684,14 +2229,72 @@ async def test_offset_mode_select_error_is_a_home_assistant_error(hass, client):
     assert hass.states.get(living).state == "setpoint"
 
 
+# --- room temperature correction ---
+
+LIVING_CORRECTION = "zone1_room_temperature_correction"
+BEDROOM_CORRECTION = "zone2_room_temperature_correction"
+
+
+async def test_correction_select_options_and_current(hass, client):
+    client.install_json["zones"][1]["auto_offset"] = True
+    entry = await setup_entry(hass, client)
+    living = entity_id(hass, entry, "select", LIVING_CORRECTION)
+    bedroom = entity_id(hass, entry, "select", BEDROOM_CORRECTION)
+    assert hass.states.get(living).attributes["options"] == [
+        "none", "continuous_shift", "valve_calibration",
+    ]
+    assert er.async_get(hass).async_get(living).entity_category == "config"
+    # Zone 1 is in mode setpoint, zone 2 in mode config with auto_offset on.
+    assert hass.states.get(living).state == "continuous_shift"
+    assert hass.states.get(bedroom).state == "valve_calibration"
+    client.install_json["zones"][1]["auto_offset"] = False
+    await refresh(hass, entry)
+    assert hass.states.get(bedroom).state == "none"
+    assert not has_entity(hass, entry, "select", "zone9_room_temperature_correction")
+
+
+@pytest.mark.parametrize(
+    ("mode", "auto", "option", "fields"),
+    [
+        ("setpoint", False, "valve_calibration", {"offset_mode": "config", "auto_offset": True}),
+        ("config", True, "continuous_shift", {"auto_offset": False, "offset_mode": "setpoint"}),
+        ("dbg2", True, "continuous_shift", {"auto_offset": False, "offset_mode": "setpoint"}),
+        ("setpoint", False, "none", {"offset_mode": "config"}),
+        ("dbg2", True, "none", {"auto_offset": False}),
+        ("config", False, "continuous_shift", {"offset_mode": "setpoint"}),
+        ("dbg2", False, "valve_calibration", {"auto_offset": True}),
+        ("config", True, "valve_calibration", None),
+    ],
+)
+async def test_correction_select_writes_what_the_daemon_accepts(hass, client, mode, auto, option, fields):
+    # The fake daemon refuses offset_mode setpoint while auto_offset is on and
+    # auto_offset in mode setpoint, against the values a request leaves.
+    client.install_json["zones"][1].update(offset_mode=mode, auto_offset=auto)
+    entry = await setup_entry(hass, client)
+    bedroom = entity_id(hass, entry, "select", BEDROOM_CORRECTION)
+    await select_option(hass, bedroom, option)
+    assert client.calls == ([("patch_zone", 2, fields)] if fields else [])
+    assert hass.states.get(bedroom).state == option
+
+
+async def test_interval_needs_the_valve_calibration(hass, client):
+    entry = await setup_entry(hass, client)
+    interval = entity_id(hass, entry, "number", "zone1_auto_offset_interval_sec")
+    assert hass.states.get(interval).state == "unavailable"
+    await select_option(hass, entity_id(hass, entry, "select", LIVING_CORRECTION), "valve_calibration")
+    assert float(hass.states.get(interval).state) == 24
+    await select_option(hass, entity_id(hass, entry, "select", LIVING_CORRECTION), "none")
+    assert hass.states.get(interval).state == "unavailable"
+
+
 # --- automatic correction ---
 
 
 async def test_auto_offset_switch_writes_and_shows_the_view(hass, client):
-    entry = await setup_entry(hass, client)
+    client.install_json["zones"][0]["offset_mode"] = "config"
+    entry = await setup_entry(hass, client, enabled=AUTO_OFFSET_ENABLED)
     auto = entity_id(hass, entry, "switch", "zone1_auto_offset")
     assert hass.states.get(auto).state == "off"
-    assert er.async_get(hass).async_get(auto).entity_category == "config"
     # The attributes are the autoOffset view of GET /api/zones.
     assert hass.states.get(auto).attributes["sample_span_sec"] == 0
     assert hass.states.get(auto).attributes["filtered_diff_c"] == 0.0
@@ -1714,21 +2317,17 @@ async def test_auto_offset_switch_writes_and_shows_the_view(hass, client):
 
 
 async def test_auto_offset_error_is_a_home_assistant_error(hass, client):
-    entry = await setup_entry(hass, client)
+    entry = await setup_entry(hass, client, enabled=AUTO_OFFSET_ENABLED)
     # Zone 1 is in offset mode setpoint: the daemon refuses the automatic
     # correction there.
     auto = entity_id(hass, entry, "switch", "zone1_auto_offset")
-
-    async def refuse(zone, **fields):
-        raise FreedoApiError(400, "zone 1: auto_offset is refused in offset_mode setpoint")
-
-    client.patch_install_zone = refuse
-    with pytest.raises(HomeAssistantError, match="offset_mode setpoint"):
+    with pytest.raises(HomeAssistantError, match="offset mode setpoint"):
         await turn(hass, "turn_on", auto)
     assert hass.states.get(auto).state == "off"
 
 
 async def test_auto_offset_interval_number_reads_and_writes_seconds(hass, client):
+    client.install_json["zones"][0].update(offset_mode="config", auto_offset=True)
     entry = await setup_entry(hass, client)
     interval = entity_id(hass, entry, "number", "zone1_auto_offset_interval_sec")
     state = hass.states.get(interval)
@@ -1745,17 +2344,17 @@ async def test_auto_offset_interval_number_reads_and_writes_seconds(hass, client
     assert float(hass.states.get(interval).state) == 48
 
 
-async def test_temperature_source_external_with_auto_offset(hass, client):
+async def test_temperature_source_sensor_with_auto_offset(hass, client):
     set_room_sensor(hass, "21.4", entity=HALL_SENSOR)
     # Zone 2 is in offset mode config and runs the automatic correction: the
     # daemon takes the external reading there too.
     client.install_json["zones"][1]["auto_offset"] = True
     entry = await setup_entry(hass, client, options={"room_temperatures": {"2": HALL_SENSOR}})
     bedroom = entity_id(hass, entry, "select", BEDROOM_SOURCE)
-    assert hass.states.get(bedroom).state == "external"
+    assert hass.states.get(bedroom).state == "hall temperature (21.4 °C)"
 
 
-async def test_temperature_source_external_keeps_the_auto_offset_mode(hass, client):
+async def test_temperature_source_sensor_keeps_the_valve_calibration(hass, client):
     set_room_sensor(hass, "21.8", entity=HALL_SENSOR)
     client.zones_json["declared"][1]["measuringDevice"] = "dddd"
     client.install_json["zones"][1]["auto_offset"] = True
@@ -1767,13 +2366,12 @@ async def test_temperature_source_external_keeps_the_auto_offset_mode(hass, clie
     bedroom = entity_id(hass, entry, "select", BEDROOM_SOURCE)
     assert hass.states.get(bedroom).state == "Bedroom (VA0000000004)"
 
-    await select_option(hass, bedroom, "external")
-    # The mode setpoint would be refused while the automatic correction runs, so
-    # the choice leaves the offset mode alone.
+    await select_option(hass, bedroom, "hall temperature (21.8 °C)")
+    # The zone already has a correction, so the choice leaves it alone.
     assert not any(call[0] == "patch_zone" for call in client.calls)
     assert 2 not in entry.options.get(CONF_ROOM_TEMP_PAUSED, [])
     assert client.room_temps == [(2, 21.8)]
-    assert hass.states.get(bedroom).state == "external"
+    assert hass.states.get(bedroom).state == "hall temperature (21.8 °C)"
 
 
 async def test_room_temp_state_with_auto_offset_is_not_wrong_mode(hass, client):

@@ -15,6 +15,7 @@ from .const import CONF_TOKEN, DOMAIN
 from .coordinator import FreedoConfigEntry, FreedoCoordinator, FreedoRuntime
 from .entity import async_track_firmware, hub_device_info
 from .environment import async_setup_environment
+from .rooms import async_remove_issues, async_track_rooms
 from .services import async_setup_services
 
 PLATFORMS = [
@@ -57,9 +58,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: FreedoConfigEntry) -> bo
     )
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(async_track_firmware(hass, coordinator))
-    async_setup_environment(hass, entry, client)
+    entry.async_on_unload(async_track_rooms(hass, coordinator))
+    entry.runtime_data.room_temps = async_setup_environment(hass, entry, client)
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: FreedoConfigEntry) -> bool:
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: FreedoConfigEntry) -> None:
+    async_remove_issues(hass, entry.entry_id)

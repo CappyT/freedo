@@ -7,8 +7,9 @@
 - The temperature sensor of a heating zone goes to POST /api/zones/{n}/temperature
   on every state change and every ROOM_TEMP_PUSH_INTERVAL. The daemon keeps the
   reading in memory only and ends the correction when the reading is older than
-  room_temp_max_age_sec, so the periodic push also covers a daemon restart. A
-  failed push is logged once until a push succeeds.
+  room_temp_max_age_sec, so the periodic push also covers a daemon restart. The
+  push names the sensor as its source. A failed push is logged once until a push
+  succeeds. See RoomTemps.
 - The window sensors of a zone go to POST /api/zones/{n}/window on each
   change of the zone state, one push per zone at a time. A push the daemon
   did not take (no answer or a 5xx) is sent again, with the state the
@@ -21,6 +22,7 @@ Unavailable or unknown states are never pushed.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from datetime import datetime
 import logging
 
@@ -63,11 +65,12 @@ def _transient(err: FreedoError) -> bool:
 @callback
 def async_setup_environment(
     hass: HomeAssistant, entry: FreedoConfigEntry, client: FreedoClient
-) -> None:
-    """Register the listeners. The entry unload removes them."""
+) -> RoomTemps:
+    """Register the listeners. The entry unload removes them. The room
+    temperature pushes come back, so the temperature source select can map a
+    sensor without a reload."""
     outdoor = entry.options.get(CONF_OUTDOOR_ENTITY)
     zones = window_zones(entry.options.get(CONF_WINDOWS) or {})
-    room_temps = room_temp_zones(entry.options.get(CONF_ROOM_TEMPS) or {})
 
     if outdoor:
 
@@ -102,66 +105,6 @@ def async_setup_environment(
         )
         entry.async_create_background_task(
             hass, push_outdoor(), "freedo outdoor initial push"
-        )
-
-    if room_temps:
-        # Zones whose last push failed.
-        room_failed: set[int] = set()
-
-        async def push_room_temp(zone: int) -> None:
-            # The temperature source select pauses the pushes of a zone whose
-            # room measures on a device. The options are read here, so the
-            # change needs no reload. The lock also serializes the push with the
-            # pause and the clear of the zone, so no push lands after the clear.
-            async with entry.runtime_data.room_temp_lock:
-                if zone in room_temp_paused(entry.options.get(CONF_ROOM_TEMP_PAUSED) or []):
-                    return
-                entity_id = room_temps[zone]
-                state = hass.states.get(entity_id)
-                if state is None:
-                    return
-                payload = room_temp_payload(
-                    state.state, state.attributes.get(ATTR_UNIT_OF_MEASUREMENT)
-                )
-                if payload is None:
-                    _LOGGER.debug("%s is %s: room temperature not pushed", entity_id, state.state)
-                    return
-                try:
-                    await client.push_room_temp(zone, payload["tempC"])
-                except FreedoError as err:
-                    if zone not in room_failed:
-                        _LOGGER.warning("Room temperature push for zone %s failed: %s", zone, err)
-                    room_failed.add(zone)
-                    return
-                room_failed.discard(zone)
-
-        room_entity_zones: dict[str, list[int]] = {}
-        for zone, entity_id in room_temps.items():
-            room_entity_zones.setdefault(entity_id, []).append(zone)
-
-        @callback
-        def room_temp_changed(event: Event[EventStateChangedData]) -> None:
-            for zone in room_entity_zones[event.data["entity_id"]]:
-                hass.async_create_task(push_room_temp(zone))
-
-        @callback
-        def room_temp_tick(_: datetime) -> None:
-            for zone in room_temps:
-                hass.async_create_task(push_room_temp(zone))
-
-        entry.async_on_unload(
-            async_track_state_change_event(hass, list(room_entity_zones), room_temp_changed)
-        )
-        entry.async_on_unload(
-            async_track_time_interval(hass, room_temp_tick, ROOM_TEMP_PUSH_INTERVAL)
-        )
-
-        async def initial_room_temp_push() -> None:
-            for zone in room_temps:
-                await push_room_temp(zone)
-
-        entry.async_create_background_task(
-            hass, initial_room_temp_push(), "freedo room temperature initial push"
         )
 
     if zones:
@@ -229,3 +172,107 @@ def async_setup_environment(
         entry.async_create_background_task(
             hass, initial_sync(), "freedo window initial push"
         )
+
+    room_temps = RoomTemps(hass, entry, client)
+    room_temps.async_start()
+    return room_temps
+
+
+class RoomTemps:
+    """The room temperature pushes: the mapped sensor of each heating zone goes
+    to POST /api/zones/{n}/temperature on every state change and every
+    ROOM_TEMP_PUSH_INTERVAL, with the sensor name as the source label. The
+    mapping and the pause are read from the options at each push, so a change
+    needs no reload; async_remap follows a changed mapping. A failed push is
+    logged once until a push of the zone succeeds."""
+
+    def __init__(
+        self, hass: HomeAssistant, entry: FreedoConfigEntry, client: FreedoClient
+    ) -> None:
+        self._hass = hass
+        self._entry = entry
+        self._client = client
+        self._failed: set[int] = set()
+        self._unsub_state: Callable[[], None] | None = None
+
+    def mapping(self) -> dict[int, str]:
+        return room_temp_zones(self._entry.options.get(CONF_ROOM_TEMPS) or {})
+
+    @callback
+    def async_start(self) -> None:
+        """Follow the mapped sensors and send their readings at once."""
+        self._entry.async_on_unload(self._stop)
+        self._entry.async_on_unload(
+            async_track_time_interval(self._hass, self._tick, ROOM_TEMP_PUSH_INTERVAL)
+        )
+        self.async_remap()
+        if self.mapping():
+            self._entry.async_create_background_task(
+                self._hass, self._push_all(), "freedo room temperature initial push"
+            )
+
+    @callback
+    def async_remap(self) -> None:
+        """Follow the sensors the options map now."""
+        self._stop()
+        mapping = self.mapping()
+        if mapping:
+            self._unsub_state = async_track_state_change_event(
+                self._hass, sorted(set(mapping.values())), self._changed
+            )
+
+    @callback
+    def _stop(self) -> None:
+        if self._unsub_state is not None:
+            self._unsub_state()
+            self._unsub_state = None
+
+    @callback
+    def _changed(self, event: Event[EventStateChangedData]) -> None:
+        for zone, entity_id in self.mapping().items():
+            if entity_id == event.data["entity_id"]:
+                self._hass.async_create_task(self.push(zone))
+
+    @callback
+    def _tick(self, _: datetime) -> None:
+        for zone in self.mapping():
+            self._hass.async_create_task(self.push(zone))
+
+    async def _push_all(self) -> None:
+        for zone in self.mapping():
+            await self.push(zone)
+
+    async def push(self, zone: int) -> None:
+        """Send the current reading of the sensor of zone. The temperature
+        source select pauses the pushes of a zone whose room measures on a
+        device. The lock serializes the push with the pause and the clear of
+        the zone, so no push lands after the clear."""
+        async with self._entry.runtime_data.room_temp_lock:
+            if zone in room_temp_paused(self._entry.options.get(CONF_ROOM_TEMP_PAUSED) or []):
+                return
+            entity_id = self.mapping().get(zone)
+            state = self._hass.states.get(entity_id) if entity_id else None
+            if state is None:
+                return
+            payload = room_temp_payload(
+                state.state, state.attributes.get(ATTR_UNIT_OF_MEASUREMENT)
+            )
+            if payload is None:
+                _LOGGER.debug("%s is %s: room temperature not pushed", entity_id, state.state)
+                return
+            try:
+                await self._client.push_room_temp(
+                    zone, payload["tempC"], state.name if self._takes_source(zone) else None
+                )
+            except FreedoError as err:
+                if zone not in self._failed:
+                    _LOGGER.warning("Room temperature push for zone %s failed: %s", zone, err)
+                self._failed.add(zone)
+                return
+            self._failed.discard(zone)
+
+    def _takes_source(self, zone: int) -> bool:
+        """A daemon that serves externalTemp.source takes the label; an older
+        one refuses an unknown field."""
+        data = self._entry.runtime_data.coordinator.data
+        return data is not None and "source" in (data.room_temps.get(zone) or {})

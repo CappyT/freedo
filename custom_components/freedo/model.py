@@ -74,10 +74,20 @@ ROOM_TEMP_MAX_C = 50.0
 # is not. See room_temp_state.
 ROOM_TEMP_STATES = ("active", "wrong_offset_mode", "no_reading", "stale")
 
-# The option of the temperature source select that reads the room temperature
-# from an external Home Assistant sensor. The state is a fixed name, so it
-# carries a translation; a device option is dynamic and does not.
-ROOM_TEMP_EXTERNAL = "external"
+# The last option of the temperature source select. It maps nothing: choosing
+# it explains where to map a sensor. The option is a fixed name, so it carries a
+# translation; a sensor or device option is dynamic and does not.
+SOURCE_OTHER_SENSOR = "other_sensor"
+
+# How a heating zone corrects its regulation with a room temperature: not at
+# all, by a continuous shift of the setpoints (offset_mode setpoint), or by
+# calibrating the valve offset (auto_offset in offset_mode config or dbg2).
+CORRECTION_NONE = "none"
+CORRECTION_SHIFT = "continuous_shift"
+CORRECTION_CALIBRATION = "valve_calibration"
+CORRECTIONS = (CORRECTION_NONE, CORRECTION_SHIFT, CORRECTION_CALIBRATION)
+# The offset mode a zone takes when it leaves setpoint: the daemon default.
+OFFSET_MODE_DEFAULT = "config"
 
 # The daemon rejects a pair window longer than this with 400.
 PAIR_WINDOW_MAX_SEC = 600
@@ -489,6 +499,72 @@ def zone_auto_offset(data: FreedoData, zone: Zone) -> bool:
     """GET /api/install/zones auto_offset: the daemon calibrates the correction
     of the zone from an external room temperature, in mode config or dbg2."""
     return bool((data.zone_settings.get(zone.number) or {}).get("auto_offset"))
+
+
+def zone_correction(data: FreedoData, zone: Zone) -> str | None:
+    """The correction method of the zone from its offset_mode and auto_offset,
+    None when the daemon serves no offset mode for it."""
+    mode = zone_offset_mode(data, zone)
+    if mode not in OFFSET_MODES:
+        return None
+    if zone_auto_offset(data, zone):
+        return CORRECTION_CALIBRATION
+    return CORRECTION_SHIFT if mode == OFFSET_MODE_SETPOINT else CORRECTION_NONE
+
+
+def correction_patch(mode: str | None, auto: bool, method: str) -> dict[str, Any]:
+    """The PATCH /api/install/zones/{n} fields that move a zone from offset_mode
+    mode and auto_offset auto to the correction method, empty when it holds it.
+    The daemon refuses offset_mode setpoint while auto_offset is on, and
+    auto_offset in mode setpoint, against the values the request leaves. So one
+    request carries both fields when both change."""
+    fields: dict[str, Any] = {}
+    if method == CORRECTION_SHIFT:
+        if auto:
+            fields["auto_offset"] = False
+        if mode != OFFSET_MODE_SETPOINT:
+            fields["offset_mode"] = OFFSET_MODE_SETPOINT
+    elif method == CORRECTION_CALIBRATION:
+        if mode == OFFSET_MODE_SETPOINT:
+            fields["offset_mode"] = OFFSET_MODE_DEFAULT
+        if not auto:
+            fields["auto_offset"] = True
+    elif method == CORRECTION_NONE:
+        if auto:
+            fields["auto_offset"] = False
+        if mode == OFFSET_MODE_SETPOINT:
+            fields["offset_mode"] = OFFSET_MODE_DEFAULT
+    else:
+        raise ValueError(f"unknown correction method {method!r}")
+    return fields
+
+
+def device_zones(data: FreedoData) -> dict[str, int]:
+    """The zone whose Home Assistant area each device takes, by short address.
+    A device listed by several zones takes, in this order: the heating zone its
+    installation row names, the heating zone with the lowest number, the zone
+    its installation row names, the zone with the lowest number. So a wall
+    thermostat that serves a heating zone and the hot water takes the heating
+    zone."""
+    listed: dict[str, list[Zone]] = {}
+    for zone in sorted(data.zones.values(), key=lambda z: z.number):
+        for short in dict.fromkeys((*zone.members, zone.reporter, zone.measuring)):
+            if short:
+                listed.setdefault(short, []).append(zone)
+    out: dict[str, int] = {}
+    for short, zones in listed.items():
+        own = (data.install_devices.get(short) or {}).get("zone")
+        heating = [z for z in zones if z.kind == KIND_HEATING]
+        own_zone = data.zones.get(own) if isinstance(own, int) else None
+        if own_zone is not None and own_zone.kind == KIND_HEATING:
+            out[short] = own_zone.number
+        elif heating:
+            out[short] = heating[0].number
+        elif own_zone is not None:
+            out[short] = own_zone.number
+        else:
+            out[short] = zones[0].number
+    return out
 
 
 def room_temp_state(data: FreedoData, zone: Zone) -> str | None:

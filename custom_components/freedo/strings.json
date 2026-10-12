@@ -53,10 +53,23 @@
         "title": "Zone of each window sensor",
         "description": "Select the heating zone of each sensor. A zone is open when one of its sensors is open."
       },
-      "temperatures": {
-        "title": "Temperature sensor of each zone",
-        "description": "Select a temperature sensor for each heating zone. The zone then regulates on that sensor instead of the valve sensor. Leave a zone empty to keep the valve sensor. The zone needs the offset mode Setpoint shift. The options do not change the mode. Set it with the select Temperature offset mode of the zone. The correction is slow. A difference of 2 C takes about 4 hours."
+      "rooms": {
+        "title": "Room {zone}",
+        "description": "Room {index} of {count}. Each heating zone is a room. Select its Home Assistant area and, if you want, a temperature sensor. The zone device moves to the area. Its valves and thermostats move too, unless you placed them in another area.",
+        "data": {
+          "area": "Area",
+          "room_temperature": "Room temperature sensor",
+          "correction": "Correction with the room temperature"
+        },
+        "data_description": {
+          "area": "The area of the zone device. You can also set it on the device page.",
+          "room_temperature": "The sensors in the area of the zone come first. Leave it empty to use the sensor of the valve.",
+          "correction": "Continuous shift moves the setpoints slowly from the reading. It is the recommended method. Valve calibration writes the valve offset at most once per interval, and each write moves the motor once. A new sensor sets continuous shift when the zone has no correction."
+        }
       }
+    },
+    "error": {
+      "correction_failed": "The daemon refused the correction. The Home Assistant log shows the reason."
     },
     "abort": {
       "not_loaded": "The integration is not loaded. Load it, then open the options again.",
@@ -176,10 +189,18 @@
           "setpoint": "Setpoint shift"
         }
       },
+      "room_temperature_correction": {
+        "name": "Room temperature correction",
+        "state": {
+          "none": "None",
+          "continuous_shift": "Continuous shift",
+          "valve_calibration": "Valve calibration"
+        }
+      },
       "temperature_source": {
         "name": "Temperature source",
         "state": {
-          "external": "External sensor"
+          "other_sensor": "Another sensor..."
         }
       },
       "preset": {
@@ -318,6 +339,13 @@
     }
   },
   "selector": {
+    "correction_method": {
+      "options": {
+        "none": "None",
+        "continuous_shift": "Continuous shift",
+        "valve_calibration": "Valve calibration"
+      }
+    },
     "overlay_hvac_mode": {
       "options": {
         "heat": "Heat",
@@ -333,7 +361,14 @@
       }
     }
   },
+  "issues": {
+    "zone_no_area": {
+      "title": "Zone {zone} has no area",
+      "description": "The freedo zone {zone} works, but it is in no Home Assistant area. Set its area in Settings > Devices & services > freedo > Configure, on the page Room {zone}, or on the page of the zone device. You can ignore this issue."
+    }
+  },
   "exceptions": {
+    "another_sensor": { "message": "To use a sensor of another area, map it in Settings > Devices & services > freedo > Configure, on the page Room {zone}." },
     "overlay_temperature_required": { "message": "Set a temperature with mode heat." },
     "overlay_temperature_not_allowed": { "message": "A temperature is not allowed with mode off." },
     "overlay_duration_required": { "message": "Set a duration with end rule timer." },

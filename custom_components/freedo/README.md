@@ -84,24 +84,28 @@ The integration and the options of the add-on have English, Italian, German and 
 | button Calibrate motor | valve | `POST /api/nodes/{id}/calibrate` |
 | sensor Calibration | valve | `/api/nodes` `Telemetry` `calib_state` and `calib_error` |
 | switch Early start, switch Open window detection, number Open window duration | heating zone | `/api/install/zones`; writes `PATCH /api/install/zones/{n}` |
-| switch Automatic correction, number Automatic correction interval | heating zone | `/api/zones` `declared[].autoOffset`, `/api/install/zones` `auto_offset`, `auto_offset_interval_sec`; writes `PATCH /api/install/zones/{n}` |
+| select Room temperature correction | heating zone | `/api/install/zones` `offset_mode`, `auto_offset`; writes `PATCH /api/install/zones/{n}` |
+| number Automatic correction interval | heating zone | `/api/install/zones` `auto_offset`, `auto_offset_interval_sec`; writes `PATCH /api/install/zones/{n}` |
+| switch Automatic correction (diagnostic, disabled by default) | heating zone | `/api/zones` `declared[].autoOffset`, `/api/install/zones` `auto_offset`; writes `PATCH /api/install/zones/{n}` |
 | select Device change end rule, number Device change timer | heating zone | `/api/install/zones` `device_overlay_end`, `device_overlay_end_sec`; writes `PATCH /api/install/zones/{n}` |
 | number Away temperature | heating zone | `/api/install/zones` `away_temperature_c`; writes `PATCH /api/install/zones/{n}` |
 | number Temperature offset | heating zone | `/api/install/zones` `setpoint_offset_c`; writes `POST /api/zones/{n}/offset` |
-| select Temperature offset mode | heating zone | `/api/install/zones` `offset_mode`; writes `PATCH /api/install/zones/{n}` |
-| select Temperature source | heating zone | `/api/install/devices`, `/api/zones` `declared[].measuringDevice`, `/api/install/zones` `offset_mode`; writes `PUT /api/install/zones/{n}/measuring` and the options |
+| select Temperature offset mode (diagnostic, disabled by default) | heating zone | `/api/install/zones` `offset_mode`; writes `PATCH /api/install/zones/{n}` |
+| select Temperature source | heating zone | the sensors in the area of the zone device, `/api/install/devices`, `/api/zones` `declared[].measuringDevice`, `/api/install/zones` `offset_mode`, `auto_offset`; writes `PUT /api/install/zones/{n}/measuring`, `PATCH /api/install/zones/{n}` and the options |
 | sensor External room sensor | heating zone | `/api/zones` `declared[].externalTemp`, `/api/install/zones` `offset_mode` |
-| select Preset | hub | `/api/presets` `id`, `name`, `active`; writes `POST /api/presets/{id}/activate` |
+| select Profile | hub | `/api/presets` `id`, `name`, `active`; writes `POST /api/presets/{id}/activate` |
 
-### Presets
+### Profiles
 
-Select Preset lists the program presets of the daemon (`GET /api/presets`) and
-shows the active one. Choosing an option activates that preset
+Select Profile lists the program profiles of the daemon (`GET /api/presets`) and
+shows the active one. A new install names it `select.freedo_profile`, an older
+one keeps `select.freedo_preset`. Choosing an option activates that profile
 (`POST /api/presets/{id}/activate`) and polls the daemon again. The options
-follow a rename, a new preset and a delete on the next poll, without a reload.
-The daemon has no season calendar, so an automation switches the preset by the
-season or the weather. A daemon without the route (a 0.4.0 daemon answers 404)
-gets no select: reload the integration after a daemon upgrade.
+follow a rename, a new profile and a delete on the next poll, without a reload.
+The daemon has no season calendar, so an automation switches the profile by the
+season or the weather: see Season profile blueprint. A daemon without the route
+(a 0.4.0 daemon answers 404) gets no select: reload the integration after a
+daemon upgrade.
 
 ### Valve display
 
@@ -348,16 +352,35 @@ daemon answers. They exist only while the daemon holds an installation.
   the zone on or off (`open_window_detection`).
 - Number Open window duration is the time the zone stays open after a
   detection (`open_window_duration_sec`), in minutes, 1 to 1092.
-- Switch Automatic correction calibrates the correction of the zone from the
-  external room temperature, at most once per Number Automatic correction
-  interval. It applies in the offset modes `config` and `dbg2`. The daemon
-  refuses it on the hot water zone and in mode `setpoint`. Its attributes
+- Select Room temperature correction is how the zone corrects its regulation
+  with the room temperature of a Home Assistant sensor. See Room temperature of
+  a zone.
+  - None (`none`): the zone regulates on its own sensor. The daemon refuses a
+    room temperature reading.
+  - Continuous shift (`continuous_shift`, offset mode `setpoint`): the daemon
+    shifts the setpoints slowly from the reading and writes nothing to the
+    device. This is the recommended method.
+  - Valve calibration (`valve_calibration`, `auto_offset` on in offset mode
+    `config`): the daemon writes the valve offset from the reading, at most once
+    per Number Automatic correction interval. Each write makes the valve home
+    its motor.
+  - The select writes `offset_mode` and `auto_offset` in one
+    `PATCH /api/install/zones/{n}`. The daemon checks the two fields against the
+    values the request leaves, so the move between the shift and the calibration
+    passes, while the daemon refuses `setpoint` with `auto_offset` on.
+    Leaving the shift sets the offset mode `config`, the default.
+- Switch Automatic correction (`auto_offset`) is the calibration alone. It is a
+  diagnostic entity, disabled on a new install: the select replaces it. An
+  install that had it keeps it enabled for its automations. It applies in the
+  offset modes `config` and `dbg2`. The daemon refuses it on the hot water zone
+  and in mode `setpoint`. Its attributes
   `last_write_at`, `next_at`, `filtered_diff_c`, `sample_span_sec` and
   `stop_reason` are the `autoOffset` view of `GET /api/zones`. `stop_reason`
   says why the daemon stopped the automatic writes of the zone. Switch the
   correction off and on to start them again. See Room temperature of a zone.
 - Number Automatic correction interval is that interval
-  (`auto_offset_interval_sec`), in hours, 1 to 168.
+  (`auto_offset_interval_sec`), in hours, 1 to 168. It is unavailable unless
+  the correction is Valve calibration.
 - Select Device change end rule is how long a change made on a device lasts, as
   the rule `device_overlay_end`: `manual` until the next command, `until_next`
   until the next block of the weekly program, `timer` for a set time. The rule
@@ -374,8 +397,9 @@ daemon answers. They exist only while the daemon holds an installation.
   `GET /api/install/zones`. The hot water zone has no away temperature and
   gets no number.
 - Select Temperature offset mode is how the temperature correction of the zone
-  reaches it (`offset_mode`). The hot water zone has no correction and gets no
-  select.
+  reaches it (`offset_mode`). It is a diagnostic entity, disabled on a new
+  install: select Room temperature correction replaces it. An install that had
+  it keeps it enabled. The hot water zone has no correction and gets no select.
   - Valve configuration (`config`, the default) writes tag `0140` in the whole
     d/config document of the measuring device. The valve rereads its
     configuration and homes its motor, a full stroke, on each change of the
@@ -389,8 +413,8 @@ daemon answers. They exist only while the daemon holds an installation.
   - Setpoint shift (`setpoint`) writes nothing to the device. The daemon keeps
     the offset, subtracts it from each setpoint it writes to the zone, and adds
     it to the temperature and the target it reports. The valve keeps the
-    `0140` it holds, and the shift adds to it. The room temperature sensors of
-    the options need this mode.
+    `0140` it holds, and the shift adds to it. This is the correction Continuous
+    shift.
   - A change of the mode writes no offset to the device. Leaving `setpoint`
     drops the stored offset, rewrites the zone without the shift (the valves get
     new setpoints) and ends the room temperature reading of the zone. Entering
@@ -407,29 +431,36 @@ daemon answers. They exist only while the daemon holds an installation.
 ### Temperature source
 
 Select Temperature source chooses where the room temperature of a heating zone
-comes from: a device placed in the room, or the external sensor mapped in the
-options. The select exists while the room has a device of its own or a mapped
-sensor.
+comes from: a Home Assistant sensor or a device placed in the room. Every
+heating zone has it.
 
-- The options are the declared members of the zone (`members` of
-  `GET /api/zones`), labelled with the device label and the serial from
-  `GET /api/install/devices`. A member whose `zone` field names another room is
-  left out. The option `external` appears while the options map a sensor to the
-  zone.
-- The current option is `external` while a sensor is mapped, its pushes are not
-  paused and the daemon uses the reading: the offset mode is `setpoint`, or
-  switch Automatic correction is on; otherwise it is the effective measuring
-  device (`measuringDevice` of `GET /api/zones`).
+- The options come in this order:
+  - The sensors with the device class temperature in the area of the zone
+    device, labelled with their name and reading. A sensor counts in the area
+    when the entity or its device is there. The entities of freedo are left out.
+    The sensor mapped to the zone comes first when it is in another area.
+  - The declared members of the zone (`members` of `GET /api/zones`), labelled
+    with the device label and the serial from `GET /api/install/devices`. A
+    member whose `zone` field names another room is left out.
+  - `other_sensor`, shown as "Another sensor...". It changes nothing and
+    answers with a message: map a sensor of another area in the step Rooms of
+    the options.
+- The labels are built at each poll and kept until the next one, so the label
+  of a sensor shows the reading of the last poll. A label that repeats gets the
+  entity id or the short address.
+- The current option is the mapped sensor while its pushes are not paused and
+  the zone has a correction (Continuous shift or Valve calibration); otherwise
+  it is the effective measuring device (`measuringDevice` of `GET /api/zones`).
+- Choosing a sensor maps it to the zone in the options, resumes the pushes and
+  sends the current reading at once. A zone with the correction None gets
+  Continuous shift. A zone with Valve calibration keeps it.
 - Choosing a device writes `PUT /api/install/zones/{n}/measuring` with the
   device reference. The measuring device reaches the valves in the next zone
   document, at their next hourly check. When a sensor is mapped to the zone, the
   choice also pauses its pushes and sends `DELETE /api/zones/{n}/temperature`, so
-  the daemon returns to the manual correction. The offset mode does not change.
-- Choosing `external` resumes the pushes and sends the current reading at once.
-  When switch Automatic correction is off, the choice also sets the offset mode
-  `setpoint` if it is not: the daemon refuses that mode while the automatic
-  correction runs. See Room temperature of a zone.
-- The pause is stored in the options, so it survives a restart.
+  the daemon returns to the manual correction. The correction does not change.
+- The mapping and the pause are stored in the options, so they survive a
+  restart.
 
 ### Pairing mode
 
@@ -670,8 +701,9 @@ Open the integration options to map Home Assistant entities to the daemon:
   starts. When the daemon does not answer or answers 5xx, the integration
   sends the current state of the zone again every 30 seconds until the daemon
   takes it. A 4xx answer is not sent again.
-- Room temperature sensors. The last options step selects an optional
-  temperature sensor for each heating zone. See Room temperature of a zone.
+- Rooms. The last options step has one page per heating zone, with its area,
+  an optional room temperature sensor and the correction. See Rooms and Room
+  temperature of a zone.
 
 The window sensors and the service `freedo.set_window` write the same hold of a
 zone. A sensor pushes its zone when its state changes, when the integration
@@ -682,39 +714,73 @@ closed while a sensor stays open, until a sensor of the zone changes state.
 A state that is `unavailable`, `unknown` or not a number is not sent. An outdoor
 temperature outside -60..60 C is not sent, because the daemon rejects it.
 
+### Rooms
+
+Each heating zone is a room. The Home Assistant area of a zone is the area of
+its zone device in the device registry. The step Rooms of the options sets it,
+and so does the device page of the zone. The integration reads it at each poll.
+
+- The step Rooms has one page per heating zone, the zones without an area
+  first. A page holds the area, an optional room temperature sensor and the
+  correction. A zone with no area starts from the area with the zone name,
+  without case. The sensor list shows the temperature sensors of the area of
+  the zone first, then the others with their area. With no temperature sensor
+  at all, the field is an entity selector. Each page writes the area and the
+  correction when you submit it; the last page saves the sensors. A refused
+  correction shows the page again with an error. The step needs the loaded
+  integration: otherwise it keeps the saved sensors.
+- The valves and the thermostats of a zone take its area when they have no area
+  or still have the previous area of the zone. A device that you placed in
+  another area keeps it. A device in no area gets the area of its zone again at
+  the next poll. A wall thermostat that serves a heating zone and the hot water
+  takes the area of the heating zone. The area of the hot water zone device
+  applies to its other devices.
+- The integration sets no `suggested_area`: it applies to new devices only and
+  creates an area for each zone name.
+- A zone renamed in the daemon renames its zone device at the next poll, unless
+  you named the device in Home Assistant. The entity ids do not change. The hot
+  water zone device keeps its translated name.
+- A heating zone with no area works as before, and Home Assistant shows one
+  repair issue for it: "Zone X has no area". You can ignore the issue. An area
+  removes it.
+- The integration sends the area to the daemon as a display label:
+  `PATCH /api/install/zones/{n}` with `ha_area: {"id", "name"}`, also after an
+  area rename. The freedo panel shows it, and the daemon never acts on it. The
+  stored label is also the previous area of the zone after a restart. A daemon
+  that does not show `ha_area` in `GET /api/install/zones` gets no label.
+
 ### Room temperature of a zone
 
 A heating zone regulates on the sensor of its valve. With a room temperature
 sensor, the daemon corrects the setpoints it writes, so the room reaches the
 target on the reading of that sensor.
 
-- Select a sensor with the device class temperature for each heating zone. A
-  sensor can serve several zones. The hot water zone has no field. The step
-  lists the zones only while the integration is loaded. Otherwise it keeps the
-  saved sensors.
+- Map a sensor to a zone on its page of the step Rooms, or with select
+  Temperature source. A sensor can serve several zones. The hot water zone has
+  no sensor.
 - On each state change and every 15 minutes, the integration sends
-  `POST /api/zones/{n}/temperature` with `{"tempC": n}`. It also sends the
-  current state when it starts. A value in degrees Fahrenheit or kelvin is
+  `POST /api/zones/{n}/temperature` with `{"tempC": n, "source": "<sensor name>"}`.
+  It also sends the current state when it starts and when the sensor is chosen.
+  A daemon that does not show `externalTemp.source` in `GET /api/zones` gets no
+  `source`, because it refuses an unknown field. A value in degrees Fahrenheit or kelvin is
   converted. A state that is `unavailable`, `unknown` or not a number is not
   sent. A value outside -10..50 C is not sent, because the daemon rejects it.
   The integration logs the first failed push of a zone and stays silent until a
   push succeeds.
-- The daemon uses the reading in two ways.
-  - Offset mode `setpoint` shifts the setpoints of the zone continuously from
-    the reading. Set it with the select Temperature offset mode of the zone
-    (option Setpoint shift). See Zone settings.
-  - Switch Automatic correction (`auto_offset`) calibrates the correction of the
-    zone from the reading, at most once per Number Automatic correction
-    interval. It applies in the modes `config` and `dbg2`, where the correction
-    is tag `0140` on the valve. In mode `config` each write makes the valve home
-    its motor, so the interval bounds the battery and the noise. The daemon
-    refuses the switch on the hot water zone and in mode `setpoint`, and refuses
-    the mode `setpoint` while the switch is on.
-- The options do not change the mode. In the modes `config` and `dbg2` without
-  automatic correction the daemon answers 409 to a reading, because those modes
-  write tag `0140` to the device. The integration keeps the mapping and logs the
-  first refusal of a zone. The sensor External room sensor shows
-  `wrong_offset_mode`.
+- Select Room temperature correction says how the daemon uses the reading. See
+  Zone settings.
+  - Continuous shift (offset mode `setpoint`) shifts the setpoints of the zone
+    continuously from the reading.
+  - Valve calibration (`auto_offset`) calibrates the correction of the zone
+    from the reading, at most once per Number Automatic correction interval.
+    The correction is tag `0140` on the valve, and in mode `config` each write
+    makes the valve home its motor, so the interval bounds the battery and the
+    noise.
+- A new sensor sets Continuous shift on a zone with the correction None, in
+  the step Rooms and in select Temperature source. With the correction None the
+  daemon answers 409 to a reading, because the other modes write tag `0140` to
+  the device. The integration keeps the mapping and logs the first refusal of a
+  zone. The sensor External room sensor shows `wrong_offset_mode`.
 - The correction is slow by design, because a valve next to a radiator swings
   by several degrees. The daemon cannot change what the valve measures, so it
   filters the difference with a time constant of 2 hours, shifts the setpoints
@@ -728,7 +794,7 @@ target on the reading of that sensor.
   `room_temp_max_age_sec` (30 minutes by default) ends the correction, and the
   shift returns to the manual offset at the same slow pace. A sensor that stays
   unavailable ends the correction in this way.
-- When you remove the sensor of a zone in the options, the integration sends
+- When you remove the sensor of a zone in the step Rooms, the integration sends
   `DELETE /api/zones/{n}/temperature`. The release starts at once and runs at
   the same pace. If the call fails, the age limit ends the correction.
 - Sensor External room sensor shows whether the zone uses the reading, and the

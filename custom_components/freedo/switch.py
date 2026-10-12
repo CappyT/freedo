@@ -312,6 +312,10 @@ class AutoOffsetSwitch(_ZoneFlagSwitch):
     GET /api/zones."""
 
     _attr_translation_key = "auto_offset"
+    # Select Room temperature correction replaces it for the user. It stays for
+    # the automations that use it.
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
     field = "auto_offset"
 
     @property

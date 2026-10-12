@@ -16,7 +16,7 @@ from homeassistant.config_entries import (
 )
 from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import selector
+from homeassistant.helpers import area_registry as ar, selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.service_info.hassio import HassioServiceInfo
 
@@ -31,9 +31,27 @@ from .const import (
     DEFAULT_PORT,
     DOMAIN,
 )
-from .model import room_temp_paused, room_temp_zones
+from .model import (
+    CORRECTION_NONE,
+    CORRECTION_SHIFT,
+    CORRECTIONS,
+    FreedoData,
+    Zone,
+    correction_patch,
+    room_temp_paused,
+    room_temp_zones,
+    zone_auto_offset,
+    zone_correction,
+    zone_offset_mode,
+)
+from .rooms import async_set_zone_area, sensor_label, temperature_sensors, zone_area
 
 _LOGGER = logging.getLogger(__name__)
+
+# The fields of a page of the step Rooms.
+CONF_AREA = "area"
+CONF_ROOM_SENSOR = "room_temperature"
+CONF_CORRECTION = "correction"
 
 _TOKEN_SELECTOR = selector.TextSelector(
     selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
@@ -157,12 +175,18 @@ class FreedoConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class FreedoOptionsFlow(OptionsFlowWithReload):
-    """Maps Home Assistant entities to the daemon's environment inputs."""
+    """Maps Home Assistant entities to the daemon's environment inputs, and
+    each heating zone to its room: area, temperature sensor and correction."""
 
     def __init__(self) -> None:
         self._outdoor: str | None = None
         self._window_entities: list[str] = []
         self._windows: dict[str, int] = {}
+        # The heating zones of the step Rooms in page order, the page shown,
+        # and the sensor of each zone so far.
+        self._room_queue: list[int] | None = None
+        self._room_index = 0
+        self._room_temps: dict[int, str] = {}
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -172,7 +196,7 @@ class FreedoOptionsFlow(OptionsFlowWithReload):
             self._window_entities = list(user_input.get(CONF_WINDOW_ENTITIES) or [])
             if self._window_entities:
                 return await self.async_step_windows()
-            return await self.async_step_temperatures()
+            return await self.async_step_rooms()
         options = self.config_entry.options
         schema = vol.Schema(
             {
@@ -205,7 +229,7 @@ class FreedoOptionsFlow(OptionsFlowWithReload):
             return self.async_abort(reason="no_heating_zone")
         if user_input is not None:
             self._windows = {e: int(user_input[e]) for e in self._window_entities}
-            return await self.async_step_temperatures()
+            return await self.async_step_rooms()
         zone_selector = selector.SelectSelector(
             selector.SelectSelectorConfig(
                 options=[
@@ -228,11 +252,13 @@ class FreedoOptionsFlow(OptionsFlowWithReload):
             fields[key] = zone_selector
         return self.async_show_form(step_id="windows", data_schema=vol.Schema(fields))
 
-    async def async_step_temperatures(
+    async def async_step_rooms(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """One optional temperature sensor per heating zone. The field keys are
-        the zone labels. Without the zones (the entry is not loaded) the step
+        """One page per heating zone: its area, an optional room temperature
+        sensor and the correction method. The zones without an area come first.
+        Each page writes the area and the correction on submit; the last page
+        saves the sensors. Without the zones (the entry is not loaded) the step
         keeps the saved sensors."""
         runtime = getattr(self.config_entry, "runtime_data", None)
         data = runtime.coordinator.data if runtime is not None else None
@@ -240,30 +266,146 @@ class FreedoOptionsFlow(OptionsFlowWithReload):
         current = room_temp_zones(self.config_entry.options.get(CONF_ROOM_TEMPS) or {})
         if not zones:
             return self._save({str(z): e for z, e in current.items()})
-        labels = {f"{z.number}: {z.name}": z.number for z in zones}
-        if user_input is not None:
-            chosen = {
-                number: user_input[label]
-                for label, number in labels.items()
-                if user_input.get(label)
-            }
-            await self._release(
-                {z for z in current if z in labels.values() and z not in chosen}
-            )
-            return self._save({str(z): e for z, e in chosen.items()})
-        schema = vol.Schema(
-            {
-                vol.Optional(label): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="sensor", device_class="temperature")
+        entry_id = self.config_entry.entry_id
+        if self._room_queue is None:
+            self._room_queue = [
+                z.number
+                for z in sorted(
+                    zones,
+                    key=lambda z: (zone_area(self.hass, entry_id, z.number) is not None, z.number),
                 )
-                for label in labels
-            }
-        )
-        suggested = {label: current.get(number) for label, number in labels.items()}
+            ]
+            self._room_temps = dict(current)
+        zone = data.zones[self._room_queue[self._room_index]]
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            if await self._apply_room(data, zone, current, user_input):
+                self._room_index += 1
+                if self._room_index < len(self._room_queue):
+                    return await self.async_step_rooms()
+                known = {z.number for z in zones}
+                await self._release(
+                    {z for z in current if z in known and z not in self._room_temps}
+                )
+                return self._save({str(z): e for z, e in sorted(self._room_temps.items())})
+            errors["base"] = "correction_failed"
+        return self._room_form(data, zone, errors)
+
+    def _room_form(
+        self, data: FreedoData, zone: Zone, errors: dict[str, str]
+    ) -> ConfigFlowResult:
+        area_id = zone_area(self.hass, self.config_entry.entry_id, zone.number)
+        if area_id is None:
+            # A zone with no area starts from the area of the same name.
+            match = ar.async_get(self.hass).async_get_area_by_name(zone.name)
+            area_id = match.id if match else None
+        mapped = self._room_temps.get(zone.number)
+        fields: dict[Any, Any] = {
+            vol.Optional(CONF_AREA): selector.AreaSelector(),
+            vol.Optional(CONF_ROOM_SENSOR): self._sensor_selector(area_id, mapped),
+        }
+        method = zone_correction(data, zone)
+        if method is not None:
+            fields[vol.Required(CONF_CORRECTION, default=method)] = selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=list(CORRECTIONS),
+                    translation_key="correction_method",
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            )
         return self.async_show_form(
-            step_id="temperatures",
-            data_schema=self.add_suggested_values_to_schema(schema, suggested),
+            step_id="rooms",
+            data_schema=self.add_suggested_values_to_schema(
+                vol.Schema(fields), {CONF_AREA: area_id, CONF_ROOM_SENSOR: mapped}
+            ),
+            errors=errors,
+            description_placeholders={
+                "zone": zone.name,
+                "index": str(self._room_index + 1),
+                "count": str(len(self._room_queue or [])),
+            },
         )
+
+    def _sensor_selector(self, area_id: str | None, mapped: str | None) -> Any:
+        """The temperature sensors, the ones in area_id first. An entity selector
+        cannot order by area, so the list is a select of entity ids. With no
+        temperature sensor at all it is the entity selector."""
+        areas = ar.async_get(self.hass)
+        sensors = temperature_sensors(self.hass)
+        if not sensors and mapped is None:
+            return selector.EntitySelector(
+                selector.EntitySelectorConfig(domain="sensor", device_class="temperature")
+            )
+        first: list[selector.SelectOptionDict] = []
+        rest: list[selector.SelectOptionDict] = []
+        for state, sensor_area in sensors:
+            label = sensor_label(state)
+            area = areas.async_get_area(sensor_area) if sensor_area else None
+            if sensor_area is not None and sensor_area == area_id:
+                first.append(selector.SelectOptionDict(value=state.entity_id, label=label))
+            else:
+                if area is not None:
+                    label = f"{label}, {area.name}"
+                rest.append(selector.SelectOptionDict(value=state.entity_id, label=label))
+        options = first + rest
+        if mapped is not None and all(o["value"] != mapped for o in options):
+            # A sensor mapped before the list knew it, such as one without a
+            # device class, stays a choice.
+            state = self.hass.states.get(mapped)
+            options.insert(
+                0, selector.SelectOptionDict(value=mapped, label=state.name if state else mapped)
+            )
+        return selector.SelectSelector(
+            selector.SelectSelectorConfig(options=options, mode=selector.SelectSelectorMode.DROPDOWN)
+        )
+
+    async def _apply_room(
+        self,
+        data: FreedoData,
+        zone: Zone,
+        current: dict[int, str],
+        user_input: dict[str, Any],
+    ) -> bool:
+        """Write the correction and the area of one zone, and keep its sensor
+        for the save. False when the daemon refuses the correction."""
+        sensor = user_input.get(CONF_ROOM_SENSOR) or None
+        method = user_input.get(CONF_CORRECTION)
+        if method is not None:
+            # A new sensor needs a correction to change the regulation, so it
+            # starts the continuous shift where none was set, as the select
+            # Temperature source does.
+            if (
+                sensor is not None
+                and sensor != current.get(zone.number)
+                and method == CORRECTION_NONE
+                and zone_correction(data, zone) == CORRECTION_NONE
+            ):
+                method = CORRECTION_SHIFT
+            fields = correction_patch(
+                zone_offset_mode(data, zone), zone_auto_offset(data, zone), method
+            )
+            if fields:
+                client = self.config_entry.runtime_data.client
+                try:
+                    result = await client.patch_install_zone(zone.number, **fields)
+                except FreedoError as err:
+                    _LOGGER.warning("Correction of zone %s refused: %s", zone.number, err)
+                    return False
+                row = result.get("zone") if isinstance(result, Mapping) else None
+                if isinstance(row, Mapping):
+                    data.zone_settings[zone.number] = dict(row)
+        async_set_zone_area(
+            self.hass,
+            self.config_entry.entry_id,
+            data,
+            zone.number,
+            user_input.get(CONF_AREA) or None,
+        )
+        if sensor is None:
+            self._room_temps.pop(zone.number, None)
+        else:
+            self._room_temps[zone.number] = sensor
+        return True
 
     async def _release(self, zones: set[int]) -> None:
         """Clear the external temperature of the zones that lose their sensor.

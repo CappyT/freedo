@@ -8,7 +8,12 @@ import copy
 import pytest
 
 from model import (
+    CORRECTION_CALIBRATION,
+    CORRECTION_NONE,
+    CORRECTION_SHIFT,
     boiler_energy,
+    correction_patch,
+    device_zones,
     boiler_gas,
     boiler_unsupported,
     device_option_label,
@@ -34,6 +39,7 @@ from model import (
     window_payload,
     window_zones,
     zone_boost,
+    zone_correction,
     zone_current_temperature,
     zone_demand_pct,
     zone_has_program,
@@ -76,7 +82,7 @@ ZONES = {
                     "overlay": {"kind": "boost", "on": True, "setpointC": 25.0,
                                 "endsAt": "2026-01-01T00:30:00Z"}},
          "externalTemp": {"tempC": 21.4, "at": "2026-01-01T00:00:00Z", "ageSec": 120,
-                          "stale": False, "inUse": True, "deviceC": 20.9, "wantedC": 0.4,
+                          "source": "Living thermometer", "stale": False, "inUse": True, "deviceC": 20.9, "wantedC": 0.4,
                           "shiftC": 0.2, "offsetC": 0.0},
          "autoOffset": {"enabled": False, "intervalSec": 86400, "lastWriteAt": None,
                         "nextAt": None, "filteredDiffC": 0.0, "sampleSpanSec": 0,
@@ -87,7 +93,8 @@ ZONES = {
          "target": {"targetC": 17.0, "source": "program", "programC": 17.0,
                     "programOff": False, "hasProgram": True, "boost": False, "known": True,
                     "overlay": None},
-         "externalTemp": {"tempC": None, "at": None, "ageSec": None, "stale": False,
+         "externalTemp": {"tempC": None, "at": None, "ageSec": None, "source": None,
+                          "stale": False,
                           "inUse": False, "deviceC": None, "wantedC": None, "shiftC": 0.0,
                           "offsetC": 0.0},
          "autoOffset": {"enabled": False, "intervalSec": 43200, "lastWriteAt": None,
@@ -138,20 +145,23 @@ INSTALL_ZONES = {
          "auto_offset": False, "auto_offset_interval_sec": 86400,
          "open_window_detection": True, "open_window_duration_sec": 900,
          "early_start": False, "device_overlay_end": "until_next",
-         "device_overlay_end_sec": None, "away_temperature_c": 21.5},
+         "device_overlay_end_sec": None, "away_temperature_c": 21.5,
+         "ha_area": None},
         {"number": 2, "name": "Bedroom", "kind": "heating", "members": ["VA0000000002"],
          "circuit": 1, "reporter": None, "measuring_device": None,
          "offset_mode": "config", "setpoint_offset_c": None,
          "auto_offset": False, "auto_offset_interval_sec": 43200,
          "open_window_detection": False, "open_window_duration_sec": 600,
          "early_start": True, "device_overlay_end": "timer",
-         "device_overlay_end_sec": 1800, "away_temperature_c": None},
+         "device_overlay_end_sec": 1800, "away_temperature_c": None,
+         "ha_area": None},
         {"number": 9, "name": "DHW", "kind": "hotwater", "members": ["RU0000000001"],
          "circuit": None, "reporter": None, "measuring_device": None,
          "offset_mode": None, "setpoint_offset_c": None,
          "open_window_detection": True, "open_window_duration_sec": 900,
          "early_start": False, "device_overlay_end": None,
-         "device_overlay_end_sec": None, "away_temperature_c": None},
+         "device_overlay_end_sec": None, "away_temperature_c": None,
+         "ha_area": None},
     ],
 }
 
@@ -847,3 +857,61 @@ def test_install_settings():
     # No installation (503 read as {}): no settings.
     assert parse(HEALTH, ZONES, NODES, BOILER, HOME, None, {}).settings == {}
     assert data().settings == {}
+
+
+@pytest.mark.parametrize(
+    ("mode", "auto", "want"),
+    [
+        ("setpoint", False, CORRECTION_SHIFT),
+        ("config", False, CORRECTION_NONE),
+        ("dbg2", False, CORRECTION_NONE),
+        ("config", True, CORRECTION_CALIBRATION),
+        ("dbg2", True, CORRECTION_CALIBRATION),
+        (None, False, None),
+    ],
+)
+def test_zone_correction(mode, auto, want):
+    install = copy.deepcopy(INSTALL_ZONES)
+    install["zones"][1].update(offset_mode=mode, auto_offset=auto)
+    d = parse(HEALTH, ZONES, NODES, BOILER, HOME, install)
+    assert zone_correction(d, d.zones[2]) == want
+
+
+def test_correction_patch_leaves_no_state_the_daemon_refuses():
+    # The daemon refuses offset_mode setpoint with auto_offset on, against the
+    # values a request leaves. Every move ends on the method and passes.
+    methods = (CORRECTION_NONE, CORRECTION_SHIFT, CORRECTION_CALIBRATION)
+    for mode in ("config", "dbg2", "setpoint"):
+        for auto in (False, True):
+            if mode == "setpoint" and auto:
+                continue
+            for method in methods:
+                fields = correction_patch(mode, auto, method)
+                new_mode = fields.get("offset_mode", mode)
+                new_auto = fields.get("auto_offset", auto)
+                assert not (new_mode == "setpoint" and new_auto), (mode, auto, method)
+                if new_auto:
+                    reached = CORRECTION_CALIBRATION
+                else:
+                    reached = CORRECTION_SHIFT if new_mode == "setpoint" else CORRECTION_NONE
+                assert reached == method, (mode, auto, method)
+    assert correction_patch("setpoint", False, CORRECTION_SHIFT) == {}
+    with pytest.raises(ValueError):
+        correction_patch("config", False, "cloud")
+
+
+def test_device_zones():
+    zones = copy.deepcopy(ZONES)
+    devices = copy.deepcopy(INSTALL_DEVICES)
+    # cccc serves the heating zone 1 and the hot water zone 9, and its row names
+    # zone 9: it follows the heating zone. eeee is listed by zone 2 and its row
+    # names zone 1, a heating zone: it follows its row.
+    zones["declared"][0]["members"] = ["aaaa", "bbbb", "cccc"]
+    zones["declared"][1]["members"] = ["dddd", "eeee"]
+    devices["devices"].append({"short": "eeee", "zone": 1})
+    d = parse(HEALTH, zones, NODES, BOILER, HOME, install_devices=devices)
+    assert device_zones(d) == {"aaaa": 1, "bbbb": 1, "cccc": 1, "dddd": 2, "eeee": 1}
+    # A device of the hot water zone alone follows it.
+    d = parse(HEALTH, ZONES, NODES, BOILER, HOME, install_devices=INSTALL_DEVICES)
+    assert device_zones(d)["cccc"] == 9
+

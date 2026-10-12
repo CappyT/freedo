@@ -190,7 +190,8 @@ class DeviceOverlayTimerNumber(_MinutesNumber):
 class AutoOffsetIntervalNumber(FreedoZoneSettingEntity, NumberEntity):
     """The shortest interval between two automatic corrections of the zone
     (auto_offset_interval_sec), shown in hours. In mode config each write homes
-    the motor of the valve, so the interval bounds that cost."""
+    the motor of the valve, so the interval bounds that cost. It applies to the
+    correction valve calibration alone, so it is unavailable with another one."""
 
     _attr_device_class = NumberDeviceClass.DURATION
     _attr_entity_category = EntityCategory.CONFIG
@@ -203,6 +204,10 @@ class AutoOffsetIntervalNumber(FreedoZoneSettingEntity, NumberEntity):
 
     def __init__(self, coordinator: FreedoCoordinator, zone: Zone) -> None:
         super().__init__(coordinator, zone, "auto_offset_interval_sec")
+
+    @property
+    def available(self) -> bool:
+        return super().available and bool((self._setting or {}).get("auto_offset"))
 
     @property
     def native_value(self) -> float | None:

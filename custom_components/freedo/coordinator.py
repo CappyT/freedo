@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 import logging
+from typing import TYPE_CHECKING
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -14,6 +15,9 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .api import FreedoApiError, FreedoAuthError, FreedoClient, FreedoError
 from .const import DOMAIN, SCAN_INTERVAL
 from .model import FreedoData, parse
+
+if TYPE_CHECKING:
+    from .environment import RoomTemps
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -27,6 +31,8 @@ class FreedoRuntime:
     # Serializes a room temperature push of a zone and the pause that clears
     # the zone reading, so no push lands after the clear of a paused zone.
     room_temp_lock: asyncio.Lock
+    # The room temperature pushes, set once the environment listeners run.
+    room_temps: RoomTemps | None = None
 
 
 type FreedoConfigEntry = ConfigEntry[FreedoRuntime]

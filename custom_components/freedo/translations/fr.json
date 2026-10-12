@@ -53,10 +53,23 @@
         "title": "Zone de chaque capteur de fenêtre",
         "description": "Sélectionnez la zone de chauffage de chaque capteur. Une zone est ouverte quand l'un de ses capteurs est ouvert."
       },
-      "temperatures": {
-        "title": "Capteur de température de chaque zone",
-        "description": "Sélectionnez un capteur de température pour chaque zone de chauffage. La zone régule alors sur ce capteur au lieu du capteur de la vanne. Laissez une zone vide pour garder le capteur de la vanne. La zone exige le mode de décalage Décalage de la consigne. Les options ne changent pas le mode. Réglez-le avec la sélection Mode de décalage de température de la zone. La correction est lente. Un écart de 2 °C prend environ 4 heures."
+      "rooms": {
+        "title": "Pièce {zone}",
+        "description": "Pièce {index} sur {count}. Chaque zone de chauffage est une pièce. Sélectionnez sa pièce Home Assistant et, si vous le souhaitez, un capteur de température. L'appareil de la zone passe dans la pièce. Ses vannes et ses thermostats y passent aussi, sauf si vous les avez placés dans une autre pièce.",
+        "data": {
+          "area": "Pièce",
+          "room_temperature": "Capteur de température ambiante",
+          "correction": "Correction avec la température ambiante"
+        },
+        "data_description": {
+          "area": "La pièce de l'appareil de la zone. Vous pouvez aussi la définir sur la page de l'appareil.",
+          "room_temperature": "Les capteurs de la pièce de la zone viennent en premier. Laissez vide pour utiliser le capteur de la vanne.",
+          "correction": "Décalage continu déplace lentement les consignes selon la mesure. C'est la méthode recommandée. Calibrage de la vanne écrit le décalage de la vanne au plus une fois par intervalle, et chaque écriture déplace le moteur une fois. Un nouveau capteur règle Décalage continu quand la zone n'a pas de correction."
+        }
       }
+    },
+    "error": {
+      "correction_failed": "Le démon a refusé la correction. Le journal de Home Assistant indique la raison."
     },
     "abort": {
       "not_loaded": "L'intégration n'est pas chargée. Chargez-la, puis rouvrez les options.",
@@ -246,10 +259,18 @@
           "setpoint": "Décalage de la consigne"
         }
       },
+      "room_temperature_correction": {
+        "name": "Correction de la température ambiante",
+        "state": {
+          "none": "Aucune",
+          "continuous_shift": "Décalage continu",
+          "valve_calibration": "Calibrage de la vanne"
+        }
+      },
       "temperature_source": {
         "name": "Source de température",
         "state": {
-          "external": "Capteur externe"
+          "other_sensor": "Un autre capteur..."
         }
       },
       "preset": {
@@ -408,6 +429,13 @@
     }
   },
   "selector": {
+    "correction_method": {
+      "options": {
+        "none": "Aucune",
+        "continuous_shift": "Décalage continu",
+        "valve_calibration": "Calibrage de la vanne"
+      }
+    },
     "overlay_hvac_mode": {
       "options": {
         "heat": "Chauffage",
@@ -423,7 +451,14 @@
       }
     }
   },
+  "issues": {
+    "zone_no_area": {
+      "title": "La zone {zone} n'a pas de pièce",
+      "description": "La zone freedo {zone} fonctionne, mais elle n'est dans aucune pièce Home Assistant. Définissez sa pièce dans Paramètres > Appareils et services > freedo > Configurer, sur la page Pièce {zone}, ou sur la page de l'appareil de la zone. Vous pouvez ignorer ce problème."
+    }
+  },
   "exceptions": {
+    "another_sensor": { "message": "Pour utiliser un capteur d'une autre pièce, associez-le dans Paramètres > Appareils et services > freedo > Configurer, sur la page Pièce {zone}." },
     "overlay_temperature_required": {
       "message": "Définissez une température avec le mode Chauffage."
     },

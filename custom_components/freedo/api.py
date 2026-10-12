@@ -245,10 +245,15 @@ class FreedoClient:
         """Remove the last gas meter reading, to undo a typo."""
         return await self._request("DELETE", "/api/boiler/gas/meter")
 
-    async def push_room_temp(self, zone: int, temp_c: float) -> dict[str, Any]:
-        return await self._request(
-            "POST", f"/api/zones/{int(zone)}/temperature", {"tempC": temp_c}
-        )
+    async def push_room_temp(
+        self, zone: int, temp_c: float, source: str | None = None
+    ) -> dict[str, Any]:
+        """source names the sensor for display. A daemon older than the field
+        refuses it, so the caller sends it only when the view carries it."""
+        payload: dict[str, Any] = {"tempC": temp_c}
+        if source:
+            payload["source"] = source
+        return await self._request("POST", f"/api/zones/{int(zone)}/temperature", payload)
 
     async def clear_room_temp(self, zone: int) -> dict[str, Any]:
         return await self._request("DELETE", f"/api/zones/{int(zone)}/temperature")
