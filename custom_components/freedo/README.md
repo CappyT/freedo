@@ -442,7 +442,7 @@ heating zone has it.
   - The declared members of the zone (`members` of `GET /api/zones`), labelled
     with the device label and the serial from `GET /api/install/devices`. A
     member whose `zone` field names another room is left out.
-  - `other_sensor`, shown as "Another sensor...". It changes nothing and
+  - `other_sensor`, shown as "Another sensor…". It changes nothing and
     answers with a message: map a sensor of another area in the branch Rooms of
     the options.
 - The labels are built at each poll and kept until the next one, so the label

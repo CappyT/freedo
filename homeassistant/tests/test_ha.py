@@ -1059,7 +1059,7 @@ async def test_temperature_source_other_sensor_explains_where_to_map_one(hass, c
     with pytest.raises(ServiceValidationError) as err:
         await select_option(hass, living, OTHER)
     assert err.value.translation_key == "another_sensor"
-    assert err.value.translation_placeholders == {"zone": "Living"}
+    assert err.value.translation_placeholders == {"room": "Living"}
     assert client.calls == []
     assert hass.states.get(living).state == "VA0000000002"
 

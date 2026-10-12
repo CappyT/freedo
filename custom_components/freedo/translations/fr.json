@@ -83,7 +83,7 @@
       }
     },
     "error": {
-      "correction_failed": "Le démon a refusé la correction. Le journal de Home Assistant indique la raison."
+      "correction_failed": "freedo a refusé la correction. Le journal de Home Assistant indique la raison."
     },
     "abort": {
       "not_loaded": "L'intégration n'est pas chargée. Chargez-la, puis rouvrez les options.",
@@ -284,7 +284,7 @@
       "temperature_source": {
         "name": "Source de température",
         "state": {
-          "other_sensor": "Un autre capteur..."
+          "other_sensor": "Un autre capteur…"
         }
       },
       "preset": {
@@ -472,7 +472,7 @@
     }
   },
   "exceptions": {
-    "another_sensor": { "message": "Pour utiliser un capteur d'une autre pièce, associez-le dans Paramètres > Appareils et services > freedo > Configurer, sur la page Pièce {zone}." },
+    "another_sensor": { "message": "Pour utiliser pour {room} un capteur d'une autre pièce Home Assistant, associez-le dans Paramètres > Appareils et services > freedo > Configurer > Pièces." },
     "overlay_temperature_required": {
       "message": "Définissez une température avec le mode Chauffage."
     },

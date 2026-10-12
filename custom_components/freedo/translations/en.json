@@ -83,7 +83,7 @@
       }
     },
     "error": {
-      "correction_failed": "The daemon refused the correction. The Home Assistant log shows the reason."
+      "correction_failed": "freedo refused the correction. The Home Assistant log shows the reason."
     },
     "abort": {
       "not_loaded": "The integration is not loaded. Load it, then open the options again.",
@@ -214,7 +214,7 @@
       "temperature_source": {
         "name": "Temperature source",
         "state": {
-          "other_sensor": "Another sensor..."
+          "other_sensor": "Another sensor…"
         }
       },
       "preset": {
@@ -382,7 +382,7 @@
     }
   },
   "exceptions": {
-    "another_sensor": { "message": "To use a sensor of another area, map it in Settings > Devices & services > freedo > Configure, on the page Room {zone}." },
+    "another_sensor": { "message": "To use a sensor of another area for {room}, map it in Settings > Devices & services > freedo > Configure > Rooms." },
     "overlay_temperature_required": { "message": "Set a temperature with mode heat." },
     "overlay_temperature_not_allowed": { "message": "A temperature is not allowed with mode off." },
     "overlay_duration_required": { "message": "Set a duration with end rule timer." },

@@ -86,3 +86,51 @@ def test_addon_translation_matches_english(language):
     source = yaml.safe_load((ADDON / "en.yaml").read_text())
     translated = yaml.safe_load((ADDON / f"{language}.yaml").read_text())
     assert differences(source, translated) == []
+
+
+# The keys of the rooms feature. A tado zone is a room in these texts, and
+# freedo, not the daemon, is the actor the user meets.
+ROOM_KEYS = [
+    ("options", "step", "init"),
+    ("options", "step", "rooms"),
+    ("options", "step", "room"),
+    ("options", "error", "correction_failed"),
+    ("selector", "correction_method"),
+    ("entity", "select", "room_temperature_correction"),
+    ("entity", "select", "temperature_source", "state", "other_sensor"),
+    ("exceptions", "another_sensor"),
+    ("issues", "rooms_no_area"),
+]
+ZONE_WORD = {"en": "zone", "it": "zona", "de": "Zone", "fr": "zone"}
+ROOMS_PATH = {
+    "en": "Configure > Rooms",
+    "it": "Configura > Stanze",
+    "de": "Konfigurieren > Räume",
+    "fr": "Configurer > Pièces",
+}
+
+
+def texts(node):
+    if isinstance(node, dict):
+        for value in node.values():
+            yield from texts(value)
+    else:
+        yield node
+
+
+@pytest.mark.parametrize("language", ("en", *LANGUAGES))
+def test_room_texts_name_rooms_and_freedo(language):
+    tree = json.loads((INTEGRATION / f"{language}.json").read_text())
+    for path in ROOM_KEYS:
+        node = tree
+        for key in path:
+            node = node[key]
+        for text in texts(node):
+            assert "daemon" not in text.lower(), (path, text)
+            assert ZONE_WORD[language].lower() not in text.lower(), (path, text)
+    other = tree["entity"]["select"]["temperature_source"]["state"]["other_sensor"]
+    assert other.endswith("…") and "..." not in other
+    # Both point to the branch Rooms of Configure.
+    path = ROOMS_PATH[language]
+    assert path in tree["exceptions"]["another_sensor"]["message"]
+    assert path in tree["issues"]["rooms_no_area"]["description"]

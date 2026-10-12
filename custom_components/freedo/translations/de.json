@@ -83,7 +83,7 @@
       }
     },
     "error": {
-      "correction_failed": "Der Daemon hat die Korrektur abgelehnt. Das Home Assistant-Protokoll zeigt den Grund."
+      "correction_failed": "freedo hat die Korrektur abgelehnt. Das Home Assistant-Protokoll zeigt den Grund."
     },
     "abort": {
       "not_loaded": "Die Integration ist nicht geladen. Lade sie und öffne die Optionen dann erneut.",
@@ -284,7 +284,7 @@
       "temperature_source": {
         "name": "Temperaturquelle",
         "state": {
-          "other_sensor": "Anderer Sensor..."
+          "other_sensor": "Anderer Sensor…"
         }
       },
       "preset": {
@@ -472,7 +472,7 @@
     }
   },
   "exceptions": {
-    "another_sensor": { "message": "Um einen Sensor aus einem anderen Bereich zu verwenden, ordne ihn unter Einstellungen > Geräte & Dienste > freedo > Konfigurieren auf der Seite Raum {zone} zu." },
+    "another_sensor": { "message": "Um für {room} einen Sensor aus einem anderen Bereich zu verwenden, ordne ihn unter Einstellungen > Geräte & Dienste > freedo > Konfigurieren > Räume zu." },
     "overlay_temperature_required": {
       "message": "Lege im Modus Heizen eine Temperatur fest."
     },

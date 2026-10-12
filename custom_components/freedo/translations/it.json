@@ -83,7 +83,7 @@
       }
     },
     "error": {
-      "correction_failed": "Il daemon ha rifiutato la correzione. Il log di Home Assistant mostra il motivo."
+      "correction_failed": "freedo ha rifiutato la correzione. Il log di Home Assistant mostra il motivo."
     },
     "abort": {
       "not_loaded": "L'integrazione non è caricata. Caricala, poi apri di nuovo le opzioni.",
@@ -284,7 +284,7 @@
       "temperature_source": {
         "name": "Sorgente della temperatura",
         "state": {
-          "other_sensor": "Un altro sensore..."
+          "other_sensor": "Un altro sensore…"
         }
       },
       "preset": {
@@ -472,7 +472,7 @@
     }
   },
   "exceptions": {
-    "another_sensor": { "message": "Per usare un sensore di un'altra area, associalo in Impostazioni > Dispositivi e servizi > freedo > Configura, nella pagina Stanza {zone}." },
+    "another_sensor": { "message": "Per usare per {room} un sensore di un'altra area, associalo in Impostazioni > Dispositivi e servizi > freedo > Configura > Stanze." },
     "overlay_temperature_required": {
       "message": "Imposta una temperatura con la modalità Riscaldamento."
     },

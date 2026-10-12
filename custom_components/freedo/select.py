@@ -345,7 +345,7 @@ class ZoneTemperatureSourceSelect(FreedoEntity, SelectEntity):
             raise ServiceValidationError(
                 translation_domain=DOMAIN,
                 translation_key="another_sensor",
-                translation_placeholders={"zone": zone.name if zone else str(self._number)},
+                translation_placeholders={"room": zone.name if zone else str(self._number)},
             )
         if kind == "device":
             await self._select_device(target)
