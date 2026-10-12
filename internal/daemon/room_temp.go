@@ -68,7 +68,7 @@ const (
 
 var (
 	errRoomTempZone = errors.New("only a heating zone takes an external room temperature")
-	errRoomTempMode = errors.New("an external room temperature needs offset_mode setpoint: " +
+	errRoomTempMode = errors.New("an external room temperature needs offset_mode setpoint or auto_offset: " +
 		"the other modes keep the correction in tag 0140 on the valve, and mode config also makes a valve home its motor")
 )
 
@@ -117,12 +117,12 @@ func (d *daemon) freshRoomTemp(inst *tado.Install, zone int) (float64, bool) {
 }
 
 // roomTempC is the room temperature of zone on the corrected scale: the
-// external one while it is fresh, else the wire temperature c with the shift.
+// external one while the learners read it, else the wire temperature c with the
+// shift.
 func (d *daemon) roomTempC(inst *tado.Install, zone int, c float64) float64 {
-	if inst != nil {
-		if t, ok := d.freshRoomTemp(inst, zone); ok {
-			return t
-		}
+	if d.learnerReadsExternal(inst, zone) {
+		t, _ := d.freshRoomTemp(inst, zone)
+		return t
 	}
 	return d.correctedC(inst, zone, c)
 }
@@ -150,7 +150,7 @@ func (d *daemon) postZoneTemperature(w http.ResponseWriter, r *http.Request) {
 			return nil, err
 		}
 		inst := d.inst.Load()
-		if inst.Options.ZoneOffset(z.Number).Mode != tado.OffsetModeSetpoint {
+		if inst.Options.ZoneOffset(z.Number).Mode != tado.OffsetModeSetpoint && !inst.Options.AutoOffset(z.Number).Enabled {
 			return nil, fmt.Errorf("zone %d: %w", z.Number, errRoomTempMode)
 		}
 		now := d.retryNow()
@@ -225,6 +225,11 @@ func (d *daemon) tickRoomTemps(e *tado.EmuState) {
 // since its last move, moves it by a step and restates the zone. With no fresh
 // reading the shift ends on the manual offset.
 func (d *daemon) stepRoomTemp(e *tado.EmuState, inst *tado.Install, zone int, x *roomTemp, now time.Time) {
+	// Only mode setpoint shifts the setpoints. A reading in mode config or dbg2
+	// with auto_offset on drives the learners alone.
+	if inst.Options.ZoneOffset(zone).Mode != tado.OffsetModeSetpoint {
+		return
+	}
 	manual := inst.Options.SetpointShiftC(zone)
 	if !x.on {
 		x.shiftC = manual
@@ -288,12 +293,15 @@ func (d *daemon) stepRoomTemp(e *tado.EmuState, inst *tado.Install, zone int, x 
 }
 
 // dropRoomTemps forgets the zones the installation no longer lets take an
-// external room temperature: removed, no longer heating or no longer in mode
-// setpoint. restateShiftedZones has restated them before.
+// external room temperature: removed, no longer heating, in mode config or dbg2
+// without auto_offset, or no longer in mode setpoint. restateShiftedZones has
+// restated them before.
 func (d *daemon) dropRoomTemps(inst *tado.Install) {
 	for zone, x := range d.roomTemps {
 		z, err := inst.ZoneByNumber(zone)
-		if err == nil && z.Kind == tado.ZoneHeating && inst.Options.ZoneOffset(zone).Mode == tado.OffsetModeSetpoint {
+		kept := err == nil && z.Kind == tado.ZoneHeating &&
+			(inst.Options.ZoneOffset(zone).Mode == tado.OffsetModeSetpoint || inst.Options.AutoOffset(zone).Enabled)
+		if kept {
 			continue
 		}
 		delete(d.roomTemps, zone)
@@ -351,13 +359,15 @@ func (d *daemon) restoreRoomShifts() error {
 // roomTempView renders the external room temperature of one heating zone.
 // tempC, at and ageSec describe the last reading and stale says it is too old
 // to drive the zone; inUse says that it does, and then the zone reports tempC as
-// its temperature. deviceC is the temperature the zone reports on the wire scale
-// and wantedC the filtered shift. shiftC is the shift applied to the zone, and
-// offsetC the manual one it returns to.
+// its temperature. learnInUse says that the early start, the plant episodes and
+// the flow adaptation read tempC: the same as inUse in mode setpoint, and with
+// auto_offset on in the modes config and dbg2. deviceC is the temperature the
+// zone reports on the wire scale and wantedC the filtered shift. shiftC is the
+// shift applied to the zone, and offsetC the manual one it returns to.
 func (d *daemon) roomTempView(e *tado.EmuState, zone int) map[string]any {
 	inst := d.inst.Load()
 	view := map[string]any{
-		"tempC": nil, "at": nil, "ageSec": nil, "stale": false, "inUse": false,
+		"tempC": nil, "at": nil, "ageSec": nil, "stale": false, "inUse": false, "learnInUse": false,
 		"deviceC": nil, "wantedC": nil,
 		"shiftC": d.shiftC(inst, zone), "offsetC": inst.Options.SetpointShiftC(zone),
 	}
@@ -374,6 +384,7 @@ func (d *daemon) roomTempView(e *tado.EmuState, zone int) map[string]any {
 		view["tempC"], view["at"] = x.tempC, x.at.UTC().Format(time.RFC3339)
 		view["ageSec"], view["stale"], view["inUse"] = int(age/time.Second), !fresh, fresh
 	}
+	view["learnInUse"] = d.learnerReadsExternal(inst, zone)
 	if x.on || view["inUse"] == true {
 		view["wantedC"] = roundCenti(x.wantedC)
 	}

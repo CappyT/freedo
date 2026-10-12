@@ -262,6 +262,8 @@ allows it.
 | `early_start` | `false` | Early start for the zone. |
 | `device_overlay_end`, `device_overlay_end_sec` | `until_next` | End rule of a change made on a device: `manual`, `until_next` or `timer` with a duration. |
 | `offset_mode` | `config` | How the temperature correction reaches the zone: `config`, `dbg2` or `setpoint`. |
+| `auto_offset` | `false` | Automatic calibration of the zone correction (valve offset) from an external room temperature. Only a heating zone in `offset_mode` `config` or `dbg2` takes it. |
+| `auto_offset_interval_sec` | 86400 | Shortest interval between two automatic corrections, 3600 to 604800 seconds. |
 | `pid` | 1000, 500, 1500 | Controller gains `kp`, `ki`, `kd` of the valve, each 0 to 65535. `kp` and `ki` cannot both be 0. `null` restores the defaults. |
 | `away_temperature_c` | `null` | Temperature in away, 5 to 25 C with at most two decimals. `null` and 5 mean off in away. The hot water zone refuses it. |
 
@@ -430,12 +432,46 @@ state from an outside source, for example a Home Assistant sensor.
   from every setpoint it writes to the zone and adds it to the temperature and target of the
   zone in `GET /api/zones`. Node views keep the valve scale.
 
+### Automatic calibration
+
+`auto_offset` calibrates the correction of a heating zone from an external room temperature,
+at most once per `auto_offset_interval_sec`. It applies in `offset_mode` `config` and `dbg2`,
+where the correction is tag `0140` on the valve. A zone in `setpoint` refuses the option: that
+mode already corrects continuously from the reading. The hot water zone refuses it. `PATCH
+/api/install/zones/{n}` writes it, and the daemon refuses a later switch to `setpoint` while
+it is on.
+
+`POST /api/zones/{n}/temperature` feeds the reading. It is accepted in `config` and `dbg2`
+with `auto_offset` on, and refused with `409` otherwise.
+
+- The daemon filters the difference between the external reading and the zone temperature
+  `4060` with the same first-order filter as `setpoint` (2 hour time constant). It takes no
+  sample while the reading is stale (`room_temp_max_age_sec`), while the zone window is open,
+  or while a heat-up episode of the learner runs.
+- At most once per interval per zone, once the filter holds two hours of samples since its
+  last restart, it takes the new correction as the current one plus the filtered difference,
+  rounds it to 0.1 C and clamps it to -5 to +5 C. It writes it through the path of
+  `POST /api/zones/{n}/offset`, and only when it differs from the current correction by at
+  least 0.3 C.
+- After each write the filter restarts, because the write moves `4060` by the written delta.
+  A manual offset in `config` or `dbg2` restarts it too.
+- The interval starts at daemon start and at the last write. The last write time and the
+  tracked correction survive a restart, so a restart causes no extra write.
+
+Mode `config` homes the motor of the valve on each write, so the battery and the noise pay
+for every calibration. The default interval of a day bounds that cost, and the deadband keeps
+a change inside the noise of the difference away from the valve.
+
+`declared[].autoOffset` in `GET /api/zones` shows `enabled`, `intervalSec`, `lastWriteAt`,
+`nextAt`, `filteredDiffC` and `sampleSpanSec`.
+
 ### External room temperature
 
 `POST /api/zones/{n}/temperature` with `{"tempC": 20.4}` gives the zone the room temperature
 that an outside sensor measures. `DELETE` removes it. `tempC` stays in -10 to 50 and the
-daemon rounds it to 0.01 C. A zone must be a heating zone in mode `setpoint`. Hot water gets
-`400`, an unknown zone `404`, and the modes `config` and `dbg2` get `409`.
+daemon rounds it to 0.01 C. A zone must be a heating zone in mode `setpoint`, or in mode
+`config` or `dbg2` with `auto_offset` on. Hot water gets `400`, an unknown zone `404`, and a
+zone with no mode that takes the reading gets `409`.
 
 The valve controls on its own sensor, and the daemon cannot change that value. The daemon
 shifts the setpoints it writes instead. The shift is the external temperature minus the zone
@@ -462,9 +498,13 @@ shift and forgets the reading. The reading is not stored. The applied shift is s
 `meta.room_shift`.
 
 `declared[].externalTemp` in `GET /api/zones` shows `tempC`, `at`, `ageSec`, `stale`,
-`inUse`, `deviceC`, `shiftC`, `offsetC` and `wantedC`. While `inUse` is true,
-`demand[].TempC` is `tempC`. Early start, flow adaptation and the plant episodes read the
-same temperature.
+`inUse`, `learnInUse`, `deviceC`, `shiftC`, `offsetC` and `wantedC`. `inUse` says the reading
+drives the zone and the zone reports `tempC` as its temperature; that holds in mode `setpoint`
+and in `config` or `dbg2` with `auto_offset` on. `learnInUse` says the early start, the flow
+adaptation and the plant episodes read `tempC` instead of `4060`: the same as `inUse` in mode
+`setpoint`, and with `auto_offset` on in `config` and `dbg2` while the reading is fresh. A
+manual or automatic offset write then rejects a running heat-up episode (see Early start),
+because the write moves `4060` and not the external reading.
 
 ### Early start
 
@@ -473,8 +513,12 @@ block early.
 
 - An episode starts when the zone target rises at least 0.5 C above `4060`. It ends when a
   report reaches the target. The daemon discards an episode that has any of these: an open
-  window, an overlay, away, an off block, a target change, no report for `offline_after_sec`,
-  no demand `40a0`, a length over 6 hours, or a rate outside 0.1 to 10 C/h.
+  window, an overlay, away, an off block, a target change, a correction change, no report for
+  `offline_after_sec`, no demand `40a0`, a length over 6 hours, or a rate outside 0.1 to 10 C/h.
+- A correction change is a manual or automatic offset write in mode `config` or `dbg2`. It
+  moves `4060` by the delta, so the learner reads the step as the plant. It rejects a running
+  episode only when the learner reads `4060`; with a fresh external reading in mode `setpoint`,
+  or with `auto_offset` on, it reads the external reading, which the write does not move.
 - The model keeps the last 10 episodes and uses the median. With a fresh outdoor temperature
   it prefers the episodes nearest to that temperature. It is stored in the `meta` table.
 - With at least `early_start_min_episodes` episodes, the daemon sends the `6200` of a warmer
@@ -494,8 +538,9 @@ report adds a sample with `4060`, `40a0`, `4160` and the fresh outdoor temperatu
 
 - A `heat` episode starts with the heating episode and continues after the target. It ends
   when `4060` stays within 0.2 C of the target for 30 minutes, or 2 hours after the crossing.
-  It also ends on an open window, an overlay, away, a target change, no report for
-  `offline_after_sec`, 6 hours without reaching the target, or 1440 samples.
+  It also ends on an open window, an overlay, away, a target change, a correction change
+  (`offset changed`, see Early start), no report for `offline_after_sec`, 6 hours without
+  reaching the target, or 1440 samples.
 - A `cool` episode covers a stretch of at least 30 minutes (at most 12 hours) with `40a0`
   at 0 and `4160` absent or 0.
 - `GET /api/zones/{n}/pid-suggestion` fits a first-order model with dead time and suggests

@@ -197,3 +197,19 @@ func patchConfigDocument(previous cfgSnapshot, updates []TLV) cfgSnapshot {
 	document := append(merged, TLV{Tag: configEtagTag, Val: etag})
 	return cfgSnapshot{body: encodeTLVs(document), etag: etag}
 }
+
+// ServedCalibOffset returns the correction 0140, in centi-degrees, of the
+// d/config document freedo serves to target, and false when the document holds
+// none. Modes config and dbg2 keep the correction there.
+func (e *EmuState) ServedCalibOffset(target string) (int, bool) {
+	wire, _, err := e.resolve(target)
+	if err != nil {
+		return 0, false
+	}
+	for _, t := range parseTLVList(e.cfgDoc[hexEUI(wire)].body) {
+		if t.Tag == "0140" && len(t.Val) == 2 {
+			return int(int16(uint16(t.Val[0])<<8 | uint16(t.Val[1]))), true
+		}
+	}
+	return 0, false
+}

@@ -123,6 +123,10 @@ type zonePatch struct {
 	DeviceOverlayEnd    *string `json:"device_overlay_end"`
 	DeviceOverlayEndSec *int    `json:"device_overlay_end_sec"`
 	OffsetMode          *string `json:"offset_mode"`
+	// AutoOffset turns the automatic temperature-correction calibration of the
+	// zone on or off; AutoOffsetIntervalSec sets how often at most it writes.
+	AutoOffset            *bool `json:"auto_offset"`
+	AutoOffsetIntervalSec *int  `json:"auto_offset_interval_sec"`
 	// PID sets the controller gains kp, ki and kd; null returns the zone to
 	// the default ones.
 	PID optPID `json:"pid"`
@@ -196,6 +200,8 @@ func zoneView(in *tado.Install, z *tado.Zone) map[string]any {
 		"device_overlay_end_sec":   nil,
 		"offset_mode":              nil,
 		"setpoint_offset_c":        nil,
+		"auto_offset":              nil,
+		"auto_offset_interval_sec": nil,
 		"pid":                      nil,
 		"away_temperature_c":       nil,
 	}
@@ -210,6 +216,9 @@ func zoneView(in *tado.Install, z *tado.Zone) map[string]any {
 		if off.Mode == tado.OffsetModeSetpoint {
 			out["setpoint_offset_c"] = in.Options.SetpointShiftC(z.Number)
 		}
+		auto := in.Options.AutoOffset(z.Number)
+		out["auto_offset"] = auto.Enabled
+		out["auto_offset_interval_sec"] = auto.IntervalSec
 		out["pid"] = in.Options.ZonePID(z.Number)
 		if c, ok := in.Options.AwayTemperatures[z.Number]; ok {
 			out["away_temperature_c"] = c

@@ -239,6 +239,10 @@ type Options struct {
 	// ZonePIDs holds the zone controller gains, per heating zone. A zone
 	// outside the map takes DefaultZonePID.
 	ZonePIDs map[int]ZonePID `yaml:"zone_pid"`
+	// AutoOffsets holds the automatic temperature-correction calibration, per
+	// heating zone. A zone outside the map takes DefaultAutoOffset. Only the
+	// modes config and dbg2 accept it.
+	AutoOffsets map[int]AutoOffset `yaml:"auto_offset"`
 	// AwayTemperatures holds the temperature a heating zone keeps in away, per
 	// zone. A zone outside the map, or at RoomMinC, is off in away.
 	AwayTemperatures map[int]float64 `yaml:"away_temperature_c"`
@@ -789,6 +793,7 @@ func (in *Install) checkOptions(c *issues) {
 	in.checkDeviceOverlayEnds(c)
 	in.checkZoneOffsets(c)
 	in.checkZonePIDs(c)
+	in.checkAutoOffsets(c)
 	in.checkAwayTemperatures(c)
 }
 

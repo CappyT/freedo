@@ -496,6 +496,25 @@ func (s *stateStore) SetRoomShifts(ctx context.Context, stored map[int]int) erro
 	return err
 }
 
+// AutoOffsets returns the tracked correction (in centi-degrees) and the last
+// automatic write time of each zone with an automatic temperature calibration,
+// see auto_offset.go.
+func (s *stateStore) AutoOffsets(ctx context.Context) (map[int]storedAutoOffset, error) {
+	var stored map[int]storedAutoOffset
+	err := s.metaJSON(ctx, "auto_offset", &stored)
+	return stored, err
+}
+
+// SetAutoOffsets replaces the stored automatic calibration state.
+func (s *stateStore) SetAutoOffsets(ctx context.Context, stored map[int]storedAutoOffset) error {
+	raw, err := json.Marshal(stored)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `INSERT OR REPLACE INTO meta (key, value) VALUES ('auto_offset', ?)`, string(raw))
+	return err
+}
+
 // DeleteThermalModel forgets the heat-up model of zone.
 func (s *stateStore) DeleteThermalModel(ctx context.Context, zone int) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM meta WHERE key = ?`, thermalModelPrefix+strconv.Itoa(zone))

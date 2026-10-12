@@ -824,6 +824,9 @@ func (s *stateStore) PatchZone(ctx context.Context, number int, p zonePatch) (in
 		if err := patchZoneOffset(ctx, tx, cur, number, p); err != nil {
 			return err
 		}
+		if err := patchZoneAutoOffset(ctx, tx, cur, number, p); err != nil {
+			return err
+		}
 		if err := patchZonePID(ctx, tx, cur, number, p.PID); err != nil {
 			return err
 		}
@@ -883,6 +886,8 @@ func patchZoneOffset(ctx context.Context, tx querier, cur *tado.Install, number 
 		off.Mode = *p.OffsetMode
 		if off.Mode != tado.OffsetModeSetpoint {
 			off.SetpointCenti = 0
+		} else if cur.Options.AutoOffset(number).Enabled {
+			return badf("offset_mode: zone %d has auto_offset on, switch it off first", number)
 		}
 	}
 	if p.SetpointOffsetCenti != nil {
@@ -899,6 +904,45 @@ func patchZoneOffset(ctx context.Context, tx querier, cur *tado.Install, number 
 		return err
 	}
 	return setInstallValue(ctx, tx, install.ZoneOffsetKey(number), string(raw))
+}
+
+// patchZoneAutoOffset applies the automatic calibration fields of p on the
+// settings the zone holds. Only a heating zone outside offset mode setpoint
+// takes it. The default is not stored.
+func patchZoneAutoOffset(ctx context.Context, tx querier, cur *tado.Install, number int, p zonePatch) error {
+	if p.AutoOffset == nil && p.AutoOffsetIntervalSec == nil {
+		return nil
+	}
+	a := cur.Options.AutoOffset(number)
+	if p.AutoOffset != nil {
+		a.Enabled = *p.AutoOffset
+	}
+	if p.AutoOffsetIntervalSec != nil {
+		a.IntervalSec = *p.AutoOffsetIntervalSec
+	}
+	if msg := a.Check(); msg != "" {
+		return badf("auto_offset: %s", msg)
+	}
+	if a.Enabled {
+		z, err := cur.ZoneByNumber(number)
+		if err != nil {
+			return notFoundf("no zone %d", number)
+		}
+		switch {
+		case z.Kind != tado.ZoneHeating:
+			return badf("auto_offset: zone %d is not a heating zone", number)
+		case cur.Options.ZoneOffset(number).Mode == tado.OffsetModeSetpoint:
+			return badf("auto_offset: zone %d is in offset mode setpoint, which corrects continuously from the reading", number)
+		}
+	}
+	if a == tado.DefaultAutoOffset {
+		return clearInstallValue(ctx, tx, install.AutoOffsetKey(number))
+	}
+	raw, err := json.Marshal(a)
+	if err != nil {
+		return err
+	}
+	return setInstallValue(ctx, tx, install.AutoOffsetKey(number), string(raw))
 }
 
 // patchZonePID applies the gains of p on the ones the zone holds: a gain the
@@ -984,6 +1028,9 @@ func (s *stateStore) DeleteZone(ctx context.Context, number int, expect *uint64)
 			return err
 		}
 		if err := clearInstallValue(ctx, tx, install.ZoneOffsetKey(number)); err != nil {
+			return err
+		}
+		if err := clearInstallValue(ctx, tx, install.AutoOffsetKey(number)); err != nil {
 			return err
 		}
 		if err := clearInstallValue(ctx, tx, install.ZonePIDKey(number)); err != nil {

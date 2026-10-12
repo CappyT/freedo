@@ -151,6 +151,11 @@ type daemon struct {
 	// Both belong to the engine goroutine; see room_temp.go.
 	roomTemps   map[int]*roomTemp
 	roomUnsaved bool
+	// autoOffsets holds the automatic temperature-correction calibration of each
+	// zone that states it and autoUnsaved says whether it moved since the last
+	// save. Both belong to the engine goroutine; see auto_offset.go.
+	autoOffsets map[int]*autoOffset
+	autoUnsaved bool
 	// outdoor is the last outdoor temperature pushed, flowChanged when a curve
 	// or the adaptation last changed each circuit's flow limit, flowEpoch the
 	// engine start and flowAdapt the adaptation of each circuit. All four
@@ -267,6 +272,7 @@ func newDaemon(in *tado.Install, emu *tado.EmuState, radio radio.Radio, dryRun b
 		windows:          make(map[int]zoneWindow),
 		windowOwed:       make(map[windowWrite]*windowOwed),
 		roomTemps:        make(map[int]*roomTemp),
+		autoOffsets:      make(map[int]*autoOffset),
 		flowChanged:      make(map[int]time.Time),
 		flowAdapt:        make(map[int]*flowAdapt),
 		thermal:          make(map[int]*thermalModel),
@@ -412,6 +418,7 @@ func (d *daemon) run(ctx context.Context) {
 			d.tickCounters(d.emu)
 			d.tickHomeState(d.emu)
 			d.tickRoomTemps(d.emu)
+			d.tickAutoOffsets(d.emu)
 			d.tickWindows(d.emu)
 			d.tickPairWindow(d.emu)
 			d.tickEnergy()
@@ -2331,6 +2338,7 @@ func (d *daemon) declaredZones(e *tado.EmuState) []map[string]any {
 		zone["target"] = d.zoneTargetView(e, z)
 		if z.Kind == tado.ZoneHeating {
 			zone["externalTemp"] = d.roomTempView(e, z.Number)
+			zone["autoOffset"] = d.autoOffsetView(inst, z.Number)
 		}
 		out = append(out, zone)
 	}
@@ -2646,6 +2654,9 @@ func (d *daemon) restoreHomeState(e *tado.EmuState) error {
 		return err
 	}
 	if err := d.restoreRoomShifts(); err != nil {
+		return err
+	}
+	if err := d.restoreAutoOffsets(); err != nil {
 		return err
 	}
 	blocks, stored, err := d.state.ProgramBlocks(ctx)
@@ -3696,6 +3707,9 @@ func (d *daemon) postZoneOffset(w http.ResponseWriter, r *http.Request) {
 	target := hex.EncodeToString(targetDevice.WireEUI())
 	extra := map[string]any{"zone": zoneNumber, "target": targetName(targetDevice), "offsetC": *b.OffsetC, "mode": mode}
 	d.configWrite(w, r, target, extra, func(e *tado.EmuState) error {
+		// A manual offset moves 4060 as an automatic one does: reject the
+		// episodes that span it, unless the learners read the external reading.
+		d.noteOffsetChange(inst, zoneNumber, offset)
 		if mode == tado.OffsetModeDbg2 {
 			return e.EnqueueCalibOffsetDbg2(target, zoneNumber, offset)
 		}
