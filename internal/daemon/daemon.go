@@ -127,16 +127,22 @@ type daemon struct {
 	// its members a write of 6200 and 61e0. schedSeeded says whether
 	// schedPushed holds a baseline. programOwed holds the zone rewrites queued
 	// and not yet confirmed, see programWrite. schedUnsaved says whether
-	// schedPushed, programOwed or early moved since the last save. dhwProgram
-	// is the hot-water program, nil when none is stored. All seven belong to
-	// the engine goroutine.
+	// schedPushed, programOwed or early moved since the last save. All six
+	// belong to the engine goroutine.
 	away         bool
 	zoneSched    map[int]scheduledBlock
 	schedPushed  map[int]scheduledBlock
 	schedSeeded  bool
 	programOwed  map[programWrite]uint64
 	schedUnsaved bool
-	dhwProgram   []tado.ScheduleProgram
+	// presets holds every program preset keyed by id, presetOrder the ids in
+	// creation order, activePreset the id the engine follows and serves, and
+	// nextPresetID the id of the next storeless create. All four belong to the
+	// engine goroutine; see presets.go.
+	presets      map[int64]*presetRecord
+	presetOrder  []int64
+	nextPresetID int64
+	activePreset int64
 	// progLoc is the wall clock of the programs of progLocOf, see programClock.
 	// Both belong to the engine goroutine.
 	progLoc   *time.Location
@@ -1824,6 +1830,12 @@ func (d *daemon) mux() *http.ServeMux {
 	m.HandleFunc("POST /api/zones/{number}/offset", d.postZoneOffset)
 	m.HandleFunc("GET /api/zones/{number}/schedule", d.getZoneSchedule)
 	m.HandleFunc("PUT /api/zones/{number}/schedule", d.putZoneSchedule)
+	m.HandleFunc("DELETE /api/zones/{number}/schedule", d.deleteZoneSchedule)
+	m.HandleFunc("GET /api/presets", d.getPresets)
+	m.HandleFunc("POST /api/presets", d.postPreset)
+	m.HandleFunc("PATCH /api/presets/{id}", d.patchPreset)
+	m.HandleFunc("DELETE /api/presets/{id}", d.deletePreset)
+	m.HandleFunc("POST /api/presets/{id}/activate", d.activatePreset)
 	m.HandleFunc("POST /api/zones/{number}/window", d.postZoneWindow)
 	m.HandleFunc("POST /api/zones/{number}/temperature", d.postZoneTemperature)
 	m.HandleFunc("DELETE /api/zones/{number}/temperature", d.deleteZoneTemperature)
@@ -2378,11 +2390,11 @@ func (d *daemon) deleteQueue(w http.ResponseWriter, r *http.Request) {
 
 // --- home state and weekly schedule ---
 
-// zoneScheduledBlock returns the block zone follows now: the weekly program
-// when a member holds one, or the daemon's program on the hot-water zone, else
-// the last 6200 the zone cache holds. program reports the first two cases.
+// zoneScheduledBlock returns the block zone follows now: the program in force
+// of the active preset when the zone holds one, else the last 6200 the zone
+// cache holds. program reports the first case.
 func (d *daemon) zoneScheduledBlock(e *tado.EmuState, inst *tado.Install, zone int, now time.Time) (block scheduledBlock, program, ok bool) {
-	if programs, ok := d.zonePrograms(e, inst, zone); ok {
+	if programs, ok := d.programInForce(zone); ok {
 		block, ok := scheduledBlockAt(programs, now, d.programClock(inst))
 		return block, true, ok
 	}
@@ -2390,30 +2402,10 @@ func (d *daemon) zoneScheduledBlock(e *tado.EmuState, inst *tado.Install, zone i
 	return scheduledBlock{c: d.correctedC(inst, zone, c)}, false, ok
 }
 
-// zonePrograms returns the weekly program of zone: the daemon's own on the
-// hot-water zone, else the document the first member that holds one is served.
-func (d *daemon) zonePrograms(e *tado.EmuState, inst *tado.Install, zone int) ([]tado.ScheduleProgram, bool) {
-	if z, ok := inst.HotWaterZone(); ok && z.Number == zone {
-		return d.dhwProgram, d.dhwProgram != nil
-	}
-	members, err := inst.ZoneMembers(zone)
-	if err != nil {
-		return nil, false
-	}
-	for _, member := range members {
-		programs, set, err := e.Schedule(hex.EncodeToString(member.WireEUI()))
-		if err != nil || !set {
-			continue
-		}
-		return programs, true
-	}
-	return nil, false
-}
-
-// nextZoneBlock returns the instant the weekly program of zone moves to its
+// nextZoneBlock returns the instant the program in force of zone moves to its
 // next entry, which is how long an "until_next" overlay lasts.
 func (d *daemon) nextZoneBlock(e *tado.EmuState, inst *tado.Install, zone int, now time.Time) (time.Time, bool) {
-	programs, ok := d.zonePrograms(e, inst, zone)
+	programs, ok := d.programInForce(zone)
 	if !ok {
 		return time.Time{}, false
 	}
@@ -2455,7 +2447,8 @@ func (d *daemon) applyHomeState(e *tado.EmuState) []int {
 		now := d.retryNow()
 		for i := range inst.Zones {
 			zone := inst.Zones[i].Number
-			if c, ok := inst.Options.AwayTemperature(zone); ok {
+			_, hasAwayProgram := d.awayProgramOf(zone)
+			if c, fallback := inst.Options.AwayTemperature(zone); fallback && !hasAwayProgram {
 				away[zone] = d.rawSetpointC(inst, zone, c)
 			}
 			block, program, ok := d.zoneScheduledBlock(e, inst, zone, now)
@@ -2466,6 +2459,12 @@ func (d *daemon) applyHomeState(e *tado.EmuState) []int {
 			blocks[zone], sched[zone], off[zone] = block, d.rawSetpointC(inst, zone, block.c), block.off
 			if program {
 				programs = append(programs, zone)
+			}
+			// In away a zone with an away program follows it: the block in
+			// force takes the place of the fixed away temperature, and an off
+			// block writes the off of the away fallback.
+			if d.away && hasAwayProgram && !block.off {
+				away[zone] = d.rawSetpointC(inst, zone, block.c)
 			}
 		}
 	}
@@ -2607,15 +2606,19 @@ func (d *daemon) saveProgramBlocks() {
 
 // tickHomeState re-evaluates the weekly programs and pushes the new 6200 and
 // 61e0 to the members of every zone whose program holds another block than the
-// one it last took. Away, the hot-water zone takes no block change: an away
-// write carries neither tag, and the return home rewrites every zone with the
-// block then in force. An early start due now goes out as a block change of its
-// own, and the heat-up learner then sees the targets this tick settled on.
+// one it last took. Away, a hot-water zone without an away program takes no
+// block change: its away write carries neither tag, and the return home
+// rewrites every zone with the block then in force. An early start due now
+// goes out as a block change of its own, and the heat-up learner then sees the
+// targets this tick settled on.
 func (d *daemon) tickHomeState(e *tado.EmuState) {
 	d.planEarlyStarts(e)
 	zones := d.applyHomeState(e)
 	if d.away {
-		zones = slices.DeleteFunc(zones, d.isHotWaterZone)
+		zones = slices.DeleteFunc(zones, func(zone int) bool {
+			_, has := d.awayProgramOf(zone)
+			return d.isHotWaterZone(zone) && !has
+		})
 	}
 	if len(zones) > 0 {
 		d.rewriteZones(e, zones, d.requestQueuedDispatch, false)
@@ -2628,7 +2631,7 @@ func (d *daemon) tickHomeState(e *tado.EmuState) {
 }
 
 // restoreHomeState loads the home state the engine keeps in the database: the
-// away flag, the hot-water program, the windows, the heat-up models, the
+// away flag, the program presets, the windows, the heat-up models, the
 // adapted flow limits, the room shifts, the block each zone last took, the
 // zone rewrites still owed and the early starts running. With that baseline the
 // first tick writes each zone whose program moved while the daemon was down, and
@@ -2642,7 +2645,7 @@ func (d *daemon) restoreHomeState(e *tado.EmuState) error {
 	if d.away, err = d.state.Away(ctx); err != nil {
 		return err
 	}
-	if d.dhwProgram, err = d.state.HotWaterProgram(ctx); err != nil {
+	if err := d.restorePresets(ctx, e); err != nil {
 		return err
 	}
 	if err := d.restoreWindows(e); err != nil {
@@ -2743,11 +2746,16 @@ func (d *daemon) allZones() []int {
 	return out
 }
 
-// getHome returns the state of the whole home.
+// getHome returns the state of the whole home and the active preset.
 func (d *daemon) getHome(w http.ResponseWriter, r *http.Request) {
 	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
+		d.ensurePresets()
 		scheduled, off := d.scheduledView()
-		return map[string]any{"away": d.away, "scheduled": scheduled, "scheduledOff": off}, nil
+		out := map[string]any{"away": d.away, "scheduled": scheduled, "scheduledOff": off}
+		if p := d.presets[d.activePreset]; p != nil {
+			out["preset"] = map[string]any{"id": p.id, "name": p.name}
+		}
+		return out, nil
 	})
 	write(w, v, err)
 }

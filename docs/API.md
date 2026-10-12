@@ -45,9 +45,9 @@ curl -H "Authorization: Bearer $(cat freedo_api_token)" http://127.0.0.1:8080/ap
 - When a client closes a request, the daemon stops to wait for the engine and answers `503`.
   A command that the engine already took still runs.
 - A command that cannot save its state in the database gets `500`.
-  `PATCH /api/home`, `PUT /api/zones/{n}/schedule` on the hot water zone and
-  `POST /api/zones/{n}/window` save first and change the engine state after. After a `500`
-  the engine state is unchanged.
+  `PATCH /api/home`, the [program preset](#program-presets) routes, `PUT` and
+  `DELETE /api/zones/{n}/schedule` and `POST /api/zones/{n}/window` store their state
+  before they change the engine state. After a `500` the engine state is unchanged.
 - A write that queues a radio message answers with the queue state of the target device.
   `GET /api/queue/{id}` shows the queue and the history, with the result of each message.
   A newer write to the same zone replaces a queued one that is not yet on air. The history
@@ -97,7 +97,7 @@ banner.
 | `GET /api/zones` | Zones with members, demand, target, window state and external temperature. |
 | `GET /api/circuits` | Heating circuits as the engine sees them. |
 | `GET /api/boiler` | Boiler values, flow limit state, energy and gas estimate. |
-| `GET /api/home` | Home and away state and the scheduled setpoint of each zone. |
+| `GET /api/home` | Home and away state, the scheduled setpoint of each zone and the active preset. |
 | `GET /api/stats` | Frame counters, node count and unhandled counts. |
 | `GET /api/unhandled` | Counts of unhandled radio events by reason. |
 | `GET /api/queue/{id}` | Queue and history of a device. |
@@ -116,7 +116,10 @@ banner.
 | `POST /api/zones/{n}/offset` | Set the temperature correction. |
 | `POST /api/zones/{n}/window` | Open or close the window state from an outside source. |
 | `POST /api/zones/{n}/temperature`, `DELETE ...` | Give or remove an external room temperature. |
-| `GET`, `PUT /api/zones/{n}/schedule` | Read or write the weekly schedule. |
+| `GET`, `PUT`, `DELETE /api/zones/{n}/schedule` | Read, write or remove the weekly program of one mode of one preset. |
+| `GET`, `POST /api/presets` | List the program presets, create one. |
+| `PATCH`, `DELETE /api/presets/{id}` | Rename or delete a preset. |
+| `POST /api/presets/{id}/activate` | Switch the active preset. |
 | `GET`, `PUT /api/zones/{n}/early-start` | Read or switch the early start. |
 | `DELETE /api/zones/{n}/early-start/model` | Delete the learned heat-up model. |
 | `GET /api/zones/{n}/episodes` | Recorded heating and cooling episodes. |
@@ -212,7 +215,8 @@ transaction that applies the rows, rebuilds the installation, validates it and r
 `install_rev`. The engine gets the installation after the commit.
 
 The database holds more than the installation. It also keeps the desired state of the
-devices and the learned state. These are the away state, the hot water program, the program
+devices and the learned state. These are the away state, the program presets with the home
+and away programs of each zone, the program
 blocks of each zone, the early start models, the adapted flow limits, the setpoint shifts
 from an outside temperature, the boiler counters, the resume points of the frame counters
 and the radio calibration. The node state, the learned zone members and the command queue
@@ -266,11 +270,12 @@ allows it.
 | `auto_offset` | `false` | Automatic calibration of the zone correction (valve offset) from an external room temperature. Only a heating zone in `offset_mode` `config` or `dbg2` takes it. |
 | `auto_offset_interval_sec` | 86400 | Shortest interval between two automatic corrections, 3600 to 604800 seconds. |
 | `pid` | 1000, 500, 1500 | Controller gains `kp`, `ki`, `kd` of the valve, each 0 to 65535. `kp` and `ki` cannot both be 0. `null` restores the defaults. |
-| `away_temperature_c` | `null` | Temperature in away, 5 to 25 C with at most two decimals. `null` and 5 mean off in away. The hot water zone refuses it. |
+| `away_temperature_c` | `null` | Temperature in away, 5 to 25 C with at most two decimals. `null` and 5 mean off in away. The hot water zone refuses it. An away program of the zone replaces the fixed temperature while the home is away. |
 
 A `pid` change gives the zone document a new ETag and writes nothing to the valve. The
 valve rereads the document after its hourly check, applies the gains and resets the
-integrator. A change of `away_temperature_c` during away rewrites that zone at once. A
+integrator. A change of `away_temperature_c` during away rewrites that zone at once when it
+has no away program. A
 change at home writes nothing and applies from the next away.
 
 ## Zones
@@ -288,7 +293,8 @@ write every member. The answer then holds the members in `target`, separated by 
 - `POST /api/zones/{n}/setpoint` with `{"setpointC": 21, "mode": "manual"}` sets an overlay.
   A room accepts 5 to 25 C. Hot water accepts 30 to 65 C.
   - `mode` is `manual`, `until_next`, `timer` (with `durationSec`) or `until_auto_change`.
-  - `until_next` lasts until the next block of the program. Without a program it does not end.
+  - `until_next` lasts until the next block of the program in force: in away, the away
+    program of a zone that has one. Without a program in force it does not end.
   - `until_auto_change` lasts until the next program block or the next switch between home
     and away, whichever comes first. On air it is `6240=1`. A capture shows it for rooms.
     For hot water the value is not verified. The daemon keeps the rule and the deadline in
@@ -309,7 +315,8 @@ A person who turns the wheel of a valve sends `PUT h/<home>/z/N/overlay`. The da
 `device_overlay_end` rule of the zone:
 
 - `manual` does not end.
-- `until_next` ends at the next program block. Without a program it does not end.
+- `until_next` ends at the next block of the program in force, the away program in away.
+  Without one it does not end.
 - `timer` ends after `device_overlay_end_sec`.
 
 At the end, the daemon writes `6240=0` and the program setpoint to the writer of the zone.
@@ -329,12 +336,14 @@ replaces queued writes that repeat the old overlay.
 - `targetC` is `null` when the device follows a value of its own: open window, away without
   a temperature, an off overlay or a program block that is off. It is also `null` on a zone
   that has no program and whose zone cache holds no `6200`.
-- `hasProgram` is `true` while the daemon holds a weekly program for the zone: the hot water
-  program, or a schedule document that a member of a heating zone is served. It is `false`
+- `hasProgram` is `true` while the daemon holds a weekly program for the zone, in either
+  mode ([home or away](#program-presets)). It is `false`
   for a zone with no program. `source` is `program` in both cases, because it only says that
   no overlay, window or away state applies. Read `hasProgram` to tell a zone that follows a
   program from a zone that has none.
-- Without a program, `programC` is the `6200` that the zone cache holds (the last write or
+- `programC` and `programOff` are the block of the program in force: in away, the block of
+  the away program of a zone that has one. Without a program, `programC` is the `6200` that
+  the zone cache holds (the last write or
   member report that carried it), or `null` when the cache holds none. A zone with no
   program and no `6200` has `targetC` and `programC` at `null`. The daemon writes such a zone
   only at a switch between home and away and at a command, never at a block change or at the
@@ -348,13 +357,19 @@ replaces queued writes that repeat the old overlay.
 
 ### Home and away
 
-`GET /api/home` returns the state and the scheduled setpoints. `scheduledOff` lists the
+`GET /api/home` returns the state, the scheduled setpoints and the active preset in
+`preset`. `scheduledOff` lists the
 zones whose current block is off. `PATCH /api/home` with `{"away": true}` switches the
 whole home and writes each zone once. The state survives a restart and appears in
 `/api/health`.
 
-- In away, a heating zone with `away_temperature_c` above 5 receives `6160=2`, `61e0=1` and
-  the temperature in `6200`. Without the field, or at 5, it receives `61e0=0` and no `6200`.
+- In away, a zone with an away program follows it: the daemon evaluates it on the program
+  clock and writes each block change as `6160=2`, `61e0=1` and the block temperature in
+  `6200`, or `61e0=0` for an off block. The hot water zone writes its away blocks the same
+  way, instead of off in away.
+- Without an away program, a heating zone keeps the away fallback: with
+  `away_temperature_c` above 5 it receives `6160=2`, `61e0=1` and the temperature in `6200`;
+  without the field, or at 5, it receives `61e0=0` and no `6200`.
 - A write to a zone without an overlay carries `6440` when the effective target changes.
   A running overlay keeps its block, and the write carries no `6440`. The return to home
   writes the program block again.
@@ -365,10 +380,25 @@ whole home and writes each zone once. The state survives a restart and appears i
 
 ### Weekly schedule
 
-`PUT /api/zones/{n}/schedule` writes one or more day programs with a day mask and switch
-points. `GET` returns the stored programs, or `404`. Each member of the zone receives the
-same document with its next GET.
+`GET`, `PUT` and `DELETE /api/zones/{n}/schedule` read, write or remove the weekly program
+of the zone. Each zone holds two modes: the `home` program it follows at home and an
+optional `away` program it follows while the whole home is away. The query names the mode
+(`mode=home|away`, `home` by default) and the [program preset](#program-presets)
+(`preset=<id>`, the active one by default). The answer of `GET` and `PUT` carries the
+programs with their `mode` and `preset`.
 
+- `PUT` writes one or more day programs with a day mask and switch points. A document
+  over 64 KiB gets `413`. A `mode` outside `home|away` gets `400`, an unknown preset id
+  `404`.
+- `DELETE` of the away program returns the zone to the away fallback. `DELETE` of the home
+  program of the active preset leaves the zone without a program: the daemon stops its
+  block changes, the served document of every member of a heating zone is dropped, and its
+  next fetch reads `2.03` and keeps the program it runs, as a zone that never had one.
+  A `DELETE` of a mode without a program gets `404`.
+- The served `sched` document of a heating member derives from the home program of the
+  active preset. A `PUT` on it fans the document out to every member, and each member
+  receives the same document with its next GET. An away program, and the program of a preset
+  that is not active, stay daemon-side.
 - A member fetches the program only with `offline_schedule` on. When the document ETag of
   a member changes and its tag `02b3` is 1, the daemon queues an empty `POST d/sched`. The
   device then fetches at its next report cycle. With `02b3` at 0 the daemon queues nothing.
@@ -377,22 +407,51 @@ same document with its next GET.
 - The daemon checks these rules. Every mask selects at least one day. Masks share no day and
   cover seven days. Every program starts at minute 0, and its minutes increase up to 1439. Each
   encoded program stays within 255 bytes. A heating setpoint stays in 5 to 25 C, also in an off
-  block.
+  block, in either mode.
 - The daemon evaluates programs, early start and `until_next` on the clock of the devices:
   UTC plus the served `02b2`. The clock follows `utc_offset_min`, else `timezone`, else the
   zone of the host. A program minute is a local time, also on a day with a clock change.
-- The hot water program stays in the daemon. No device downloads it. The setpoint stays in
-  30 to 65 C. At each block change the daemon writes the wall thermostat with `6200` and
+- The hot water program stays in the daemon. No device downloads it, in either mode. The
+  setpoint stays in 30 to 65 C. At each block change of the program in force the daemon
+  writes the wall thermostat with `6200` and
   `61e0=1`, or `61e0=0` for an off block.
 - The daemon stores the block each zone received. After a restart it writes once each zone
-  whose program moved while the daemon was down. It also stores zone rewrites that are queued
-  and not confirmed, and queues them again once after a restart.
+  whose program in force moved while the daemon was down. It also stores zone rewrites that
+  are queued and not confirmed, and queues them again once after a restart.
 - A device that moves to another heating zone receives the document of the new zone, taken
   from a member that stays there. Without one the device gets `2.03` and keeps its program.
 - At start the daemon removes the stored `sched` document of the hot water thermostat when
   no heating program explains it, and logs this.
 
 `PUT /api/nodes/{id}/schedule` writes the document to one device.
+
+### Program presets
+
+A preset holds the home program and the optional away program of every zone, the hot water
+zone included. Exactly one preset is active: the daemon evaluates its programs, and the
+served `sched` documents derive from its home programs. A schedule write without
+`preset=<id>` names the active preset.
+
+- `GET /api/presets` lists the presets with `id`, `name` and `active`.
+- `POST /api/presets` with `{"name": "Winter"}` creates a preset with a copy of every
+  program of the active one; `copy_from` names another source. The name is unique without
+  case: a repeat, in a create or a rename, gets `409`.
+- `PATCH /api/presets/{id}` with `{"name": "..."}` renames one. `DELETE` removes a preset
+  with its programs; the active preset and the last one answer `409`. An unknown id gets
+  `404` on every preset route.
+- `POST /api/presets/{id}/activate` switches the active preset. One action serves the home
+  programs of the preset to the zone members — a document with unchanged bytes takes no
+  fetch trigger, and a zone without a home program loses its served document — and writes
+  once each zone whose block in force moved, in the home or away shape of the moment.
+  The write is a program block write and carries no `6440`. Activating the active preset
+  changes nothing.
+- `GET /api/home` reports the active preset in `preset`, with `id` and `name`.
+- On the first start the daemon builds the preset `Default` from the programs it already
+  holds, and makes it active: the heating programs from the served `sched` documents, the
+  hot water program from its own store. Only preset rows are written in this, so a restart
+  serves the same documents and ETags as before.
+- The daemon has no season calendar. An outside automation, for example Home Assistant,
+  switches the presets.
 
 ### Window
 
@@ -541,7 +600,8 @@ block early.
   it prefers the episodes nearest to that temperature. It is stored in the `meta` table.
 - With at least `early_start_min_episodes` episodes, the daemon sends the `6200` of a warmer
   block `(target - temperature) / rate` before it starts, at most `early_start_max_lead_sec`
-  before. It acts only at home, without an overlay and without an open window, and never on
+  before. It plans from the home program of the active preset, acts only at home, without an
+  overlay and without an open window, and never on
   the hot water zone. It stores the running early start.
 - `PUT /api/zones/{n}/early-start` with `{"enabled": true}` switches it on. It is off by
   default. `PATCH /api/install/zones/{n}` writes the same `early_start`.

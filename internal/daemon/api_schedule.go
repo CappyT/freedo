@@ -1,12 +1,18 @@
 package daemon
 
-// api_schedule: the weekly schedule of a zone. The device pulls the document
-// from its own resource, so a write fans the same document out to every zone
-// member and a read takes it back from the first member that holds one. The hot
-// water program is the exception: the daemon keeps it, evaluates it and writes
-// each block change to the thermostat. No device pulls it as a sched document,
-// because the thermostat's offline engine would run it on its heating zone. The
-// HTTP routes read and write it like any other zone program.
+// api_schedule: the weekly program of a zone, in the two modes of a program
+// preset: "home" (the default) is what the zone follows at home, and what the
+// heating members of the active preset are served as their sched document;
+// "away" is what the zone follows when the whole home is away, and a zone
+// without one keeps the fixed away temperature or the off of the away
+// fallback. The query of every route names the mode (mode=home|away, home by
+// default) and the preset (preset=<id>, the active one by default). PUT
+// replaces the whole program of a mode; DELETE removes it: the away program
+// returns the zone to the away fallback, the home program leaves the zone
+// without a program, whose members read 2.03 and keep the program they run, as
+// a zone that never had one. The hot-water zone gets the same two modes,
+// daemon-side only: its program is never served on sched, because the
+// thermostat's offline engine would run it on its heating zone.
 
 import (
 	"context"
@@ -129,6 +135,8 @@ type scheduleView struct {
 	Zone     int                   `json:"zone"`
 	Members  []string              `json:"members"`
 	Programs []scheduleProgramView `json:"programs"`
+	Mode     string                `json:"mode"`
+	Preset   int64                 `json:"preset"`
 }
 
 type scheduleProgramView struct {
@@ -143,11 +151,20 @@ type schedulePointView struct {
 	Enabled   bool    `json:"enabled"`
 }
 
-// putZoneSchedule stores the weekly schedule of a zone. The answer carries the
-// stored programs; a rejected rule is a 400 naming it.
+// putZoneSchedule stores the program of the named mode and preset of the zone.
+// On the home mode of the active preset the document also fans out to the
+// sched of every heating member; every other program stays daemon-side: no
+// device pulls an away program or the program of a preset that is not active,
+// and the hot-water program is never served. The answer carries the stored
+// programs; a rejected rule is a 400 naming it.
 func (d *daemon) putZoneSchedule(w http.ResponseWriter, r *http.Request) {
 	zone, members, ok := d.pathZoneMembers(w, r)
 	if !ok {
+		return
+	}
+	away, mode, err := scheduleMode(r)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	var b schedulePlanBody
@@ -159,64 +176,195 @@ func (d *daemon) putZoneSchedule(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if d.isHotWaterZone(zone) {
-		d.putHotWaterSchedule(w, r, zone, members, programs)
-		return
-	}
-	if err := validateScheduleRange(programs, zoneMinC, zoneMaxC, ""); err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
-		return
+	hotWater := d.isHotWaterZone(zone)
+	if hotWater {
+		if err := validateHotWaterSchedule(programs); err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	} else {
+		if err := tado.ValidateSchedule(programs); err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if err := validateScheduleRange(programs, zoneMinC, zoneMaxC, ""); err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
 	}
 	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
-		for _, member := range members {
-			target := hex.EncodeToString(member.WireEUI())
-			if err := e.SetSchedule(target, programs); err != nil {
-				return nil, err
-			}
-			d.dispatchQueued(e, target)
+		d.ensurePresets()
+		preset, err := d.resolvePresetParam(r)
+		if err != nil {
+			return nil, err
 		}
-		return newScheduleView(zone, members, programs), nil
+		// A home program of the active preset fans out to the sched documents of
+		// the members first, as before presets: a document the fan-out rejects
+		// changes nothing. Every other program goes to the program store before
+		// the engine learns it: a failed save changes nothing.
+		if !away && !hotWater && preset == d.activePreset {
+			for _, member := range members {
+				target := hex.EncodeToString(member.WireEUI())
+				if err := e.SetSchedule(target, programs); err != nil {
+					return nil, err
+				}
+				d.dispatchQueued(e, target)
+			}
+		}
+		if d.state != nil {
+			if err := d.state.SetZoneProgram(context.Background(), preset, zone, away, programs); err != nil {
+				return nil, &stateSaveError{err: err}
+			}
+		}
+		d.storeZoneProgram(preset, zone, away, programs)
+		return newScheduleView(zone, members, programs, mode, preset), nil
 	})
-	if writeHandlerErr(w, d.persist(err)) {
+	if writeAPIErr(w, d.persist(err)) {
 		return
 	}
 	writeJSON(w, http.StatusOK, v)
 }
 
-// getZoneSchedule returns the stored programs of a zone, or 404 when no member
-// holds a document.
+// getZoneSchedule returns the program of the named mode and preset of the
+// zone, or 404 when the zone holds none. On the home mode of the active preset
+// it is the document the first member holds — a device can hold a document a
+// single-node PUT wrote outside the program store — and the daemon-side
+// program for the hot-water zone; every other program comes from the program
+// store.
 func (d *daemon) getZoneSchedule(w http.ResponseWriter, r *http.Request) {
 	zone, members, ok := d.pathZoneMembers(w, r)
 	if !ok {
 		return
 	}
-	hotWater := d.isHotWaterZone(zone)
-	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
-		if hotWater {
-			if d.dhwProgram == nil {
-				return nil, nil
-			}
-			return newScheduleView(zone, members, d.dhwProgram), nil
-		}
-		for _, member := range members {
-			programs, set, err := e.Schedule(hex.EncodeToString(member.WireEUI()))
-			if err != nil {
-				return nil, err
-			}
-			if set {
-				return newScheduleView(zone, members, programs), nil
-			}
-		}
-		return nil, nil
-	})
-	if writeHandlerErr(w, err) {
+	away, mode, err := scheduleMode(r)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if v == nil {
-		writeErr(w, http.StatusNotFound, "zone "+strconv.Itoa(zone)+" has no schedule")
+	hotWater := d.isHotWaterZone(zone)
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
+		d.ensurePresets()
+		preset, err := d.resolvePresetParam(r)
+		if err != nil {
+			return nil, err
+		}
+		var programs []tado.ScheduleProgram
+		switch {
+		case away:
+			programs = d.presetZonePrograms(preset, zone).away
+		case hotWater || preset != d.activePreset:
+			programs = d.presetZonePrograms(preset, zone).home
+		default:
+			for _, member := range members {
+				p, set, err := e.Schedule(hex.EncodeToString(member.WireEUI()))
+				if err != nil {
+					return nil, err
+				}
+				if set {
+					programs = p
+					break
+				}
+			}
+		}
+		if programs == nil {
+			return nil, zoneScheduleErr(zone, away)
+		}
+		return newScheduleView(zone, members, programs, mode, preset), nil
+	})
+	if writeAPIErr(w, err) {
 		return
 	}
 	writeJSON(w, http.StatusOK, v)
+}
+
+// deleteZoneSchedule removes the program of the named mode and preset of the
+// zone. Deleting the away program returns the zone to the away fallback.
+// Deleting the home program of the active preset leaves the zone without a
+// program: the daemon stops writing its block changes, and the served sched
+// document of its members is dropped, so their next fetch gets the 2.03 of a
+// zone that never had a program and they keep the program they run.
+func (d *daemon) deleteZoneSchedule(w http.ResponseWriter, r *http.Request) {
+	zone, members, ok := d.pathZoneMembers(w, r)
+	if !ok {
+		return
+	}
+	away, mode, err := scheduleMode(r)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	hotWater := d.isHotWaterZone(zone)
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
+		d.ensurePresets()
+		preset, err := d.resolvePresetParam(r)
+		if err != nil {
+			return nil, err
+		}
+		zp := d.presetZonePrograms(preset, zone)
+		if (away && zp.away == nil) || (!away && zp.home == nil) {
+			return nil, zoneScheduleErr(zone, away)
+		}
+		if d.state != nil {
+			if err := d.state.DeleteZoneProgram(context.Background(), preset, zone, away); err != nil {
+				return nil, &stateSaveError{err: err}
+			}
+		}
+		d.dropZoneProgram(preset, zone, away)
+		if !away && !hotWater && preset == d.activePreset {
+			for _, member := range members {
+				target := hex.EncodeToString(member.WireEUI())
+				dropped, err := e.DropSchedule(target)
+				if err != nil {
+					return nil, err
+				}
+				if dropped {
+					log.Printf("dropped the sched document of %s: zone %d has no home program", member.Serial, zone)
+				}
+			}
+		}
+		return newScheduleView(zone, members, nil, mode, preset), nil
+	})
+	if writeAPIErr(w, d.persist(err)) {
+		return
+	}
+	writeJSON(w, http.StatusOK, v)
+}
+
+// scheduleMode parses ?mode= of r, home by default.
+func scheduleMode(r *http.Request) (away bool, mode string, err error) {
+	switch mode = r.URL.Query().Get("mode"); mode {
+	case "", "home":
+		return false, "home", nil
+	case "away":
+		return true, "away", nil
+	default:
+		return false, "", fmt.Errorf("mode %q is unknown: want home or away", mode)
+	}
+}
+
+// resolvePresetParam reads preset=<id> from the query of r, the active preset
+// when absent. It runs on the engine goroutine, which owns the registry.
+func (d *daemon) resolvePresetParam(r *http.Request) (int64, error) {
+	raw := r.URL.Query().Get("preset")
+	if raw == "" {
+		return d.activePreset, nil
+	}
+	id, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || id < 1 {
+		return 0, apiErrf(http.StatusBadRequest, "preset %q is not a preset id", raw)
+	}
+	if d.presets[id] == nil {
+		return 0, apiErrf(http.StatusNotFound, "preset %d is not declared", id)
+	}
+	return id, nil
+}
+
+// zoneScheduleErr is the 404 of a mode the zone holds no program for.
+func zoneScheduleErr(zone int, away bool) error {
+	if away {
+		return apiErrf(http.StatusNotFound, "zone %d has no away program", zone)
+	}
+	return apiErrf(http.StatusNotFound, "zone %d has no schedule", zone)
 }
 
 // isHotWaterZone reports whether zone is the hot-water zone of the installation.
@@ -227,32 +375,6 @@ func (d *daemon) isHotWaterZone(zone int) bool {
 	}
 	z, ok := inst.HotWaterZone()
 	return ok && z.Number == zone
-}
-
-// putHotWaterSchedule stores the hot-water program daemon-side. The engine
-// evaluates it and writes each block change to the thermostat on the hot-water
-// zone; nothing reaches a sched resource.
-func (d *daemon) putHotWaterSchedule(w http.ResponseWriter, r *http.Request, zone int, members []*tado.Device, programs []tado.ScheduleProgram) {
-	if err := validateHotWaterSchedule(programs); err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
-		// Stored on the engine goroutine, so racing requests reach the database
-		// in the order the engine took them, and before the engine runs it, so a
-		// failed save changes nothing.
-		if d.state != nil {
-			if err := d.state.SetHotWaterProgram(context.Background(), programs); err != nil {
-				return nil, &stateSaveError{err: err}
-			}
-		}
-		d.dhwProgram = programs
-		return newScheduleView(zone, members, programs), nil
-	})
-	if writeHandlerErr(w, err) {
-		return
-	}
-	writeJSON(w, http.StatusOK, v)
 }
 
 // purgeHotWaterSchedules drops at the start the hot-water program an earlier
@@ -384,11 +506,13 @@ func dayBit(name string) (byte, bool) {
 	return 0, false
 }
 
-func newScheduleView(zone int, members []*tado.Device, programs []tado.ScheduleProgram) scheduleView {
+func newScheduleView(zone int, members []*tado.Device, programs []tado.ScheduleProgram, mode string, preset int64) scheduleView {
 	out := scheduleView{
 		Zone:     zone,
 		Members:  make([]string, 0, len(members)),
 		Programs: make([]scheduleProgramView, 0, len(programs)),
+		Mode:     mode,
+		Preset:   preset,
 	}
 	for _, member := range members {
 		out.Members = append(out.Members, member.Short())

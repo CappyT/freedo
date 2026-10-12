@@ -334,7 +334,9 @@ func (d *daemon) earlyPlan(e *tado.EmuState, inst *tado.Install, zone int, now t
 	if model == nil || len(model.Episodes) < minEpisodes {
 		return earlyStart{}, false
 	}
-	programs, ok := d.zonePrograms(e, inst, zone)
+	// Early start acts on the home program alone: an away program never
+	// triggers it, and it never runs while the home is away.
+	programs, ok := d.zonePrograms(zone)
 	if !ok {
 		return earlyStart{}, false
 	}
@@ -404,7 +406,7 @@ func (d *daemon) earlyBlock(e *tado.EmuState, inst *tado.Install, zone int, bloc
 }
 
 func (d *daemon) stillPlanned(e *tado.EmuState, inst *tado.Install, zone int, es earlyStart, now time.Time) bool {
-	programs, ok := d.zonePrograms(e, inst, zone)
+	programs, ok := d.zonePrograms(zone)
 	if !ok {
 		return false
 	}

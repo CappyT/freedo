@@ -201,12 +201,16 @@ func TestAwayRewriteCarriesTheAwayHead(t *testing.T) {
 	})
 
 	t.Run("hot water", func(t *testing.T) {
+		// The daemon pushes an away temperature for the hot water zone only
+		// when the zone holds an away program: its block then writes the away
+		// head like the one of a room zone, instead of the off of a zone
+		// without one.
 		e := awayEmu(t, false, map[int]float64{0: 38, 4: 12})
 		if err := e.EnqueueZoneSwitch("RU0000000001", 0); err != nil {
 			t.Fatal(err)
 		}
 		got := queuedTags(t, e, hexEUI(mustHex("2000000000c51b00")))[0]
-		wantAwayTags(t, got, map[string]string{"6160": "02", "61e0": "00", "6240": "00"}, "6200", "6440")
+		wantAwayTags(t, got, map[string]string{"6160": "02", "61e0": "01", "6200": "0ed8", "6240": "00"}, "6440")
 	})
 }
 

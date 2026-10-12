@@ -131,15 +131,18 @@ func TestConcurrentHotWaterPutStoresEngineProgram(t *testing.T) {
 			})
 		}
 		wg.Wait()
-		v, err := d.do(func(*tado.EmuState) (any, error) { return d.dhwProgram, nil })
+		v, err := d.do(func(*tado.EmuState) (any, error) {
+			home, _ := d.zonePrograms(0)
+			return home, nil
+		})
 		if err != nil {
 			t.Fatal(err)
 		}
-		stored, err := store.HotWaterProgram(context.Background())
+		_, active, programs, err := store.PresetState(context.Background())
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !reflect.DeepEqual(stored, v.([]tado.ScheduleProgram)) {
+		if stored := programs[active][0].home; !reflect.DeepEqual(stored, v.([]tado.ScheduleProgram)) {
 			t.Fatalf("round %d: stored program %+v, engine program %+v", round, stored, v)
 		}
 	}
@@ -188,12 +191,12 @@ func TestFailedSaveLeavesEngineUnchanged(t *testing.T) {
 	t.Run("hot water schedule", func(t *testing.T) {
 		store := openTestStore(t)
 		d, url := newWindowDaemon(t, windowInstall(t, nil), newTestClock(windowStart), store)
-		failWrites(t, store, "meta", "hot_water_program")
+		failWrites(t, store, "zone_program", "")
 		var out map[string]any
 		if code := postJSON(t, http.MethodPut, url+"/api/zones/0/schedule", hotWaterWeek(), &out); code != http.StatusInternalServerError {
 			t.Errorf("PUT /api/zones/0/schedule: code=%d %v, want 500", code, out)
 		}
-		if p := engineValue(t, d, func() []tado.ScheduleProgram { return d.dhwProgram }); p != nil {
+		if p := engineValue(t, d, func() []tado.ScheduleProgram { home, _ := d.zonePrograms(0); return home }); p != nil {
 			t.Errorf("the engine runs %+v although the save failed", p)
 		}
 	})

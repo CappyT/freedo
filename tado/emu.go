@@ -3052,7 +3052,7 @@ func (e *EmuState) enqueueZoneRewrite(target string, id int, fromZone, switched 
 // coordinator can restate without inventing one.
 func buildDHWRewrite(c SetpointCoAP, block *dhwBlock) ([]byte, error) {
 	w := DHWSetpointCoAP{
-		ID: c.ID, Overlay: block.overlay, Home: c.Home, SchedC: c.SchedC, NoSchedC: c.NoSchedC, ProgramOff: c.ProgramOff,
+		ID: c.ID, Overlay: block.overlay, Home: c.Home, SchedC: c.SchedC, AwayC: c.AwayC, NoSchedC: c.NoSchedC, ProgramOff: c.ProgramOff,
 		MID: c.MID, Token: c.Token, SrcEUI: c.SrcEUI, DstEUI: c.DstEUI,
 	}
 	if block.overlay != overlayAuto {
@@ -3143,6 +3143,7 @@ func (e *EmuState) EnqueueDHWOverlay(target string, id int, temperatureC float64
 		Overlay:    overlay,
 		Home:       home,
 		SchedC:     schedC,
+		AwayC:      e.awayTemp(id),
 		NoSchedC:   !known,
 		ProgramOff: e.schedOff[id],
 		NewOverlay: true,
@@ -3194,6 +3195,7 @@ func (e *EmuState) EnqueueDHWSchedule(target string, id int) error {
 		Overlay:    overlayAuto,
 		Home:       home,
 		SchedC:     schedC,
+		AwayC:      e.awayTemp(id),
 		NoSchedC:   !known,
 		ProgramOff: e.schedOff[id],
 		NewOverlay: true,
@@ -3765,6 +3767,23 @@ func (e *EmuState) scheduleFetchQueued(key string) bool {
 	return slices.ContainsFunc(e.queue[key], func(d *queuedDownlink) bool {
 		return d.kind == schedFetchKind && !d.inFlight
 	})
+}
+
+// DropSchedule removes the sched document served to target: the zone holds no
+// home program anymore, so its next fetch gets the 2.03 of a device the
+// coordinator holds no document for, and it keeps the program it runs. It
+// returns whether a document was held.
+func (e *EmuState) DropSchedule(target string) (bool, error) {
+	wire, _, err := e.resolve(target)
+	if err != nil {
+		return false, err
+	}
+	key := hexEUI(wire)
+	if _, held := e.schedDoc[key]; !held {
+		return false, nil
+	}
+	delete(e.schedDoc, key)
+	return true, nil
 }
 
 // DropHotWaterScheduleLeftovers removes the sched document of each wall

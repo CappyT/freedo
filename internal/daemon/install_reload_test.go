@@ -653,10 +653,15 @@ func TestSetInstallMovedMemberTakesNewZoneProgram(t *testing.T) {
 					t.Fatalf("SetSchedule lounge: %v", err)
 				}
 			}
+			// The program store holds the program per zone: a member moving
+			// zones takes no program along.
+			d.ensurePresets()
+			d.storeZoneProgram(d.activePreset, 1, false, lounge)
 			if tc.study != nil {
 				if err := e.SetSchedule(reloadStudyEUI, tc.study); err != nil {
 					t.Fatalf("SetSchedule study: %v", err)
 				}
+				d.storeZoneProgram(d.activePreset, 4, false, tc.study)
 			}
 			if _, _, err := d.setInstall(moved); err != nil {
 				t.Fatalf("setInstall: %v", err)
@@ -671,11 +676,11 @@ func TestSetInstallMovedMemberTakesNewZoneProgram(t *testing.T) {
 			if tc.study != nil && !reflect.DeepEqual(got, tc.study) {
 				t.Errorf("the moved valve holds %v (set=%t), want %v", got, set, tc.study)
 			}
-			programs, ok := d.zonePrograms(e, moved, 4)
+			programs, ok := d.zonePrograms(4)
 			if ok != (tc.study != nil) || (ok && !reflect.DeepEqual(programs, tc.study)) {
 				t.Errorf("zone 4 program = %v (%t), want %v", programs, ok, tc.study)
 			}
-			if programs, ok := d.zonePrograms(e, moved, 1); !ok || !reflect.DeepEqual(programs, lounge) {
+			if programs, ok := d.zonePrograms(1); !ok || !reflect.DeepEqual(programs, lounge) {
 				t.Errorf("zone 1 program = %v (%t), want the one it kept", programs, ok)
 			}
 		})

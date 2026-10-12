@@ -50,6 +50,9 @@ func newWindowDaemon(t *testing.T, in *tado.Install, clock *testClock, store *st
 	d := newDaemon(in, emu, radio.NewMock(nil), true, "mock")
 	d.retryNow = clock.now
 	d.state = store
+	if err := d.restorePresets(context.Background(), emu); err != nil {
+		t.Fatal(err)
+	}
 	if err := d.restoreWindows(emu); err != nil {
 		t.Fatal(err)
 	}

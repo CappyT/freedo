@@ -25,16 +25,18 @@ import (
 // Version "1" held the desired state alone, "2" adds the installation, "3"
 // the open window columns of the zone, "4" the per-device offline schedule,
 // "5" the zone window state and the window writes still owed, "6" the
-// interface module id each wall thermostat reported and "7" the recorded plant
-// episodes.
+// interface module id each wall thermostat reported, "7" the recorded plant
+// episodes and "8" the program presets and the home and away programs of
+// each zone.
 const (
-	SchemaVersion                = "7"
+	SchemaVersion                = "8"
 	stateSchemaNoInst            = "1"
 	stateSchemaNoOpenWindow      = "2"
 	stateSchemaNoOfflineSchedule = "3"
 	stateSchemaNoZoneWindow      = "4"
 	stateSchemaNoModule          = "5"
 	stateSchemaNoPlantEpisode    = "6"
+	stateSchemaNoPresets         = "7"
 )
 
 const stateSchemaDDL = `
@@ -66,6 +68,17 @@ CREATE TABLE IF NOT EXISTS plant_episode (
 	zone INTEGER NOT NULL,
 	kind TEXT NOT NULL,
 	body TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS preset (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	name TEXT NOT NULL UNIQUE COLLATE NOCASE
+);
+CREATE TABLE IF NOT EXISTS zone_program (
+	preset INTEGER NOT NULL REFERENCES preset(id),
+	zone INTEGER NOT NULL,
+	mode TEXT NOT NULL CHECK (mode IN ('home', 'away')),
+	body BLOB NOT NULL,
+	PRIMARY KEY (preset, zone, mode)
 );
 `
 
@@ -152,8 +165,9 @@ func initStateSchema(db *sql.DB) error {
 // gets the installation tables, version "2" the open window columns, every
 // version before "4" the offline_schedule table and its schedules re-encoded,
 // every version before "5" the zone_window and zone_window_owed tables, every
-// version before "6" the interface_module table, and every version before "7"
-// the plant_episode table. A thermostat document
+// version before "6" the interface_module table, every version before "7"
+// the plant_episode table, and every version before "8" the preset and
+// zone_program tables. A thermostat document
 // stored without a learned id is dropped at load (tado.RestoreDesiredState).
 // Every other desired-state row, save_seq and state_version stay as they are,
 // and a zone that predates the columns takes the captured defaults. The
@@ -172,7 +186,7 @@ func migrateStateSchema(db *sql.DB) error {
 		steps = append(steps, installSchemaDDL)
 	case stateSchemaNoOpenWindow:
 		steps = append(steps, zoneOpenWindowDDL)
-	case stateSchemaNoOfflineSchedule, stateSchemaNoZoneWindow, stateSchemaNoModule, stateSchemaNoPlantEpisode:
+	case stateSchemaNoOfflineSchedule, stateSchemaNoZoneWindow, stateSchemaNoModule, stateSchemaNoPlantEpisode, stateSchemaNoPresets:
 	default:
 		return nil
 	}
@@ -190,9 +204,10 @@ func migrateStateSchema(db *sql.DB) error {
 			return err
 		}
 	}
-	// A version "4", "5" or "6" schedule already holds the current encoding: a
+	// A version "4" or later schedule already holds the current encoding: a
 	// second re-encode would flip every enabled value back.
-	if version != stateSchemaNoZoneWindow && version != stateSchemaNoModule && version != stateSchemaNoPlantEpisode {
+	if version != stateSchemaNoZoneWindow && version != stateSchemaNoModule &&
+		version != stateSchemaNoPlantEpisode && version != stateSchemaNoPresets {
 		if err := reencodeLegacySchedules(tx); err != nil {
 			return err
 		}

@@ -331,7 +331,7 @@ func (c SetpointCoAP) head() []TLV {
 // sentSchedC returns the 6200 the hot-water write carries, nil when it leaves
 // 6200 out.
 func (c DHWSetpointCoAP) sentSchedC() []byte {
-	return zoneWrite{home: c.Home, programOff: c.ProgramOff, schedC: c.SchedC, noSchedC: c.NoSchedC, kind: dhwZoneKind}.sentSchedC()
+	return zoneWrite{home: c.Home, programOff: c.ProgramOff, schedC: c.SchedC, noSchedC: c.NoSchedC, awayC: c.AwayC, kind: dhwZoneKind}.sentSchedC()
 }
 
 // encodeZoneWrite renders the block in the captured tag order.
@@ -518,6 +518,10 @@ type DHWSetpointCoAP struct {
 	SchedC     float64
 	NoSchedC   bool
 	ProgramOff bool
+	// AwayC is the temperature hot water keeps in the away state, the block of
+	// the away program of the zone. 0 writes the cloud's default, off in away:
+	// 61e0=0 and no 6200.
+	AwayC      float64
 	NewOverlay bool   // 6440
 	MID        uint16 // sent verbatim, 0 included
 	Token      []byte // nil => generated
@@ -550,7 +554,7 @@ func BuildDHWSetpointCoAP(c DHWSetpointCoAP) ([]byte, error) {
 			strconv.FormatFloat(DHWMaxC, 'f', -1, 64) + " C")
 	}
 	z := zoneWrite{
-		home: c.Home, programOff: c.ProgramOff, schedC: c.SchedC, noSchedC: c.NoSchedC, kind: dhwZoneKind,
+		home: c.Home, programOff: c.ProgramOff, schedC: c.SchedC, noSchedC: c.NoSchedC, awayC: c.AwayC, kind: dhwZoneKind,
 		overlay: c.Overlay, newOverlay: c.NewOverlay,
 	}
 	if c.Overlay != overlayAuto {

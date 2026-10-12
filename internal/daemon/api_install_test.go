@@ -77,6 +77,9 @@ func newInstallAPIOn(t *testing.T, seed *tado.Install) *installAPI {
 	emu := tado.NewEmu(in.EmuConfig(), tado.NewUnhandledLogger(io.Discard))
 	d := newDaemon(in, emu, radio.NewMock(nil), true, "mock")
 	d.state = store
+	if err := d.restorePresets(ctx, emu); err != nil {
+		t.Fatalf("restorePresets: %v", err)
+	}
 	runCtx, cancel := context.WithCancel(context.Background())
 	go d.run(runCtx)
 	srv := httptest.NewServer(d.mux())

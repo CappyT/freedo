@@ -455,7 +455,10 @@ func overlayKind(overlay byte) string {
 // reports, and programC is the 6200 of the zone cache, null when it holds none.
 func (d *daemon) zoneTargetView(e *tado.EmuState, z *tado.Zone) map[string]any {
 	hotWater := z.Kind == tado.ZoneHotWater
-	_, held := d.zonePrograms(e, d.inst.Load(), z.Number)
+	_, held := d.zonePrograms(z.Number)
+	if _, awayHeld := d.awayProgramOf(z.Number); awayHeld {
+		held = true
+	}
 	view := map[string]any{
 		"targetC": nil, "source": nil, "overlay": nil,
 		"programC": nil, "programOff": false, "hasProgram": held, "boost": false, "known": false,
@@ -499,8 +502,15 @@ func (d *daemon) zoneTargetView(e *tado.EmuState, z *tado.Zone) map[string]any {
 		view["targetC"] = view["overlay"].(map[string]any)["setpointC"]
 	case d.away:
 		view["source"] = "away"
-		// Away, 61e0=0 is the hot-water enable of a zone with no overlay.
-		if hotWater {
+		// A zone with an away program follows its block in force, an off block
+		// keeps it off. A zone without one keeps the fallback: away, 61e0=0 is
+		// the hot-water enable of a zone with no overlay.
+		if _, has := d.awayProgramOf(z.Number); has {
+			view["on"] = hasProgram && !program.off
+			if hasProgram && !program.off {
+				view["targetC"] = program.c
+			}
+		} else if hotWater {
 			view["on"] = false
 		} else if c, ok := d.inst.Load().Options.AwayTemperature(z.Number); ok {
 			view["targetC"] = c

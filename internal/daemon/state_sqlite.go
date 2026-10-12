@@ -239,7 +239,8 @@ func (s *stateStore) SetAway(ctx context.Context, away bool) error {
 
 // HotWaterProgram returns the stored hot-water program, nil when none is
 // stored. It lives in meta as the hex of the weekly document: the daemon keeps
-// it and never serves it, so it has no place among the served documents.
+// it and never serves it, so it has no place among the served documents. The
+// preset migration reads it once; every later write lands in zone_program.
 func (s *stateStore) HotWaterProgram(ctx context.Context) ([]tado.ScheduleProgram, error) {
 	var raw string
 	switch err := s.db.QueryRowContext(ctx, `SELECT value FROM meta WHERE key = 'hot_water_program'`).Scan(&raw); {
@@ -260,6 +261,184 @@ func (s *stateStore) HotWaterProgram(ctx context.Context) ([]tado.ScheduleProgra
 		return nil, fmt.Errorf("meta hot_water_program: %w", err)
 	}
 	return programs, nil
+}
+
+// errPresetNameTaken marks a create or rename that repeats the name of another
+// preset, without case. The unique index is the backstop; the API checks first,
+// on the engine goroutine, so a duplicate never reaches the database.
+var errPresetNameTaken = errors.New("a preset with that name already exists")
+
+// presetRow is one stored preset.
+type presetRow struct {
+	id   int64
+	name string
+}
+
+// storedZonePrograms is what one preset holds for one zone: the home program
+// and the optional away program.
+type storedZonePrograms struct {
+	home, away []tado.ScheduleProgram
+}
+
+// PresetState reads the whole program store: the presets in id order, the
+// active preset id, and the home and away programs of every preset and zone.
+func (s *stateStore) PresetState(ctx context.Context) ([]presetRow, int64, map[int64]map[int]storedZonePrograms, error) {
+	var presets []presetRow
+	err := s.scan(`SELECT id, name FROM preset ORDER BY id`, func(rows *sql.Rows) error {
+		var row presetRow
+		if err := rows.Scan(&row.id, &row.name); err != nil {
+			return err
+		}
+		presets = append(presets, row)
+		return nil
+	})
+	if err != nil {
+		return nil, 0, nil, err
+	}
+	active, _, err := install.ReadMetaUint(ctx, s.db, "active_preset")
+	if err != nil {
+		return nil, 0, nil, err
+	}
+	programs := make(map[int64]map[int]storedZonePrograms)
+	err = s.scan(`SELECT preset, zone, mode, body FROM zone_program ORDER BY preset, zone, mode`, func(rows *sql.Rows) error {
+		var preset int64
+		var zone int
+		var mode string
+		var body []byte
+		if err := rows.Scan(&preset, &zone, &mode, &body); err != nil {
+			return err
+		}
+		decoded, err := tado.DecodeSchedule(body)
+		if err != nil {
+			return fmt.Errorf("zone_program preset %d zone %d mode %s: %w", preset, zone, mode, err)
+		}
+		if err := tado.ValidateSchedule(decoded); err != nil {
+			return fmt.Errorf("zone_program preset %d zone %d mode %s: %w", preset, zone, mode, err)
+		}
+		if programs[preset] == nil {
+			programs[preset] = make(map[int]storedZonePrograms)
+		}
+		zp := programs[preset][zone]
+		switch mode {
+		case "home":
+			zp.home = decoded
+		case "away":
+			zp.away = decoded
+		default:
+			return fmt.Errorf("zone_program preset %d zone %d: unknown mode %q", preset, zone, mode)
+		}
+		programs[preset][zone] = zp
+		return nil
+	})
+	if err != nil {
+		return nil, 0, nil, err
+	}
+	return presets, int64(active), programs, nil
+}
+
+// CreatePreset stores a new preset and, when copyFrom names one, a copy of
+// every program of copyFrom, in one transaction. name must be free; the caller
+// checks, and the unique index is the backstop.
+func (s *stateStore) CreatePreset(ctx context.Context, name string, copyFrom int64) (int64, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	res, err := tx.ExecContext(ctx, `INSERT INTO preset (name) VALUES (?)`, name)
+	if err != nil {
+		return 0, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	if copyFrom != 0 {
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO zone_program (preset, zone, mode, body) SELECT ?, zone, mode, body FROM zone_program WHERE preset = ?`,
+			id, copyFrom); err != nil {
+			return 0, err
+		}
+	}
+	return id, tx.Commit()
+}
+
+// presetNamed reports whether a preset holds name, without case, and its id.
+func (s *stateStore) presetNamed(ctx context.Context, name string) (int64, bool, error) {
+	var id int64
+	switch err := s.db.QueryRowContext(ctx, `SELECT id FROM preset WHERE name = ? COLLATE NOCASE`, name).Scan(&id); {
+	case errors.Is(err, sql.ErrNoRows):
+		return 0, false, nil
+	case err != nil:
+		return 0, false, err
+	}
+	return id, true, nil
+}
+
+// RenamePreset renames id, or returns errPresetNameTaken when another preset
+// holds the name, and sql.ErrNoRows when no preset holds id.
+func (s *stateStore) RenamePreset(ctx context.Context, id int64, name string) error {
+	if other, taken, err := s.presetNamed(ctx, name); err != nil {
+		return err
+	} else if taken && other != id {
+		return errPresetNameTaken
+	}
+	res, err := s.db.ExecContext(ctx, `UPDATE preset SET name = ? WHERE id = ?`, name, id)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+// DeletePreset drops id and its programs in one transaction.
+func (s *stateStore) DeletePreset(ctx context.Context, id int64) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM zone_program WHERE preset = ?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM preset WHERE id = ?`, id); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// SetActivePreset stores the active preset id.
+func (s *stateStore) SetActivePreset(ctx context.Context, id int64) error {
+	_, err := s.db.ExecContext(ctx, `INSERT OR REPLACE INTO meta (key, value) VALUES ('active_preset', ?)`,
+		strconv.FormatInt(id, 10))
+	return err
+}
+
+// SetZoneProgram stores the home or away program of zone in preset.
+func (s *stateStore) SetZoneProgram(ctx context.Context, preset int64, zone int, away bool, programs []tado.ScheduleProgram) error {
+	mode := "home"
+	if away {
+		mode = "away"
+	}
+	_, err := s.db.ExecContext(ctx,
+		`INSERT OR REPLACE INTO zone_program (preset, zone, mode, body) VALUES (?, ?, ?, ?)`,
+		preset, zone, mode, blob(tado.EncodeSchedulePrograms(programs)))
+	return err
+}
+
+// DeleteZoneProgram drops the home or away program of zone in preset.
+func (s *stateStore) DeleteZoneProgram(ctx context.Context, preset int64, zone int, away bool) error {
+	mode := "home"
+	if away {
+		mode = "away"
+	}
+	_, err := s.db.ExecContext(ctx, `DELETE FROM zone_program WHERE preset = ? AND zone = ? AND mode = ?`,
+		preset, zone, mode)
+	return err
 }
 
 // SetHotWaterProgram stores the hot-water program.
