@@ -626,8 +626,9 @@ func reloadWeek(c float64) []tado.ScheduleProgram {
 
 // TestSetInstallMovedMemberTakesNewZoneProgram: the sched document is keyed by
 // device, so a member a reload moves to another zone must not bring the weekly
-// program of the zone it left. It takes the program of its new zone when a
-// member that stayed holds one, and no document otherwise.
+// program of the zone it left. It takes the home program of its new zone in
+// the active preset, and no document when the zone has none. The member that
+// stayed keeps its document.
 func TestSetInstallMovedMemberTakesNewZoneProgram(t *testing.T) {
 	const (
 		loungeZone = "  - {number: 1, name: lounge, kind: heating, circuit: 1, members: [RU9000000001, VA9000000001], reporter: VA9000000001}\n"
@@ -676,12 +677,8 @@ func TestSetInstallMovedMemberTakesNewZoneProgram(t *testing.T) {
 			if tc.study != nil && !reflect.DeepEqual(got, tc.study) {
 				t.Errorf("the moved valve holds %v (set=%t), want %v", got, set, tc.study)
 			}
-			programs, ok := d.zonePrograms(4)
-			if ok != (tc.study != nil) || (ok && !reflect.DeepEqual(programs, tc.study)) {
-				t.Errorf("zone 4 program = %v (%t), want %v", programs, ok, tc.study)
-			}
-			if programs, ok := d.zonePrograms(1); !ok || !reflect.DeepEqual(programs, lounge) {
-				t.Errorf("zone 1 program = %v (%t), want the one it kept", programs, ok)
+			if kept, set, err := e.Schedule("03046a3107c51b00"); err != nil || !reflect.DeepEqual(kept, lounge) {
+				t.Errorf("the thermostat that stayed holds %v (set=%t, err=%v), want the lounge program", kept, set, err)
 			}
 		})
 	}
