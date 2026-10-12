@@ -4102,6 +4102,28 @@ func redirectMovedTool(name string) {
 	}
 }
 
+// checkStateStatus is the exit status of --check-state, for the add-on start
+// script: 0 when the state database is absent or this binary reads it, 3 when
+// the stored schema is newer than this binary, 1 on any other error. It prints
+// one line saying which.
+func checkStateStatus(path string) int {
+	status, version, err := install.InspectSchema(path)
+	switch {
+	case err != nil:
+		fmt.Fprintf(os.Stderr, "check-state: %s: %v\n", path, err)
+		return 1
+	case status == install.SchemaMissing:
+		fmt.Printf("check-state: %s: no state database\n", path)
+	case status == install.SchemaNewer:
+		fmt.Printf("check-state: %s: schema version %s is newer than this binary reads (%s)\n",
+			path, version, install.SchemaVersion)
+		return 3
+	default:
+		fmt.Printf("check-state: %s: schema version %s is readable\n", path, version)
+	}
+	return 0
+}
+
 func Main(args []string) {
 	fs := flag.NewFlagSet("freedo", flag.ExitOnError)
 	configFlag(fs)
@@ -4126,6 +4148,7 @@ func Main(args []string) {
 	faultTimeDelay := fs.Duration("fault-time-delay", 0, "FAULT INJECTION (test F12): hold our answer to the \"time\" resource back by this long; past 5 s the device discards it and asks again")
 	faultNoTime := fs.Bool("fault-no-time", false, "FAULT INJECTION (test F12): never answer the \"time\" resource, so the device never gets a clock and its weekly schedule never runs")
 	showVersion := fs.Bool("version", false, "print the build stamp and exit")
+	checkState := fs.String("check-state", "", "check the schema version of the state database at this path and exit: status 0 when the file is absent or this binary reads it, 3 when the schema is newer, 1 on any other error")
 	fs.Usage = func() {
 		fmt.Fprint(os.Stderr, `freedo - the local tado coordinator daemon
 
@@ -4176,6 +4199,9 @@ flags:
 	if *showVersion {
 		fmt.Println(buildinfo.Stamp("freedo"))
 		return
+	}
+	if *checkState != "" {
+		os.Exit(checkStateStatus(*checkState))
 	}
 	b := mustBootstrap(fs)
 	for _, w := range b.Warnings() {

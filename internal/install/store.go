@@ -256,6 +256,54 @@ func checkStateSchema(db *sql.DB) error {
 // CheckSchema reports a database whose layout is not SchemaVersion.
 func (s *Store) CheckSchema() error { return checkStateSchema(s.db) }
 
+// SchemaStatus classifies a state database against the schema this binary
+// reads.
+type SchemaStatus int
+
+const (
+	// SchemaMissing: no file at the path.
+	SchemaMissing SchemaStatus = iota
+	// SchemaReadable: this binary reads the file, now or after a migration.
+	SchemaReadable
+	// SchemaNewer: the file holds a schema newer than this binary.
+	SchemaNewer
+)
+
+// InspectSchema opens the database at path read-only and classifies its schema
+// version: the file is missing, this binary reads it (the stored version is this
+// one or older, and an older one migrates), or the stored version is newer than
+// this binary. It returns the version as stored. It creates and migrates
+// nothing.
+func InspectSchema(path string) (SchemaStatus, string, error) {
+	if _, err := os.Stat(path); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return SchemaMissing, "", nil
+		}
+		return SchemaMissing, "", err
+	}
+	db, err := sql.Open("sqlite", "file:"+stateDSNPath(path)+"?mode=ro")
+	if err != nil {
+		return SchemaMissing, "", err
+	}
+	defer db.Close()
+	var got string
+	if err := db.QueryRow(`SELECT value FROM meta WHERE key = 'schema_version'`).Scan(&got); err != nil {
+		return SchemaMissing, "", fmt.Errorf("not a freedo state database: %w", err)
+	}
+	stored, err := strconv.Atoi(got)
+	if err != nil {
+		return SchemaMissing, got, fmt.Errorf("schema version %q is not a number", got)
+	}
+	want, err := strconv.Atoi(SchemaVersion)
+	if err != nil {
+		return SchemaMissing, got, err
+	}
+	if stored > want {
+		return SchemaNewer, got, nil
+	}
+	return SchemaReadable, got, nil
+}
+
 // DB is the connection the desired state goes through.
 func (s *Store) DB() *sql.DB { return s.db }
 
