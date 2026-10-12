@@ -202,11 +202,7 @@ func (d *daemon) stepAutoOffset(e *tado.EmuState, inst *tado.Install, zone int, 
 	if d.heatUpRunning(zone) {
 		return
 	}
-	base := d.flowEpoch
-	if x.wroteAt.After(base) {
-		base = x.wroteAt
-	}
-	if now.Sub(base) < time.Duration(a.IntervalSec)*time.Second {
+	if now.Sub(d.autoOffsetBase(x)) < time.Duration(a.IntervalSec)*time.Second {
 		return
 	}
 	// The served document holds the correction the valve runs, also one set
@@ -253,6 +249,16 @@ func measuredC(e *tado.EmuState, inst *tado.Install, zone int, movedAt, now time
 		return 0, false
 	}
 	return c, true
+}
+
+// autoOffsetBase is where the interval of x starts: the last write, or the
+// engine start before the first one. A restart does not move it, or a daemon
+// that restarts more often than the interval would never calibrate.
+func (d *daemon) autoOffsetBase(x *autoOffset) time.Time {
+	if x.wroteAt.IsZero() {
+		return d.flowEpoch
+	}
+	return x.wroteAt
 }
 
 // writeAutoOffset queues the correction of zone on the valve, through the path
@@ -365,14 +371,10 @@ func (d *daemon) autoOffsetView(inst *tado.Install, zone int) map[string]any {
 	if x == nil {
 		return view
 	}
-	base := d.flowEpoch
-	if x.wroteAt.After(base) {
-		base = x.wroteAt
-	}
 	if x.stop != "" {
 		view["stopReason"] = x.stop
 	} else {
-		view["nextAt"] = base.Add(time.Duration(a.IntervalSec) * time.Second).UTC().Format(time.RFC3339)
+		view["nextAt"] = d.autoOffsetBase(x).Add(time.Duration(a.IntervalSec) * time.Second).UTC().Format(time.RFC3339)
 	}
 	view["sampleSpanSec"] = int(x.sampledFor / time.Second)
 	if !x.wroteAt.IsZero() {

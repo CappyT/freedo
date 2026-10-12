@@ -468,9 +468,10 @@ with `auto_offset` on, and refused with `409` otherwise.
   `config`, home the motor each time. A change of the difference in the two hours before a
   write can also stop it. Switch `auto_offset` off and on to start the writes again. A
   manual offset drops the check.
-- The interval starts at daemon start and at the last write. The last write time, the
-  tracked correction, the pending check and the stop survive a restart, so a restart causes
-  no extra write.
+- The interval starts at the last write, and at daemon start before the first write. The
+  last write time, the tracked correction, the pending check and the stop survive a restart,
+  so a restart causes no extra write and does not move the interval. A daemon that restarts
+  more often than the interval still calibrates, after two hours of samples.
 
 Mode `config` homes the motor of the valve on each write, so the battery and the noise pay
 for every calibration. The default interval of a day bounds that cost, and the deadband keeps

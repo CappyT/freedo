@@ -470,6 +470,28 @@ func TestAutoOffsetRestart(t *testing.T) {
 	}
 }
 
+// TestAutoOffsetIntervalSpansARestart: with the daily interval, a daemon that
+// restarts 23 hours after its last write calibrates once it holds two hours of
+// samples, and does not wait a day from the restart.
+func TestAutoOffsetIntervalSpansARestart(t *testing.T) {
+	r := newAutoRig(t, 86400, nil)
+	stored := map[int]storedAutoOffset{3: {WroteMs: windowStart.Add(-23 * time.Hour).UnixMilli()}}
+	if err := r.a.store.SetAutoOffsets(context.Background(), stored); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.d.do(func(*tado.EmuState) (any, error) { return nil, r.d.restoreAutoOffsets() }); err != nil {
+		t.Fatal(err)
+	}
+	want := windowStart.Add(time.Hour).UTC().Format(time.RFC3339)
+	if got := autoOffsetOf(t, r.url, 3)["nextAt"]; got != want {
+		t.Errorf("next calibration = %v, want %v, a day after the last write", got, want)
+	}
+	r.run(135, constant(22), 20)
+	if len(r.writes) != 1 {
+		t.Fatalf("%d writes within the samples after a restart, want one", len(r.writes))
+	}
+}
+
 // TestAutoOffsetFeedsLearners: with auto_offset on and a fresh reading, the
 // early start, the plant episodes and the flow adaptation read the external
 // temperature; stale, they read the valve's.
