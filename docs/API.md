@@ -475,6 +475,11 @@ served `sched` documents derive from its home programs. A schedule write without
   zone and a fetch trigger, and a member of a zone without a home program loses its
   document. A document with unchanged bytes takes nothing, so a start after an upgrade
   writes nothing on air.
+- A program belongs to its zone. A zone delete, or a change of the zone kind, drops the
+  programs of that zone from every preset, so a zone later declared under the same number
+  starts with none. An installation written over the whole database (seed or import)
+  drops the programs of each zone number it no longer declares or declares with another
+  kind, and keeps the others.
 - The daemon has no season calendar. An outside automation, for example Home Assistant,
   switches the presets.
 

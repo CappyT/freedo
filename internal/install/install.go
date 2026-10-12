@@ -621,7 +621,12 @@ func loadZoneMembers(ctx context.Context, q Querier, in *tado.Install, at map[in
 
 // ReplaceInstall writes in over every installation row in one transaction and
 // returns the new revision. It leaves schema_version, state_version and
-// save_seq alone: the desired state has its own sequence.
+// save_seq alone: the desired state has its own sequence. A program belongs to
+// its zone: when in drops a zone number or declares it with another kind, the
+// zone_program rows of that number go in the same transaction, as a zone
+// delete or a kind change drops them. A later zone under that number then
+// starts with no program, and a heating program never lands on a hot-water
+// zone. The programs of every zone that keeps its number and kind stay.
 //
 // SetMaxOpenConns(1) means this transaction must commit before anything else
 // touches the database, a state save included, or the caller deadlocks.
@@ -644,6 +649,10 @@ func (s *Store) ReplaceInstall(ctx context.Context, in *tado.Install) (uint64, e
 		return 0, err
 	}
 	defer tx.Rollback()
+	oldKinds, err := zoneKinds(ctx, tx)
+	if err != nil {
+		return 0, err
+	}
 	for _, table := range installTables {
 		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table); err != nil {
 			return 0, err
@@ -766,6 +775,17 @@ func (s *Store) ReplaceInstall(ctx context.Context, in *tado.Install) (uint64, e
 	if err := writeZones(ctx, tx, in); err != nil {
 		return 0, err
 	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM zone_program WHERE zone NOT IN (SELECT number FROM zone)`); err != nil {
+		return 0, err
+	}
+	for number, kind := range oldKinds {
+		if z, err := in.ZoneByNumber(number); err != nil || string(z.Kind) == kind {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM zone_program WHERE zone = ?`, number); err != nil {
+			return 0, err
+		}
+	}
 	rev, _, err := ReadMetaUint(ctx, tx, "install_rev")
 	if err != nil {
 		return 0, err
@@ -779,6 +799,25 @@ func (s *Store) ReplaceInstall(ctx context.Context, in *tado.Install) (uint64, e
 		return 0, err
 	}
 	return rev, nil
+}
+
+// zoneKinds returns the kind of every stored zone, keyed by number.
+func zoneKinds(ctx context.Context, tx *sql.Tx) (map[int]string, error) {
+	rows, err := tx.QueryContext(ctx, `SELECT number, kind FROM zone`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int]string{}
+	for rows.Next() {
+		var number int
+		var kind string
+		if err := rows.Scan(&number, &kind); err != nil {
+			return nil, err
+		}
+		out[number] = kind
+	}
+	return out, rows.Err()
 }
 
 func writeDevices(ctx context.Context, tx Querier, in *tado.Install) error {
@@ -966,7 +1005,8 @@ func LoadInstall(path string) (*tado.Install, error) {
 // WriteInstall replaces the whole installation in the database at path,
 // creating the file and the schema when they are missing. It is the way in for
 // the development tools and the one-off seed script. The desired state in the
-// same database is left alone.
+// same database is left alone, except the programs of the zones in drops
+// (ReplaceInstall).
 func WriteInstall(path string, in *tado.Install) error {
 	store, err := Open(path)
 	if err != nil {

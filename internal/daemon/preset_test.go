@@ -1331,3 +1331,106 @@ func TestPresetServedDocumentsFollowTheStore(t *testing.T) {
 		t.Errorf("the office valve in zone 10 is served %v, want the 22 C bedroom program", got)
 	}
 }
+
+// TestDeletedZoneLeavesNoPrograms: a zone delete drops the programs of the
+// zone from every preset, in the database and in the engine, and a kind
+// change drops them too: a zone later declared under that number, or with the
+// other kind, starts with no program.
+func TestDeletedZoneLeavesNoPrograms(t *testing.T) {
+	a := newInstallAPIOn(t, presetInstall(t, nil))
+	rows := func(zone int) int {
+		t.Helper()
+		var n int
+		if err := a.store.db.QueryRow(`SELECT count(*) FROM zone_program WHERE zone = ?`, zone).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	held := func(zone int) bool {
+		return engineValue(t, a.d, func() bool {
+			for _, p := range a.d.presets {
+				if zp := p.programs[zone]; zp.home != nil || zp.away != nil {
+					return true
+				}
+			}
+			return false
+		})
+	}
+	for _, path := range []string{"/api/zones/10/schedule", "/api/zones/10/schedule?mode=away"} {
+		if code, res := a.call(http.MethodPut, path, allDayProgram(map[string]any{"minute": 0, "setpoint_c": 18.0})); code != http.StatusOK {
+			t.Fatalf("PUT %s: code=%d %v", path, code, res)
+		}
+	}
+	if code, res := a.call(http.MethodPost, "/api/presets", map[string]any{"name": "Copy"}); code != http.StatusOK {
+		t.Fatalf("create: code=%d %v", code, res)
+	}
+	if code, res := a.call(http.MethodPut, "/api/zones/0/schedule", allDayProgram(map[string]any{"minute": 0, "setpoint_c": 45.0})); code != http.StatusOK {
+		t.Fatalf("PUT the hot-water schedule: code=%d %v", code, res)
+	}
+	if rows(10) != 4 {
+		t.Fatalf("zone 10 holds %d stored programs before the delete, want 4", rows(10))
+	}
+
+	a.mutate(http.MethodDelete, "/api/install/zones/10", nil)
+	if n := rows(10); n != 0 {
+		t.Errorf("the deleted zone keeps %d stored programs, want none", n)
+	}
+	if held(10) {
+		t.Error("a preset keeps a program of the deleted zone")
+	}
+	a.mutate(http.MethodPost, "/api/install/zones", map[string]any{"number": 10, "name": "bedroom", "kind": "heating", "circuit": 1})
+	a.mutate(http.MethodPut, "/api/install/zones/10/members", map[string]any{"members": []string{"VA1000000005"}})
+	if code, res := a.call(http.MethodGet, "/api/zones/10/schedule", nil); code != http.StatusNotFound {
+		t.Errorf("GET the schedule of the new zone 10: code=%d %v, want 404", code, res)
+	}
+
+	a.mutate(http.MethodPatch, "/api/install/zones/0", map[string]any{"kind": "heating", "circuit": 1})
+	if n := rows(0); n != 0 {
+		t.Errorf("zone 0 keeps %d stored programs after its kind changed, want none", n)
+	}
+	if held(0) {
+		t.Error("a preset keeps the hot-water program on the zone that became a heating zone")
+	}
+}
+
+// TestReplaceInstallDropsProgramsOfGoneZones: a seed or import that drops a
+// zone number, or declares it with another kind, drops its programs in the
+// same transaction; the programs of every zone it keeps stay.
+func TestReplaceInstallDropsProgramsOfGoneZones(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+	if _, err := store.ReplaceInstall(ctx, presetInstall(t, nil)); err != nil {
+		t.Fatal(err)
+	}
+	week := weekPrograms(tado.ScheduleEntry{Minute: 0, SetpointCenti: 2000, Enabled: true})
+	if err := store.MigrateDefaultPreset(ctx, "Default", map[int][]tado.ScheduleProgram{0: week, 3: week, 10: week, 42: week}); err != nil {
+		t.Fatal(err)
+	}
+	next := presetInstall(t, func(in *tado.Install) {
+		in.Zones = slices.DeleteFunc(in.Zones, func(z tado.Zone) bool { return z.Number == 10 })
+		for i := range in.Zones {
+			if in.Zones[i].Number == 0 {
+				circuit := 1
+				in.Zones[i].Kind, in.Zones[i].Circuit = tado.ZoneHeating, &circuit
+			}
+		}
+	})
+	if _, err := store.ReplaceInstall(ctx, next); err != nil {
+		t.Fatal(err)
+	}
+	var zones []int
+	err := store.scan(`SELECT zone FROM zone_program ORDER BY zone`, func(rows *sql.Rows) error {
+		var zone int
+		if err := rows.Scan(&zone); err != nil {
+			return err
+		}
+		zones = append(zones, zone)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(zones, []int{3}) {
+		t.Errorf("zone_program holds zones %v after the replace, want [3]", zones)
+	}
+}

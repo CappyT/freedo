@@ -196,6 +196,22 @@ func (d *daemon) observeHeatUps(e *tado.EmuState) {
 	}
 }
 
+// forgetZonePrograms drops from every preset the programs of each zone before
+// declares and in does not, or declares with another kind. The database lost
+// them in the transaction that changed the installation (DeleteZone,
+// PatchZone, ReplaceInstall).
+func (d *daemon) forgetZonePrograms(before, in *tado.Install) {
+	for i := range before.Zones {
+		was := &before.Zones[i]
+		if now, err := in.ZoneByNumber(was.Number); err == nil && now.Kind == was.Kind {
+			continue
+		}
+		for _, p := range d.presets {
+			delete(p.programs, was.Number)
+		}
+	}
+}
+
 // forgetRemovedZones drops what the engine keeps about each zone before
 // declares and in does not: the heat-up model, the episodes running, the early
 // start, the stored plant episodes, the program block and the away 6200. A zone later declared

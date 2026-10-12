@@ -791,6 +791,12 @@ func (s *stateStore) PatchZone(ctx context.Context, number int, p zonePatch) (in
 			if err := checkZoneKind(*p.Kind); err != nil {
 				return err
 			}
+			if z, err := cur.ZoneByNumber(number); err == nil && string(z.Kind) != *p.Kind {
+				// A heating program does not fit a hot-water zone, nor the reverse.
+				if _, err := tx.ExecContext(ctx, `DELETE FROM zone_program WHERE zone = ?`, number); err != nil {
+					return err
+				}
+			}
 			if _, err := tx.ExecContext(ctx, `UPDATE zone SET kind = ? WHERE number = ?`, *p.Kind, number); err != nil {
 				return err
 			}
@@ -1046,6 +1052,10 @@ func (s *stateStore) DeleteZone(ctx context.Context, number int, expect *uint64)
 			return err
 		}
 		if err := clearInstallValue(ctx, tx, install.AwayTemperatureKey(number)); err != nil {
+			return err
+		}
+		// A zone later declared under the same number starts with no program.
+		if _, err := tx.ExecContext(ctx, `DELETE FROM zone_program WHERE zone = ?`, number); err != nil {
 			return err
 		}
 		_, err = tx.ExecContext(ctx, `DELETE FROM zone WHERE number = ?`, number)
