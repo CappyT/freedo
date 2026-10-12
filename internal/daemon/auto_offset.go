@@ -139,10 +139,12 @@ func (d *daemon) stepAutoOffset(e *tado.EmuState, inst *tado.Install, zone int, 
 	a := inst.Options.AutoOffset(zone)
 	dt := now.Sub(x.evalAt)
 	if x.evalAt.IsZero() || dt < 0 {
-		dt = 0
+		x.evalAt, dt = now, 0
 	}
-	x.evalAt = now
+	// The engine ticks every second: evalAt moves only with a sample, or dt
+	// never reaches roomTempEvery.
 	if dt >= roomTempEvery {
+		x.evalAt = now
 		if ext, ok := d.freshRoomTemp(inst, zone); ok && !d.windows[zone].open() && !d.heatUpRunning(zone) {
 			if wire, _, updated, reported := e.ZoneReport(zone); reported && now.Sub(updated) <= inst.Options.OfflineAfter() {
 				diff := ext - wire

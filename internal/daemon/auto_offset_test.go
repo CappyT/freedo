@@ -154,6 +154,36 @@ func TestAutoOffsetWaitsForTwoHoursOfSamples(t *testing.T) {
 	wantTags(t, "the calibration", r.writes[0].tags, map[string]string{"0140": "ff38"})
 }
 
+// TestAutoOffsetSamplesAtTheEngineTick: the engine steps the calibration every
+// zoneProxySweep, not every sample period, and the filter still builds its span
+// and writes.
+func TestAutoOffsetSamplesAtTheEngineTick(t *testing.T) {
+	r := newAutoRig(t, 3600, nil)
+	ticks := 0
+	runTicks := func(d time.Duration) {
+		for range int(d / zoneProxySweep) {
+			if ticks%int(roomStepMin*time.Minute/zoneProxySweep) == 0 {
+				zoneAct(t, r.d, r.in, 22, 50)
+				if code := r.push(20); code != http.StatusOK {
+					t.Fatalf("push: code=%d", code)
+				}
+			}
+			r.clock.advance(zoneProxySweep)
+			r.tick()
+			ticks++
+		}
+		r.deliverAll()
+	}
+	runTicks(time.Hour)
+	if got := autoOffsetOf(t, r.url, 3)["sampleSpanSec"]; got.(float64) < 3500 {
+		t.Fatalf("sample span after an hour of one-second ticks = %v, want about 3600", got)
+	}
+	runTicks(time.Hour + 15*time.Minute)
+	if len(r.writes) != 1 {
+		t.Fatalf("%d writes after two hours of one-second ticks, want one", len(r.writes))
+	}
+}
+
 // TestAutoOffsetOneWritePerInterval: with a six-hour interval the first write
 // waits for the interval, and no second write comes before the next one.
 func TestAutoOffsetOneWritePerInterval(t *testing.T) {
