@@ -9,9 +9,9 @@
           "token": "API-Token"
         },
         "data_description": {
-          "host": "Adresse des freedo-Daemons.",
+          "host": "Adresse von freedo.",
           "port": "Port der freedo-HTTP-API (http_listen).",
-          "token": "Bearer-Token der API. Leer lassen, wenn der Daemon keinen Token hat."
+          "token": "Bearer-Token der API. Leer lassen, wenn freedo keinen Token hat."
         }
       },
       "hassio_confirm": {
@@ -26,12 +26,12 @@
       }
     },
     "error": {
-      "cannot_connect": "Der Daemon antwortet nicht.",
-      "invalid_auth": "Der Daemon lehnt den API-Token ab.",
-      "unknown": "Der Daemon gibt eine unerwartete Antwort zurück."
+      "cannot_connect": "freedo antwortet nicht.",
+      "invalid_auth": "freedo lehnt den API-Token ab.",
+      "unknown": "freedo gibt eine unerwartete Antwort zurück."
     },
     "abort": {
-      "already_configured": "Dieser Daemon ist bereits konfiguriert.",
+      "already_configured": "Dieses freedo ist bereits konfiguriert.",
       "reauth_successful": "Der API-Token wurde aktualisiert."
     }
   },
@@ -52,13 +52,13 @@
           "window_entities": "Fenster- und Türsensoren"
         },
         "data_description": {
-          "outdoor_entity": "Wird bei jeder Änderung und alle 15 Minuten an den Daemon gesendet. Er steuert die Heizkurven der maximalen Vorlauftemperatur.",
-          "window_entities": "Im nächsten Schritt wählst du die Zone jedes Sensors aus."
+          "outdoor_entity": "Wird bei jeder Änderung und alle 15 Minuten an freedo gesendet. Er steuert die Heizkurven der Vorlaufgrenze.",
+          "window_entities": "Auf der nächsten Seite wählst du den Raum jedes Sensors aus."
         }
       },
       "windows": {
-        "title": "Zone jedes Fenstersensors",
-        "description": "Wähle die Heizzone jedes Sensors aus. Eine Zone ist offen, wenn einer ihrer Sensoren offen ist."
+        "title": "Raum jedes Fenstersensors",
+        "description": "Wähle den Raum jedes Sensors aus. Ein Raum ist offen, wenn einer seiner Sensoren offen ist."
       },
       "rooms": {
         "title": "Räume",
@@ -87,7 +87,7 @@
     },
     "abort": {
       "not_loaded": "Die Integration ist nicht geladen. Lade sie und öffne die Optionen dann erneut.",
-      "no_heating_zone": "Die Installation deklariert keine Heizzone."
+      "no_heating_zone": "Die Installation deklariert keinen Raum."
     }
   },
   "device": {
@@ -327,7 +327,7 @@
   "services": {
     "boost": {
       "name": "Boost",
-      "description": "Startet oder stoppt den Boost einer Heizzone.",
+      "description": "Startet oder stoppt den Boost eines Raums.",
       "fields": {
         "on": {
           "name": "Ein",
@@ -337,11 +337,11 @@
     },
     "set_overlay": {
       "name": "Überschreibung setzen",
-      "description": "Heizt eine Zone auf eine Temperatur oder schaltet sie aus und legt fest, wann die Änderung endet.",
+      "description": "Heizt einen Raum auf eine Temperatur oder schaltet ihn aus und legt fest, wann die Änderung endet.",
       "fields": {
         "hvac_mode": {
           "name": "Modus",
-          "description": "Mit Heizen erreicht die Zone die Temperatur, mit Aus wird die Zone ausgeschaltet."
+          "description": "Mit Heizen erreicht der Raum die Temperatur, mit Aus wird der Raum ausgeschaltet."
         },
         "temperature": {
           "name": "Temperatur",
@@ -359,7 +359,7 @@
     },
     "set_window": {
       "name": "Offenes Fenster setzen",
-      "description": "Aktiviert den Zustand für ein offenes Fenster einer Heizzone oder setzt ihn zurück. Ein Zurücksetzen beendet den von Home Assistant gesetzten Zustand. Ein von den Ventilen erkannter Zustand wird nicht beendet.",
+      "description": "Aktiviert den Zustand für ein offenes Fenster eines Raums oder setzt ihn zurück. Ein Zurücksetzen beendet den von Home Assistant gesetzten Zustand. Ein von den Ventilen erkannter Zustand wird nicht beendet.",
       "fields": {
         "open": {
           "name": "Offen",
@@ -368,8 +368,8 @@
       }
     },
     "boost_all": {
-      "name": "Boost für alle Zonen",
-      "description": "Startet oder stoppt den Boost jeder Heizzone.",
+      "name": "Boost für alle Räume",
+      "description": "Startet oder stoppt den Boost jedes Raums.",
       "fields": {
         "on": {
           "name": "Ein",
@@ -379,11 +379,11 @@
     },
     "resume_all": {
       "name": "Alle Zeitpläne fortsetzen",
-      "description": "Setzt jede Heizzone und das Warmwasser auf den Wochenzeitplan zurück."
+      "description": "Setzt jeden Raum und das Warmwasser auf den Wochenzeitplan zurück."
     },
     "calibrate_gas_meter": {
       "name": "Gaszähler kalibrieren",
-      "description": "Zeichnet einen Gaszählerstand auf. Der Daemon schätzt den Zählerwert zwischen den Ablesungen und zeigt ihn im Sensor Gaszähler.",
+      "description": "Zeichnet einen Gaszählerstand auf. freedo schätzt den Zählerwert zwischen den Ablesungen und zeigt ihn im Sensor Gaszähler.",
       "fields": {
         "value": {
           "name": "Ablesung",
@@ -399,7 +399,7 @@
         },
         "replaced": {
           "name": "Zähler ersetzt",
-          "description": "Setzen Sie dies, wenn der physische Zähler ersetzt wurde: der Daemon verwirft die gespeicherten Ablesungen und beginnt mit diesem Wert."
+          "description": "Setzen Sie dies, wenn der physische Zähler ersetzt wurde: freedo verwirft die gespeicherten Ablesungen und beginnt mit diesem Wert."
         },
         "config_entry_id": {
           "name": "Hub",
@@ -419,25 +419,25 @@
     },
     "get_schedule": {
       "name": "Zeitplan abrufen",
-      "description": "Gibt den Wochenzeitplan einer Heizzone oder der Warmwasserzone zurück: Programme mit den Tagen, an denen sie laufen, und ihren Zeitblöcken. Eine Zone ohne Zeitplan hat keine Programme."
+      "description": "Gibt den Wochenzeitplan eines Raums oder des Warmwassers zurück: Programme mit den Tagen, an denen sie laufen, und ihren Zeitblöcken. Ohne Zeitplan gibt es keine Programme."
     },
     "set_schedule": {
       "name": "Zeitplan setzen",
-      "description": "Ersetzt den Wochenzeitplan einer Heizzone oder der Warmwasserzone. Die Programme decken jeden der sieben Tage genau einmal ab. Jedes Programm beginnt um 00:00 und seine Zeiten steigen an.",
+      "description": "Ersetzt den Wochenzeitplan eines Raums oder des Warmwassers. Die Programme decken jeden der sieben Tage genau einmal ab. Jedes Programm beginnt um 00:00 und seine Zeiten steigen an.",
       "fields": {
         "programs": {
           "name": "Programme",
-          "description": "Eine Liste von Programmen. Jedes hat `days` (mon bis sun) und `entries`. Jeder Eintrag hat `time` (HH:MM), `temperature` (5 bis 25 C für eine Heizzone, 30 bis 65 C für die Warmwasserzone) und `enabled` (Standard true, false schaltet die Zone aus)."
+          "description": "Eine Liste von Programmen. Jedes hat `days` (mon bis sun) und `entries`. Jeder Eintrag hat `time` (HH:MM), `temperature` (5 bis 25 °C für einen Raum, 30 bis 65 °C für das Warmwasser) und `enabled` (Standard true, false schaltet aus)."
         }
       }
     },
     "copy_schedule": {
       "name": "Zeitplan kopieren",
-      "description": "Kopiert den Wochenzeitplan einer Zone in andere Zonen derselben Art. Eine Raumzone und die Warmwasserzone teilen sich keinen Zeitplan.",
+      "description": "Kopiert den Wochenzeitplan eines Raums in andere Räume. Das Warmwasser teilt keinen Zeitplan mit einem Raum.",
       "fields": {
         "to": {
           "name": "Kopieren nach",
-          "description": "Die Zonen, die den Zeitplan erhalten."
+          "description": "Die Räume, die den Zeitplan erhalten."
         }
       }
     }
@@ -489,19 +489,19 @@
       "message": "Der Zeitplan ist ungültig: {reason}"
     },
     "no_schedule": {
-      "message": "Die Zone {zone} hat keinen Zeitplan zum Kopieren."
+      "message": "{room} hat keinen Zeitplan zum Kopieren."
     },
     "not_a_zone": {
-      "message": "{entity_id} ist keine freedo-Zone."
+      "message": "{entity_id} ist kein freedo-Raum und nicht das freedo-Warmwasser."
     },
     "copy_across_kinds": {
-      "message": "{entity_id} ist eine Zone anderer Art. Eine Raumzone und die Warmwasserzone teilen sich keinen Zeitplan: Ihre Temperaturbereiche unterscheiden sich."
+      "message": "{entity_id} ist von anderer Art. Ein Raum und das Warmwasser teilen sich keinen Zeitplan: Ihre Temperaturbereiche unterscheiden sich."
     },
     "copy_to_itself": {
-      "message": "Eine Zone kann ihren Zeitplan nicht in sich selbst kopieren."
+      "message": "Ein Raum kann seinen Zeitplan nicht in sich selbst kopieren."
     },
     "no_zones": {
-      "message": "Es ist keine freedo-Zone geladen."
+      "message": "Es ist kein freedo-Raum geladen."
     },
     "no_hub": {
       "message": "Es ist kein freedo-Hub geladen."
@@ -513,13 +513,13 @@
       "message": "Kein geladener freedo-Hub hat diese config_entry_id."
     },
     "zones_failed": {
-      "message": "Der Daemon hat einige Zonen abgelehnt: {failures}"
+      "message": "freedo hat einige Räume abgelehnt: {failures}"
     },
     "hot_water_temperature_required": {
-      "message": "Die Warmwasserzone hat keine Zieltemperatur. Lege sie mit dem Temperaturregler fest. Das wählt auch den Modus heat."
+      "message": "Das Warmwasser hat keine Zieltemperatur. Lege sie mit dem Temperaturregler fest: Das schaltet es auch ein."
     },
     "zone_temperature_required": {
-      "message": "Die Zone hat keine Zieltemperatur. Lege sie mit dem Temperaturregler fest. Das wählt auch den Modus Heizen."
+      "message": "Der Raum hat keine Zieltemperatur. Lege sie mit dem Temperaturregler fest. Das wählt auch den Modus Heizen."
     }
   }
 }

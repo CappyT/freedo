@@ -9,9 +9,9 @@
           "token": "Token API"
         },
         "data_description": {
-          "host": "Indirizzo del daemon freedo.",
+          "host": "Indirizzo di freedo.",
           "port": "Porta dell'API HTTP di freedo (http_listen).",
-          "token": "Token bearer dell'API. Lascia vuoto se il daemon non ha un token."
+          "token": "Token bearer dell'API. Lascia vuoto se freedo non ha un token."
         }
       },
       "hassio_confirm": {
@@ -26,12 +26,12 @@
       }
     },
     "error": {
-      "cannot_connect": "Il daemon non risponde.",
-      "invalid_auth": "Il daemon rifiuta il token API.",
-      "unknown": "Il daemon ha dato una risposta inattesa."
+      "cannot_connect": "freedo non risponde.",
+      "invalid_auth": "freedo rifiuta il token API.",
+      "unknown": "freedo ha dato una risposta inattesa."
     },
     "abort": {
-      "already_configured": "Questo daemon è già configurato.",
+      "already_configured": "Questo freedo è già configurato.",
       "reauth_successful": "Il token API è stato aggiornato."
     }
   },
@@ -52,13 +52,13 @@
           "window_entities": "Sensori di finestre e porte"
         },
         "data_description": {
-          "outdoor_entity": "Inviato al daemon a ogni variazione e ogni 15 minuti. Guida le curve climatiche della temperatura massima di mandata.",
-          "window_entities": "Nel passo successivo selezioni la zona di ciascun sensore."
+          "outdoor_entity": "Inviato a freedo a ogni variazione e ogni 15 minuti. Guida le curve climatiche della mandata max.",
+          "window_entities": "Nella pagina successiva selezioni la stanza di ciascun sensore."
         }
       },
       "windows": {
-        "title": "Zona di ciascun sensore di finestra",
-        "description": "Seleziona la zona di riscaldamento di ciascun sensore. Una zona è aperta quando uno dei suoi sensori è aperto."
+        "title": "Stanza di ciascun sensore di finestra",
+        "description": "Seleziona la stanza di ciascun sensore. Una stanza è aperta quando uno dei suoi sensori è aperto."
       },
       "rooms": {
         "title": "Stanze",
@@ -87,7 +87,7 @@
     },
     "abort": {
       "not_loaded": "L'integrazione non è caricata. Caricala, poi apri di nuovo le opzioni.",
-      "no_heating_zone": "L'installazione non dichiara nessuna zona di riscaldamento."
+      "no_heating_zone": "L'installazione non dichiara nessuna stanza."
     }
   },
   "device": {
@@ -327,7 +327,7 @@
   "services": {
     "boost": {
       "name": "Boost",
-      "description": "Avvia o ferma il boost di una zona di riscaldamento.",
+      "description": "Avvia o ferma il boost di una stanza.",
       "fields": {
         "on": {
           "name": "Attivo",
@@ -337,11 +337,11 @@
     },
     "set_overlay": {
       "name": "Imposta sovrascrittura",
-      "description": "Riscalda una zona a una temperatura o la spegne, e imposta quando termina la modifica.",
+      "description": "Riscalda una stanza a una temperatura o la spegne, e imposta quando termina la modifica.",
       "fields": {
         "hvac_mode": {
           "name": "Modalità",
-          "description": "Con Riscaldamento la zona raggiunge la temperatura, con Spento la zona si spegne."
+          "description": "Con Riscaldamento la stanza raggiunge la temperatura, con Spento la stanza si spegne."
         },
         "temperature": {
           "name": "Temperatura",
@@ -359,7 +359,7 @@
     },
     "set_window": {
       "name": "Imposta finestra aperta",
-      "description": "Attiva o reimposta lo stato di finestra aperta di una zona di riscaldamento. Un reset termina lo stato impostato da Home Assistant. Non termina uno stato rilevato dalle valvole.",
+      "description": "Attiva o reimposta lo stato di finestra aperta di una stanza. Un reset termina lo stato impostato da Home Assistant. Non termina uno stato rilevato dalle valvole.",
       "fields": {
         "open": {
           "name": "Aperta",
@@ -368,8 +368,8 @@
       }
     },
     "boost_all": {
-      "name": "Boost su tutte le zone",
-      "description": "Avvia o ferma il boost di ogni zona di riscaldamento.",
+      "name": "Boost su tutte le stanze",
+      "description": "Avvia o ferma il boost di ogni stanza.",
       "fields": {
         "on": {
           "name": "Attivo",
@@ -379,11 +379,11 @@
     },
     "resume_all": {
       "name": "Riprendi tutti i programmi",
-      "description": "Riporta ogni zona di riscaldamento e l'acqua calda al rispettivo programma settimanale."
+      "description": "Riporta ogni stanza e l'acqua calda al rispettivo programma settimanale."
     },
     "calibrate_gas_meter": {
       "name": "Calibra il contatore gas",
-      "description": "Registra una lettura del contatore gas. Il daemon stima il valore del contatore tra due letture e lo mostra nel sensore Contatore gas.",
+      "description": "Registra una lettura del contatore gas. freedo stima il valore del contatore tra due letture e lo mostra nel sensore Contatore gas.",
       "fields": {
         "value": {
           "name": "Lettura",
@@ -399,7 +399,7 @@
         },
         "replaced": {
           "name": "Contatore sostituito",
-          "description": "Attiva questa opzione quando il contatore fisico è stato sostituito: il daemon elimina le letture memorizzate e riparte da questa lettura."
+          "description": "Attiva questa opzione quando il contatore fisico è stato sostituito: freedo elimina le letture memorizzate e riparte da questa lettura."
         },
         "config_entry_id": {
           "name": "Hub",
@@ -419,25 +419,25 @@
     },
     "get_schedule": {
       "name": "Leggi programma",
-      "description": "Restituisce il programma settimanale di una zona di riscaldamento o della zona acqua calda: le fasce, con i giorni in cui sono attive e i loro blocchi orari. Una zona senza programma settimanale non ha fasce."
+      "description": "Restituisce il programma settimanale di una stanza o dell'acqua calda: le fasce, con i giorni in cui sono attive e i loro blocchi orari. Senza programma settimanale non ci sono fasce."
     },
     "set_schedule": {
       "name": "Imposta programma",
-      "description": "Sostituisce il programma settimanale di una zona di riscaldamento o della zona acqua calda. Le fasce coprono ciascuno dei sette giorni una sola volta. Ogni fascia inizia alle 00:00 e i suoi orari sono crescenti.",
+      "description": "Sostituisce il programma settimanale di una stanza o dell'acqua calda. Le fasce coprono ciascuno dei sette giorni una sola volta. Ogni fascia inizia alle 00:00 e i suoi orari sono crescenti.",
       "fields": {
         "programs": {
           "name": "Fasce",
-          "description": "Un elenco di fasce. Ognuna ha `days` (da mon a sun) e `entries`. Ogni voce ha `time` (HH:MM), `temperature` (da 5 a 25 C per una zona di riscaldamento, da 30 a 65 C per la zona acqua calda) e `enabled` (predefinito true, false spegne la zona)."
+          "description": "Un elenco di fasce. Ognuna ha `days` (da mon a sun) e `entries`. Ogni voce ha `time` (HH:MM), `temperature` (da 5 a 25 °C per una stanza, da 30 a 65 °C per l'acqua calda) e `enabled` (predefinito true, false spegne)."
         }
       }
     },
     "copy_schedule": {
       "name": "Copia programma",
-      "description": "Copia il programma settimanale di una zona in altre zone dello stesso tipo. Una zona ambiente e la zona acqua calda non condividono un programma.",
+      "description": "Copia il programma settimanale di una stanza in altre stanze. L'acqua calda non condivide un programma con una stanza.",
       "fields": {
         "to": {
           "name": "Copia in",
-          "description": "Le zone che ricevono il programma."
+          "description": "Le stanze che ricevono il programma."
         }
       }
     }
@@ -489,19 +489,19 @@
       "message": "Il programma non è valido: {reason}"
     },
     "no_schedule": {
-      "message": "La zona {zone} non ha un programma da copiare."
+      "message": "{room} non ha un programma da copiare."
     },
     "not_a_zone": {
-      "message": "{entity_id} non è una zona freedo."
+      "message": "{entity_id} non è una stanza né l'acqua calda di freedo."
     },
     "copy_across_kinds": {
-      "message": "{entity_id} è una zona di tipo diverso. Una zona ambiente e la zona acqua calda non condividono un programma: i loro intervalli di temperatura sono diversi."
+      "message": "{entity_id} è di un altro tipo. Una stanza e l'acqua calda non condividono un programma: i loro intervalli di temperatura sono diversi."
     },
     "copy_to_itself": {
-      "message": "Una zona non può copiare il proprio programma su se stessa."
+      "message": "Una stanza non può copiare il proprio programma su se stessa."
     },
     "no_zones": {
-      "message": "Nessuna zona freedo è caricata."
+      "message": "Nessuna stanza freedo è caricata."
     },
     "no_hub": {
       "message": "Nessun hub freedo è caricato."
@@ -513,13 +513,13 @@
       "message": "Nessun hub freedo caricato ha questo config_entry_id."
     },
     "zones_failed": {
-      "message": "Il daemon ha rifiutato alcune zone: {failures}"
+      "message": "freedo ha rifiutato alcune stanze: {failures}"
     },
     "hot_water_temperature_required": {
-      "message": "La zona acqua calda non ha una temperatura target. Impostala con il controllo della temperatura. Questo seleziona anche la modalità heat."
+      "message": "L'acqua calda non ha una temperatura target. Impostala con il controllo della temperatura: questo la accende anche."
     },
     "zone_temperature_required": {
-      "message": "La zona non ha una temperatura target. Impostala con il controllo della temperatura. Questo seleziona anche la modalità Riscaldamento."
+      "message": "La stanza non ha una temperatura target. Impostala con il controllo della temperatura. Questo seleziona anche la modalità Riscaldamento."
     }
   }
 }

@@ -152,3 +152,25 @@ def test_entity_names_fit_a_device_page(language):
         if len(name := value["name"].replace("{circuit}", "1")) > limit
     ]
     assert long == []
+
+
+DAEMON_WORD = {"en": "daemon", "it": "daemon", "de": "daemon", "fr": "démon"}
+BARE_CELSIUS = re.compile(r"\d\s?C\b")
+
+
+@pytest.mark.parametrize("language", ("en", *LANGUAGES))
+def test_user_texts_say_room_and_freedo(language):
+    """Every user text: a tado zone is a room, freedo is the actor (not the
+    daemon), and a temperature carries the degree sign. Placeholders and keys
+    are not user text."""
+    tree = json.loads((INTEGRATION / f"{language}.json").read_text())
+    problems = []
+    for text in texts(tree):
+        plain = PLACEHOLDER.sub("", text).lower()
+        for word in (ZONE_WORD[language].lower(), DAEMON_WORD[language], "daemon"):
+            if word in plain:
+                problems.append((word, text))
+        if BARE_CELSIUS.search(text):
+            problems.append(("C", text))
+    assert problems == []
+

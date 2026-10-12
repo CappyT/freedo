@@ -9,9 +9,9 @@
           "token": "API token"
         },
         "data_description": {
-          "host": "Address of the freedo daemon.",
+          "host": "Address of freedo.",
           "port": "Port of the freedo HTTP API (http_listen).",
-          "token": "Bearer token of the API. Leave empty when the daemon has no token."
+          "token": "Bearer token of the API. Leave it empty when freedo has no token."
         }
       },
       "hassio_confirm": {
@@ -26,12 +26,12 @@
       }
     },
     "error": {
-      "cannot_connect": "The daemon does not answer.",
-      "invalid_auth": "The daemon rejects the API token.",
-      "unknown": "The daemon gives an unexpected answer."
+      "cannot_connect": "freedo does not answer.",
+      "invalid_auth": "freedo rejects the API token.",
+      "unknown": "freedo gives an unexpected answer."
     },
     "abort": {
-      "already_configured": "This daemon is already configured.",
+      "already_configured": "This freedo is already configured.",
       "reauth_successful": "The API token is updated."
     }
   },
@@ -52,13 +52,13 @@
           "window_entities": "Window and door sensors"
         },
         "data_description": {
-          "outdoor_entity": "Sent to the daemon on each change and every 15 minutes. It drives the weather curves of the flow limit.",
-          "window_entities": "On the next step, you select the zone of each sensor."
+          "outdoor_entity": "Sent to freedo on each change and every 15 minutes. It drives the weather curves of the flow limit.",
+          "window_entities": "On the next page, you select the room of each sensor."
         }
       },
       "windows": {
-        "title": "Zone of each window sensor",
-        "description": "Select the heating zone of each sensor. A zone is open when one of its sensors is open."
+        "title": "Room of each window sensor",
+        "description": "Select the room of each sensor. A room is open when one of its sensors is open."
       },
       "rooms": {
         "title": "Rooms",
@@ -87,7 +87,7 @@
     },
     "abort": {
       "not_loaded": "The integration is not loaded. Load it, then open the options again.",
-      "no_heating_zone": "The installation declares no heating zone."
+      "no_heating_zone": "The installation declares no room."
     }
   },
   "device": {
@@ -237,7 +237,7 @@
   "services": {
     "boost": {
       "name": "Boost",
-      "description": "Starts or stops the boost of a heating zone.",
+      "description": "Starts or stops the boost of a room.",
       "fields": {
         "on": {
           "name": "On",
@@ -247,11 +247,11 @@
     },
     "set_overlay": {
       "name": "Set overlay",
-      "description": "Heats a zone to a temperature or switches it off, and sets when the change ends.",
+      "description": "Heats a room to a temperature or switches it off, and sets when the change ends.",
       "fields": {
         "hvac_mode": {
           "name": "Mode",
-          "description": "Heat sets the temperature, off switches the zone off."
+          "description": "Heat sets the temperature, off switches the room off."
         },
         "temperature": {
           "name": "Temperature",
@@ -269,7 +269,7 @@
     },
     "set_window": {
       "name": "Set open window",
-      "description": "Activates or resets the open window state of a heating zone. A reset ends the state set from Home Assistant. It does not end a state the valves detected.",
+      "description": "Activates or resets the open window state of a room. A reset ends the state set from Home Assistant. It does not end a state the valves detected.",
       "fields": {
         "open": {
           "name": "Open",
@@ -278,8 +278,8 @@
       }
     },
     "boost_all": {
-      "name": "Boost all zones",
-      "description": "Starts or stops the boost of every heating zone.",
+      "name": "Boost all rooms",
+      "description": "Starts or stops the boost of every room.",
       "fields": {
         "on": {
           "name": "On",
@@ -289,11 +289,11 @@
     },
     "resume_all": {
       "name": "Resume all schedules",
-      "description": "Returns every heating zone and the hot water to their weekly schedule."
+      "description": "Returns every room and the hot water to their weekly schedule."
     },
     "calibrate_gas_meter": {
       "name": "Calibrate gas meter",
-      "description": "Records a gas meter reading. The daemon estimates the meter value between the readings and shows it in the Gas meter sensor.",
+      "description": "Records a gas meter reading. freedo estimates the meter value between the readings and shows it in the Gas meter sensor.",
       "fields": {
         "value": {
           "name": "Reading",
@@ -309,7 +309,7 @@
         },
         "replaced": {
           "name": "Replaced meter",
-          "description": "Set this when the physical meter was replaced: the daemon drops the stored readings and starts the new meter from this reading."
+          "description": "Set this when the physical meter was replaced: freedo drops the stored readings and starts the new meter from this reading."
         },
         "config_entry_id": {
           "name": "Hub",
@@ -329,25 +329,25 @@
     },
     "get_schedule": {
       "name": "Get schedule",
-      "description": "Returns the weekly schedule of a heating zone or the hot water zone: programs with the days they run on and their time blocks. A zone with no schedule has no programs."
+      "description": "Returns the weekly schedule of a room or the hot water: programs with the days they run on and their time blocks. Without a schedule there are no programs."
     },
     "set_schedule": {
       "name": "Set schedule",
-      "description": "Replaces the weekly schedule of a heating zone or the hot water zone. The programs cover each of the seven days once. Each program starts at 00:00 and its times increase.",
+      "description": "Replaces the weekly schedule of a room or the hot water. The programs cover each of the seven days once. Each program starts at 00:00 and its times increase.",
       "fields": {
         "programs": {
           "name": "Programs",
-          "description": "A list of programs. Each has days (mon to sun) and entries. Each entry has time (HH:MM), temperature (5 to 25 C for a heating zone, 30 to 65 C for the hot water zone) and enabled (default true, false switches the zone off)."
+          "description": "A list of programs. Each has days (mon to sun) and entries. Each entry has time (HH:MM), temperature (5 to 25 °C for a room, 30 to 65 °C for the hot water) and enabled (default true, false switches it off)."
         }
       }
     },
     "copy_schedule": {
       "name": "Copy schedule",
-      "description": "Copies the weekly schedule of a zone to other zones of the same kind. A room zone and the hot water zone do not share a schedule.",
+      "description": "Copies the weekly schedule of a room to other rooms. The hot water does not share a schedule with a room.",
       "fields": {
         "to": {
           "name": "Copy to",
-          "description": "The zones that get the schedule."
+          "description": "The rooms that get the schedule."
         }
       }
     }
@@ -388,16 +388,16 @@
     "overlay_duration_required": { "message": "Set a duration with end rule timer." },
     "overlay_duration_not_allowed": { "message": "A duration needs end rule timer." },
     "invalid_schedule": { "message": "The schedule is not valid: {reason}" },
-    "no_schedule": { "message": "The zone {zone} has no schedule to copy." },
-    "not_a_zone": { "message": "{entity_id} is not a freedo zone." },
-    "copy_across_kinds": { "message": "{entity_id} is a different kind of zone. A room zone and the hot water zone do not share a schedule: their temperature ranges differ." },
-    "copy_to_itself": { "message": "A zone cannot copy its schedule to itself." },
-    "no_zones": { "message": "No freedo zone is loaded." },
+    "no_schedule": { "message": "{room} has no schedule to copy." },
+    "not_a_zone": { "message": "{entity_id} is not a freedo room or the freedo hot water." },
+    "copy_across_kinds": { "message": "{entity_id} is of another kind. A room and the hot water do not share a schedule: their temperature ranges differ." },
+    "copy_to_itself": { "message": "A room cannot copy its schedule to itself." },
+    "no_zones": { "message": "No freedo room is loaded." },
     "no_hub": { "message": "No freedo hub is loaded." },
     "several_hubs": { "message": "Several freedo hubs are loaded. Name the hub with the config_entry_id field." },
     "unknown_hub": { "message": "No loaded freedo hub has this config_entry_id." },
-    "zones_failed": { "message": "The daemon refused some zones: {failures}" },
-    "hot_water_temperature_required": { "message": "The hot water zone has no target temperature. Set one with the temperature control. This also selects mode heat." },
-    "zone_temperature_required": { "message": "The zone has no target temperature. Set one with the temperature control. This also selects mode heat." }
+    "zones_failed": { "message": "freedo refused some rooms: {failures}" },
+    "hot_water_temperature_required": { "message": "The hot water has no target temperature. Set one with the temperature control: this also switches it on." },
+    "zone_temperature_required": { "message": "The room has no target temperature. Set one with the temperature control. This also selects the mode Heat." }
   }
 }

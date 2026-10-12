@@ -2665,8 +2665,8 @@ async def test_copy_schedule_goes_on_after_a_refused_zone(hass, client):
     ("source", "targets", "message"),
     [
         (LIVING, [LIVING], "itself"),
-        (LIVING, ["climate.nowhere"], "not a freedo zone"),
-        (LIVING, ["switch.freedo_offline_schedule"], "not a freedo zone"),
+        (LIVING, ["climate.nowhere"], "not a freedo room"),
+        (LIVING, ["switch.freedo_offline_schedule"], "not a freedo room"),
         (BEDROOM, [LIVING], "no schedule"),
     ],
 )
@@ -2763,9 +2763,9 @@ async def test_hot_water_schedule_error_is_a_home_assistant_error(hass, client):
 @pytest.mark.parametrize(
     ("source", "targets", "message"),
     [
-        (HOT_WATER, [LIVING], "different kind of zone"),
-        (LIVING, [HOT_WATER], "different kind of zone"),
-        (LIVING, [BEDROOM, HOT_WATER], "different kind of zone"),
+        (HOT_WATER, [LIVING], "of another kind"),
+        (LIVING, [HOT_WATER], "of another kind"),
+        (LIVING, [BEDROOM, HOT_WATER], "of another kind"),
         (HOT_WATER, [HOT_WATER], "itself"),
     ],
 )
@@ -3709,9 +3709,9 @@ async def test_home_services_without_a_loaded_zone(hass, client):
     await hass.config_entries.async_unload(entry.entry_id)
     await hass.async_block_till_done()
     # The services belong to the integration, not to an entry.
-    with pytest.raises(ServiceValidationError, match="No freedo zone"):
+    with pytest.raises(ServiceValidationError, match="No freedo room"):
         await call_freedo(hass, "boost_all", {})
-    with pytest.raises(ServiceValidationError, match="No freedo zone"):
+    with pytest.raises(ServiceValidationError, match="No freedo room"):
         await call_freedo(hass, "resume_all", {})
 
 

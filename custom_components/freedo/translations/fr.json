@@ -9,9 +9,9 @@
           "token": "Jeton d'API"
         },
         "data_description": {
-          "host": "Adresse du démon freedo.",
+          "host": "Adresse de freedo.",
           "port": "Port de l'API HTTP de freedo (http_listen).",
-          "token": "Jeton Bearer de l'API. Laissez vide si le démon n'a pas de jeton."
+          "token": "Jeton Bearer de l'API. Laissez vide si freedo n'a pas de jeton."
         }
       },
       "hassio_confirm": {
@@ -26,12 +26,12 @@
       }
     },
     "error": {
-      "cannot_connect": "Le démon ne répond pas.",
-      "invalid_auth": "Le démon rejette le jeton d'API.",
-      "unknown": "Le démon donne une réponse inattendue."
+      "cannot_connect": "freedo ne répond pas.",
+      "invalid_auth": "freedo rejette le jeton d'API.",
+      "unknown": "freedo donne une réponse inattendue."
     },
     "abort": {
-      "already_configured": "Ce démon est déjà configuré.",
+      "already_configured": "Ce freedo est déjà configuré.",
       "reauth_successful": "Le jeton d'API est mis à jour."
     }
   },
@@ -52,13 +52,13 @@
           "window_entities": "Capteurs de fenêtres et de portes"
         },
         "data_description": {
-          "outdoor_entity": "Envoyé au démon à chaque changement et toutes les 15 minutes. Il pilote les courbes de chauffe de la température de départ maximale.",
-          "window_entities": "À l'étape suivante, vous sélectionnez la zone de chaque capteur."
+          "outdoor_entity": "Envoyé à freedo à chaque changement et toutes les 15 minutes. Il pilote les courbes de chauffe de la limite de départ.",
+          "window_entities": "À la page suivante, vous sélectionnez la pièce de chaque capteur."
         }
       },
       "windows": {
-        "title": "Zone de chaque capteur de fenêtre",
-        "description": "Sélectionnez la zone de chauffage de chaque capteur. Une zone est ouverte quand l'un de ses capteurs est ouvert."
+        "title": "Pièce de chaque capteur de fenêtre",
+        "description": "Sélectionnez la pièce de chaque capteur. Une pièce est ouverte quand l'un de ses capteurs est ouvert."
       },
       "rooms": {
         "title": "Pièces",
@@ -87,7 +87,7 @@
     },
     "abort": {
       "not_loaded": "L'intégration n'est pas chargée. Chargez-la, puis rouvrez les options.",
-      "no_heating_zone": "L'installation ne déclare aucune zone de chauffage."
+      "no_heating_zone": "L'installation ne déclare aucune pièce."
     }
   },
   "device": {
@@ -327,7 +327,7 @@
   "services": {
     "boost": {
       "name": "Boost",
-      "description": "Démarre ou arrête le boost d'une zone de chauffage.",
+      "description": "Démarre ou arrête le boost d'une pièce.",
       "fields": {
         "on": {
           "name": "Activé",
@@ -337,11 +337,11 @@
     },
     "set_overlay": {
       "name": "Définir une surcharge",
-      "description": "Chauffe une zone à une température ou l'éteint, et définit quand la modification se termine.",
+      "description": "Chauffe une pièce à une température ou l'éteint, et définit quand la modification se termine.",
       "fields": {
         "hvac_mode": {
           "name": "Mode",
-          "description": "Avec Chauffage, la zone atteint la température. Avec Éteint, la zone est éteinte."
+          "description": "Avec Chauffage, la pièce atteint la température. Avec Éteint, la pièce est éteinte."
         },
         "temperature": {
           "name": "Température",
@@ -359,7 +359,7 @@
     },
     "set_window": {
       "name": "Définir une fenêtre ouverte",
-      "description": "Active ou réinitialise l'état de fenêtre ouverte d'une zone de chauffage. Une réinitialisation met fin à l'état défini depuis Home Assistant. Elle ne met pas fin à un état détecté par les vannes.",
+      "description": "Active ou réinitialise l'état de fenêtre ouverte d'une pièce. Une réinitialisation met fin à l'état défini depuis Home Assistant. Elle ne met pas fin à un état détecté par les vannes.",
       "fields": {
         "open": {
           "name": "Ouverte",
@@ -368,8 +368,8 @@
       }
     },
     "boost_all": {
-      "name": "Boost de toutes les zones",
-      "description": "Démarre ou arrête le boost de chaque zone de chauffage.",
+      "name": "Boost de toutes les pièces",
+      "description": "Démarre ou arrête le boost de chaque pièce.",
       "fields": {
         "on": {
           "name": "Activé",
@@ -379,11 +379,11 @@
     },
     "resume_all": {
       "name": "Reprendre toutes les planifications",
-      "description": "Remet chaque zone de chauffage et l'eau chaude sur leur planification hebdomadaire."
+      "description": "Remet chaque pièce et l'eau chaude sur leur planification hebdomadaire."
     },
     "calibrate_gas_meter": {
       "name": "Calibrer le compteur de gaz",
-      "description": "Enregistre un relevé du compteur de gaz. Le démon estime la valeur du compteur entre les relevés et l'affiche dans le capteur Compteur de gaz.",
+      "description": "Enregistre un relevé du compteur de gaz. freedo estime la valeur du compteur entre les relevés et l'affiche dans le capteur Compteur de gaz.",
       "fields": {
         "value": {
           "name": "Relevé",
@@ -399,7 +399,7 @@
         },
         "replaced": {
           "name": "Compteur remplacé",
-          "description": "Activez cette option lorsque le compteur physique a été remplacé : le démon supprime les relevés stockés et repart de ce relevé."
+          "description": "Activez cette option lorsque le compteur physique a été remplacé : freedo supprime les relevés stockés et repart de ce relevé."
         },
         "config_entry_id": {
           "name": "Hub",
@@ -419,25 +419,25 @@
     },
     "get_schedule": {
       "name": "Lire la planification",
-      "description": "Renvoie la planification hebdomadaire d'une zone de chauffage ou de la zone d'eau chaude : des programmes avec les jours où ils s'exécutent et leurs blocs horaires. Une zone sans planification n'a aucun programme."
+      "description": "Renvoie la planification hebdomadaire d'une pièce ou de l'eau chaude : des programmes avec les jours où ils s'exécutent et leurs blocs horaires. Sans planification, il n'y a aucun programme."
     },
     "set_schedule": {
       "name": "Définir la planification",
-      "description": "Remplace la planification hebdomadaire d'une zone de chauffage ou de la zone d'eau chaude. Les programmes couvrent chacun des sept jours une seule fois. Chaque programme commence à 00:00 et ses heures sont croissantes.",
+      "description": "Remplace la planification hebdomadaire d'une pièce ou de l'eau chaude. Les programmes couvrent chacun des sept jours une seule fois. Chaque programme commence à 00:00 et ses heures sont croissantes.",
       "fields": {
         "programs": {
           "name": "Programmes",
-          "description": "Une liste de programmes. Chacun a `days` (mon à sun) et `entries`. Chaque entrée a `time` (HH:MM), `temperature` (5 à 25 C pour une zone de chauffage, 30 à 65 C pour la zone d'eau chaude) et `enabled` (true par défaut, false éteint la zone)."
+          "description": "Une liste de programmes. Chacun a `days` (mon à sun) et `entries`. Chaque entrée a `time` (HH:MM), `temperature` (5 à 25 °C pour une pièce, 30 à 65 °C pour l'eau chaude) et `enabled` (true par défaut, false éteint)."
         }
       }
     },
     "copy_schedule": {
       "name": "Copier la planification",
-      "description": "Copie la planification hebdomadaire d'une zone vers d'autres zones du même type. Une zone de pièce et la zone d'eau chaude ne partagent pas de planification.",
+      "description": "Copie la planification hebdomadaire d'une pièce vers d'autres pièces. L'eau chaude ne partage pas de planification avec une pièce.",
       "fields": {
         "to": {
           "name": "Copier vers",
-          "description": "Les zones qui reçoivent la planification."
+          "description": "Les pièces qui reçoivent la planification."
         }
       }
     }
@@ -489,19 +489,19 @@
       "message": "La planification n'est pas valide : {reason}"
     },
     "no_schedule": {
-      "message": "La zone {zone} n'a aucune planification à copier."
+      "message": "{room} n'a aucune planification à copier."
     },
     "not_a_zone": {
-      "message": "{entity_id} n'est pas une zone freedo."
+      "message": "{entity_id} n'est ni une pièce ni l'eau chaude de freedo."
     },
     "copy_across_kinds": {
-      "message": "{entity_id} est une zone d'un autre type. Une zone de pièce et la zone d'eau chaude ne partagent pas de planification : leurs plages de température diffèrent."
+      "message": "{entity_id} est d'un autre type. Une pièce et l'eau chaude ne partagent pas de planification : leurs plages de température diffèrent."
     },
     "copy_to_itself": {
-      "message": "Une zone ne peut pas copier sa planification vers elle-même."
+      "message": "Une pièce ne peut pas copier sa planification vers elle-même."
     },
     "no_zones": {
-      "message": "Aucune zone freedo n'est chargée."
+      "message": "Aucune pièce freedo n'est chargée."
     },
     "no_hub": {
       "message": "Aucun hub freedo n'est chargé."
@@ -513,13 +513,13 @@
       "message": "Aucun hub freedo chargé n'a ce config_entry_id."
     },
     "zones_failed": {
-      "message": "Le démon a refusé certaines zones : {failures}"
+      "message": "freedo a refusé certaines pièces : {failures}"
     },
     "hot_water_temperature_required": {
-      "message": "La zone d'eau chaude n'a pas de température cible. Définissez-la avec le réglage de température. Cela sélectionne aussi le mode heat."
+      "message": "L'eau chaude n'a pas de température cible. Définissez-la avec le réglage de température : cela l'allume aussi."
     },
     "zone_temperature_required": {
-      "message": "La zone n'a pas de température cible. Définissez-la avec le réglage de température. Cela sélectionne aussi le mode Chauffage."
+      "message": "La pièce n'a pas de température cible. Définissez-la avec le réglage de température. Cela sélectionne aussi le mode Chauffage."
     }
   }
 }

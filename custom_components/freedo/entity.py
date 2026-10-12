@@ -185,7 +185,7 @@ class FreedoScheduleEntity(FreedoEntity):
             raise ServiceValidationError(
                 translation_domain=DOMAIN,
                 translation_key="no_schedule",
-                translation_placeholders={"zone": zone.name},
+                translation_placeholders={"room": zone.name},
             )
         programs = self.checked_schedule(schedule_programs(view))
         await each(
