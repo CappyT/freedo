@@ -14,3 +14,9 @@ configuration:
     description: >-
       Send frames on air. Off means dry-run. Switch the commercial bridge off
       before you turn this on.
+  channel:
+    name: Channel
+    description: >-
+      The daemon channel. Stable runs the daemon of this image. Beta downloads
+      the newest pre-release of the daemon from the GitHub releases of this
+      repository and runs it, with less testing on a real plant.

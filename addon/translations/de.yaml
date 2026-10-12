@@ -14,3 +14,9 @@ configuration:
     description: >-
       Sendet Frames per Funk. Aus bedeutet dry-run. Schalte die kommerzielle
       Bridge aus, bevor du dies einschaltest.
+  channel:
+    name: Kanal
+    description: >-
+      Der Kanal des Daemons. Stable führt den Daemon dieses Images aus. Beta
+      lädt die neueste Vorabversion des Daemons aus den GitHub-Releases dieses
+      Repositorys und führt sie aus, mit weniger Tests an einer echten Anlage.

@@ -14,3 +14,9 @@ configuration:
     description: >-
       Invia frame via radio. Disattivato significa dry-run. Spegni il bridge
       commerciale prima di attivarlo.
+  channel:
+    name: Canale
+    description: >-
+      Il canale del daemon. Stable esegue il daemon incluso nell'immagine. Beta
+      scarica l'ultima pre-release del daemon dalle release GitHub di questo
+      repository e la esegue, con meno test su un impianto reale.

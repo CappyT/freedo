@@ -22,7 +22,9 @@ ports_description:
   18080/tcp: HTTP API
 options:
   transmit: false
+  channel: stable
 schema:
   serial_port: device(subsystem=tty)?
   api_token: password?
   transmit: bool
+  channel: list(stable|beta)
