@@ -153,6 +153,7 @@ banner.
 |---|---|
 | `POST /api/boiler/dhw` | Set the hot water temperature overlay. |
 | `POST /api/boiler/flow` | Set the flow limit of a circuit (the [boiler thermostat](#boiler-thermostat) by default). |
+| `POST`, `DELETE /api/boiler/gas/meter` | Record or remove a gas meter reading. |
 | `POST /api/outdoor` | Give the outdoor temperature. |
 | `GET`, `POST /api/pair/window` | Read, open or close the pair window. |
 | `POST /api/pair` | Send the `d/pair` command to a device. |
@@ -811,6 +812,41 @@ is higher than the heating maximum, a hot water draw can read up to about 15 % l
 `totalM3`, `maxFlowM3H`, `minFlowM3H` and `unit`. `GET /api/boiler` also shows the boiler counters
 `BurnerStarts`, `BurnerHoursMin` and the group `Maintenance`. A value that the boiler
 declares unsupported (tag `0481`) is `null` and listed in `Unsupported`.
+
+### Gas meter
+
+The user reads the gas meter now and then. The daemon records each reading in `fuel_unit`, the
+unit of `energy.gas.totalM3`, and estimates the meter value between readings.
+
+`POST /api/boiler/gas/meter` with `{"reading": 8785.957}` records one reading. `estimate` is the
+fuel counter when the reading was taken, for a reading the user took a while ago: it is from 0 up
+to the current counter, and it defaults to the current counter. `at` is the RFC3339 time the
+reading was taken, not in the future, stored for display only, and it defaults to now.
+
+`DELETE /api/boiler/gas/meter` removes the last reading, to undo a typo. It answers `404` while no
+reading is stored. A replaced meter is handled by DELETE then POST.
+
+The reading is finite, from 0 to 1e9, and never below the previous reading: a meter does not run
+backwards. A lower reading, an estimate outside its range and an `at` in the future are `400`. The
+route needs the fuel counter, so it answers `503` without `boiler_max_gas_m3h` and
+`boiler_min_gas_m3h`, like the rest of `energy.gas`. The daemon keeps the last 20 readings as JSON
+in `meta.boiler_gas_meter` and writes them on the call, not on the counter's minute.
+
+`GET /api/boiler` reports the meter in `energy.gas.meter`, `null` while no reading is stored:
+`value`, the estimated meter value; `lastReading` and `lastReadingAt`; `readings`, the count kept;
+`factor`; and `factorReadings`.
+
+The value is `lastReading + factor x (totalM3 - lastEstimate)`, rounded to 0.001. `totalM3` is
+the raw fuel counter, so the value follows it between readings. The factor comes from the two most
+recent readings whose estimate is at least one unit apart:
+`factor = (reading2 - reading1) / (estimate2 - estimate1)`, accepted only from 0.5 to 2.0.
+Outside that range, or without such a pair, the factor is 1. `factorReadings` is 2 when a factor
+was learned, else 0.
+
+The factor corrects the meter value only. `totalM3` and `flowM3H` stay the raw estimate, so
+nothing that already reads them changes. The meter differs from the estimate for reasons the
+estimate cannot see: other gas users on the same meter such as a hob, the efficiency the fuel
+counter does not model, and the modulation the counter references.
 
 ## Pairing
 

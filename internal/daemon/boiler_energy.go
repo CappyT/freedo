@@ -65,6 +65,9 @@ type energyMeter struct {
 	// integrated, savedAt the time of the last write attempt.
 	prev           tado.BoilerSample
 	updated, saved time.Time
+	// gasReadings holds the meter readings the user took, oldest first. See
+	// boiler_gas_meter.go.
+	gasReadings []gasReading
 }
 
 // boilerRate returns the rate a sample implies on the range lo..hi of the
@@ -146,8 +149,13 @@ func (d *daemon) restoreEnergy() error {
 	if err != nil {
 		return err
 	}
+	readings, err := d.state.GasMeterReadings(context.Background())
+	if err != nil {
+		return err
+	}
 	d.energy.totalKWh, d.energy.shownKWh = kwh, kwh
 	d.energy.totalM3, d.energy.shownM3 = m3, m3
+	d.energy.gasReadings = readings
 	return nil
 }
 
@@ -221,7 +229,7 @@ func (d *daemon) energyView(now time.Time) map[string]any {
 	flow, gasWhy := m.rateAt(now, o, boilerGas, energyNoGasFlow)
 	gas := map[string]any{
 		"running": gasWhy == "", "reason": nil, "flowM3H": round3(flow), "totalM3": round3(m.shownM3),
-		"maxFlowM3H": nil, "minFlowM3H": nil, "unit": o.Fuel(),
+		"maxFlowM3H": nil, "minFlowM3H": nil, "unit": o.Fuel(), "meter": d.gasMeterView(),
 	}
 	if gasWhy != "" {
 		gas["reason"] = gasWhy

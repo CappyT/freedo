@@ -1853,6 +1853,8 @@ func (d *daemon) mux() *http.ServeMux {
 	m.HandleFunc("PUT /api/nodes/{id}/schedule", d.putSchedule)
 	m.HandleFunc("POST /api/boiler/dhw", d.postBoilerDHW)
 	m.HandleFunc("POST /api/boiler/flow", d.postBoilerFlow)
+	m.HandleFunc("POST /api/boiler/gas/meter", d.postGasMeter)
+	m.HandleFunc("DELETE /api/boiler/gas/meter", d.deleteGasMeter)
 	m.HandleFunc("POST /api/outdoor", d.postOutdoor)
 	m.HandleFunc("POST /api/pair", d.postPair)
 	m.HandleFunc("GET /api/pair/window", d.getPairWindow)
