@@ -137,10 +137,10 @@ download_beta() {
   staging="$channel_dir/.staging.$$"
   rm -rf "$staging"
   mkdir -p "$staging"
-  if ! curl -fsS --max-time 60 -o "$staging/freedo-linux-$arch" "$binurl"; then
+  if ! curl -fsSL --max-time 60 -o "$staging/freedo-linux-$arch" "$binurl"; then
     rm -rf "$staging"; return 1
   fi
-  if ! curl -fsS --max-time 60 -o "$staging/SHA256SUMS" "$sumsurl"; then
+  if ! curl -fsSL --max-time 60 -o "$staging/SHA256SUMS" "$sumsurl"; then
     rm -rf "$staging"; return 1
   fi
   want=$(grep " freedo-linux-$arch\$" "$staging/SHA256SUMS" | awk '{print $1}')
