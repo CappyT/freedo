@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
+	import { data } from './data.svelte.ts';
 	import { alertKeys, modeLine, targetText } from './describe.ts';
 	import Dial from './Dial.svelte';
 	import { fmt, t } from './i18n.svelte.ts';
@@ -49,11 +50,12 @@
 					<dd class="mono">{fmt.percent(model.humidityPct)}</dd>
 				</div>
 			</dl>
-		{:else if model.zone.target.targetC === null}
+		{:else}
+			<!-- The dial shows the target of the hot water, so the fact below is the temperature the boiler reads. -->
 			<dl class="meta">
 				<div>
-					<dt>{t('card.target')}</dt>
-					<dd>{targetText(model)}</dd>
+					<dt>{t('card.now')}</dt>
+					<dd class="mono">{fmt.temp(data.boiler?.DHWC)}</dd>
 				</div>
 			</dl>
 		{/if}
