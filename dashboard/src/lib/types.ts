@@ -151,6 +151,15 @@ export interface Home {
 	away: boolean;
 	scheduled: Record<string, number>;
 	scheduledOff: Record<string, boolean>;
+	/** The active program preset. A daemon before schema 8 leaves it absent. */
+	preset?: { id: number; name: string };
+}
+
+/** One program preset: the home and away programs of every zone. */
+export interface Preset {
+	id: number;
+	name: string;
+	active: boolean;
 }
 
 export interface FlowCircuit {
@@ -237,6 +246,9 @@ export interface ScheduleView {
 	zone: number;
 	members: string[];
 	programs: ScheduleProgram[];
+	/** The mode and the preset the answer belongs to. A daemon before schema 8 leaves them absent. */
+	mode?: 'home' | 'away';
+	preset?: number;
 }
 
 export interface Queued {

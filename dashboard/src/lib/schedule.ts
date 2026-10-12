@@ -6,6 +6,17 @@ import type { ScheduleView } from './types.ts';
 export const DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
 export type Day = (typeof DAYS)[number];
 
+/** The two programs of a zone: the one it follows at home, the one it follows while away. */
+export type Mode = 'home' | 'away';
+
+/**
+ * The program a zone runs now. The away program is in force only while the whole home is
+ * away and the zone has one; otherwise the home program is in force.
+ */
+export function programInForce(away: boolean, hasAwayProgram: boolean): Mode {
+	return away && hasAwayProgram ? 'away' : 'home';
+}
+
 export interface Block {
 	minute: number;
 	setpointC: number;

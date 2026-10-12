@@ -126,6 +126,42 @@ describe('commands', () => {
 		expect(calls).toHaveLength(1);
 		expect(calls[0]).toMatchObject({ method: 'PUT', body: { programs } });
 	});
+
+	it('name the mode and the preset of a schedule route', async () => {
+		const { calls, fetch } = stub(200, { zone: 2, members: [], programs: [], mode: 'away', preset: 3 });
+		const client = createClient({ base: 'http://h/', fetch });
+		await client.schedule(2, { mode: 'away', preset: 3 });
+		await client.putSchedule(2, [{ days: ['mon'], entries: [] }], { mode: 'away' });
+		await client.deleteSchedule(2, { mode: 'away' });
+		expect(calls.map((c) => `${c.method} ${new URL(c.url).pathname}${new URL(c.url).search}`)).toEqual([
+			'GET /api/zones/2/schedule?mode=away&preset=3',
+			'PUT /api/zones/2/schedule?mode=away',
+			'DELETE /api/zones/2/schedule?mode=away'
+		]);
+	});
+
+	it('use the preset routes of docs/API.md', async () => {
+		const { calls, fetch } = stub(200, {});
+		const client = createClient({ base: 'http://h/', fetch });
+		await client.presets();
+		await client.createPreset('Winter');
+		await client.createPreset('Summer', 2);
+		await client.renamePreset(3, 'Autumn');
+		await client.deletePreset(4);
+		await client.activatePreset(3);
+		expect(calls.map((c) => `${c.method} ${new URL(c.url).pathname}`)).toEqual([
+			'GET /api/presets',
+			'POST /api/presets',
+			'POST /api/presets',
+			'PATCH /api/presets/3',
+			'DELETE /api/presets/4',
+			'POST /api/presets/3/activate'
+		]);
+		// A create without a source copies the active preset: the daemon fills copy_from then.
+		expect(calls[1]?.body).toEqual({ name: 'Winter' });
+		expect(calls[2]?.body).toEqual({ name: 'Summer', copy_from: 2 });
+		expect(calls[3]?.body).toEqual({ name: 'Autumn' });
+	});
 });
 
 describe('errors', () => {

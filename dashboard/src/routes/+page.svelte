@@ -11,9 +11,12 @@
 	let busy = $state(false);
 	let homeRadio: HTMLInputElement | undefined = $state();
 	let awayRadio: HTMLInputElement | undefined = $state();
+	let presetSelect: HTMLSelectElement | undefined = $state();
 
 	const zones = $derived(data.models);
 	const heating = $derived(data.heating);
+	const presets = $derived(data.presets);
+	const activePreset = $derived(presets.find((preset) => preset.active));
 
 	/** Shows the presence that the daemon reports. A radio keeps the click when the request fails. */
 	function showPresence() {
@@ -29,6 +32,17 @@
 		if (!done) showPresence();
 	}
 
+	/** Switches the active preset. The select returns to the active one when the request fails. */
+	async function activate() {
+		if (!presetSelect || busy) return;
+		const id = Number(presetSelect.value);
+		if (id === activePreset?.id) return;
+		busy = true;
+		const done = await act(() => api.activatePreset(id));
+		busy = false;
+		if (!done && presetSelect) presetSelect.value = String(activePreset?.id ?? '');
+	}
+
 	const boostAll = () => actMany(heating.map((m) => () => api.boost(m.zone.number, true)));
 	const resumeAll = () => actMany(zones.map((m) => () => api.auto(m.zone.number)));
 </script>
@@ -37,6 +51,16 @@
 	<div class="page-head">
 		<h1 id="title">{t('home.title')}</h1>
 		<div class="row actions fill">
+			{#if presets.length > 0}
+				<label class="field preset">
+					<span>{t('preset.active')}</span>
+					<select class="input" bind:this={presetSelect} value={String(activePreset?.id ?? '')} onchange={activate} disabled={busy}>
+						{#each presets as preset (preset.id)}
+							<option value={String(preset.id)}>{preset.name}</option>
+						{/each}
+					</select>
+				</label>
+			{/if}
 			<fieldset class="segmented" disabled={busy || !data.home}>
 				<legend class="sr-only">{t('home.presence')}</legend>
 				<label>
@@ -98,6 +122,11 @@
 
 	.actions {
 		gap: 0.75rem;
+	}
+
+	.preset {
+		flex: 0 1 11rem;
+		min-width: 8rem;
 	}
 
 	fieldset {

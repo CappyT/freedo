@@ -194,6 +194,47 @@ try {
 	await tab.evaluate(`document.querySelector('dialog[open] button.primary').click()`);
 	check(await toast('Sent to the daemon'), 'Turn off is sent after the person confirms');
 	check(requests.filter((r) => r.endsWith('/off')).length === 1, 'the confirmed command is sent once');
+
+	// 6. The active preset from the home page.
+	const preset = await (
+		await fetch(daemon.base + '/api/presets', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ name: 'Check preset' })
+		})
+	).json();
+	await open('#/', `document.querySelectorAll('.card').length >= 6 && document.querySelector('input[name=presence]')`);
+	await tab.waitFor(
+		`[...document.querySelectorAll('.actions select.input option')].some((o) => o.textContent === 'Check preset')`,
+		8000
+	);
+	check(true, 'the home page offers the presets');
+	await tab.evaluate(`(() => {
+		const s = document.querySelector('.actions select.input');
+		s.value = '${preset.id}';
+		s.dispatchEvent(new Event('change', { bubbles: true }));
+	})()`);
+	check(await toast('Sent to the daemon'), 'switching the active preset is sent');
+	await sleep(500);
+	const active = (await (await fetch(daemon.base + '/api/home')).json()).preset;
+	check(active?.name === 'Check preset', `the daemon switched the active preset (${active?.name})`);
+
+	// 7. The away program of a zone.
+	await open('#/zones/8', `document.querySelector('main h1')?.textContent === 'Living room'`);
+	await tab.waitFor(`document.querySelector('[name=schedule-mode-8]')`);
+	check(
+		(await tab.evaluate(`document.querySelector('.inforce .badge')?.textContent.trim()`)) === 'Home',
+		'the panel shows the home program is in force at home'
+	);
+	await tab.evaluate(`document.querySelectorAll('[name=schedule-mode-8]')[1].click()`);
+	await tab.waitFor(`[...document.querySelectorAll('button')].some((b) => b.textContent.includes('Create away program'))`);
+	check(true, 'the zone page offers to create the away program');
+	await clickText('Create away program');
+	await tab.waitFor(`document.querySelector('.block input[type=number]')`);
+	await clickText('Save schedule');
+	check(await toast('Schedule saved'), 'the away program is saved');
+	const away = await (await fetch(daemon.base + '/api/zones/8/schedule?mode=away')).json();
+	check(away.programs?.length > 0, 'the daemon stores the away program');
 } catch (error) {
 	check(false, String(error?.stack ?? error));
 } finally {

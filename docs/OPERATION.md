@@ -153,7 +153,8 @@ The container starts in dry-run. To use an image built locally, replace the `ima
 
 The daemon serves a web interface at the root of its HTTP address. It shows the zones, the hot
 water, the boiler and the devices. It sets temperatures with the four end rules, switches a zone off,
-returns it to its program, switches the home between home and away, and edits the weekly schedules. It
+returns it to its program, switches the home between home and away, edits the weekly schedules of the
+home and away programs, and chooses and manages the program presets. It
 calls the routes of [API.md](API.md) and no other. Installation management stays in the API.
 Settings shows the health summary of the daemon. It marks `serialErrors` above zero with a warning:
 see [Serial link faults](#serial-link-faults).
@@ -184,7 +185,7 @@ fixed address `172.30.32.2`. The developer documentation for apps tells an app t
 connections from that address only and to treat the user as authenticated. The daemon follows it:
 
 - The flag `--ingress` makes the daemon accept the calls of the dashboard from the connection address
-  `172.30.32.2` without a token. Only the 18 method and path pairs of
+  `172.30.32.2` without a token. Only the 24 method and path pairs of
   [`internal/daemon/ingress_routes.json`](../internal/daemon/ingress_routes.json) qualify. Every other
   request from that address needs the token. [SECURITY.md](../SECURITY.md#home-assistant-ingress) lists
   the pairs and what a user can do with them.

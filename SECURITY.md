@@ -31,18 +31,24 @@ For a request from `172.30.32.2`, the daemon skips the token for these method an
 are the calls of the dashboard. The list is `internal/daemon/ingress_routes.json`, and `{n}`, `{id}`
 and `{ref}` stand for a zone number, a device and a device reference:
 
-- Read: `GET /api/health`, `/api/zones`, `/api/nodes`, `/api/home`, `/api/boiler`, `/api/circuits` and
-  `/api/zones/{n}/schedule`.
+- Read: `GET /api/health`, `/api/zones`, `/api/nodes`, `/api/home`, `/api/boiler`, `/api/circuits`,
+  `/api/zones/{n}/schedule` and `/api/presets`.
 - Zone: `POST /api/zones/{n}/setpoint`, `/off`, `/auto`, `/boost` and `/window`, and
-  `PUT /api/zones/{n}/schedule`.
+  `PUT` and `DELETE /api/zones/{n}/schedule`.
+- Preset: `POST /api/presets`, `PATCH` and `DELETE /api/presets/{id}`, and
+  `POST /api/presets/{id}/activate`.
 - Home: `PATCH /api/home` (home or away).
 - Boiler: `POST /api/boiler/flow` (the flow limit).
 - Device: `POST /api/nodes/{id}/childlock` and `/identify`, and
   `PUT /api/install/devices/{ref}/label` (the label alone, no other field).
 
-So a Home Assistant user, without the token, can read the state of the plant, set temperatures and weekly
-schedules, switch zones off, switch the home between home and away, set the flow limit, rename a device,
-and lock or identify a valve. Every other request from that address needs the token. This includes
+So a Home Assistant user, without the token, can read the state of the plant, set temperatures, read,
+write and remove the home and the away program of a zone, create, rename, delete and switch the program
+presets, switch zones off, switch the home between home and away, set the flow limit, rename a device,
+and lock or identify a valve. A preset holds the weekly programs of the zones, so managing the presets is
+managing the weekly schedules: it gives no control over the plant that a schedule write does not already
+give. Only a preset that is active reaches the devices. The list gives no access to the installation, the
+network key or the firmware. Every other request from that address needs the token. This includes
 pairing, the installation and the network key, factory reset, reboot, calibration and firmware, the raw
 device reads and the debug routes. The daemon compares the method and the exact path. It reads the address of the TCP
 connection and no header. It ignores `--ingress`, and logs a warning, unless the process runs under the

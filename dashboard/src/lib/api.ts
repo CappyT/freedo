@@ -5,6 +5,7 @@ import type {
 	Health,
 	Home,
 	NodeView,
+	Preset,
 	Queued,
 	ScheduleView,
 	WindowView,
@@ -35,6 +36,12 @@ export interface ClientOptions {
 export interface EndSpec {
 	mode: EndRule;
 	durationSec?: number;
+}
+
+/** Which program of which preset a schedule route reads or writes. Both default to home and the active preset. */
+export interface ScheduleQuery {
+	mode?: 'home' | 'away';
+	preset?: number;
 }
 
 export interface Command extends Queued {
@@ -107,16 +114,19 @@ export function createClient(options: ClientOptions = {}) {
 		home: () => request<Home>('GET', 'home'),
 		boiler: () => request<Boiler>('GET', 'boiler'),
 		circuits: () => request<Circuit[]>('GET', 'circuits'),
-		/** The stored week of a zone, or null while the zone has none. */
-		schedule: async (n: number): Promise<ScheduleView | null> => {
+		/** The programs of a zone, or null while the named mode holds none. */
+		schedule: async (n: number, query: ScheduleQuery = {}): Promise<ScheduleView | null> => {
 			try {
-				return await request<ScheduleView>('GET', zone(n) + '/schedule');
+				return await request<ScheduleView>('GET', zone(n) + '/schedule' + scheduleQuery(query));
 			} catch (error) {
 				if (error instanceof ApiError && error.status === 404) return null;
 				throw error;
 			}
 		},
-		putSchedule: (n: number, programs: unknown) => request<ScheduleView>('PUT', zone(n) + '/schedule', { programs }),
+		putSchedule: (n: number, programs: unknown, query: ScheduleQuery = {}) =>
+			request<ScheduleView>('PUT', zone(n) + '/schedule' + scheduleQuery(query), { programs }),
+		deleteSchedule: (n: number, query: ScheduleQuery = {}) =>
+			request<ScheduleView>('DELETE', zone(n) + '/schedule' + scheduleQuery(query)),
 		setpoint: (n: number, setpointC: number, end: EndSpec) =>
 			request<Command>('POST', zone(n) + '/setpoint', { setpointC, ...endBody(end) }),
 		off: (n: number, end: EndSpec) => request<Command>('POST', zone(n) + '/off', endBody(end)),
@@ -124,6 +134,16 @@ export function createClient(options: ClientOptions = {}) {
 		boost: (n: number, on: boolean) => request<Command>('POST', zone(n) + '/boost', { on }),
 		window: (n: number, open: boolean) => request<WindowView>('POST', zone(n) + '/window', { open }),
 		setAway: (away: boolean) => request<Home & { queued: number }>('PATCH', 'home', { away }),
+		/** The program presets, in creation order. Exactly one carries active. */
+		presets: () => request<{ presets: Preset[] }>('GET', 'presets'),
+		/** Creates a preset with a copy of the active one, or of copyFrom. */
+		createPreset: (name: string, copyFrom?: number) =>
+			request<Preset>('POST', 'presets', copyFrom === undefined ? { name } : { name, copy_from: copyFrom }),
+		renamePreset: (id: number, name: string) => request<Preset>('PATCH', 'presets/' + id, { name }),
+		/** Removes a preset and its programs. The active preset answers 409. */
+		deletePreset: (id: number) => request<{ dropped: number }>('DELETE', 'presets/' + id),
+		activatePreset: (id: number) =>
+			request<{ id: number; name: string; active: boolean; queued: number }>('POST', 'presets/' + id + '/activate'),
 		/** The label of a device is unique in the installation, compared without case. */
 		renameDevice: (ref: string, label: string) =>
 			request<{ rev: number; device: unknown }>(
@@ -144,6 +164,15 @@ export type Client = ReturnType<typeof createClient>;
 /** timer carries durationSec; the other rules carry none. */
 function endBody(end: EndSpec): { mode: EndRule; durationSec?: number } {
 	return end.mode === 'timer' ? { mode: 'timer', durationSec: end.durationSec } : { mode: end.mode };
+}
+
+/** The query string of a schedule route. An absent field keeps the daemon default. */
+function scheduleQuery(query: ScheduleQuery): string {
+	const params = new URLSearchParams();
+	if (query.mode !== undefined) params.set('mode', query.mode);
+	if (query.preset !== undefined) params.set('preset', String(query.preset));
+	const text = params.toString();
+	return text === '' ? '' : '?' + text;
 }
 
 function isHealth(value: unknown): value is Health {

@@ -11,6 +11,7 @@ import {
 	fromView,
 	parseTime,
 	programBytes,
+	programInForce,
 	removeBlock,
 	removeGroup,
 	sameSchedule,
@@ -217,5 +218,14 @@ describe('the week view', () => {
 		}
 		expect(segments.mon[2]).toMatchObject({ from: 1320, to: 1440, enabled: false });
 		expect(segments.sat).toHaveLength(1);
+	});
+});
+
+describe('the program in force', () => {
+	it('is the away program only while the home is away and the zone has one', () => {
+		expect(programInForce(false, true)).toBe('home');
+		expect(programInForce(false, false)).toBe('home');
+		expect(programInForce(true, false)).toBe('home');
+		expect(programInForce(true, true)).toBe('away');
 	});
 });

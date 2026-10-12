@@ -1,7 +1,7 @@
 import { ApiError } from './api.ts';
 import { auth } from './auth.svelte.ts';
 import { api } from './session.ts';
-import type { Boiler, Circuit, Health, Home, NodeView, Zones } from './types.ts';
+import type { Boiler, Circuit, Health, Home, NodeView, Preset, Zones } from './types.ts';
 import { buildZones } from './zones.ts';
 
 const POLL_MS = 5000;
@@ -14,6 +14,7 @@ class Data {
 	home = $state<Home | null>(null);
 	boiler = $state<Boiler | null>(null);
 	circuits = $state<Circuit[]>([]);
+	presets = $state<Preset[]>([]);
 	/** False while no request reaches the daemon. */
 	reachable = $state(true);
 	loaded = $state(false);
@@ -52,13 +53,14 @@ class Data {
 		if (this.#busy || document.hidden || auth.blocked) return;
 		this.#busy = true;
 		try {
-			const [health, zones, nodes, home, boiler, circuits] = await Promise.allSettled([
+			const [health, zones, nodes, home, boiler, circuits, presets] = await Promise.allSettled([
 				api.health(),
 				api.zones(),
 				api.nodes(),
 				api.home(),
 				api.boiler(),
-				api.circuits()
+				api.circuits(),
+				api.presets()
 			]);
 			if (health.status === 'fulfilled') this.health = health.value;
 			if (zones.status === 'fulfilled') this.zones = zones.value;
@@ -66,7 +68,8 @@ class Data {
 			if (home.status === 'fulfilled') this.home = home.value;
 			if (boiler.status === 'fulfilled') this.boiler = boiler.value;
 			if (circuits.status === 'fulfilled') this.circuits = circuits.value;
-			const all = [health, zones, nodes, home, boiler, circuits];
+			if (presets.status === 'fulfilled') this.presets = presets.value.presets;
+			const all = [health, zones, nodes, home, boiler, circuits, presets];
 			const failed = all.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
 			if (failed.length < all.length) auth.accepted();
 			this.reachable = !(failed.length === all.length && failed.every((r) => r.reason instanceof ApiError && r.reason.status === 0));
