@@ -24,6 +24,7 @@ const calls: Record<string, Call> = {
 	boost: (c) => c.boost(3, true),
 	window: (c) => c.window(3, true),
 	setAway: (c) => c.setAway(true),
+	renameDevice: (c) => c.renameDevice('0201', 'bath'),
 	flow: (c) => c.flow(55, 1),
 	childLock: (c) => c.childLock('0201', true),
 	identify: (c) => c.identify('0201')

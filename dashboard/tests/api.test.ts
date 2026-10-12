@@ -99,6 +99,7 @@ describe('commands', () => {
 		await client.boost(3, true);
 		await client.window(3, false);
 		await client.setAway(true);
+		await client.renameDevice('0201', 'bath');
 		await client.flow(55, 1);
 		await client.childLock('0201', true);
 		await client.identify('0201');
@@ -108,11 +109,13 @@ describe('commands', () => {
 			'POST /api/zones/3/boost',
 			'POST /api/zones/3/window',
 			'PATCH /api/home',
+			'PATCH /api/install/devices/0201',
 			'POST /api/boiler/flow',
 			'POST /api/nodes/0201/childlock',
 			'POST /api/nodes/0201/identify'
 		]);
-		expect(calls[5]?.body).toEqual({ tempC: 55, id: 1 });
+		expect(calls[5]?.body).toEqual({ label: 'bath' });
+		expect(calls[6]?.body).toEqual({ tempC: 55, id: 1 });
 		expect(calls[4]?.body).toEqual({ away: true });
 	});
 

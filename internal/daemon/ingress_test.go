@@ -57,6 +57,7 @@ func sample(pair string) (method, path string) {
 	method, path, _ = strings.Cut(pair, " ")
 	path = strings.ReplaceAll(path, "{n}", "3")
 	path = strings.ReplaceAll(path, "{id}", "0201")
+	path = strings.ReplaceAll(path, "{ref}", "0201")
 	return method, path
 }
 

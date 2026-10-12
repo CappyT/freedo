@@ -8,6 +8,38 @@
 	import { zoneName } from './zones.ts';
 
 	let { devices, detailed = false }: { devices: DeviceRow[]; detailed?: boolean } = $props();
+
+	// The shared address of the row whose label is being changed, null when no row is.
+	let editing = $state<string | null>(null);
+	let draft = $state('');
+	let busy = $state(false);
+
+	function start(device: DeviceRow) {
+		editing = device.short;
+		draft = device.label;
+	}
+
+	function cancel() {
+		editing = null;
+	}
+
+	// A field that opens on a click gets no focus by itself, and the browser ignores autofocus.
+	function focus(node: HTMLInputElement) {
+		node.focus();
+		node.select();
+	}
+
+	async function save(device: DeviceRow) {
+		const label = draft.trim();
+		if (label === '' || label === device.label) {
+			editing = null;
+			return;
+		}
+		busy = true;
+		const done = await act(() => api.renameDevice(device.short, label), t('devices.renamed'));
+		busy = false;
+		if (done) editing = null;
+	}
 </script>
 
 {#if devices.length === 0}
@@ -17,7 +49,33 @@
 		{#each devices as device (device.short)}
 			<li class="device">
 				<div class="id">
-					<strong>{device.label}</strong>
+					{#if editing === device.short}
+						<form
+							class="rename row"
+							onsubmit={(e) => {
+								e.preventDefault();
+								void save(device);
+							}}
+						>
+							<input
+								class="input"
+								bind:value={draft}
+								aria-label={t('devices.name')}
+								use:focus
+								onkeydown={(e) => {
+									if (e.key === 'Escape') cancel();
+								}}
+							/>
+							<button class="btn icon" type="submit" disabled={busy} aria-label={t('devices.save')}>
+								<Icon name="check" size={18} />
+							</button>
+							<button class="btn icon" type="button" onclick={cancel} aria-label={t('action.cancel')}>
+								<Icon name="close" size={18} />
+							</button>
+						</form>
+					{:else}
+						<strong>{device.label}</strong>
+					{/if}
 					<span class="small muted">
 						{t(`kind.${device.kind}` as 'kind.valve')}
 						<span class="mono">{device.serial}</span>
@@ -61,6 +119,9 @@
 
 				{#if detailed}
 					<div class="actions row">
+						<button class="btn" onclick={() => start(device)}>
+							{t('devices.rename')}
+						</button>
 						{#if device.canIdentify}
 							<button class="btn" onclick={() => act(() => api.identify(device.short))}>
 								<Icon name="bell" size={18} />{t('devices.identify')}
@@ -156,6 +217,14 @@
 		width: 1.15rem;
 		height: 1.15rem;
 		accent-color: var(--action);
+	}
+
+	.rename {
+		width: 100%;
+	}
+
+	.rename .input {
+		flex: 1 1 6rem;
 	}
 
 	@media (max-width: 640px) {
