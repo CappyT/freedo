@@ -41,13 +41,25 @@ def _zones(hass: HomeAssistant, kind: type) -> list:
     ]
 
 
-def _runtimes(hass: HomeAssistant) -> list:
-    """The runtime of every loaded freedo entry."""
-    return [
-        entry.runtime_data
+def _runtimes(hass: HomeAssistant, config_entry_id: str | None = None) -> list:
+    """The runtime of the freedo entry a gas meter service targets. Without an
+    id, the one loaded entry: several loaded entries need one, so two hubs do
+    not record the same reading."""
+    entries = [
+        entry
         for entry in hass.config_entries.async_entries(DOMAIN)
         if getattr(entry, "runtime_data", None) is not None
     ]
+    if config_entry_id is not None:
+        for entry in entries:
+            if entry.entry_id == config_entry_id:
+                return [entry.runtime_data]
+        raise ServiceValidationError(translation_domain=DOMAIN, translation_key="unknown_hub")
+    if not entries:
+        raise ServiceValidationError(translation_domain=DOMAIN, translation_key="no_hub")
+    if len(entries) > 1:
+        raise ServiceValidationError(translation_domain=DOMAIN, translation_key="several_hubs")
+    return [entries[0].runtime_data]
 
 
 def _reading_time(at):
@@ -98,9 +110,7 @@ def async_setup_services(hass: HomeAssistant) -> None:
         await asyncio.gather(*(t.async_copy_schedule(call.data["to"]) for t in targets))
 
     async def calibrate_gas_meter(call: ServiceCall) -> None:
-        runtimes = _runtimes(hass)
-        if not runtimes:
-            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="no_hub")
+        runtimes = _runtimes(hass, call.data.get("config_entry_id"))
         for runtime in runtimes:
             await call_api(
                 runtime.client.record_gas_meter(
@@ -113,9 +123,7 @@ def async_setup_services(hass: HomeAssistant) -> None:
             await runtime.coordinator.async_request_refresh()
 
     async def undo_gas_meter_reading(call: ServiceCall) -> None:
-        runtimes = _runtimes(hass)
-        if not runtimes:
-            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="no_hub")
+        runtimes = _runtimes(hass, call.data.get("config_entry_id"))
         for runtime in runtimes:
             await call_api(runtime.client.undo_gas_meter_reading())
             await runtime.coordinator.async_request_refresh()
@@ -153,9 +161,13 @@ def async_setup_services(hass: HomeAssistant) -> None:
                 vol.Optional("estimate"): vol.Coerce(float),
                 vol.Optional("at"): cv.datetime,
                 vol.Optional("replaced"): cv.boolean,
+                vol.Optional("config_entry_id"): cv.string,
             }
         ),
     )
     hass.services.async_register(
-        DOMAIN, SERVICE_UNDO_GAS_METER_READING, undo_gas_meter_reading, vol.Schema({})
+        DOMAIN,
+        SERVICE_UNDO_GAS_METER_READING,
+        undo_gas_meter_reading,
+        vol.Schema({vol.Optional("config_entry_id"): cv.string}),
     )

@@ -362,12 +362,22 @@
         "replaced": {
           "name": "Compteur remplacé",
           "description": "Activez cette option lorsque le compteur physique a été remplacé : le démon supprime les relevés stockés et repart de ce relevé."
+        },
+        "config_entry_id": {
+          "name": "Hub",
+          "description": "Le hub freedo auquel appartient le relevé. Nécessaire seulement lorsque plusieurs hubs sont chargés."
         }
       }
     },
     "undo_gas_meter_reading": {
       "name": "Annuler le relevé du compteur de gaz",
-      "description": "Supprime le dernier relevé du compteur de gaz, pour corriger une faute de frappe."
+      "description": "Supprime le dernier relevé du compteur de gaz, pour corriger une faute de frappe.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Hub",
+          "description": "Le hub freedo auquel appartient le relevé. Nécessaire seulement lorsque plusieurs hubs sont chargés."
+        }
+      }
     },
     "get_schedule": {
       "name": "Lire la planification",
@@ -443,6 +453,12 @@
     },
     "no_hub": {
       "message": "Aucun hub freedo n'est chargé."
+    },
+    "several_hubs": {
+      "message": "Plusieurs hubs freedo sont chargés. Indiquez le hub avec le champ config_entry_id."
+    },
+    "unknown_hub": {
+      "message": "Aucun hub freedo chargé n'a ce config_entry_id."
     },
     "zones_failed": {
       "message": "Le démon a refusé certaines zones : {failures}"

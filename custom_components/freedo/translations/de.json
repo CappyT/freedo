@@ -362,12 +362,22 @@
         "replaced": {
           "name": "Zähler ersetzt",
           "description": "Setzen Sie dies, wenn der physische Zähler ersetzt wurde: der Daemon verwirft die gespeicherten Ablesungen und beginnt mit diesem Wert."
+        },
+        "config_entry_id": {
+          "name": "Hub",
+          "description": "Der freedo-Hub, zu dem die Ablesung gehört. Nur nötig, wenn mehrere Hubs geladen sind."
         }
       }
     },
     "undo_gas_meter_reading": {
       "name": "Gaszählerablesung rückgängig machen",
-      "description": "Entfernt die letzte Gaszählerablesung, um einen Tippfehler zu korrigieren."
+      "description": "Entfernt die letzte Gaszählerablesung, um einen Tippfehler zu korrigieren.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Hub",
+          "description": "Der freedo-Hub, zu dem die Ablesung gehört. Nur nötig, wenn mehrere Hubs geladen sind."
+        }
+      }
     },
     "get_schedule": {
       "name": "Zeitplan abrufen",
@@ -443,6 +453,12 @@
     },
     "no_hub": {
       "message": "Es ist kein freedo-Hub geladen."
+    },
+    "several_hubs": {
+      "message": "Es sind mehrere freedo-Hubs geladen. Benennen Sie den Hub mit dem Feld config_entry_id."
+    },
+    "unknown_hub": {
+      "message": "Kein geladener freedo-Hub hat diese config_entry_id."
     },
     "zones_failed": {
       "message": "Der Daemon hat einige Zonen abgelehnt: {failures}"

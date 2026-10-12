@@ -247,7 +247,9 @@ the current counter) and `at` the time it was taken (else now). The field
 readings and starts the new meter from this reading. The daemon refuses a
 reading below the previous one and an estimate outside its range with `400`, and
 answers `503` while the installation holds no gas flows. The service
-`freedo.undo_gas_meter_reading` removes the last reading, to undo a typo.
+`freedo.undo_gas_meter_reading` removes the last reading, to undo a typo. With
+several hubs loaded, both services need the field `config_entry_id` to name the
+hub, so both do not record the same reading.
 
 - Sensor Gas meter is the meter value the daemon estimates between the readings,
   in the unit of `fuel_unit`. It is unavailable while no reading is stored. The

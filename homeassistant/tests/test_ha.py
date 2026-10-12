@@ -2707,6 +2707,57 @@ async def test_undo_gas_meter_reading(hass, client):
     assert hass.states.get(meter).state == "unavailable"
 
 
+async def add_second_hub(hass, client):
+    """A second loaded freedo entry, on the same fake daemon client."""
+    entry = MockConfigEntry(
+        domain=DOMAIN, data={CONF_HOST: "127.0.0.2", CONF_PORT: 8080}, options={}
+    )
+    entry.add_to_hass(hass)
+    with patch("custom_components.freedo.FreedoClient", return_value=client):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+    return entry
+
+
+async def test_calibrate_gas_meter_names_the_hub_with_two_hubs(hass, client):
+    with_meter(client, dict(METER))
+    await setup_entry(hass, client)
+    second = await add_second_hub(hass, client)
+
+    # Two loaded hubs without an id are ambiguous.
+    with pytest.raises(ServiceValidationError) as err:
+        await call_freedo(hass, "calibrate_gas_meter", {"value": 8786.5})
+    assert err.value.translation_key == "several_hubs"
+
+    # The id targets one hub: the shared client records one reading only.
+    client.calls.clear()
+    await call_freedo(
+        hass, "calibrate_gas_meter", {"value": 8786.5, "config_entry_id": second.entry_id}
+    )
+    assert client.calls == [("gas_meter", 8786.5, None, None, False)]
+
+    # An id that names no loaded hub is refused.
+    with pytest.raises(ServiceValidationError) as err:
+        await call_freedo(
+            hass, "calibrate_gas_meter", {"value": 8786.5, "config_entry_id": "missing"}
+        )
+    assert err.value.translation_key == "unknown_hub"
+
+
+async def test_undo_gas_meter_reading_names_the_hub(hass, client):
+    with_meter(client, dict(METER))
+    await setup_entry(hass, client)
+    second = await add_second_hub(hass, client)
+
+    client.calls.clear()
+    await call_freedo(hass, "undo_gas_meter_reading", {"config_entry_id": second.entry_id})
+    assert client.calls == [("undo_gas_meter",)]
+
+    with pytest.raises(ServiceValidationError) as err:
+        await call_freedo(hass, "undo_gas_meter_reading", {})
+    assert err.value.translation_key == "several_hubs"
+
+
 async def test_boiler_gas_numbers(hass, client):
     entry = await setup_entry(hass, client)
     registry = er.async_get(hass)

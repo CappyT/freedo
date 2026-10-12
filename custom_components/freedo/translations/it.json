@@ -362,12 +362,22 @@
         "replaced": {
           "name": "Contatore sostituito",
           "description": "Attiva questa opzione quando il contatore fisico è stato sostituito: il daemon elimina le letture memorizzate e riparte da questa lettura."
+        },
+        "config_entry_id": {
+          "name": "Hub",
+          "description": "L'hub freedo a cui appartiene la lettura. Necessario solo quando sono caricati più hub."
         }
       }
     },
     "undo_gas_meter_reading": {
       "name": "Annulla la lettura del contatore gas",
-      "description": "Rimuove l'ultima lettura del contatore gas, per correggere un refuso."
+      "description": "Rimuove l'ultima lettura del contatore gas, per correggere un refuso.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Hub",
+          "description": "L'hub freedo a cui appartiene la lettura. Necessario solo quando sono caricati più hub."
+        }
+      }
     },
     "get_schedule": {
       "name": "Leggi programma",
@@ -443,6 +453,12 @@
     },
     "no_hub": {
       "message": "Nessun hub freedo è caricato."
+    },
+    "several_hubs": {
+      "message": "Sono caricati più hub freedo. Indica l'hub con il campo config_entry_id."
+    },
+    "unknown_hub": {
+      "message": "Nessun hub freedo caricato ha questo config_entry_id."
     },
     "zones_failed": {
       "message": "Il daemon ha rifiutato alcune zone: {failures}"

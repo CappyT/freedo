@@ -272,12 +272,22 @@
         "replaced": {
           "name": "Replaced meter",
           "description": "Set this when the physical meter was replaced: the daemon drops the stored readings and starts the new meter from this reading."
+        },
+        "config_entry_id": {
+          "name": "Hub",
+          "description": "The freedo hub the reading belongs to. Needed only when several hubs are loaded."
         }
       }
     },
     "undo_gas_meter_reading": {
       "name": "Undo gas meter reading",
-      "description": "Removes the last gas meter reading, to undo a typo."
+      "description": "Removes the last gas meter reading, to undo a typo.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Hub",
+          "description": "The freedo hub the reading belongs to. Needed only when several hubs are loaded."
+        }
+      }
     },
     "get_schedule": {
       "name": "Get schedule",
@@ -332,6 +342,8 @@
     "copy_to_itself": { "message": "A zone cannot copy its schedule to itself." },
     "no_zones": { "message": "No freedo zone is loaded." },
     "no_hub": { "message": "No freedo hub is loaded." },
+    "several_hubs": { "message": "Several freedo hubs are loaded. Name the hub with the config_entry_id field." },
+    "unknown_hub": { "message": "No loaded freedo hub has this config_entry_id." },
     "zones_failed": { "message": "The daemon refused some zones: {failures}" },
     "hot_water_temperature_required": { "message": "The hot water zone has no target temperature. Set one with the temperature control. This also selects mode heat." },
     "zone_temperature_required": { "message": "The zone has no target temperature. Set one with the temperature control. This also selects mode heat." }

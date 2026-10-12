@@ -134,5 +134,14 @@ calibrate_gas_meter:
       default: false
       selector:
         boolean:
+    config_entry_id:
+      selector:
+        config_entry:
+          integration: freedo
 
 undo_gas_meter_reading:
+  fields:
+    config_entry_id:
+      selector:
+        config_entry:
+          integration: freedo
