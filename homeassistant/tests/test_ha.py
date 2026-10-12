@@ -1667,7 +1667,11 @@ async def test_external_room_sensor_shows_the_daemon_view(hass, client):
 
     active = external_room_sensor(hass, entry, 1)
     assert active.state == "active"
+    assert active.attributes["correction"] == "continuous_shift"
+    assert active.attributes["source"] == "Living thermometer"
     assert active.attributes["offset_mode"] == "setpoint"
+    assert active.attributes["device_class"] == "enum"
+    assert active.attributes["options"] == ["active", "no_correction", "no_reading", "stale"]
     assert active.attributes["temperature_c"] == 21.4
     assert active.attributes["age_sec"] == 120
     assert active.attributes["device_temperature_c"] == 20.9
@@ -1677,7 +1681,7 @@ async def test_external_room_sensor_shows_the_daemon_view(hass, client):
 
     # Zone 2 is in mode config: the daemon takes no reading, and the sensor says why.
     wrong_mode = external_room_sensor(hass, entry, 2)
-    assert wrong_mode.state == "wrong_offset_mode"
+    assert wrong_mode.state == "no_correction"
     assert wrong_mode.attributes["offset_mode"] == "config"
     assert wrong_mode.attributes["temperature_c"] is None
 
@@ -1708,7 +1712,7 @@ async def test_external_room_sensor_follows_the_offset_mode(hass, client):
         {"tempC": None, "at": None, "ageSec": None, "inUse": False, "wantedC": None}
     )
     await refresh(hass, entry)
-    assert external_room_sensor(hass, entry, 1).state == "wrong_offset_mode"
+    assert external_room_sensor(hass, entry, 1).state == "no_correction"
 
 
 async def test_no_external_room_sensor_on_a_daemon_without_the_view(hass, client):
@@ -2387,7 +2391,7 @@ async def test_offset_mode_select(hass, client):
 async def test_offset_mode_select_updates_the_room_sensor_state(hass, client):
     entry = await setup_entry(hass, client, enabled=OFFSET_MODE_ENABLED)
     bedroom = entity_id(hass, entry, "select", "zone2_offset_mode")
-    assert external_room_sensor(hass, entry, 2).state == "wrong_offset_mode"
+    assert external_room_sensor(hass, entry, 2).state == "no_correction"
 
     await hass.services.async_call(
         "select", "select_option", {ATTR_ENTITY_ID: bedroom, "option": "setpoint"}, blocking=True

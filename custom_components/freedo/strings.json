@@ -149,7 +149,7 @@
         "name": "External room sensor",
         "state": {
           "active": "In use",
-          "wrong_offset_mode": "Offset mode is not Setpoint shift",
+          "no_correction": "No correction",
           "no_reading": "No reading",
           "stale": "Reading too old"
         }

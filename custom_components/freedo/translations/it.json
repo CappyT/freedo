@@ -197,9 +197,9 @@
         "name": "Sensore ambiente esterno",
         "state": {
           "active": "In uso",
-          "wrong_offset_mode": "La modalità di compensazione non è Spostamento del setpoint",
+          "no_correction": "Nessuna correzione",
           "no_reading": "Nessuna lettura",
-          "stale": "Lettura troppo vecchia"
+          "stale": "Lettura vecchia"
         }
       },
       "calibration": {

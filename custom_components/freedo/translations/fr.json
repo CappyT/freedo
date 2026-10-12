@@ -197,7 +197,7 @@
         "name": "Capteur de pièce externe",
         "state": {
           "active": "Utilisé",
-          "wrong_offset_mode": "Le mode de décalage n'est pas Décalage de la consigne",
+          "no_correction": "Aucune correction",
           "no_reading": "Aucune mesure",
           "stale": "Mesure trop ancienne"
         }

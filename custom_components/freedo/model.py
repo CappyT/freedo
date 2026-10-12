@@ -72,7 +72,7 @@ ROOM_TEMP_MAX_C = 50.0
 
 # The state of the external room temperature of a zone: in use, or the cause it
 # is not. See room_temp_state.
-ROOM_TEMP_STATES = ("active", "wrong_offset_mode", "no_reading", "stale")
+ROOM_TEMP_STATES = ("active", "no_correction", "no_reading", "stale")
 
 # The last option of the temperature source select. It maps nothing: choosing
 # it explains where to map a sensor. The option is a fixed name, so it carries a
@@ -569,7 +569,7 @@ def device_zones(data: FreedoData) -> dict[str, int]:
 
 def room_temp_state(data: FreedoData, zone: Zone) -> str | None:
     """"active" while the zone regulates on the external room temperature, else
-    the cause: the offset mode takes no reading (the daemon refuses one then),
+    the cause: the zone has no correction (the daemon refuses a reading then),
     no reading came, or the reading is older than room_temp_max_age_sec. None
     when the daemon does not serve the view or the offset mode. Modes config and
     dbg2 take the reading too while auto_offset is on."""
@@ -582,7 +582,7 @@ def room_temp_state(data: FreedoData, zone: Zone) -> str | None:
     if mode is None:
         return None
     if mode != OFFSET_MODE_SETPOINT and not zone_auto_offset(data, zone):
-        return "wrong_offset_mode"
+        return "no_correction"
     if view.get("tempC") is None:
         return "no_reading"
     return "stale" if view.get("stale") else None

@@ -297,11 +297,13 @@ hub, so both do not record the same reading.
   Reports.
 - Sensor External room sensor shows whether a heating zone regulates on the
   reading of its room temperature sensor. The state is `active`, or the cause:
-  `wrong_offset_mode` (the offset mode is not `setpoint` and switch Automatic
-  correction is off), `no_reading` (the daemon holds no reading) or `stale` (the
+  `no_correction` (select Room temperature correction is None), `no_reading`
+  (the daemon holds no reading) or `stale` (the
   last reading is older than `room_temp_max_age_sec`). It is unknown while the
-  daemon serves no offset mode. The attributes are `offset_mode`,
-  `temperature_c` and `age_sec` (the reading), `device_temperature_c` (the
+  daemon serves no offset mode. It is an enum sensor with short translated
+  states. The attributes are `correction` (`none`, `continuous_shift` or
+  `valve_calibration`), `offset_mode`, `source`, `temperature_c` and `age_sec`
+  (the reading), `device_temperature_c` (the
   temperature of the valve), `shift_c` (the shift applied to the setpoints) and
   `wanted_shift_c` (the shift it moves toward). The sensor needs a daemon that
   serves `externalTemp` in `GET /api/zones`.
@@ -790,7 +792,7 @@ target on the reading of that sensor.
   the branch Rooms and in select Temperature source. With the correction None the
   daemon answers 409 to a reading, because the other modes write tag `0140` to
   the device. The integration keeps the mapping and logs the first refusal of a
-  zone. The sensor External room sensor shows `wrong_offset_mode`.
+  zone. The sensor External room sensor shows `no_correction`.
 - The correction is slow by design, because a valve next to a radiator swings
   by several degrees. The daemon cannot change what the valve measures, so it
   filters the difference with a time constant of 2 hours, shifts the setpoints

@@ -600,7 +600,7 @@ def test_room_temp_state():
     assert sorted(d.room_temps) == [1, 2]
     assert room_temp_state(d, d.zones[1]) == "active"
     # Zone 2 is in mode config: the daemon takes no reading.
-    assert room_temp_state(d, d.zones[2]) == "wrong_offset_mode"
+    assert room_temp_state(d, d.zones[2]) == "no_correction"
     # The hot water zone has no view.
     assert room_temp_state(d, d.zones[9]) is None
 

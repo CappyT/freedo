@@ -197,7 +197,7 @@
         "name": "Externer Raumsensor",
         "state": {
           "active": "In Verwendung",
-          "wrong_offset_mode": "Offset-Modus ist nicht Sollwertverschiebung",
+          "no_correction": "Keine Korrektur",
           "no_reading": "Kein Messwert",
           "stale": "Messwert zu alt"
         }
