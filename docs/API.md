@@ -137,7 +137,7 @@ banner.
 | `POST /api/nodes/{id}/boost` | Low-level boost. |
 | `POST /api/nodes/{id}/childlock` | Lock or unlock the controls of a valve. |
 | `GET`, `PUT /api/nodes/{id}/display` | Read or write the display settings of a valve. |
-| `POST /api/nodes/{id}/identify`, `.../beep` | Make a valve signal itself (`beep` is an alias). |
+| `POST /api/nodes/{id}/identify`, `.../beep` | Make a valve or the wall thermostat signal itself (`beep` is an alias). |
 | `POST /api/nodes/{id}/calibrate` | Start the motor calibration of a valve. |
 | `POST /api/nodes/{id}/reboot` | Restart a device. |
 | `POST /api/nodes/{id}/extui` | Write the external interface endpoints. |
@@ -721,8 +721,8 @@ report adds a sample with `4060`, `40a0`, `4160` and the fresh outdoor temperatu
 - `POST /api/nodes/{id}/childlock` is for valves only. Another device kind gets `400`,
   because the wall thermostat has no `d/lock`. `ChildLock` in `/api/nodes` is `false` until
   the valve confirms a write, and `null` on a device that is not a valve.
-- `POST /api/nodes/{id}/identify` makes a valve signal itself. It needs a valve that
-  belongs to a zone.
+- `POST /api/nodes/{id}/identify` makes a valve or the wall thermostat signal itself. The
+  thermostat shows "Hi!" on its display. It needs a device that belongs to a zone.
 - `POST /api/nodes/{id}/calibrate` starts the motor calibration of a valve. The daemon sends
   `PUT d/calibrate` and waits for the `2.xx` answer. A `2.xx` does not guarantee the stroke,
   because the valve drops the request in silence in some states. The result arrives in the

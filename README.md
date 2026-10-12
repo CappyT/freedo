@@ -205,7 +205,7 @@ what is not verified on air. The routes are in [`docs/API.md`](docs/API.md). The
 | Open window detection | partial | A reset ends only a window that Home Assistant set. A window that a valve detected lasts until its time ends. |
 | Hot water: on, temperature, program | equal | The daemon keeps the program and writes the thermostat at each block change. |
 | Child lock | equal | Valves only. The wall thermostat firmware has no child lock. |
-| Identify a device | equal | Valves in a zone only. The wall thermostat firmware registers `d/identify` too, not verified on air. |
+| Identify a device | equal | Valves and the wall thermostat in a zone. The thermostat shows "Hi!" on its display. |
 | Display orientation and change notice | equal | A full `d/config` write homes the valve motor, as with the commercial bridge. |
 | Valve calibration | equal | The command comes from firmware and ran on one valve. A `2.xx` answer does not guarantee the stroke. |
 | Temperature correction | equal | Three modes. `config` homes the motor. `dbg2` ran on one valve and is in no capture. |
