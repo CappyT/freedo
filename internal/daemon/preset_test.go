@@ -1434,3 +1434,30 @@ func TestReplaceInstallDropsProgramsOfGoneZones(t *testing.T) {
 		t.Errorf("zone_program holds zones %v after the replace, want [3]", zones)
 	}
 }
+
+// TestHasProgramMeansProgramInForce: hasProgram reports the program in force.
+// A zone with only an away program has none at home, so a client picks no
+// until_next there, which the daemon refuses on hot water, and has one in
+// away.
+func TestHasProgramMeansProgramInForce(t *testing.T) {
+	clock := newTestClock(time.Date(2026, 1, 5, 5, 0, 0, 0, time.UTC))
+	_, url := newPresetDaemon(t, clock)
+	var view map[string]any
+	if code := postJSON(t, http.MethodPut, url+"/api/zones/0/schedule?mode=away",
+		allDayProgram(map[string]any{"minute": 0, "setpoint_c": 50.0}), &view); code != http.StatusOK {
+		t.Fatalf("hot-water away schedule: code=%d %v", code, view)
+	}
+	if got := mustTarget(t, url, 0)["hasProgram"]; got != false {
+		t.Errorf("hasProgram of hot water with only an away program, at home: %v, want false", got)
+	}
+	if code := postJSON(t, http.MethodPost, url+"/api/zones/0/setpoint",
+		map[string]any{"setpointC": 50.0, "mode": "until_next"}, &view); code != http.StatusBadRequest {
+		t.Errorf("until_next on hot water with no program in force: code=%d %v, want 400", code, view)
+	}
+	if code := postJSON(t, http.MethodPatch, url+"/api/home", map[string]any{"away": true}, &view); code != http.StatusOK {
+		t.Fatalf("away: code=%d %v", code, view)
+	}
+	if got := mustTarget(t, url, 0)["hasProgram"]; got != true {
+		t.Errorf("hasProgram of hot water with an away program, in away: %v, want true", got)
+	}
+}

@@ -450,15 +450,14 @@ func overlayKind(overlay byte) string {
 // with (manual, timer, until_next or until_auto_change) and endsAt is the
 // deadline the coordinator keeps, null while the rule has none.
 //
-// hasProgram tells whether the daemon holds a weekly program for the zone.
-// source is "program" without one too: the zone then runs the block its device
-// reports, and programC is the 6200 of the zone cache, null when it holds none.
+// hasProgram tells whether a weekly program is in force for the zone
+// (programInForce): the one until_next ends on and programC comes from. A zone
+// with only an away program has none at home. source is "program" without one
+// too: the zone then runs the block its device reports, and programC is the
+// 6200 of the zone cache, null when it holds none.
 func (d *daemon) zoneTargetView(e *tado.EmuState, z *tado.Zone) map[string]any {
 	hotWater := z.Kind == tado.ZoneHotWater
-	_, held := d.zonePrograms(z.Number)
-	if _, awayHeld := d.awayProgramOf(z.Number); awayHeld {
-		held = true
-	}
+	_, held := d.programInForce(z.Number)
 	view := map[string]any{
 		"targetC": nil, "source": nil, "overlay": nil,
 		"programC": nil, "programOff": false, "hasProgram": held, "boost": false, "known": false,

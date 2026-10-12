@@ -531,8 +531,10 @@ sensor.
   - `overlay_ends_at` is the instant the daemon ends the overlay. It is empty
     without a deadline: a manual overlay, and `until_auto_change` without a
     program. The remaining time is `overlay_ends_at` minus now.
-  - `has_program` is true while the daemon holds a weekly program for the zone
-    (`declared[].target.hasProgram`). It is false for a zone with no program,
+  - `has_program` is true while a weekly program of the daemon is in force for
+    the zone (`declared[].target.hasProgram`): in away, the away program of a
+    zone that has one, else the home program. It is false for a zone with no
+    program in force,
     and empty on a daemon that does not report it. `target_source` reads
     `program` in both cases. `program_temperature` of a zone with no program is
     the `6200` of the zone cache, empty when the cache holds none.

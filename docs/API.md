@@ -336,11 +336,13 @@ replaces queued writes that repeat the old overlay.
 - `targetC` is `null` when the device follows a value of its own: open window, away without
   a temperature, an off overlay or a program block that is off. It is also `null` on a zone
   that has no program and whose zone cache holds no `6200`.
-- `hasProgram` is `true` while the daemon holds a weekly program for the zone, in either
-  mode ([home or away](#program-presets)). It is `false`
-  for a zone with no program. `source` is `program` in both cases, because it only says that
-  no overlay, window or away state applies. Read `hasProgram` to tell a zone that follows a
-  program from a zone that has none.
+- `hasProgram` is `true` while a weekly program is in force for the zone: in away, the away
+  program of a zone that has one, else the home program
+  ([program presets](#program-presets)). It is `false` for a zone with no program in force,
+  also for a zone with only an away program while the home is at home. `source` is
+  `program` in both cases, because it only says that no overlay, window or away state
+  applies. Read `hasProgram` to tell a zone that follows a program from a zone that has
+  none.
 - `programC` and `programOff` are the block of the program in force: in away, the block of
   the away program of a zone that has one. Without a program, `programC` is the `6200` that
   the zone cache holds (the last write or
