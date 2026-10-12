@@ -7,6 +7,8 @@ package daemon
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -762,5 +764,39 @@ func TestScheduleRoutesModeAndPreset(t *testing.T) {
 	}
 	if code := postJSON(t, http.MethodDelete, url+"/api/zones/10/schedule?mode=away", nil, &view); code != http.StatusNotFound {
 		t.Errorf("DELETE the away program again: code=%d, want 404", code)
+	}
+}
+
+// TestPresetStoreNameAndMissingErrors: the preset store maps the unique
+// violation of a name, in a create or a rename, to errPresetNameTaken, and a
+// rename or a delete of an unknown id to sql.ErrNoRows, so the routes answer
+// 409 and 404 instead of 500 and a success.
+func TestPresetStoreNameAndMissingErrors(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+	if _, err := store.CreatePreset(ctx, "Default", 0); err != nil {
+		t.Fatal(err)
+	}
+	copied, err := store.CreatePreset(ctx, "Winter", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CreatePreset(ctx, "default", 0); !errors.Is(err, errPresetNameTaken) {
+		t.Errorf("create a taken name: err=%v, want errPresetNameTaken", err)
+	}
+	if err := store.RenamePreset(ctx, copied, "DEFAULT"); !errors.Is(err, errPresetNameTaken) {
+		t.Errorf("rename to a taken name: err=%v, want errPresetNameTaken", err)
+	}
+	if err := store.RenamePreset(ctx, copied, "WINTER"); err != nil {
+		t.Errorf("rename to its own name in another case: err=%v, want nil", err)
+	}
+	if err := store.RenamePreset(ctx, 4242, "x"); !errors.Is(err, sql.ErrNoRows) {
+		t.Errorf("rename an unknown id: err=%v, want sql.ErrNoRows", err)
+	}
+	if err := store.DeletePreset(ctx, 4242); !errors.Is(err, sql.ErrNoRows) {
+		t.Errorf("delete an unknown id: err=%v, want sql.ErrNoRows", err)
+	}
+	if err := store.DeletePreset(ctx, copied); err != nil {
+		t.Errorf("delete a stored preset: err=%v, want nil", err)
 	}
 }

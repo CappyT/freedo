@@ -17,6 +17,9 @@ import (
 	"strings"
 	"time"
 
+	"modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
+
 	"freedo/internal/install"
 	"freedo/tado"
 )
@@ -268,6 +271,15 @@ func (s *stateStore) HotWaterProgram(ctx context.Context) ([]tado.ScheduleProgra
 // on the engine goroutine, so a duplicate never reaches the database.
 var errPresetNameTaken = errors.New("a preset with that name already exists")
 
+// presetNameErr maps the unique violation of preset.name to errPresetNameTaken.
+func presetNameErr(err error) error {
+	var se *sqlite.Error
+	if errors.As(err, &se) && se.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
+		return errPresetNameTaken
+	}
+	return err
+}
+
 // presetRow is one stored preset.
 type presetRow struct {
 	id   int64
@@ -347,7 +359,7 @@ func (s *stateStore) CreatePreset(ctx context.Context, name string, copyFrom int
 	defer tx.Rollback()
 	res, err := tx.ExecContext(ctx, `INSERT INTO preset (name) VALUES (?)`, name)
 	if err != nil {
-		return 0, err
+		return 0, presetNameErr(err)
 	}
 	id, err := res.LastInsertId()
 	if err != nil {
@@ -363,29 +375,12 @@ func (s *stateStore) CreatePreset(ctx context.Context, name string, copyFrom int
 	return id, tx.Commit()
 }
 
-// presetNamed reports whether a preset holds name, without case, and its id.
-func (s *stateStore) presetNamed(ctx context.Context, name string) (int64, bool, error) {
-	var id int64
-	switch err := s.db.QueryRowContext(ctx, `SELECT id FROM preset WHERE name = ? COLLATE NOCASE`, name).Scan(&id); {
-	case errors.Is(err, sql.ErrNoRows):
-		return 0, false, nil
-	case err != nil:
-		return 0, false, err
-	}
-	return id, true, nil
-}
-
 // RenamePreset renames id, or returns errPresetNameTaken when another preset
 // holds the name, and sql.ErrNoRows when no preset holds id.
 func (s *stateStore) RenamePreset(ctx context.Context, id int64, name string) error {
-	if other, taken, err := s.presetNamed(ctx, name); err != nil {
-		return err
-	} else if taken && other != id {
-		return errPresetNameTaken
-	}
 	res, err := s.db.ExecContext(ctx, `UPDATE preset SET name = ? WHERE id = ?`, name, id)
 	if err != nil {
-		return err
+		return presetNameErr(err)
 	}
 	if n, err := res.RowsAffected(); err != nil {
 		return err
@@ -395,7 +390,8 @@ func (s *stateStore) RenamePreset(ctx context.Context, id int64, name string) er
 	return nil
 }
 
-// DeletePreset drops id and its programs in one transaction.
+// DeletePreset drops id and its programs in one transaction, or returns
+// sql.ErrNoRows when no preset holds id.
 func (s *stateStore) DeletePreset(ctx context.Context, id int64) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -405,8 +401,14 @@ func (s *stateStore) DeletePreset(ctx context.Context, id int64) error {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM zone_program WHERE preset = ?`, id); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM preset WHERE id = ?`, id); err != nil {
+	res, err := tx.ExecContext(ctx, `DELETE FROM preset WHERE id = ?`, id)
+	if err != nil {
 		return err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n == 0 {
+		return sql.ErrNoRows
 	}
 	return tx.Commit()
 }

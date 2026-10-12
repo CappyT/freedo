@@ -117,7 +117,10 @@ func (d *daemon) postPreset(w http.ResponseWriter, r *http.Request) {
 		var id int64
 		if d.state != nil {
 			var err error
-			if id, err = d.state.CreatePreset(context.Background(), name, source); err != nil {
+			switch id, err = d.state.CreatePreset(context.Background(), name, source); {
+			case errors.Is(err, errPresetNameTaken):
+				return nil, apiErrf(http.StatusConflict, "a preset named %q already exists", name)
+			case err != nil:
 				return nil, &stateSaveError{err: err}
 			}
 		} else {
@@ -206,7 +209,10 @@ func (d *daemon) deletePreset(w http.ResponseWriter, r *http.Request) {
 			return nil, apiErrf(http.StatusConflict, "the last preset cannot be deleted")
 		}
 		if d.state != nil {
-			if err := d.state.DeletePreset(context.Background(), id); err != nil {
+			switch err := d.state.DeletePreset(context.Background(), id); {
+			case errors.Is(err, sql.ErrNoRows):
+				return nil, apiErrf(http.StatusNotFound, "preset %d is not declared", id)
+			case err != nil:
 				return nil, &stateSaveError{err: err}
 			}
 		}
