@@ -21,6 +21,7 @@ from .model import (
     FUEL_KG,
     FUEL_LITRE,
     FUEL_M3,
+    KIND_HEATING,
     KIND_HOT_WATER,
     Zone,
     node_display,
@@ -38,6 +39,8 @@ FUEL_FLOW_UNITS = {
 }
 
 _MODELS = {"valve": "Smart Radiator Thermostat", "thermostat": "Wired Smart Thermostat"}
+# The device model is not translatable in Home Assistant.
+_ZONE_MODELS = {KIND_HEATING: "Heating zone", KIND_HOT_WATER: "Hot water zone"}
 
 
 def hub_device_info(entry_id: str) -> DeviceInfo:
@@ -98,7 +101,7 @@ class FreedoEntity(CoordinatorEntity[FreedoCoordinator]):
             name=zone.name,
             translation_key="hot_water_zone" if zone.kind == KIND_HOT_WATER else None,
             manufacturer="tado",
-            model=f"{zone.kind} zone",
+            model=_ZONE_MODELS.get(zone.kind, "Zone"),
             via_device_id=self._hub_device_id,
         )
 

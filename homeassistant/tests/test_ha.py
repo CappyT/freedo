@@ -537,6 +537,9 @@ async def test_devices_link_to_hub(hass, client, caplog):
     # The hot water zone takes its translated name, not the stored one.
     assert {"Living", "Bedroom", "Hot water"} <= names
     assert any(d.serial_number == "VA0000000001" for d in children)
+    # The zone devices carry a model name in words.
+    assert zone_device(hass, entry, 1).model == "Heating zone"
+    assert zone_device(hass, entry, 9).model == "Hot water zone"
     # The node fw/state telemetry sets the firmware of the device.
     by_serial = {d.serial_number: d for d in children}
     assert by_serial["VA0000000001"].sw_version == "2.5"
