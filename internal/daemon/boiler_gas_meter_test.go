@@ -164,6 +164,39 @@ func TestGasMeterReplacedMeter(t *testing.T) {
 	}
 }
 
+// TestGasMeterStaysMonotonicAfterACrash: the estimate of a reading comes from
+// the counter the database holds. A restart restores that counter, so the meter
+// value cannot fall below the last reading.
+func TestGasMeterStaysMonotonicAfterACrash(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.db")
+	store := newTestStore(t, path)
+	clock := newTestClock(energyStart)
+	d, url := newMeterDaemon(t, installWithGas(t, 2.7, 0.3), clock, store)
+
+	// The database holds a counter of 10. The running counter moves on to 30
+	// before the next save, the way a minute of integration leaves it.
+	if _, err := d.do(func(*tado.EmuState) (any, error) {
+		d.energy.totalM3, d.energy.shownM3 = 10, 10
+		return nil, d.saveEnergy()
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.do(func(*tado.EmuState) (any, error) { d.energy.totalM3 = 30; return nil, nil }); err != nil {
+		t.Fatal(err)
+	}
+	if code, resp := postReading(t, url, map[string]any{"reading": 100}); code != http.StatusOK {
+		t.Fatalf("reading: code=%d %v", code, resp)
+	}
+
+	// A crash restores the saved counter and the readings.
+	crashed := newEnergyDaemon(t, installWithGas(t, 2.7, 0.3), clock, store)
+	m := crashed.gasMeterView()
+	if got, last := m["value"].(float64), m["lastReading"].(float64); got < last {
+		t.Fatalf("meter value after a crash = %v, below the last reading %v", got, last)
+	}
+	nearMeter(t, "value after a crash", m["value"], 100)
+}
+
 // TestGasMeterFollowsTheCounter: between readings the value follows the fuel
 // counter at the learned factor, and the raw counter and flow stay unchanged.
 func TestGasMeterFollowsTheCounter(t *testing.T) {

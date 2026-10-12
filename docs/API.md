@@ -883,8 +883,8 @@ unit of `energy.gas.totalM3`, and estimates the meter value between readings.
 
 `POST /api/boiler/gas/meter` with `{"reading": 8785.957}` records one reading. `estimate` is the
 fuel counter when the reading was taken, for a reading the user took a while ago: it is from 0 up
-to the current counter, and it defaults to the current counter. `at` is the RFC3339 time the
-reading was taken, not in the future, stored for display only, and it defaults to now.
+to the current counter, and it defaults to the counter the database holds. `at` is the RFC3339 time
+the reading was taken, not in the future, stored for display only, and it defaults to now.
 `replaced` is an optional boolean for a new meter: it drops every stored reading first and starts
 the correction factor over, so the new meter may read below the old one.
 

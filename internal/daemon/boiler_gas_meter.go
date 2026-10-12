@@ -106,7 +106,7 @@ func (d *daemon) gasMeterView() map[string]any {
 	last := rs[len(rs)-1]
 	factor, n := gasFactor(rs)
 	return map[string]any{
-		"value":          round3(last.Reading + factor*(d.energy.totalM3-last.Estimate)),
+		"value":          round3(last.Reading + factor*(d.energy.shownM3-last.Estimate)),
 		"lastReading":    last.Reading,
 		"lastReadingAt":  last.At.UTC().Format(time.RFC3339),
 		"readings":       len(rs),
@@ -175,7 +175,10 @@ func (d *daemon) postGasMeter(w http.ResponseWriter, r *http.Request) {
 		if when.After(now) {
 			return nil, errors.New("at is in the future")
 		}
-		counter := d.energy.totalM3
+		// The estimate is the counter the database holds, not the running one: a
+		// crash restores the saved counter, so an estimate above it would drop
+		// the meter value below the last reading.
+		counter := d.energy.shownM3
 		estimate := counter
 		if b.Estimate != nil {
 			estimate = *b.Estimate
