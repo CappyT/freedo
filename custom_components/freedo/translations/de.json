@@ -136,10 +136,10 @@
         "name": "Außentemperatur"
       },
       "outdoor_age": {
-        "name": "Alter der Außentemperatur"
+        "name": "Alter Außenmesswert"
       },
       "flow_limit_default": {
-        "name": "Max. Vorlauftemperatur (Standardwert)"
+        "name": "Standard-Vorlaufgrenze"
       },
       "heat_energy": {
         "name": "Abgegebene Wärmeenergie"
@@ -148,14 +148,14 @@
         "name": "Abgegebene Wärmeleistung"
       },
       "energy_estimate": {
-        "name": "Energieschätzung",
+        "name": "Energiestatus",
         "state": {
           "running": "Läuft",
-          "no_max_power": "Keine maximale Leistung eingestellt",
-          "no_report": "Kein Bericht vom Thermostat",
+          "no_max_power": "Leistung fehlt",
+          "no_report": "Kein Bericht",
           "stale": "Bericht zu alt",
-          "no_burner_flag": "Kein Brennerstatus gemeldet",
-          "no_modulation": "Keine Modulation gemeldet"
+          "no_burner_flag": "Kein Brennerstatus",
+          "no_modulation": "Keine Modulation"
         }
       },
       "gas_volume": {
@@ -165,24 +165,24 @@
         "name": "Gasdurchfluss"
       },
       "gas_estimate": {
-        "name": "Gasschätzung",
+        "name": "Gasstatus",
         "state": {
           "running": "Läuft",
-          "no_gas_flow": "Kein Gasdurchflussbereich eingestellt",
-          "no_report": "Kein Bericht vom Thermostat",
+          "no_gas_flow": "Kein Gasdurchfluss",
+          "no_report": "Kein Bericht",
           "stale": "Bericht zu alt",
-          "no_burner_flag": "Kein Brennerstatus gemeldet",
-          "no_modulation": "Keine Modulation gemeldet"
+          "no_burner_flag": "Kein Brennerstatus",
+          "no_modulation": "Keine Modulation"
         }
       },
       "gas_meter": {
         "name": "Gaszähler"
       },
       "flow_limit_served": {
-        "name": "Heizkreis {circuit} max. Vorlauftemperatur bereitgestellt"
+        "name": "Vorlaufgrenze {circuit} aktiv"
       },
       "flow_limit_computed": {
-        "name": "Heizkreis {circuit} max. Vorlauftemperatur berechnet"
+        "name": "Vorlaufgrenze {circuit} Kurve"
       },
       "battery_voltage": {
         "name": "Batteriespannung"
@@ -194,7 +194,7 @@
         "name": "Heizbedarf"
       },
       "external_room_sensor": {
-        "name": "Externer Raumsensor",
+        "name": "Raumsensor",
         "state": {
           "active": "In Verwendung",
           "no_correction": "Keine Korrektur",
@@ -219,34 +219,34 @@
     },
     "number": {
       "temperature_offset": {
-        "name": "Temperaturoffset"
+        "name": "Offset"
       },
       "open_window_duration": {
-        "name": "Dauer bei geöffnetem Fenster"
+        "name": "Fensterdauer"
       },
       "device_overlay_timer": {
-        "name": "Timer für Änderung am Gerät"
+        "name": "Timer"
       },
       "away_temperature": {
-        "name": "Abwesenheitstemperatur"
+        "name": "Abwesend"
       },
       "auto_offset_interval": {
-        "name": "Intervall der automatischen Korrektur"
+        "name": "Kalibrierung"
       },
       "flow_limit": {
-        "name": "Heizkreis {circuit} max. Vorlauftemperatur"
+        "name": "Vorlaufgrenze {circuit}"
       },
       "boiler_max_power": {
-        "name": "Maximale Kesselleistung"
+        "name": "Max. Leistung"
       },
       "boiler_min_power": {
-        "name": "Minimale Kesselleistung"
+        "name": "Min. Leistung"
       },
       "boiler_max_gas": {
-        "name": "Maximaler Gasdurchfluss des Kessels"
+        "name": "Max. Gas"
       },
       "boiler_min_gas": {
-        "name": "Minimaler Gasdurchfluss des Kessels"
+        "name": "Min. Gas"
       }
     },
     "select": {
@@ -266,7 +266,7 @@
         }
       },
       "offset_mode": {
-        "name": "Temperaturoffset-Modus",
+        "name": "Offset-Modus",
         "state": {
           "config": "Ventilkonfiguration (voller Motorhub)",
           "dbg2": "Debug-Datensatz des Ventils",
@@ -299,10 +299,10 @@
         "name": "Offline-Zeitplan"
       },
       "flow_default_curve": {
-        "name": "Standard-Heizkurve der max. Vorlauftemperatur"
+        "name": "Standard-Heizkurve"
       },
       "flow_auto_adapt": {
-        "name": "Anpassung der max. Vorlauftemperatur"
+        "name": "Vorlaufgrenze anpassen"
       },
       "pairing_mode": {
         "name": "Kopplungsmodus"
@@ -320,7 +320,7 @@
         "name": "Fenster-offen-Erkennung"
       },
       "auto_offset": {
-        "name": "Automatische Korrektur"
+        "name": "Ventilkalibrierung"
       }
     }
   },

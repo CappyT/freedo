@@ -134,3 +134,21 @@ def test_room_texts_name_rooms_and_freedo(language):
     path = ROOMS_PATH[language]
     assert path in tree["exceptions"]["another_sensor"]["message"]
     assert path in tree["issues"]["rooms_no_area"]["description"]
+
+
+# An entity row on a device page leaves about 100 px to the name of a number,
+# next to its input box, and about 160 px to a sensor name next to its state.
+# These limits keep the names whole at 1280 px in the real frontend.
+NAME_LIMITS = {"number": 15, "sensor": 24, "binary_sensor": 24}
+
+
+@pytest.mark.parametrize("language", ("en", *LANGUAGES))
+def test_entity_names_fit_a_device_page(language):
+    entities = json.loads((INTEGRATION / f"{language}.json").read_text())["entity"]
+    long = [
+        (platform, key, name)
+        for platform, limit in NAME_LIMITS.items()
+        for key, value in entities[platform].items()
+        if len(name := value["name"].replace("{circuit}", "1")) > limit
+    ]
+    assert long == []

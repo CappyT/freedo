@@ -124,22 +124,22 @@
         "name": "Temperatura di ritorno"
       },
       "dhw_temperature": {
-        "name": "Temperatura dell'acqua calda"
+        "name": "Temperatura acqua calda"
       },
       "modulation": {
         "name": "Modulazione"
       },
       "ch_pressure": {
-        "name": "Pressione di riscaldamento"
+        "name": "Pressione impianto"
       },
       "outdoor_temperature": {
         "name": "Temperatura esterna"
       },
       "outdoor_age": {
-        "name": "Età del dato di temperatura esterna"
+        "name": "Età lettura esterna"
       },
       "flow_limit_default": {
-        "name": "Temperatura massima di mandata predefinita"
+        "name": "Mandata max predefinita"
       },
       "heat_energy": {
         "name": "Energia termica erogata"
@@ -148,14 +148,14 @@
         "name": "Potenza termica erogata"
       },
       "energy_estimate": {
-        "name": "Stima dell'energia",
+        "name": "Stima energia",
         "state": {
           "running": "In funzione",
-          "no_max_power": "Potenza massima non impostata",
-          "no_report": "Nessun rapporto dal termostato",
-          "stale": "Rapporto troppo vecchio",
-          "no_burner_flag": "Nessuno stato del bruciatore segnalato",
-          "no_modulation": "Nessuna modulazione segnalata"
+          "no_max_power": "Senza potenza max",
+          "no_report": "Nessun rapporto",
+          "stale": "Rapporto vecchio",
+          "no_burner_flag": "Nessuno stato bruciatore",
+          "no_modulation": "Nessuna modulazione"
         }
       },
       "gas_volume": {
@@ -165,24 +165,24 @@
         "name": "Portata del gas"
       },
       "gas_estimate": {
-        "name": "Stima del gas",
+        "name": "Stima gas",
         "state": {
           "running": "In funzione",
-          "no_gas_flow": "Intervallo di portata del gas non impostato",
-          "no_report": "Nessun rapporto dal termostato",
-          "stale": "Rapporto troppo vecchio",
-          "no_burner_flag": "Nessuno stato del bruciatore segnalato",
-          "no_modulation": "Nessuna modulazione segnalata"
+          "no_gas_flow": "Senza portata gas",
+          "no_report": "Nessun rapporto",
+          "stale": "Rapporto vecchio",
+          "no_burner_flag": "Nessuno stato bruciatore",
+          "no_modulation": "Nessuna modulazione"
         }
       },
       "gas_meter": {
         "name": "Contatore gas"
       },
       "flow_limit_served": {
-        "name": "Circuito {circuit} temperatura massima di mandata applicata"
+        "name": "Mandata max {circuit} attiva"
       },
       "flow_limit_computed": {
-        "name": "Circuito {circuit} temperatura massima di mandata calcolata"
+        "name": "Mandata max {circuit} curva"
       },
       "battery_voltage": {
         "name": "Tensione della batteria"
@@ -194,7 +194,7 @@
         "name": "Domanda di riscaldamento"
       },
       "external_room_sensor": {
-        "name": "Sensore ambiente esterno",
+        "name": "Sensore stanza",
         "state": {
           "active": "In uso",
           "no_correction": "Nessuna correzione",
@@ -219,34 +219,34 @@
     },
     "number": {
       "temperature_offset": {
-        "name": "Compensazione della temperatura"
+        "name": "Offset"
       },
       "open_window_duration": {
-        "name": "Durata finestra aperta"
+        "name": "Durata finestra"
       },
       "device_overlay_timer": {
-        "name": "Timer della modifica sul dispositivo"
+        "name": "Timer"
       },
       "away_temperature": {
-        "name": "Temperatura fuori casa"
+        "name": "Fuori casa"
       },
       "auto_offset_interval": {
-        "name": "Intervallo della correzione automatica"
+        "name": "Calibra ogni"
       },
       "flow_limit": {
-        "name": "Circuito {circuit} temperatura massima di mandata"
+        "name": "Mandata max {circuit}"
       },
       "boiler_max_power": {
-        "name": "Potenza massima della caldaia"
+        "name": "Potenza max"
       },
       "boiler_min_power": {
-        "name": "Potenza minima della caldaia"
+        "name": "Potenza min"
       },
       "boiler_max_gas": {
-        "name": "Portata massima del gas della caldaia"
+        "name": "Gas max"
       },
       "boiler_min_gas": {
-        "name": "Portata minima del gas della caldaia"
+        "name": "Gas min"
       }
     },
     "select": {
@@ -266,7 +266,7 @@
         }
       },
       "offset_mode": {
-        "name": "Modalità di compensazione della temperatura",
+        "name": "Modalità offset",
         "state": {
           "config": "Configurazione della valvola (corsa completa del motore)",
           "dbg2": "Record di debug della valvola",
@@ -299,10 +299,10 @@
         "name": "Programma offline"
       },
       "flow_default_curve": {
-        "name": "Curva climatica predefinita della temperatura massima di mandata"
+        "name": "Curva climatica predefinita"
       },
       "flow_auto_adapt": {
-        "name": "Adattamento della temperatura massima di mandata"
+        "name": "Adattamento mandata"
       },
       "pairing_mode": {
         "name": "Modalità di abbinamento"
@@ -320,7 +320,7 @@
         "name": "Rilevamento finestra aperta"
       },
       "auto_offset": {
-        "name": "Correzione automatica"
+        "name": "Calibrazione della valvola"
       }
     }
   },

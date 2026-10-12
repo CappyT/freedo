@@ -71,10 +71,10 @@ The integration and the options of the add-on have English, Italian, German and 
 | sensor Gas volume, Gas flow | hub | `/api/boiler` `energy.gas` `totalM3`, `flowM3H` |
 | sensor Gas estimate | hub | `/api/boiler` `energy.gas` `running`, `reason` |
 | sensor Gas meter | hub | `/api/boiler` `energy.gas.meter` `value`, `lastReading`, `lastReadingAt`, `readings`, `factor`, `factorReadings`; writes `POST` and `DELETE /api/boiler/gas/meter` |
-| number Boiler maximum power, Boiler minimum power | hub | `/api/install` `boiler_max_power_kw`, `boiler_min_power_kw`; writes `PATCH /api/install` |
-| number Boiler maximum gas flow, Boiler minimum gas flow | hub | `/api/install` `boiler_max_gas_m3h`, `boiler_min_gas_m3h`; writes `PATCH /api/install` |
+| number Max power, Min power | hub | `/api/install` `boiler_max_power_kw`, `boiler_min_power_kw`; writes `PATCH /api/install` |
+| number Max gas, Min gas | hub | `/api/install` `boiler_max_gas_m3h`, `boiler_min_gas_m3h`; writes `PATCH /api/install` |
 | number Flow limit | circuit | `/api/boiler` `flowLimit.circuits[]`, `/api/install/circuits` `heat_source`, `/api/install` `flow_limit_c`; writes `POST /api/boiler/flow`, or `PATCH /api/install` while a curve or the adaptation drives the circuit |
-| switch Flow limit default curve, switch Flow limit adaptation | hub | `GET /api/install` `flow_default_curve`, `flow_auto_adapt`; writes `PATCH /api/install` |
+| switch Default weather curve, switch Flow limit adaptation | hub | `GET /api/install` `flow_default_curve`, `flow_auto_adapt`; writes `PATCH /api/install` |
 | switch Away | hub | `GET` and `PATCH /api/home` |
 | switch Offline schedule | hub | `GET /api/install` `offline_schedule`; writes `PATCH /api/install` |
 | switch Pairing mode | hub | `GET /api/pair/window` `open`, `until`; writes `POST /api/pair/window` |
@@ -83,16 +83,16 @@ The integration and the options of the add-on have English, Italian, German and 
 | button Identify | valve in a zone | `POST /api/nodes/{id}/identify` |
 | button Calibrate motor | valve | `POST /api/nodes/{id}/calibrate` |
 | sensor Calibration | valve | `/api/nodes` `Telemetry` `calib_state` and `calib_error` |
-| switch Early start, switch Open window detection, number Open window duration | heating zone | `/api/install/zones`; writes `PATCH /api/install/zones/{n}` |
+| switch Early start, switch Open window detection, number Window time | heating zone | `/api/install/zones`; writes `PATCH /api/install/zones/{n}` |
 | select Room temperature correction | heating zone | `/api/install/zones` `offset_mode`, `auto_offset`; writes `PATCH /api/install/zones/{n}` |
-| number Automatic correction interval | heating zone | `/api/install/zones` `auto_offset`, `auto_offset_interval_sec`; writes `PATCH /api/install/zones/{n}` |
-| switch Automatic correction (diagnostic, disabled by default) | heating zone | `/api/zones` `declared[].autoOffset`, `/api/install/zones` `auto_offset`; writes `PATCH /api/install/zones/{n}` |
-| select Device change end rule, number Device change timer | heating zone | `/api/install/zones` `device_overlay_end`, `device_overlay_end_sec`; writes `PATCH /api/install/zones/{n}` |
-| number Away temperature | heating zone | `/api/install/zones` `away_temperature_c`; writes `PATCH /api/install/zones/{n}` |
-| number Temperature offset | heating zone | `/api/install/zones` `setpoint_offset_c`; writes `POST /api/zones/{n}/offset` |
-| select Temperature offset mode (diagnostic, disabled by default) | heating zone | `/api/install/zones` `offset_mode`; writes `PATCH /api/install/zones/{n}` |
+| number Calibration | heating zone | `/api/install/zones` `auto_offset`, `auto_offset_interval_sec`; writes `PATCH /api/install/zones/{n}` |
+| switch Valve calibration (diagnostic, disabled by default) | heating zone | `/api/zones` `declared[].autoOffset`, `/api/install/zones` `auto_offset`; writes `PATCH /api/install/zones/{n}` |
+| select Device change end rule, number Change timer | heating zone | `/api/install/zones` `device_overlay_end`, `device_overlay_end_sec`; writes `PATCH /api/install/zones/{n}` |
+| number Away | heating zone | `/api/install/zones` `away_temperature_c`; writes `PATCH /api/install/zones/{n}` |
+| number Offset | heating zone | `/api/install/zones` `setpoint_offset_c`; writes `POST /api/zones/{n}/offset` |
+| select Offset mode (diagnostic, disabled by default) | heating zone | `/api/install/zones` `offset_mode`; writes `PATCH /api/install/zones/{n}` |
 | select Temperature source | heating zone | the sensors in the area of the zone device, `/api/install/devices`, `/api/zones` `declared[].measuringDevice`, `/api/install/zones` `offset_mode`, `auto_offset`; writes `PUT /api/install/zones/{n}/measuring`, `PATCH /api/install/zones/{n}` and the options |
-| sensor External room sensor | heating zone | `/api/zones` `declared[].externalTemp`, `/api/install/zones` `offset_mode` |
+| sensor Room sensor | heating zone | `/api/zones` `declared[].externalTemp`, `/api/install/zones` `offset_mode` |
 | select Profile | hub | `/api/presets` `id`, `name`, `active`; writes `POST /api/presets/{id}/activate` |
 
 ### Profiles
@@ -130,15 +130,15 @@ daemon upgrade.
   value by opening its OpenTherm session again, at its next poll of the circuit
   configuration.
 - The daemon has no default flow limit. While the option `flow_limit_c` is unset,
-  the sensor Default flow limit is unknown, and so is the sensor Flow limit served
+  the sensor Default flow limit is unknown, and so is the sensor Flow limit active
   of a circuit that nothing manages. The daemon serves that circuit no limit.
 - A circuit that follows a weather curve, the default curve or the adaptation
   takes no direct value: the daemon answers 409 to `POST /api/boiler/flow`. The
   number then shows the manual limit `flow_limit_c` (unknown while it is unset)
   and writes it with `PATCH /api/install`. The curve and the adaptation start
   from this limit. The computed and the served values stay in the sensors Flow
-  limit computed and Flow limit served.
-- Switch Flow limit default curve is `flow_default_curve`. It gives each circuit
+  limit computed and Flow limit active.
+- Switch Default weather curve is `flow_default_curve`. It gives each circuit
   without a curve of its own a built-in weather curve under `flow_limit_c`: the
   limit is `flow_limit_c` minus a reduction of 0 to 8 C that grows with the
   outdoor temperature. The daemon refuses the switch while `flow_limit_c` is
@@ -150,7 +150,7 @@ daemon upgrade.
 - Switch Flow limit adaptation is `flow_auto_adapt`. It trims the limit of each
   circuit from the room feedback, below the manual limit or the curve.
 - The attributes `default_curve` and `reduction_c` of the sensors Flow limit
-  computed and Flow limit served show that a circuit follows the default curve
+  computed and Flow limit active show that a circuit follows the default curve
   and the reduction in force now.
 - The number exists for a circuit that the boiler view lists and the
   installation gives a heat source.
@@ -175,7 +175,7 @@ does not model the efficiency. The model and its error sources are in the
   report is older than the hold time of the daemon, 5 minutes), `no_burner_flag`
   and `no_modulation` (the boiler did not report that value). A reason of a
   newer daemon shows as unknown.
-- Numbers Boiler maximum power (0.1 to 500 kW) and Boiler minimum power (0 to
+- Numbers Max power (0.1 to 500 kW) and Min power (0 to
   500 kW) are the output of the boiler at 100 % and at 0 % modulation. Each
   change is a `PATCH /api/install` with `boiler_max_power_kw` or
   `boiler_min_power_kw`. The daemon needs the minimum below the maximum and
@@ -197,7 +197,7 @@ The install option `fuel_unit` sets the unit: `m3` (natural gas, the default), `
 `m3` (`totalM3`, `flowM3H`, `boiler_max_gas_m3h`), and they hold the chosen unit. The unit sets the
 class and the unit of the sensors and numbers:
 
-| `fuel_unit` | Gas volume | Gas flow, Boiler maximum and minimum gas flow |
+| `fuel_unit` | Gas volume | Gas flow, Max gas and Min gas |
 |---|---|---|
 | `m3` | device class gas, m³ | device class volume flow rate, m³/h |
 | `l` | device class volume, L | device class volume flow rate, L/h |
@@ -219,7 +219,7 @@ the daemon counts.
   exists from the first poll that carries the gas count, so it shows
   `no_gas_flow` before you set the flows. A reason of a newer daemon shows as
   unknown.
-- Numbers Boiler maximum gas flow (0.01 to 60) and Boiler minimum gas flow
+- Numbers Max gas (0.01 to 60) and Min gas
   (0 to 60), in the unit of `fuel_unit` per hour, are the fuel flow at 100 % and
   at 0 % modulation. Each change is a
   `PATCH /api/install` with `boiler_max_gas_m3h` or `boiler_min_gas_m3h`. The
@@ -234,8 +234,8 @@ the daemon counts.
 Fill the two flows from the data sheet of the boiler:
 
 - Find the fuel flow at the burner at the maximum and at the minimum heat input,
-  in the unit of `fuel_unit` per hour. Enter the maximum in Boiler maximum gas flow
-  and the minimum in Boiler minimum gas flow.
+  in the unit of `fuel_unit` per hour. Enter the maximum in Max gas
+  and the minimum in Min gas.
 - Example, a 24 kW condensing combi boiler on natural gas: maximum 2.63 m³/h and
   minimum 0.30 m³/h. These are the numbers of one data sheet, not a default for
   your boiler.
@@ -295,7 +295,7 @@ hub, so both do not record the same reading.
   is unknown until the zone reports. The attribute `hvac_action` of the climate
   entity follows the same rule. Reports count the state of this sensor: see
   Reports.
-- Sensor External room sensor shows whether a heating zone regulates on the
+- Sensor Room sensor shows whether a heating zone regulates on the
   reading of its room temperature sensor. The state is `active`, or the cause:
   `no_correction` (select Room temperature correction is None), `no_reading`
   (the daemon holds no reading) or `stale` (the
@@ -329,7 +329,7 @@ hub, so both do not record the same reading.
   `done` or `failed`, from the `d/<serial>/mnt` report. The attribute
   `error_code` is the error code of the valve. The state is unknown until the
   valve reports a calibration.
-- Number Temperature offset corrects the temperature of a heating zone, -10 to
+- Number Offset corrects the temperature of a heating zone, -10 to
   10 C (`POST /api/zones/{n}/offset`). The zone gets it when it has a measuring
   device, or when its offset mode is `setpoint`.
   - Offset mode `setpoint` is applied by the daemon, and the daemon reports the
@@ -352,7 +352,7 @@ daemon answers. They exist only while the daemon holds an installation.
   the heat-up model it learns for the zone.
 - Switch Open window detection turns the open window detection of the valves of
   the zone on or off (`open_window_detection`).
-- Number Open window duration is the time the zone stays open after a
+- Number Window time is the time the zone stays open after a
   detection (`open_window_duration_sec`), in minutes, 1 to 1092.
 - Select Room temperature correction is how the zone corrects its regulation
   with the room temperature of a Home Assistant sensor. See Room temperature of
@@ -364,14 +364,14 @@ daemon answers. They exist only while the daemon holds an installation.
     device. This is the recommended method.
   - Valve calibration (`valve_calibration`, `auto_offset` on in offset mode
     `config`): the daemon writes the valve offset from the reading, at most once
-    per Number Automatic correction interval. Each write makes the valve home
+    per Number Calibration. Each write makes the valve home
     its motor.
   - The select writes `offset_mode` and `auto_offset` in one
     `PATCH /api/install/zones/{n}`. The daemon checks the two fields against the
     values the request leaves, so the move between the shift and the calibration
     passes, while the daemon refuses `setpoint` with `auto_offset` on.
     Leaving the shift sets the offset mode `config`, the default.
-- Switch Automatic correction (`auto_offset`) is the calibration alone. It is a
+- Switch Valve calibration (`auto_offset`) is the calibration alone. It is a
   diagnostic entity, disabled on a new install: the select replaces it. An
   install that had it keeps it enabled for its automations. It applies in the
   offset modes `config` and `dbg2`. The daemon refuses it on the hot water zone
@@ -380,7 +380,7 @@ daemon answers. They exist only while the daemon holds an installation.
   `stop_reason` are the `autoOffset` view of `GET /api/zones`. `stop_reason`
   says why the daemon stopped the automatic writes of the zone. Switch the
   correction off and on to start them again. See Room temperature of a zone.
-- Number Automatic correction interval is that interval
+- Number Calibration is that interval
   (`auto_offset_interval_sec`), in hours, 1 to 168. It is unavailable unless
   the correction is Valve calibration.
 - Select Device change end rule is how long a change made on a device lasts, as
@@ -388,24 +388,24 @@ daemon answers. They exist only while the daemon holds an installation.
   until the next block of the weekly program, `timer` for a set time. The rule
   does not travel on the air: the daemon applies it and returns the zone to its
   program. Rule `timer` starts at 60 minutes.
-- Number Device change timer is the time of the rule `timer`
+- Number Change timer is the time of the rule `timer`
   (`device_overlay_end_sec`), in minutes, 1 to 10080. It is unavailable while
   the rule is not `timer`.
-- Number Away temperature is the temperature the zone keeps while switch Away
+- Number Away is the temperature the zone keeps while switch Away
   is on (`away_temperature_c`), 5 to 25 C in steps of 0.1 C, as the climate
   entity. 5 C means off in away, as "off in away" in the tado app. A zone with
   no value is off in away too, so the number shows 5 C until you set one. The
   entity needs a daemon that serves `away_temperature_c` in
   `GET /api/install/zones`. The hot water zone has no away temperature and
   gets no number.
-- Select Temperature offset mode is how the temperature correction of the zone
+- Select Offset mode is how the temperature correction of the zone
   reaches it (`offset_mode`). It is a diagnostic entity, disabled on a new
   install: select Room temperature correction replaces it. An install that had
   it keeps it enabled. The hot water zone has no correction and gets no select.
   - Valve configuration (`config`, the default) writes tag `0140` in the whole
     d/config document of the measuring device. The valve rereads its
     configuration and homes its motor, a full stroke, on each change of the
-    number Temperature offset. The wall thermostat ignores the document of a
+    number Offset. The wall thermostat ignores the document of a
     d/config write, so the daemon serves it a new document and the thermostat
     rereads it.
   - Valve debug record (`dbg2`) writes the single record `0140` with
@@ -421,11 +421,11 @@ daemon answers. They exist only while the daemon holds an installation.
     drops the stored offset, rewrites the zone without the shift (the valves get
     new setpoints) and ends the room temperature reading of the zone. Entering
     `setpoint` starts the offset at 0 and leaves the `0140` on the valve. To
-    clear a `0140` written earlier, set the number Temperature offset to 0
+    clear a `0140` written earlier, set the number Offset to 0
     before the change.
-  - A zone without a measuring device gets the number Temperature offset only in
+  - A zone without a measuring device gets the number Offset only in
     mode `setpoint`: reload the integration after the change.
-  - The number Temperature offset is unavailable while the correction is Valve
+  - The number Offset is unavailable while the correction is Valve
     calibration, which writes the valve offset itself. In the modes `config`
     and `dbg2` it shows the last value set from Home Assistant, and it is empty
     until the first write: the valve does not report its offset.
@@ -562,8 +562,8 @@ heating zone has it.
     `external_window_max_sec` (2 hours by default, an option of the
     installation).
   - A reset ends the hold from Home Assistant only. A state the valves detected
-    (`window_source` `device`) runs until its time ends (number Open window
-    duration), and the daemon has no route to reset it. When both hold the zone,
+    (`window_source` `device`) runs until its time ends (number Window time),
+    and the daemon has no route to reset it. When both hold the zone,
     `window_source` is `both` and the zone stays open after the reset.
 - Attributes: the window state (`window_open`, `window_source`,
   `window_since`, `window_deadline`), demand, fallback, overlay, its end rule
@@ -788,7 +788,7 @@ target on the reading of that sensor.
   - Continuous shift (offset mode `setpoint`) shifts the setpoints of the zone
     continuously from the reading.
   - Valve calibration (`auto_offset`) calibrates the correction of the zone
-    from the reading, at most once per Number Automatic correction interval.
+    from the reading, at most once per Number Calibration.
     The correction is tag `0140` on the valve, and in mode `config` each write
     makes the valve home its motor, so the interval bounds the battery and the
     noise.
@@ -796,14 +796,14 @@ target on the reading of that sensor.
   the branch Rooms and in select Temperature source. With the correction None the
   daemon answers 409 to a reading, because the other modes write tag `0140` to
   the device. The integration keeps the mapping and logs the first refusal of a
-  zone. The sensor External room sensor shows `no_correction`.
+  zone. The sensor Room sensor shows `no_correction`.
 - The correction is slow by design, because a valve next to a radiator swings
   by several degrees. The daemon cannot change what the valve measures, so it
   filters the difference with a time constant of 2 hours, shifts the setpoints
   by 0.2 C at a time and waits at least 15 minutes between two shifts. A
   difference of 2 C needs about 4 hours. These values are design estimates. No
   test on air verifies them.
-- While the reading is fresh, the shift replaces the number Temperature offset,
+- While the reading is fresh, the shift replaces the number Offset,
   and the climate entity shows the sensor temperature as the current
   temperature.
 - The daemon keeps the reading in memory. A reading older than
@@ -813,7 +813,7 @@ target on the reading of that sensor.
 - When you remove the sensor of a zone in the branch Rooms, the integration sends
   `DELETE /api/zones/{n}/temperature`. The release starts at once and runs at
   the same pace. If the call fails, the age limit ends the correction.
-- Sensor External room sensor shows whether the zone uses the reading, and the
+- Sensor Room sensor shows whether the zone uses the reading, and the
   cause when it does not. See Diagnostics.
 
 ## Presence blueprint

@@ -113,7 +113,7 @@
         "name": "Défaut"
       },
       "comms_warning": {
-        "name": "Avertissement de communication"
+        "name": "Alerte de communication"
       }
     },
     "sensor": {
@@ -124,38 +124,38 @@
         "name": "Température de retour"
       },
       "dhw_temperature": {
-        "name": "Température de l'eau chaude"
+        "name": "Température eau chaude"
       },
       "modulation": {
         "name": "Modulation"
       },
       "ch_pressure": {
-        "name": "Pression de chauffage"
+        "name": "Pression chauffage"
       },
       "outdoor_temperature": {
         "name": "Température extérieure"
       },
       "outdoor_age": {
-        "name": "Âge de la température extérieure"
+        "name": "Âge mesure extérieure"
       },
       "flow_limit_default": {
-        "name": "Température de départ maximale par défaut"
+        "name": "Limite départ par défaut"
       },
       "heat_energy": {
-        "name": "Énergie thermique fournie"
+        "name": "Énergie thermique"
       },
       "heat_power": {
-        "name": "Puissance thermique fournie"
+        "name": "Puissance thermique"
       },
       "energy_estimate": {
-        "name": "Estimation de l'énergie",
+        "name": "État énergie",
         "state": {
           "running": "En cours",
-          "no_max_power": "Aucune puissance maximale définie",
-          "no_report": "Aucun rapport du thermostat",
+          "no_max_power": "Sans puissance max",
+          "no_report": "Aucun rapport",
           "stale": "Rapport trop ancien",
-          "no_burner_flag": "Aucun état du brûleur signalé",
-          "no_modulation": "Aucune modulation signalée"
+          "no_burner_flag": "Pas d'état du brûleur",
+          "no_modulation": "Aucune modulation"
         }
       },
       "gas_volume": {
@@ -165,39 +165,39 @@
         "name": "Débit de gaz"
       },
       "gas_estimate": {
-        "name": "Estimation du gaz",
+        "name": "État gaz",
         "state": {
           "running": "En cours",
-          "no_gas_flow": "Aucune plage de débit de gaz définie",
-          "no_report": "Aucun rapport du thermostat",
+          "no_gas_flow": "Sans débit de gaz",
+          "no_report": "Aucun rapport",
           "stale": "Rapport trop ancien",
-          "no_burner_flag": "Aucun état du brûleur signalé",
-          "no_modulation": "Aucune modulation signalée"
+          "no_burner_flag": "Pas d'état du brûleur",
+          "no_modulation": "Aucune modulation"
         }
       },
       "gas_meter": {
         "name": "Compteur de gaz"
       },
       "flow_limit_served": {
-        "name": "Circuit {circuit} température de départ maximale fournie"
+        "name": "Limite départ {circuit} active"
       },
       "flow_limit_computed": {
-        "name": "Circuit {circuit} température de départ maximale calculée"
+        "name": "Limite départ {circuit} calculée"
       },
       "battery_voltage": {
         "name": "Tension de la batterie"
       },
       "firmware_version": {
-        "name": "Version du micrologiciel"
+        "name": "Micrologiciel"
       },
       "heating_demand": {
         "name": "Demande de chauffage"
       },
       "external_room_sensor": {
-        "name": "Capteur de pièce externe",
+        "name": "Capteur pièce",
         "state": {
           "active": "Utilisé",
-          "no_correction": "Aucune correction",
+          "no_correction": "Sans correction",
           "no_reading": "Aucune mesure",
           "stale": "Mesure trop ancienne"
         }
@@ -219,34 +219,34 @@
     },
     "number": {
       "temperature_offset": {
-        "name": "Décalage de température"
+        "name": "Décalage"
       },
       "open_window_duration": {
-        "name": "Durée de fenêtre ouverte"
+        "name": "Durée fenêtre"
       },
       "device_overlay_timer": {
-        "name": "Minuteur de modification sur l'appareil"
+        "name": "Minuteur"
       },
       "away_temperature": {
-        "name": "Température d'absence"
+        "name": "Absence"
       },
       "auto_offset_interval": {
-        "name": "Intervalle de la correction automatique"
+        "name": "Calibrage"
       },
       "flow_limit": {
-        "name": "Circuit {circuit} température de départ maximale"
+        "name": "Limite départ {circuit}"
       },
       "boiler_max_power": {
-        "name": "Puissance maximale de la chaudière"
+        "name": "Puiss. max"
       },
       "boiler_min_power": {
-        "name": "Puissance minimale de la chaudière"
+        "name": "Puiss. min"
       },
       "boiler_max_gas": {
-        "name": "Débit de gaz maximal de la chaudière"
+        "name": "Gaz max"
       },
       "boiler_min_gas": {
-        "name": "Débit de gaz minimal de la chaudière"
+        "name": "Gaz min"
       }
     },
     "select": {
@@ -266,7 +266,7 @@
         }
       },
       "offset_mode": {
-        "name": "Mode de décalage de température",
+        "name": "Mode de décalage",
         "state": {
           "config": "Configuration de la vanne (course complète du moteur)",
           "dbg2": "Enregistrement de débogage de la vanne",
@@ -299,10 +299,10 @@
         "name": "Planification hors ligne"
       },
       "flow_default_curve": {
-        "name": "Courbe de chauffe par défaut de la température de départ maximale"
+        "name": "Courbe de chauffe par défaut"
       },
       "flow_auto_adapt": {
-        "name": "Adaptation de la température de départ maximale"
+        "name": "Adaptation départ"
       },
       "pairing_mode": {
         "name": "Mode d'association"
@@ -320,7 +320,7 @@
         "name": "Détection de fenêtre ouverte"
       },
       "auto_offset": {
-        "name": "Correction automatique"
+        "name": "Calibrage de la vanne"
       }
     }
   },

@@ -111,7 +111,7 @@
       "modulation": { "name": "Modulation" },
       "ch_pressure": { "name": "Heating pressure" },
       "outdoor_temperature": { "name": "Outdoor temperature" },
-      "outdoor_age": { "name": "Outdoor temperature age" },
+      "outdoor_age": { "name": "Outdoor reading age" },
       "flow_limit_default": { "name": "Default flow limit" },
       "heat_energy": { "name": "Heat output energy" },
       "heat_power": { "name": "Heat output power" },
@@ -119,11 +119,11 @@
         "name": "Energy estimate",
         "state": {
           "running": "Running",
-          "no_max_power": "No maximum power set",
-          "no_report": "No report from the thermostat",
+          "no_max_power": "No max power",
+          "no_report": "No report",
           "stale": "Report too old",
-          "no_burner_flag": "No burner flag reported",
-          "no_modulation": "No modulation reported"
+          "no_burner_flag": "No burner state",
+          "no_modulation": "No modulation"
         }
       },
       "gas_volume": { "name": "Gas volume" },
@@ -132,21 +132,21 @@
         "name": "Gas estimate",
         "state": {
           "running": "Running",
-          "no_gas_flow": "No gas flow range set",
-          "no_report": "No report from the thermostat",
+          "no_gas_flow": "No gas flow range",
+          "no_report": "No report",
           "stale": "Report too old",
-          "no_burner_flag": "No burner flag reported",
-          "no_modulation": "No modulation reported"
+          "no_burner_flag": "No burner state",
+          "no_modulation": "No modulation"
         }
       },
       "gas_meter": { "name": "Gas meter" },
-      "flow_limit_served": { "name": "Circuit {circuit} flow limit served" },
-      "flow_limit_computed": { "name": "Circuit {circuit} flow limit computed" },
+      "flow_limit_served": { "name": "Flow limit {circuit} active" },
+      "flow_limit_computed": { "name": "Flow limit {circuit} computed" },
       "battery_voltage": { "name": "Battery voltage" },
       "firmware_version": { "name": "Firmware version" },
       "heating_demand": { "name": "Heating demand" },
       "external_room_sensor": {
-        "name": "External room sensor",
+        "name": "Room sensor",
         "state": {
           "active": "In use",
           "no_correction": "No correction",
@@ -168,16 +168,16 @@
       "calibrate": { "name": "Calibrate motor" }
     },
     "number": {
-      "temperature_offset": { "name": "Temperature offset" },
-      "open_window_duration": { "name": "Open window duration" },
-      "device_overlay_timer": { "name": "Device change timer" },
-      "away_temperature": { "name": "Away temperature" },
-      "auto_offset_interval": { "name": "Automatic correction interval" },
-      "flow_limit": { "name": "Circuit {circuit} flow limit" },
-      "boiler_max_power": { "name": "Boiler maximum power" },
-      "boiler_min_power": { "name": "Boiler minimum power" },
-      "boiler_max_gas": { "name": "Boiler maximum gas flow" },
-      "boiler_min_gas": { "name": "Boiler minimum gas flow" }
+      "temperature_offset": { "name": "Offset" },
+      "open_window_duration": { "name": "Window time" },
+      "device_overlay_timer": { "name": "Change timer" },
+      "away_temperature": { "name": "Away" },
+      "auto_offset_interval": { "name": "Calibration" },
+      "flow_limit": { "name": "Flow limit {circuit}" },
+      "boiler_max_power": { "name": "Max power" },
+      "boiler_min_power": { "name": "Min power" },
+      "boiler_max_gas": { "name": "Max gas" },
+      "boiler_min_gas": { "name": "Min gas" }
     },
     "select": {
       "orientation": {
@@ -196,7 +196,7 @@
         }
       },
       "offset_mode": {
-        "name": "Temperature offset mode",
+        "name": "Offset mode",
         "state": {
           "config": "Valve configuration (full motor stroke)",
           "dbg2": "Valve debug record",
@@ -224,14 +224,14 @@
     "switch": {
       "away": { "name": "Away" },
       "offline_schedule": { "name": "Offline schedule" },
-      "flow_default_curve": { "name": "Flow limit default curve" },
+      "flow_default_curve": { "name": "Default weather curve" },
       "flow_auto_adapt": { "name": "Flow limit adaptation" },
       "pairing_mode": { "name": "Pairing mode" },
       "notification": { "name": "Change notification" },
       "child_lock": { "name": "Child lock" },
       "early_start": { "name": "Early start" },
       "open_window_detection": { "name": "Open window detection" },
-      "auto_offset": { "name": "Automatic correction" }
+      "auto_offset": { "name": "Valve calibration" }
     }
   },
   "services": {
