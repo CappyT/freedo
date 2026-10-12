@@ -518,9 +518,10 @@ shift and forgets the reading. The reading is not stored. The applied shift is s
 drives the zone and the zone reports `tempC` as its temperature; that holds in mode `setpoint`
 and in `config` or `dbg2` with `auto_offset` on. `learnInUse` says the early start, the flow
 adaptation and the plant episodes read `tempC` instead of `4060`: the same as `inUse` in mode
-`setpoint`, and with `auto_offset` on in `config` and `dbg2` while the reading is fresh. A
-manual or automatic offset write then rejects a running heat-up episode (see Early start),
-because the write moves `4060` and not the external reading.
+`setpoint`, and with `auto_offset` on in `config` and `dbg2` while the reading is fresh. While
+`learnInUse` is true, a manual offset write keeps a running heat-up episode and a running
+plant heat episode, because the write moves `4060` and not the external reading (see Early
+start). The automatic calibration writes no correction while one of them runs.
 
 ### Early start
 
