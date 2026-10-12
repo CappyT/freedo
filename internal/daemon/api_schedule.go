@@ -198,10 +198,16 @@ func (d *daemon) putZoneSchedule(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return nil, err
 		}
-		// A home program of the active preset fans out to the sched documents of
-		// the members first, as before presets: a document the fan-out rejects
-		// changes nothing. Every other program goes to the program store before
-		// the engine learns it: a failed save changes nothing.
+		// The program goes to the program store before the engine learns it and
+		// before any member is served it: a failed save changes nothing. The
+		// checks above are the ones the fan-out applies, so it cannot refuse the
+		// stored program.
+		if d.state != nil {
+			if err := d.state.SetZoneProgram(context.Background(), preset, zone, away, programs); err != nil {
+				return nil, &stateSaveError{err: err}
+			}
+		}
+		d.storeZoneProgram(preset, zone, away, programs)
 		if !away && !hotWater && preset == d.activePreset {
 			for _, member := range members {
 				target := hex.EncodeToString(member.WireEUI())
@@ -211,12 +217,6 @@ func (d *daemon) putZoneSchedule(w http.ResponseWriter, r *http.Request) {
 				d.dispatchQueued(e, target)
 			}
 		}
-		if d.state != nil {
-			if err := d.state.SetZoneProgram(context.Background(), preset, zone, away, programs); err != nil {
-				return nil, &stateSaveError{err: err}
-			}
-		}
-		d.storeZoneProgram(preset, zone, away, programs)
 		return newScheduleView(zone, members, programs, mode, preset), nil
 	})
 	if writeAPIErr(w, d.persist(err)) {

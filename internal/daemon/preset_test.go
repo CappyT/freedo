@@ -1130,3 +1130,34 @@ func TestAwayTargetSurvivesRestart(t *testing.T) {
 		t.Errorf("blocks stored with no away 6200 queued %d writes on the first tick, want none", n)
 	}
 }
+
+// TestScheduleFailedSaveServesNothing: a home program whose save fails answers
+// 500 and reaches neither the engine nor the members: no served document and
+// no fetch trigger.
+func TestScheduleFailedSaveServesNothing(t *testing.T) {
+	in := presetInstall(t, nil)
+	store := openTestStore(t)
+	d, url, _ := startStoredDaemon(t, in, newTestClock(time.Date(2026, 1, 5, 5, 0, 0, 0, time.UTC)), store)
+	bedroom := wireOf(t, in, "VA1000000005")
+	failWrites(t, store, "zone_program", "")
+	var view map[string]any
+	if code := postJSON(t, http.MethodPut, url+"/api/zones/10/schedule",
+		allDayProgram(map[string]any{"minute": 0, "setpoint_c": 21.0}), &view); code != http.StatusInternalServerError {
+		t.Fatalf("PUT with a failing save: code=%d %v, want 500", code, view)
+	}
+	got := engineValue(t, d, func() []bool {
+		_, served, _ := d.emu.Schedule(bedroom)
+		_, held := d.zonePrograms(10)
+		return []bool{served, held}
+	})
+	if got[0] || got[1] {
+		t.Errorf("after the failed save the bedroom is served a document: %v, the engine holds the program: %v, want neither", got[0], got[1])
+	}
+	if n := pending(t, d, bedroom); n != 0 {
+		t.Errorf("the failed save queued %d writes on the bedroom, want none", n)
+	}
+	var read scheduleView
+	if code := getJSON(t, url+"/api/zones/10/schedule", &read); code != http.StatusNotFound {
+		t.Errorf("GET after the failed save: code=%d %+v, want 404", code, read.Programs)
+	}
+}
