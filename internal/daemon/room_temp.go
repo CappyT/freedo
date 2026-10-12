@@ -32,7 +32,10 @@ import (
 	"math"
 	"net/http"
 	"slices"
+	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"freedo/tado"
 )
@@ -42,6 +45,9 @@ const (
 	// room sensor measures in a heated home.
 	roomTempMinC = -10
 	roomTempMaxC = 50
+	// roomTempSourceMaxLen bounds the label of the sensor that sends a reading,
+	// in bytes.
+	roomTempSourceMaxLen = 255
 	// roomShiftMaxC bounds the correction around the manual offset. A valve
 	// sensor next to a radiator reads a few degrees off the room, and a larger
 	// gap is more likely a bad external value than a real one: it would send a
@@ -73,12 +79,14 @@ var (
 )
 
 // roomTemp is the external room temperature of one zone and the correction it
-// drives. at is zero without a reading. on says that shiftC, the shift applied
+// drives. at is zero without a reading. source labels the sensor of the reading
+// for display, empty when the push named none. on says that shiftC, the shift applied
 // to the zone, replaces the manual offset. wantedC is the filtered shift, evalAt
 // the last filter step and wroteAt the last change of shiftC. All belong to the
 // engine goroutine.
 type roomTemp struct {
 	tempC   float64
+	source  string
 	at      time.Time
 	on      bool
 	shiftC  float64
@@ -128,20 +136,26 @@ func (d *daemon) roomTempC(inst *tado.Install, zone int, c float64) float64 {
 }
 
 // postZoneTemperature stores the external room temperature of a zone,
-// {"tempC": number}. The correction follows on the next steps of the filter.
+// {"tempC": number, "source": string}. source is optional and only labels the
+// sensor in the view. The correction follows on the next steps of the filter.
 func (d *daemon) postZoneTemperature(w http.ResponseWriter, r *http.Request) {
 	zone, _, ok := d.pathZoneMembers(w, r)
 	if !ok {
 		return
 	}
 	var b struct {
-		TempC *float64 `json:"tempC"`
+		TempC  *float64 `json:"tempC"`
+		Source string   `json:"source"`
 	}
 	if !decodeBody(w, r, &b) {
 		return
 	}
 	if b.TempC == nil || !(*b.TempC >= roomTempMinC && *b.TempC <= roomTempMaxC) {
 		writeErr(w, http.StatusBadRequest, fmt.Sprintf("tempC is required, within %d..%d", roomTempMinC, roomTempMaxC))
+		return
+	}
+	if msg := checkRoomTempSource(b.Source); msg != "" {
+		writeErr(w, http.StatusBadRequest, "source: "+msg)
 		return
 	}
 	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
@@ -160,7 +174,7 @@ func (d *daemon) postZoneTemperature(w http.ResponseWriter, r *http.Request) {
 			x = &roomTemp{shiftC: manual, wantedC: manual, evalAt: now}
 			d.roomTemps[z.Number] = x
 		}
-		x.tempC, x.at = roundCenti(*b.TempC), now
+		x.tempC, x.at, x.source = roundCenti(*b.TempC), now, b.Source
 		return d.roomTempView(e, z.Number), nil
 	})
 	if errors.Is(err, errRoomTempMode) {
@@ -171,6 +185,20 @@ func (d *daemon) postZoneTemperature(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, v)
+}
+
+// checkRoomTempSource returns a problem with the source label of a reading, or
+// "" when it is valid. An empty label is valid: the push names no sensor.
+func checkRoomTempSource(source string) string {
+	switch {
+	case len(source) > roomTempSourceMaxLen:
+		return fmt.Sprintf("longer than %d bytes", roomTempSourceMaxLen)
+	case !utf8.ValidString(source):
+		return "not valid UTF-8"
+	case strings.ContainsFunc(source, unicode.IsControl):
+		return "holds a control character"
+	}
+	return ""
 }
 
 // deleteZoneTemperature drops the external room temperature of a zone. The
@@ -357,7 +385,7 @@ func (d *daemon) restoreRoomShifts() error {
 }
 
 // roomTempView renders the external room temperature of one heating zone.
-// tempC, at and ageSec describe the last reading and stale says it is too old
+// tempC, at, ageSec and source describe the last reading and stale says it is too old
 // to drive the zone; inUse says that it does, and then the zone reports tempC as
 // its temperature. learnInUse says that the early start, the plant episodes and
 // the flow adaptation read tempC: the same as inUse in mode setpoint, and with
@@ -367,7 +395,7 @@ func (d *daemon) restoreRoomShifts() error {
 func (d *daemon) roomTempView(e *tado.EmuState, zone int) map[string]any {
 	inst := d.inst.Load()
 	view := map[string]any{
-		"tempC": nil, "at": nil, "ageSec": nil, "stale": false, "inUse": false, "learnInUse": false,
+		"tempC": nil, "at": nil, "ageSec": nil, "source": nil, "stale": false, "inUse": false, "learnInUse": false,
 		"deviceC": nil, "wantedC": nil,
 		"shiftC": d.shiftC(inst, zone), "offsetC": inst.Options.SetpointShiftC(zone),
 	}
@@ -382,6 +410,9 @@ func (d *daemon) roomTempView(e *tado.EmuState, zone int) map[string]any {
 		age := d.retryNow().Sub(x.at)
 		fresh := roomTempFresh(inst, x, d.retryNow())
 		view["tempC"], view["at"] = x.tempC, x.at.UTC().Format(time.RFC3339)
+		if x.source != "" {
+			view["source"] = x.source
+		}
 		view["ageSec"], view["stale"], view["inUse"] = int(age/time.Second), !fresh, fresh
 	}
 	view["learnInUse"] = d.learnerReadsExternal(inst, zone)

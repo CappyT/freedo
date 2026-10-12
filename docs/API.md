@@ -587,9 +587,11 @@ writes run. A stopped zone has `nextAt` null.
 
 ### External room temperature
 
-`POST /api/zones/{n}/temperature` with `{"tempC": 20.4}` gives the zone the room temperature
-that an outside sensor measures. `DELETE` removes it. `tempC` stays in -10 to 50 and the
-daemon rounds it to 0.01 C. A zone must be a heating zone in mode `setpoint`, or in mode
+`POST /api/zones/{n}/temperature` with `{"tempC": 20.4, "source": "Soggiorno thermometer"}`
+gives the zone the room temperature that an outside sensor measures. `DELETE` removes it.
+`tempC` stays in -10 to 50 and the daemon rounds it to 0.01 C. `source` is optional: it names
+the sensor for display, at most 255 bytes with no control character. A push without it clears
+the name. A zone must be a heating zone in mode `setpoint`, or in mode
 `config` or `dbg2` with `auto_offset` on. Hot water gets `400`, an unknown zone `404`, and a
 zone with no mode that takes the reading gets `409`.
 
@@ -617,7 +619,7 @@ correction at the same pace. A zone that leaves the mode `setpoint` gets setpoin
 shift and forgets the reading. The reading is not stored. The applied shift is stored in
 `meta.room_shift`.
 
-`declared[].externalTemp` in `GET /api/zones` shows `tempC`, `at`, `ageSec`, `stale`,
+`declared[].externalTemp` in `GET /api/zones` shows `tempC`, `at`, `ageSec`, `source`, `stale`,
 `inUse`, `learnInUse`, `deviceC`, `shiftC`, `offsetC` and `wantedC`. `inUse` says the reading
 drives the zone and the zone reports `tempC` as its temperature; that holds in mode `setpoint`
 and in `config` or `dbg2` with `auto_offset` on. `learnInUse` says the early start, the flow

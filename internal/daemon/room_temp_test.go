@@ -9,6 +9,7 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -341,6 +342,49 @@ func TestRoomTempClearReleases(t *testing.T) {
 	if view, _ := r.view(); view["shiftC"] != 0.0 || view["tempC"] != nil {
 		t.Errorf("after the release: %v, want no shift and no reading", view)
 	}
+}
+
+// TestRoomTempSourceLabel: the push names its sensor, the view shows the name
+// of the last reading, a push without one clears it, a bad label is refused
+// with the reading untouched, and a DELETE drops the label with the reading.
+func TestRoomTempSourceLabel(t *testing.T) {
+	r := newRoomRig(t, 0, nil)
+	post := func(body map[string]any) (map[string]any, int) {
+		t.Helper()
+		var out map[string]any
+		return out, postJSON(t, http.MethodPost, r.url+"/api/zones/3/temperature", body, &out)
+	}
+	answer, code := post(map[string]any{"tempC": 20.4, "source": "Soggiorno thermometer"})
+	if code != http.StatusOK {
+		t.Fatalf("push: code=%d %v", code, answer)
+	}
+	wantView(t, "the answer", answer, map[string]any{"tempC": 20.4, "source": "Soggiorno thermometer"})
+	view, _ := r.view()
+	wantView(t, "GET /api/zones", view, map[string]any{"tempC": 20.4, "source": "Soggiorno thermometer"})
+
+	for _, tc := range []struct {
+		name   string
+		source any
+	}{
+		{"too long", strings.Repeat("a", roomTempSourceMaxLen+1)},
+		{"control character", "a\tb"},
+		{"not a string", 3},
+	} {
+		if answer, code := post(map[string]any{"tempC": 21.0, "source": tc.source}); code != http.StatusBadRequest {
+			t.Errorf("%s: code=%d %v, want 400", tc.name, code, answer)
+		}
+	}
+	view, _ = r.view()
+	wantView(t, "after the refused pushes", view, map[string]any{"tempC": 20.4, "source": "Soggiorno thermometer"})
+
+	answer, _ = post(map[string]any{"tempC": 20.6})
+	wantView(t, "a push without a source", answer, map[string]any{"tempC": 20.6, "source": nil})
+
+	post(map[string]any{"tempC": 20.8, "source": "Aqara"})
+	if code := postJSON(t, http.MethodDelete, r.url+"/api/zones/3/temperature", map[string]any{}, &answer); code != http.StatusOK {
+		t.Fatalf("delete: code=%d %v", code, answer)
+	}
+	wantView(t, "cleared", answer, map[string]any{"tempC": nil, "source": nil})
 }
 
 // TestRoomTempRestart: the shift is stored because the valves carry it, the
