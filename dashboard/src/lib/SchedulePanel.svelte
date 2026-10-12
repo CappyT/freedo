@@ -163,7 +163,7 @@
 				<button class="btn" onclick={() => (editing = false)} disabled={saving}>{t('action.cancel')}</button>
 			</div>
 		{:else if mode === 'away' && !stored.away}
-			<p class="muted">{t('schedule.noAway')}</p>
+			<p class="muted">{t(hotWater ? 'schedule.noAwayHotWater' : 'schedule.noAway')}</p>
 			<div class="row">
 				<button class="btn primary" onclick={() => edit()}>
 					<Icon name="plus" size={18} />{t('schedule.createAway')}
@@ -197,7 +197,7 @@
 <ConfirmDialog
 	bind:this={confirmDelete}
 	title={t('schedule.deleteAway.confirm.title')}
-	body={t('schedule.deleteAway.confirm.body')}
+	body={t(hotWater ? 'schedule.deleteAway.confirm.bodyHotWater' : 'schedule.deleteAway.confirm.body')}
 	confirm={t('schedule.deleteAway')}
 	onconfirm={removeAway}
 />
