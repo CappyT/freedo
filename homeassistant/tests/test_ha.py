@@ -70,7 +70,7 @@ DOMAIN = "freedo"
 LIVING = "climate.living"
 BEDROOM = "climate.bedroom"
 # The hot water device takes its translated name, so a new entity id follows it.
-HOT_WATER = "water_heater.domestic_hot_water"
+HOT_WATER = "water_heater.hot_water"
 OFFLINE_SCHEDULE = "switch.freedo_offline_schedule"
 
 
@@ -462,7 +462,7 @@ async def test_devices_link_to_hub(hass, client, caplog):
     ]
     names = {d.name for d in children}
     # The hot water zone takes its translated name, not the stored one.
-    assert {"Living", "Bedroom", "Domestic hot water"} <= names
+    assert {"Living", "Bedroom", "Hot water"} <= names
     assert any(d.serial_number == "VA0000000001" for d in children)
     # The node fw/state telemetry sets the firmware of the device.
     by_serial = {d.serial_number: d for d in children}

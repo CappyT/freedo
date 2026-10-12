@@ -65,7 +65,7 @@
   },
   "device": {
     "hot_water_zone": {
-      "name": "Acqua calda sanitaria"
+      "name": "Acqua calda"
     }
   },
   "entity": {

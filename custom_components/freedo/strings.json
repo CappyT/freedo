@@ -65,7 +65,7 @@
   },
   "device": {
     "hot_water_zone": {
-      "name": "Domestic hot water"
+      "name": "Hot water"
     }
   },
   "entity": {

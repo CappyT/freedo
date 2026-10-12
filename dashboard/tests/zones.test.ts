@@ -10,13 +10,13 @@ const status = (z: DeclaredZone, d: ZoneDemand | undefined, members: Member[], a
 
 describe('zone name', () => {
 	it('shows the fixed text for the hot water zone, whatever the installation stores', () => {
-		expect(zoneName(zone({ kind: 'hotwater', name: 'acqua calda sanitaria' }), 'Domestic hot water')).toBe(
-			'Domestic hot water'
+		expect(zoneName(zone({ kind: 'hotwater', name: 'acqua calda sanitaria' }), 'Hot water')).toBe(
+			'Hot water'
 		);
 	});
 
 	it('keeps the name of a heating zone', () => {
-		expect(zoneName(zone({ name: 'Bath' }), 'Domestic hot water')).toBe('Bath');
+		expect(zoneName(zone({ name: 'Bath' }), 'Hot water')).toBe('Bath');
 	});
 });
 

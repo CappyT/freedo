@@ -121,7 +121,7 @@ export const en = {
 	'zone.demand': 'Heat demand',
 	'zone.scheduled': 'Scheduled now',
 	'zone.devices': 'Devices of this zone',
-	'zone.hotWaterName': 'Domestic hot water',
+	'zone.hotWaterName': 'Hot water',
 
 	'ends.legend': 'How long the change lasts',
 	'ends.until_next': 'Until the next block',
