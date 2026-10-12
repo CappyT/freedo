@@ -1789,7 +1789,7 @@ func (e *EmuState) observeSession(ns *NodeState, m *CoAPMessage, class FrameClas
 	if changed {
 		ns.Option2048 = append([]byte{}, o.Val...)
 	}
-	if len(ns.SessionID) == 0 || !isRequestCode(m.Code) || isAuthResource(m) {
+	if len(ns.SessionID) == 0 || !isRequestCode(m.Code) || isAuthResource(m) || isZonePlane(m) {
 		return
 	}
 	switch {
@@ -1989,6 +1989,15 @@ func (ns *NodeState) refreshLastKnown() {
 // zoneResources are the resources whose body is a zone's running state. The
 // bridge fans those out and can answer a GET of them from its cache.
 var zoneResources = map[string]bool{"z/s": true, "z/p": true, "z/cpe": true}
+
+// isZonePlane reports a link-local zone-plane request (z/p, z/cpe, z/s?lid=N),
+// which a device sends to its zone peers through the coordinator. Devices carry
+// option 2048 on some of these and not on others, so they tell nothing about
+// the session the coordinator served.
+func isZonePlane(m *CoAPMessage) bool {
+	first, _, _ := strings.Cut(m.Path, "/")
+	return first == "z"
+}
 
 // AddZoneMember declares target (serial, short address, room or wire EUI) a
 // member of zone.

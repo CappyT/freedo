@@ -1583,6 +1583,21 @@ func TestSessionAdoptionFromLaterUplink(t *testing.T) {
 	if v := view(); !v.SessionAdopted {
 		t.Fatal("a response without option 2048 cleared the adoption")
 	}
+	// Zone-plane requests go to the zone peers and often carry no option 2048.
+	e.OnFrame(deviceUplink(t, dev, CoAPReq{
+		Type: "CON", Code: "0.01", MID: 0x0327, Token: []byte{0x27},
+		Path: []string{"z", "p"}, Options: []CoAPOption{optOctets},
+	}))
+	e.OnFrame(deviceUplink(t, dev, CoAPReq{
+		Type: "NON", Code: "0.03", MID: 0x0328, Token: []byte{0x28},
+		Path: []string{"z", "cpe"}, Query: []string{"lid=1"},
+	}))
+	if v := view(); !v.SessionAdopted {
+		t.Fatal("a zone-plane request without option 2048 cleared the adoption")
+	}
+	if n := countPrefix(log.Counts(), rsnSessionMissing); n != 0 {
+		t.Errorf("zone-plane requests logged %d missing sessions, want 0:\n%s", n, log.Summary())
+	}
 	for mid := uint16(0x0325); mid <= 0x0326; mid++ {
 		e.OnFrame(deviceUplink(t, dev, CoAPReq{
 			Type: "CON", Code: "0.03", MID: mid, Token: []byte{byte(mid)},
