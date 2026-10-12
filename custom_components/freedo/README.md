@@ -730,10 +730,12 @@ and so does the device page of the zone. The integration reads it at each poll.
   ends the pause that select Temperature source set on its zone. A refused
   correction shows the page again with an error. The step needs the loaded
   integration: otherwise it keeps the saved sensors.
-- The valves and the thermostats of a zone take its area when they have no area
-  or still have the previous area of the zone. A device that you placed in
-  another area keeps it. A device in no area gets the area of its zone again at
-  the next poll. A wall thermostat that serves a heating zone and the hot water
+- When the area of a zone changes, its valves and thermostats take the new
+  area if they have no area or still have the previous area of the zone. A
+  device that you placed in another area keeps it. A device that appears later,
+  such as a new pairing after the reload, takes the area of its zone when it has
+  none. Otherwise nothing moves, so a device that you clear to no area stays so.
+  A restart compares the area with the label the daemon stores. A wall thermostat that serves a heating zone and the hot water
   takes the area of the heating zone. The area of the hot water zone device
   applies to its other devices.
 - The integration sets no `suggested_area`: it applies to new devices only and

@@ -620,6 +620,53 @@ async def test_area_follows_the_rule_for_each_device(hass, client):
     assert node_device(hass, entry, "bbbb").area_id == office
 
 
+async def test_a_cleared_device_stays_cleared(hass, client):
+    entry = await setup_entry(hass, client)
+    place_zone(hass, entry, 1, "Soggiorno")
+    await refresh(hass, entry)
+    valve = node_device(hass, entry, "aaaa")
+    assert valve.area_id is not None
+    # The user clears the area of the valve: the polls leave it so.
+    dr.async_get(hass).async_update_device(valve.id, area_id=None)
+    for _ in range(3):
+        await refresh(hass, entry)
+    assert node_device(hass, entry, "aaaa").area_id is None
+
+
+async def test_a_new_device_takes_the_area_of_its_zone(hass, client):
+    entry = await setup_entry(hass, client)
+    living_room = place_zone(hass, entry, 1, "Soggiorno")
+    await refresh(hass, entry)
+    dr.async_get(hass).async_update_device(node_device(hass, entry, "aaaa").id, area_id=None)
+    # bbbb is paired: the reload creates its device, with no area.
+    health = client.health_json["devices"]
+    health.append(dict(health[0], device="VA0000000002", short="bbbb", label=""))
+    with patch("custom_components.freedo.FreedoClient", return_value=client):
+        await hass.config_entries.async_reload(entry.entry_id)
+        await hass.async_block_till_done()
+    assert node_device(hass, entry, "bbbb").area_id == living_room
+    # The valve the user cleared is not new and stays cleared.
+    assert node_device(hass, entry, "aaaa").area_id is None
+
+
+async def test_a_restart_with_the_same_area_moves_nothing(hass, client):
+    entry = await setup_entry(hass, client)
+    place_zone(hass, entry, 1, "Soggiorno")
+    await refresh(hass, entry)
+    dr.async_get(hass).async_update_device(node_device(hass, entry, "aaaa").id, area_id=None)
+    await hass.config_entries.async_unload(entry.entry_id)
+    # A restart: the memory of the devices is gone, and every device is older
+    # than the load of the integration.
+    hass.data.pop("freedo_seen_devices")
+    with (
+        patch("custom_components.freedo.rooms._LOADED_AT", dt_util.utcnow()),
+        patch("custom_components.freedo.FreedoClient", return_value=client),
+    ):
+        await hass.config_entries.async_reload(entry.entry_id)
+        await hass.async_block_till_done()
+    assert node_device(hass, entry, "aaaa").area_id is None
+
+
 async def test_previous_area_survives_a_restart_on_the_daemon(hass, client):
     # The daemon holds the area the integration sent before the restart. The
     # zone moved while Home Assistant was down: the valve with the old area

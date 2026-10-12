@@ -2,9 +2,12 @@
 device registry maps it to a Home Assistant area. The options step Rooms and the
 device page both set that area; the integration reads it at each poll.
 
-- The member devices of a zone take its area when they have no area or still
-  carry the previous area of the zone. A device placed elsewhere keeps its area.
-  device_zones says which zone a device follows.
+- The member devices of a zone take its area when the area changes, if they
+  have no area or still carry the previous area of the zone. A device placed
+  elsewhere keeps its area. A device that appears later (a new pairing) with no
+  area takes the area of its zone once. At a steady state nothing moves, so a
+  device the user clears to no area stays so. device_zones says which zone a
+  device follows.
 - The zone device of a heating zone follows the zone name of the daemon, unless
   the user named the device in Home Assistant. The hot water zone device keeps
   its translated name.
@@ -18,6 +21,7 @@ device page both set that area; the integration reads it at each poll.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from datetime import datetime
 import logging
 from typing import Any
 
@@ -30,6 +34,7 @@ from homeassistant.helpers import (
     entity_registry as er,
     issue_registry as ir,
 )
+from homeassistant.util import dt as dt_util
 
 from .api import FreedoError
 from .const import DOMAIN
@@ -39,6 +44,11 @@ from .model import KIND_HEATING, FreedoData, Zone, device_zones
 _LOGGER = logging.getLogger(__name__)
 
 ISSUE_NO_AREA = "zone_no_area"
+# hass.data key: the node device ids each entry saw at its last poll. It
+# survives a reload, which creates the devices of a new pairing.
+_SEEN = f"{DOMAIN}_seen_devices"
+# A device registered before the integration loaded in this run is not new.
+_LOADED_AT = dt_util.utcnow()
 
 
 def zone_identifier(entry_id: str, number: int) -> tuple[str, str]:
@@ -61,6 +71,21 @@ def zone_area(hass: HomeAssistant, entry_id: str, number: int) -> str | None:
     return device.area_id if device else None
 
 
+def _members(
+    hass: HomeAssistant, entry_id: str, data: FreedoData, number: int
+) -> list[dr.DeviceEntry]:
+    """The node devices that follow zone number."""
+    registry = dr.async_get(hass)
+    out = []
+    for short, zone in device_zones(data).items():
+        if zone != number:
+            continue
+        device = registry.async_get_device_by_identifier(node_identifier(entry_id, short), entry_id)
+        if device is not None:
+            out.append(device)
+    return out
+
+
 @callback
 def async_place_members(
     hass: HomeAssistant,
@@ -71,15 +96,10 @@ def async_place_members(
     previous: str | None,
 ) -> None:
     """Give area_id to the devices that follow zone number and have no area or
-    the previous area of the zone."""
+    the previous area of the zone. Run it when the zone area changes."""
     registry = dr.async_get(hass)
-    for short, zone in device_zones(data).items():
-        if zone != number:
-            continue
-        device = registry.async_get_device_by_identifier(node_identifier(entry_id, short), entry_id)
-        if device is None or device.area_id == area_id:
-            continue
-        if device.area_id is None or device.area_id == previous:
+    for device in _members(hass, entry_id, data, number):
+        if device.area_id != area_id and device.area_id in (None, previous):
             registry.async_update_device(device.id, area_id=area_id)
 
 
@@ -91,21 +111,27 @@ def async_set_zone_area(
     step does on submit."""
     registry = dr.async_get(hass)
     device = registry.async_get_device_by_identifier(zone_identifier(entry_id, number), entry_id)
-    if device is None:
+    if device is None or device.area_id == area_id:
         return
     previous = device.area_id
-    if previous != area_id:
-        registry.async_update_device(device.id, area_id=area_id)
+    registry.async_update_device(device.id, area_id=area_id)
     async_place_members(hass, entry_id, data, number, area_id, previous)
 
 
 @callback
 def async_remove_issues(hass: HomeAssistant, entry_id: str) -> None:
-    """Delete the repair issues of an entry that goes away."""
+    """Delete the repair issues and the device memory of an entry that goes
+    away."""
     prefix = f"{ISSUE_NO_AREA}_{entry_id}_"
     for domain, issue_id in list(ir.async_get(hass).issues):
         if domain == DOMAIN and issue_id.startswith(prefix):
             ir.async_delete_issue(hass, DOMAIN, issue_id)
+    hass.data.get(_SEEN, {}).pop(entry_id, None)
+
+
+def _created_before_load(device: dr.DeviceEntry) -> bool:
+    created = getattr(device, "created_at", None)
+    return isinstance(created, datetime) and created < _LOADED_AT
 
 
 @callback
@@ -118,6 +144,7 @@ def async_track_rooms(
     areas = ar.async_get(hass)
     entry: FreedoConfigEntry = coordinator.config_entry
     entry_id = entry.entry_id
+    seen_by_entry: dict[str, set[str]] = hass.data.setdefault(_SEEN, {})
     # The area of each zone at the previous poll.
     previous: dict[int, str | None] = {}
     # The zone name of each open repair issue.
@@ -170,13 +197,13 @@ def async_track_rooms(
         )
 
     @callback
-    def sync_daemon(zone: Zone, area_id: str | None, row: Mapping[str, Any]) -> None:
+    def sync_daemon(number: int, area_id: str | None, row: Mapping[str, Any]) -> None:
         view = area_view(area_id)
-        if view == row.get("ha_area") or zone.number in sending:
+        if view == row.get("ha_area") or number in sending:
             return
-        sending.add(zone.number)
+        sending.add(number)
         entry.async_create_background_task(
-            hass, send(zone.number, view), f"freedo area of zone {zone.number}"
+            hass, send(number, view), f"freedo area of zone {number}"
         )
 
     @callback
@@ -184,6 +211,8 @@ def async_track_rooms(
         data = coordinator.data
         if data is None:
             return
+        seen = seen_by_entry.get(entry_id)
+        present: set[str] = set()
         for zone in sorted(data.zones.values(), key=lambda z: z.number):
             device = devices.async_get_device_by_identifier(
                 zone_identifier(entry_id, zone.number), entry_id
@@ -196,21 +225,29 @@ def async_track_rooms(
                 and device.name != zone.name
             ):
                 devices.async_update_device(device.id, name=zone.name)
+            area_id = device.area_id
             row = data.zone_settings.get(zone.number) or {}
             served = "ha_area" in row
             if zone.number not in previous:
                 stored = row.get("ha_area")
                 previous[zone.number] = (
                     stored.get("id") if isinstance(stored, Mapping) else None
-                ) if served else device.area_id
-            async_place_members(
-                hass, entry_id, data, zone.number, device.area_id, previous[zone.number]
-            )
-            previous[zone.number] = device.area_id
+                ) if served else area_id
+            members = _members(hass, entry_id, data, zone.number)
+            present.update(m.id for m in members)
+            if area_id != previous[zone.number]:
+                async_place_members(hass, entry_id, data, zone.number, area_id, previous[zone.number])
+            elif area_id is not None:
+                for member in members:
+                    new = member.id not in seen if seen is not None else not _created_before_load(member)
+                    if new and member.area_id is None:
+                        devices.async_update_device(member.id, area_id=area_id)
+            previous[zone.number] = area_id
             if zone.kind == KIND_HEATING:
-                sync_issue(zone, device.area_id)
+                sync_issue(zone, area_id)
             if served:
-                sync_daemon(zone, device.area_id, row)
+                sync_daemon(zone.number, area_id, row)
+        seen_by_entry[entry_id] = present
         heating = {z.number for z in data.heating_zones()}
         for number in [n for n in issues if n not in heating]:
             del issues[number]
