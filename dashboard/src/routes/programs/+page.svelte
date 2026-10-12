@@ -202,14 +202,14 @@
 								</span>
 							</div>
 						</header>
-						<div class="commands">
+						<div class="profile-actions">
 							{#if !selected.active}
 								<button class="btn primary" disabled={busy} onclick={askActivate}><Icon name="check" size={18} />{t('programs.activate')}</button>
 							{/if}
 							<button class="btn" onclick={openRename}><Icon name="edit" size={18} />{t('presets.rename')}</button>
 							<button class="btn" onclick={() => selected && openNew(selected)}><Icon name="plus" size={18} />{t('programs.duplicate')}</button>
 							{#if !selected.active}
-								<button class="btn danger" onclick={() => confirmDelete?.show()}><Icon name="trash" size={18} />{t('presets.delete')}</button>
+								<button class="btn danger end" onclick={() => confirmDelete?.show()}><Icon name="trash" size={18} />{t('presets.delete')}</button>
 							{/if}
 						</div>
 						{#if !selected.active && active}
@@ -337,6 +337,17 @@
 		flex: 1 1 14rem;
 	}
 
+	/* One row of buttons at their own width; delete stands apart at the end. */
+	.profile-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem 0.75rem;
+	}
+
+	.profile-actions .end {
+		margin-left: auto;
+	}
+
 	.matrix {
 		display: grid;
 	}
@@ -402,6 +413,17 @@
 		.profile {
 			width: auto;
 			border-color: var(--border-strong);
+		}
+	}
+
+	@media (max-width: 559px) {
+		.profile-actions {
+			display: grid;
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+
+		.profile-actions .end {
+			margin-left: 0;
 		}
 	}
 
