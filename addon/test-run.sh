@@ -31,7 +31,8 @@ ok() { echo "ok - $1"; }
 no() { echo "FAIL - $1"; fails=$((fails + 1)); }
 
 # write_stub writes a stub daemon that answers --version with $2 and
-# --check-state with 3 when the database mentions "newer", else 0.
+# --check-state with 3 when the database mentions "newer", 1 when it mentions
+# "broken", else 0.
 write_stub() {
   out=$1 ver=$2
   {
@@ -40,6 +41,7 @@ write_stub() {
     echo "  --version) echo \"freedo $ver (stub stub)\"; exit 0 ;;"
     echo '  --check-state)'
     echo '    if [ -f "$2" ] && grep -q newer "$2" 2>/dev/null; then exit 3; fi'
+    echo '    if [ -f "$2" ] && grep -q broken "$2" 2>/dev/null; then exit 1; fi'
     echo '    exit 0 ;;'
     echo 'esac'
     echo "echo \"RAN $ver \$*\""
@@ -155,6 +157,27 @@ if out=$(run_case "$d" "file:///data/none.json" "$work/nobkp/bundled") && contai
 elif contains "ERROR" "$out"; then
   ok "stable stops when a newer database has no backup"
 else no "stable stops when a newer database has no backup: $out"; fi
+
+# --- beta: the newest pre-release is cached, no download --------------------
+d="$work/cached/data"; mkdir -p "$d/channel/0.9.0-beta.1"
+write_stub "$work/cached/bundled" 0.3.2
+write_stub "$d/channel/0.9.0-beta.1/freedo-linux-$arch" 0.9.0-beta.1
+printf '[{"tag_name":"v0.9.0-beta.1","prerelease":true,"assets":[{"name":"freedo-linux-%s","browser_download_url":"file:///data/absent"},{"name":"SHA256SUMS","browser_download_url":"file:///data/absent"}]}]\n' "$arch" > "$d/releases.json"
+printf '{"api_token":"tok","channel":"beta"}\n' > "$d/options.json"
+out=$(run_case "$d" "file:///data/releases.json" "$work/cached/bundled") || true
+if contains "beta 0.9.0-beta.1 from the channel cache" "$out" && contains "RAN 0.9.0-beta.1" "$out"; then
+  ok "beta runs a cached pre-release without a download"
+else no "beta runs a cached pre-release without a download: $out"; fi
+
+# --- stable: a failed check other than a newer schema still starts -----------
+d="$work/broken/data"; mkdir -p "$d"
+write_stub "$work/broken/bundled" 0.3.2
+printf 'broken\n' > "$d/freedo-state.db"
+printf '{"api_token":"tok","channel":"stable"}\n' > "$d/options.json"
+out=$(run_case "$d" "file:///data/none.json" "$work/broken/bundled") || true
+if contains "starting anyway" "$out" && contains "RAN 0.3.2" "$out"; then
+  ok "stable starts the daemon when the check fails for another reason"
+else no "stable starts the daemon when the check fails for another reason: $out"; fi
 
 echo
 if [ "$fails" = 0 ]; then echo "all run.sh tests passed"; else echo "$fails run.sh test(s) failed"; exit 1; fi

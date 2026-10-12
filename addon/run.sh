@@ -222,9 +222,11 @@ ensure_state_readable() {
   if [ "$status" = 0 ]; then
     return 0
   fi
+  # Only a newer schema needs a restore. Any other failure is left to the
+  # daemon, which reports it at start as it did before this check existed.
   if [ "$status" != 3 ]; then
-    echo "ERROR: $bin refused the state database $state (status $status): stopping"
-    exit 1
+    echo "warning: $bin could not check the state database $state (status $status): starting anyway"
+    return 0
   fi
   echo "WARNING: the state database holds a schema newer than $bin reads: restoring a backup"
   restore_backup
@@ -269,7 +271,11 @@ $candidates
 EOF
     fi
     if [ -n "$best" ]; then
-      if download_beta "$best" "$best_bin" "$best_sums"; then
+      if [ -x "$channel_dir/$best/freedo-linux-$arch" ]; then
+        bin="$channel_dir/$best/freedo-linux-$arch"
+        beta_version=$best
+        run_msg="beta $best from the channel cache"
+      elif download_beta "$best" "$best_bin" "$best_sums"; then
         keep_channel
         bin="$channel_dir/$best/freedo-linux-$arch"
         beta_version=$best
