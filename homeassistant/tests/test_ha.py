@@ -1294,6 +1294,31 @@ async def test_rooms_step_starts_the_shift_for_a_new_sensor(hass, client):
     assert entry.options["room_temperatures"] == {"2": HALL_SENSOR}
 
 
+async def test_rooms_step_ends_the_pause_of_a_new_sensor(hass, client):
+    set_room_sensor(hass, "21.4")
+    set_room_sensor(hass, "20.1", entity=HALL_SENSOR)
+    entry = await setup_entry(
+        hass,
+        client,
+        options={
+            "room_temperatures": {"1": ROOM_SENSOR, "2": HALL_SENSOR},
+            CONF_ROOM_TEMP_PAUSED: [1, 2],
+        },
+    )
+    add_sensor(hass, entry, "sensor.soggiorno", "Soggiorno thermometer", "20.4")
+    with patch("custom_components.freedo.FreedoClient", return_value=client):
+        result = await start_options(hass, entry)
+        # Zone 1 gets a new sensor, zone 2 keeps its sensor and its pause.
+        result = await submit_rooms(
+            hass, result,
+            {"room_temperature": "sensor.soggiorno", "correction": "continuous_shift"},
+            {"room_temperature": HALL_SENSOR, "correction": "none"},
+        )
+    assert entry.options["room_temperatures"] == {"1": "sensor.soggiorno", "2": HALL_SENSOR}
+    assert entry.options[CONF_ROOM_TEMP_PAUSED] == [2]
+    assert client.room_temps == [(1, 20.4)]
+
+
 async def test_rooms_step_writes_the_correction_in_one_request(hass, client):
     entry = await setup_entry(hass, client)
     client.calls.clear()

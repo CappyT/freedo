@@ -287,7 +287,10 @@ class FreedoOptionsFlow(OptionsFlowWithReload):
                 await self._release(
                     {z for z in current if z in known and z not in self._room_temps}
                 )
-                return self._save({str(z): e for z, e in sorted(self._room_temps.items())})
+                changed = {z for z, e in self._room_temps.items() if current.get(z) != e}
+                return self._save(
+                    {str(z): e for z, e in sorted(self._room_temps.items())}, changed
+                )
             errors["base"] = "correction_failed"
         return self._room_form(data, zone, errors)
 
@@ -418,16 +421,22 @@ class FreedoOptionsFlow(OptionsFlowWithReload):
             except FreedoError as err:
                 _LOGGER.warning("Room temperature release for zone %s failed: %s", zone, err)
 
-    def _save(self, room_temps: dict[str, str]) -> ConfigFlowResult:
+    def _save(
+        self, room_temps: dict[str, str], changed: set[int] | None = None
+    ) -> ConfigFlowResult:
+        """Save the options. A zone in changed got a new sensor, which ends
+        its pause."""
         data: dict[str, Any] = {CONF_WINDOWS: self._windows}
         if self._outdoor:
             data[CONF_OUTDOOR_ENTITY] = self._outdoor
         if room_temps:
             data[CONF_ROOM_TEMPS] = room_temps
         # The step replaces the whole options mapping, so keep the pause of the
-        # zones that still map a sensor.
+        # zones that still map the same sensor.
         paused = room_temp_paused(self.config_entry.options.get(CONF_ROOM_TEMP_PAUSED) or [])
-        kept = sorted(zone for zone in paused if str(zone) in room_temps)
+        kept = sorted(
+            zone for zone in paused if str(zone) in room_temps and zone not in (changed or ())
+        )
         if kept:
             data[CONF_ROOM_TEMP_PAUSED] = kept
         return self.async_create_entry(data=data)

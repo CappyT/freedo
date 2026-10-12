@@ -726,7 +726,8 @@ and so does the device page of the zone. The integration reads it at each poll.
   without case. The sensor list shows the temperature sensors of the area of
   the zone first, then the others with their area. With no temperature sensor
   at all, the field is an entity selector. Each page writes the area and the
-  correction when you submit it; the last page saves the sensors. A refused
+  correction when you submit it; the last page saves the sensors. A new sensor
+  ends the pause that select Temperature source set on its zone. A refused
   correction shows the page again with an error. The step needs the loaded
   integration: otherwise it keeps the saved sensors.
 - The valves and the thermostats of a zone take its area when they have no area
