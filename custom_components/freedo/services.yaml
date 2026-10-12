@@ -109,3 +109,26 @@ boost_all:
         boolean:
 
 resume_all:
+
+calibrate_gas_meter:
+  fields:
+    value:
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 1000000000
+          step: 0.001
+          mode: box
+    estimate:
+      selector:
+        number:
+          min: 0
+          max: 1000000000
+          step: 0.001
+          mode: box
+    at:
+      selector:
+        datetime:
+
+undo_gas_meter_reading:

@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from datetime import datetime, timezone
 
 import aiohttp
 import pytest
@@ -308,6 +309,27 @@ def test_flow_limit_payload():
     assert run(client.install_circuits()) == circuits
     run(client.set_flow_limit(1, 52, "0000000000000001"))
     assert session.calls[-1]["json"] == {"tempC": 52, "id": 1, "target": "0000000000000001"}
+
+
+def test_gas_meter_payloads():
+    session = FakeSession(
+        {
+            ("POST", "/api/boiler/gas/meter"): (200, {"meter": {"value": 8785.957}}),
+            ("DELETE", "/api/boiler/gas/meter"): (200, {"meter": None}),
+        }
+    )
+    client = FreedoClient(session, "h", 8080)
+    run(client.record_gas_meter(8785.957))
+    run(client.record_gas_meter(8785.957, 300.0))
+    run(client.record_gas_meter(8785.957, 300.0, datetime(2026, 1, 1, tzinfo=timezone.utc)))
+    assert run(client.undo_gas_meter_reading()) == {"meter": None}
+    assert [(c["method"], c["url"].split(":8080", 1)[-1], c["json"]) for c in session.calls] == [
+        ("POST", "/api/boiler/gas/meter", {"reading": 8785.957}),
+        ("POST", "/api/boiler/gas/meter", {"reading": 8785.957, "estimate": 300.0}),
+        ("POST", "/api/boiler/gas/meter",
+         {"reading": 8785.957, "estimate": 300.0, "at": "2026-01-01T00:00:00+00:00"}),
+        ("DELETE", "/api/boiler/gas/meter", None),
+    ]
 
 
 def test_patch_install_payload():

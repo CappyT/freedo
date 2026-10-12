@@ -3,7 +3,7 @@ and the flow limit state."""
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -45,6 +45,7 @@ from .model import (
     Zone,
     boiler_energy,
     boiler_gas,
+    boiler_meter,
     boiler_unsupported,
     energy_state,
     fuel_unit,
@@ -102,6 +103,14 @@ def _gas_flow(data: FreedoData) -> Any:
     sends 0 then."""
     gas = boiler_gas(data)
     return gas.get("flowM3H") if gas and gas.get("running") else None
+
+
+def _gas_meter(key: str) -> Callable[[FreedoData], Any]:
+    def value(data: FreedoData) -> Any:
+        meter = boiler_meter(data)
+        return meter.get(key) if meter else None
+
+    return value
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -236,6 +245,16 @@ GAS_STATUS = FreedoSensorDescription(
     value_fn=gas_state,
 )
 
+# GET /api/boiler energy.gas.meter: the meter value the daemon estimates from
+# the readings the user records. Total, not total increasing: a new reading can
+# step the value down a little, which total increasing counts as a reset.
+GAS_METER = FreedoSensorDescription(
+    key="gas_meter",
+    translation_key="gas_meter",
+    state_class=SensorStateClass.TOTAL,
+    value_fn=_gas_meter("value"),
+)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -317,6 +336,7 @@ async def async_setup_entry(
             return
         gas_estimate = True
         async_add_entities(GasSensor(coordinator, d) for d in GAS_SENSORS)
+        async_add_entities([GasMeterSensor(coordinator, GAS_METER)])
 
     add_gas_estimate()
     entry.async_on_unload(coordinator.async_add_listener(add_gas_estimate))
@@ -358,6 +378,41 @@ class GasSensor(BoilerSensor):
         if self.entity_description.key == "gas_volume":
             return FUEL_TOTALS[unit][1]
         return FUEL_FLOW_UNITS[unit]
+
+
+class GasMeterSensor(BoilerSensor):
+    """GET /api/boiler energy.gas.meter: the meter value the daemon estimates
+    between the readings the user records, in the unit of options.fuel_unit.
+    Unavailable while the daemon stores no reading. Total, not total increasing:
+    a new reading can step the value down a little, which total increasing
+    counts as a meter reset and adds the whole reading to the statistics."""
+
+    @property
+    def _meter(self) -> Mapping[str, Any] | None:
+        return boiler_meter(self.coordinator.data)
+
+    @property
+    def available(self) -> bool:
+        return super().available and self._meter is not None
+
+    @property
+    def device_class(self) -> SensorDeviceClass | None:
+        return FUEL_TOTALS[fuel_unit(self.coordinator.data)][0]
+
+    @property
+    def native_unit_of_measurement(self) -> str:
+        return FUEL_TOTALS[fuel_unit(self.coordinator.data)][1]
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        meter = self._meter or {}
+        return {
+            "last_reading": meter.get("lastReading"),
+            "last_reading_at": meter.get("lastReadingAt"),
+            "readings": meter.get("readings"),
+            "factor": meter.get("factor"),
+            "factor_readings": meter.get("factorReadings"),
+        }
 
 
 class FlowLimitSensor(FreedoEntity, SensorEntity):

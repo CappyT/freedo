@@ -148,6 +148,9 @@
           "no_modulation": "Nessuna modulazione segnalata"
         }
       },
+      "gas_meter": {
+        "name": "Contatore gas"
+      },
       "flow_limit_served": {
         "name": "Circuito {circuit} temperatura massima di mandata applicata"
       },
@@ -334,6 +337,28 @@
       "name": "Riprendi tutti i programmi",
       "description": "Riporta ogni zona di riscaldamento e l'acqua calda al rispettivo programma settimanale."
     },
+    "calibrate_gas_meter": {
+      "name": "Calibra il contatore gas",
+      "description": "Registra una lettura del contatore gas. Il daemon stima il valore del contatore tra due letture e lo mostra nel sensore Contatore gas.",
+      "fields": {
+        "value": {
+          "name": "Lettura",
+          "description": "La lettura del contatore, nell'unità del contatore del combustibile (m3 per impostazione predefinita), da 0 a 1000000000."
+        },
+        "estimate": {
+          "name": "Stima",
+          "description": "Il contatore del combustibile al momento della lettura, per una lettura effettuata in precedenza. Predefinito al contatore attuale."
+        },
+        "at": {
+          "name": "Ora della lettura",
+          "description": "L'ora in cui è stata effettuata la lettura, non nel futuro. Predefinita a ora."
+        }
+      }
+    },
+    "undo_gas_meter_reading": {
+      "name": "Annulla la lettura del contatore gas",
+      "description": "Rimuove l'ultima lettura del contatore gas, per correggere un refuso. Un contatore sostituito richiede prima l'annullamento e poi una nuova lettura."
+    },
     "get_schedule": {
       "name": "Leggi programma",
       "description": "Restituisce il programma settimanale di una zona di riscaldamento o della zona acqua calda: i programmi, con i giorni in cui sono attivi e i loro blocchi orari. Una zona senza programma settimanale non ha programmi."
@@ -405,6 +430,9 @@
     },
     "no_zones": {
       "message": "Nessuna zona freedo è caricata."
+    },
+    "no_hub": {
+      "message": "Nessun hub freedo è caricato."
     },
     "zones_failed": {
       "message": "Il daemon ha rifiutato alcune zone: {failures}"

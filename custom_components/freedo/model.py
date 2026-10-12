@@ -573,6 +573,14 @@ def boiler_gas(data: FreedoData) -> Mapping[str, Any] | None:
     return gas if isinstance(gas, Mapping) else None
 
 
+def boiler_meter(data: FreedoData) -> Mapping[str, Any] | None:
+    """GET /api/boiler energy.gas.meter: the meter value the daemon estimates
+    from the readings the user records, None while no reading is stored or on a
+    daemon that does not serve it."""
+    meter = (boiler_gas(data) or {}).get("meter")
+    return meter if isinstance(meter, Mapping) else None
+
+
 def fuel_unit(data: FreedoData) -> str:
     """The unit of the fuel flow and counter: options.fuel_unit, else the unit
     of the gas view, m3 on a daemon that serves neither."""

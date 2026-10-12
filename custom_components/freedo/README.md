@@ -70,6 +70,7 @@ The integration and the options of the add-on have English, Italian, German and 
 | sensor Energy estimate | hub | `/api/boiler` `energy` `running`, `reason` |
 | sensor Gas volume, Gas flow | hub | `/api/boiler` `energy.gas` `totalM3`, `flowM3H` |
 | sensor Gas estimate | hub | `/api/boiler` `energy.gas` `running`, `reason` |
+| sensor Gas meter | hub | `/api/boiler` `energy.gas.meter` `value`, `lastReading`, `lastReadingAt`, `readings`, `factor`, `factorReadings`; writes `POST` and `DELETE /api/boiler/gas/meter` |
 | number Boiler maximum power, Boiler minimum power | hub | `/api/install` `boiler_max_power_kw`, `boiler_min_power_kw`; writes `PATCH /api/install` |
 | number Boiler maximum gas flow, Boiler minimum gas flow | hub | `/api/install` `boiler_max_gas_m3h`, `boiler_min_gas_m3h`; writes `PATCH /api/install` |
 | number Flow limit | circuit | `/api/boiler` `flowLimit.circuits[]`, `/api/install/circuits` `heat_source`, `/api/install` `flow_limit_c`; writes `POST /api/boiler/flow`, or `PATCH /api/install` while a curve or the adaptation drives the circuit |
@@ -234,6 +235,32 @@ Add the gas to the Energy dashboard so that it shows the cost. This needs the un
 Error sources: a hot water burn counts on the heating scale and reads low. Check
 the count with a calibration: read the gas meter at two moments and compare its
 difference with the difference of Gas volume over the same period.
+
+### Gas meter
+
+The user reads the gas meter now and then. Record a reading with the service
+`freedo.calibrate_gas_meter`. The field `value` is the meter reading, `estimate`
+the fuel counter when the reading was taken (for a reading taken earlier, else
+the current counter) and `at` the time it was taken (else now). The daemon
+refuses a reading below the previous one and an estimate outside its range with
+`400`, and answers `503` while the installation holds no gas flows. The service
+`freedo.undo_gas_meter_reading` removes the last reading, to undo a typo: a
+replaced meter is an undo and then a new reading.
+
+- Sensor Gas meter is the meter value the daemon estimates between the readings,
+  in the unit of `fuel_unit`. It is unavailable while no reading is stored. The
+  attributes are `last_reading`, `last_reading_at`, `readings` (the count kept,
+  at most 20), `factor` and `factor_readings`.
+- Its state class is total, not total increasing. A new reading can step the
+  value down a little, because `totalM3` is an estimate and the meter also
+  counts other users of the same gas, such as a hob. Total increasing would
+  count that step down as a meter reset and add the whole reading to the
+  statistics.
+- The daemon corrects the meter value with a factor it learns from the two most
+  recent readings whose estimate is at least one unit apart. Until then the
+  factor is `1`, so `factor_readings` is 0 and the meter follows the fuel
+  counter with the ratio 1. The factor corrects the meter value only: `totalM3`
+  and `flowM3H` stay the raw estimate.
 
 ### Diagnostics
 

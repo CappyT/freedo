@@ -266,6 +266,20 @@ class FakeClient:
     async def set_display(self, node, orientation=None, notification=None):
         return {}
 
+    async def record_gas_meter(self, reading, estimate=None, at=None):
+        self.calls.append(("gas_meter", reading, estimate, at))
+        meter = {"value": reading, "lastReading": reading,
+                 "lastReadingAt": at.isoformat() if at is not None else "2026-01-01T00:00:00Z",
+                 "readings": 1, "factor": 1.0, "factorReadings": 0}
+        self.boiler_json.setdefault("energy", {})["gas"] = dict(GAS, meter=meter)
+        return {"meter": copy.deepcopy(meter)}
+
+    async def undo_gas_meter_reading(self):
+        self.calls.append(("undo_gas_meter",))
+        if self.boiler_json.get("energy", {}).get("gas"):
+            self.boiler_json["energy"]["gas"]["meter"] = None
+        return {"meter": None}
+
 
 @pytest.fixture(autouse=True)
 def auto_enable_custom_integrations(enable_custom_integrations):
@@ -2425,8 +2439,102 @@ async def test_no_gas_sensors_without_the_gas_estimate(hass, client):
     with_energy(client)
     entry = await setup_entry(hass, client)
     assert has_entity(hass, entry, "sensor", "boiler_heat_energy")
-    for key in ("boiler_gas_volume", "boiler_gas_flow", "boiler_gas_estimate"):
+    for key in ("boiler_gas_volume", "boiler_gas_flow", "boiler_gas_estimate", "boiler_gas_meter"):
         assert not has_entity(hass, entry, "sensor", key)
+
+
+# --- gas meter ---
+
+# GET /api/boiler energy.gas.meter: the meter value the daemon estimates from
+# the readings the user records.
+METER = {"value": 8785.957, "lastReading": 8785.957, "lastReadingAt": "2026-01-01T00:00:00Z",
+         "readings": 3, "factor": 0.95, "factorReadings": 2}
+
+
+def with_meter(client, meter):
+    client.boiler_json["energy"] = dict(ENERGY, gas=dict(GAS, meter=meter))
+
+
+async def test_gas_meter_sensor(hass, client):
+    with_meter(client, dict(METER))
+    entry = await setup_entry(hass, client)
+    meter = hass.states.get(entity_id(hass, entry, "sensor", "boiler_gas_meter"))
+    assert float(meter.state) == 8785.957
+    assert meter.attributes["device_class"] == "gas"
+    assert meter.attributes["unit_of_measurement"] == "m³"
+    # Total, not total increasing: a new reading can step the value down, which
+    # total increasing counts as a meter reset.
+    assert meter.attributes["state_class"] == "total"
+    assert meter.attributes["last_reading"] == 8785.957
+    assert meter.attributes["last_reading_at"] == "2026-01-01T00:00:00Z"
+    assert meter.attributes["readings"] == 3
+    assert meter.attributes["factor"] == 0.95
+    assert meter.attributes["factor_readings"] == 2
+
+
+async def test_gas_meter_unavailable_without_a_reading(hass, client):
+    with_meter(client, None)
+    entry = await setup_entry(hass, client)
+    assert hass.states.get(entity_id(hass, entry, "sensor", "boiler_gas_meter")).state == "unavailable"
+
+
+@pytest.mark.parametrize(
+    ("unit", "device_class", "unit_name"),
+    [("m3", "gas", "m³"), ("l", "volume", "L"), ("kg", "weight", "kg")],
+)
+async def test_gas_meter_follows_the_fuel_unit(hass, client, unit, device_class, unit_name):
+    client.settings_json["fuel_unit"] = unit
+    with_meter(client, dict(METER))
+    entry = await setup_entry(hass, client)
+    meter = hass.states.get(entity_id(hass, entry, "sensor", "boiler_gas_meter"))
+    assert meter.attributes["device_class"] == device_class
+    assert meter.attributes["unit_of_measurement"] == unit_name
+
+
+async def test_calibrate_gas_meter_records_the_reading(hass, client):
+    with_meter(client, None)
+    entry = await setup_entry(hass, client)
+    meter = entity_id(hass, entry, "sensor", "boiler_gas_meter")
+    assert hass.states.get(meter).state == "unavailable"
+
+    await call_freedo(hass, "calibrate_gas_meter", {"value": 8786.5})
+    assert client.calls == [("gas_meter", 8786.5, None, None)]
+    # The service refreshes the coordinator: the sensor shows the new reading.
+    assert float(hass.states.get(meter).state) == 8786.5
+
+
+async def test_calibrate_gas_meter_sends_the_estimate_and_time(hass, client):
+    with_meter(client, dict(METER))
+    await setup_entry(hass, client)
+    at = dt_util.parse_datetime("2026-01-01T00:00:00+00:00")
+    await call_freedo(
+        hass, "calibrate_gas_meter", {"value": 8786.5, "estimate": 300.0, "at": at}
+    )
+    assert client.calls == [("gas_meter", 8786.5, 300.0, at)]
+
+
+async def test_calibrate_gas_meter_error_is_a_home_assistant_error(hass, client):
+    with_meter(client, dict(METER))
+    await setup_entry(hass, client)
+
+    async def refuse(reading, estimate=None, at=None):
+        raise FreedoApiError(400, "reading 8000 is below the previous reading 8785.957")
+
+    client.record_gas_meter = refuse
+    with pytest.raises(HomeAssistantError, match="below the previous reading"):
+        await call_freedo(hass, "calibrate_gas_meter", {"value": 8000})
+
+
+async def test_undo_gas_meter_reading(hass, client):
+    with_meter(client, dict(METER))
+    entry = await setup_entry(hass, client)
+    meter = entity_id(hass, entry, "sensor", "boiler_gas_meter")
+    assert hass.states.get(meter).state != "unavailable"
+
+    await call_freedo(hass, "undo_gas_meter_reading", {})
+    assert client.calls == [("undo_gas_meter",)]
+    # The service refreshes the coordinator: the sensor is unavailable again.
+    assert hass.states.get(meter).state == "unavailable"
 
 
 async def test_boiler_gas_numbers(hass, client):
@@ -2536,8 +2644,8 @@ def test_service_selectors_are_valid():
         str(pathlib.Path(custom_components.freedo.__file__).parent / "services.yaml")
     )
     assert set(services) == {
-        "boost", "boost_all", "copy_schedule", "get_schedule", "resume_all",
-        "set_overlay", "set_schedule", "set_window",
+        "boost", "boost_all", "calibrate_gas_meter", "copy_schedule", "get_schedule",
+        "resume_all", "set_overlay", "set_schedule", "set_window", "undo_gas_meter_reading",
     }
     for spec in services.values():
         for field in ((spec or {}).get("fields") or {}).values():

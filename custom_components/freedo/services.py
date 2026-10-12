@@ -19,12 +19,14 @@ from .climate import FreedoZoneClimate
 from .const import (
     DOMAIN,
     SERVICE_BOOST_ALL,
+    SERVICE_CALIBRATE_GAS_METER,
     SERVICE_COPY_SCHEDULE,
     SERVICE_GET_SCHEDULE,
     SERVICE_RESUME_ALL,
     SERVICE_SET_SCHEDULE,
+    SERVICE_UNDO_GAS_METER_READING,
 )
-from .entity import FreedoScheduleEntity, each
+from .entity import FreedoScheduleEntity, call_api, each
 from .water_heater import STATE_AUTO, FreedoHotWater
 
 
@@ -35,6 +37,15 @@ def _zones(hass: HomeAssistant, kind: type) -> list:
         for platform in async_get_platforms(hass, DOMAIN)
         for entity in platform.entities.values()
         if isinstance(entity, kind)
+    ]
+
+
+def _runtimes(hass: HomeAssistant) -> list:
+    """The runtime of every loaded freedo entry."""
+    return [
+        entry.runtime_data
+        for entry in hass.config_entries.async_entries(DOMAIN)
+        if getattr(entry, "runtime_data", None) is not None
     ]
 
 
@@ -77,6 +88,26 @@ def async_setup_services(hass: HomeAssistant) -> None:
         targets = await schedule_targets(call)
         await asyncio.gather(*(t.async_copy_schedule(call.data["to"]) for t in targets))
 
+    async def calibrate_gas_meter(call: ServiceCall) -> None:
+        runtimes = _runtimes(hass)
+        if not runtimes:
+            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="no_hub")
+        for runtime in runtimes:
+            await call_api(
+                runtime.client.record_gas_meter(
+                    call.data["value"], call.data.get("estimate"), call.data.get("at")
+                )
+            )
+            await runtime.coordinator.async_request_refresh()
+
+    async def undo_gas_meter_reading(call: ServiceCall) -> None:
+        runtimes = _runtimes(hass)
+        if not runtimes:
+            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="no_hub")
+        for runtime in runtimes:
+            await call_api(runtime.client.undo_gas_meter_reading())
+            await runtime.coordinator.async_request_refresh()
+
     hass.services.async_register(
         DOMAIN,
         SERVICE_GET_SCHEDULE,
@@ -100,3 +131,18 @@ def async_setup_services(hass: HomeAssistant) -> None:
         DOMAIN, SERVICE_BOOST_ALL, boost_all, vol.Schema({vol.Optional("on", default=True): cv.boolean})
     )
     hass.services.async_register(DOMAIN, SERVICE_RESUME_ALL, resume_all, vol.Schema({}))
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_CALIBRATE_GAS_METER,
+        calibrate_gas_meter,
+        vol.Schema(
+            {
+                vol.Required("value"): vol.Coerce(float),
+                vol.Optional("estimate"): vol.Coerce(float),
+                vol.Optional("at"): cv.datetime,
+            }
+        ),
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_UNDO_GAS_METER_READING, undo_gas_meter_reading, vol.Schema({})
+    )

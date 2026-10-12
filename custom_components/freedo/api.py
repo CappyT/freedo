@@ -7,6 +7,7 @@ without it.
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime
 from typing import Any
 
 import aiohttp
@@ -205,6 +206,22 @@ class FreedoClient:
 
     async def push_outdoor(self, temp_c: float) -> dict[str, Any]:
         return await self._request("POST", "/api/outdoor", {"tempC": temp_c})
+
+    async def record_gas_meter(
+        self, reading: float, estimate: float | None = None, at: datetime | None = None
+    ) -> dict[str, Any]:
+        """Record a gas meter reading. estimate is the fuel counter when the
+        reading was taken, for a reading taken earlier, and at its time."""
+        payload: dict[str, Any] = {"reading": reading}
+        if estimate is not None:
+            payload["estimate"] = estimate
+        if at is not None:
+            payload["at"] = at.isoformat()
+        return await self._request("POST", "/api/boiler/gas/meter", payload)
+
+    async def undo_gas_meter_reading(self) -> dict[str, Any]:
+        """Remove the last gas meter reading, to undo a typo."""
+        return await self._request("DELETE", "/api/boiler/gas/meter")
 
     async def push_room_temp(self, zone: int, temp_c: float) -> dict[str, Any]:
         return await self._request(

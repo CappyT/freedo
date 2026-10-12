@@ -112,6 +112,7 @@
           "no_modulation": "No modulation reported"
         }
       },
+      "gas_meter": { "name": "Gas meter" },
       "flow_limit_served": { "name": "Circuit {circuit} flow limit served" },
       "flow_limit_computed": { "name": "Circuit {circuit} flow limit computed" },
       "battery_voltage": { "name": "Battery voltage" },
@@ -250,6 +251,28 @@
       "name": "Resume all schedules",
       "description": "Returns every heating zone and the hot water to their weekly schedule."
     },
+    "calibrate_gas_meter": {
+      "name": "Calibrate gas meter",
+      "description": "Records a gas meter reading. The daemon estimates the meter value between the readings and shows it in the Gas meter sensor.",
+      "fields": {
+        "value": {
+          "name": "Reading",
+          "description": "The meter reading, in the unit of the fuel counter (m3 by default), 0 to 1000000000."
+        },
+        "estimate": {
+          "name": "Estimate",
+          "description": "The fuel counter when the reading was taken, for a reading taken earlier. Defaults to the current counter."
+        },
+        "at": {
+          "name": "Reading time",
+          "description": "The time the reading was taken, not in the future. Defaults to now."
+        }
+      }
+    },
+    "undo_gas_meter_reading": {
+      "name": "Undo gas meter reading",
+      "description": "Removes the last gas meter reading, to undo a typo. A replaced meter is an undo and then a new reading."
+    },
     "get_schedule": {
       "name": "Get schedule",
       "description": "Returns the weekly schedule of a heating zone or the hot water zone: programs with the days they run on and their time blocks. A zone with no schedule has no programs."
@@ -302,6 +325,7 @@
     "copy_across_kinds": { "message": "{entity_id} is a different kind of zone. A room zone and the hot water zone do not share a schedule: their temperature ranges differ." },
     "copy_to_itself": { "message": "A zone cannot copy its schedule to itself." },
     "no_zones": { "message": "No freedo zone is loaded." },
+    "no_hub": { "message": "No freedo hub is loaded." },
     "zones_failed": { "message": "The daemon refused some zones: {failures}" },
     "hot_water_temperature_required": { "message": "The hot water zone has no target temperature. Set one with the temperature control. This also selects mode heat." },
     "zone_temperature_required": { "message": "The zone has no target temperature. Set one with the temperature control. This also selects mode heat." }

@@ -148,6 +148,9 @@
           "no_modulation": "Aucune modulation signalée"
         }
       },
+      "gas_meter": {
+        "name": "Compteur de gaz"
+      },
       "flow_limit_served": {
         "name": "Circuit {circuit} température de départ maximale fournie"
       },
@@ -334,6 +337,28 @@
       "name": "Reprendre toutes les planifications",
       "description": "Remet chaque zone de chauffage et l'eau chaude sur leur planification hebdomadaire."
     },
+    "calibrate_gas_meter": {
+      "name": "Calibrer le compteur de gaz",
+      "description": "Enregistre un relevé du compteur de gaz. Le démon estime la valeur du compteur entre les relevés et l'affiche dans le capteur Compteur de gaz.",
+      "fields": {
+        "value": {
+          "name": "Relevé",
+          "description": "Le relevé du compteur, dans l'unité du compteur de combustible (m3 par défaut), de 0 à 1000000000."
+        },
+        "estimate": {
+          "name": "Estimation",
+          "description": "Le compteur de combustible au moment du relevé, pour un relevé effectué plus tôt. Par défaut, le compteur actuel."
+        },
+        "at": {
+          "name": "Heure du relevé",
+          "description": "L'heure à laquelle le relevé a été effectué, pas dans le futur. Par défaut, maintenant."
+        }
+      }
+    },
+    "undo_gas_meter_reading": {
+      "name": "Annuler le relevé du compteur de gaz",
+      "description": "Supprime le dernier relevé du compteur de gaz, pour corriger une faute de frappe. Un compteur remplacé demande d'abord une annulation, puis un nouveau relevé."
+    },
     "get_schedule": {
       "name": "Lire la planification",
       "description": "Renvoie la planification hebdomadaire d'une zone de chauffage ou de la zone d'eau chaude : des programmes avec les jours où ils s'exécutent et leurs blocs horaires. Une zone sans planification n'a aucun programme."
@@ -405,6 +430,9 @@
     },
     "no_zones": {
       "message": "Aucune zone freedo n'est chargée."
+    },
+    "no_hub": {
+      "message": "Aucun hub freedo n'est chargé."
     },
     "zones_failed": {
       "message": "Le démon a refusé certaines zones : {failures}"

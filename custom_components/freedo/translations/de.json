@@ -148,6 +148,9 @@
           "no_modulation": "Keine Modulation gemeldet"
         }
       },
+      "gas_meter": {
+        "name": "Gaszähler"
+      },
       "flow_limit_served": {
         "name": "Heizkreis {circuit} max. Vorlauftemperatur bereitgestellt"
       },
@@ -334,6 +337,28 @@
       "name": "Alle Zeitpläne fortsetzen",
       "description": "Setzt jede Heizzone und das Warmwasser auf den Wochenzeitplan zurück."
     },
+    "calibrate_gas_meter": {
+      "name": "Gaszähler kalibrieren",
+      "description": "Zeichnet einen Gaszählerstand auf. Der Daemon schätzt den Zählerwert zwischen den Ablesungen und zeigt ihn im Sensor Gaszähler.",
+      "fields": {
+        "value": {
+          "name": "Ablesung",
+          "description": "Der Zählerstand, in der Einheit des Brennstoffzählers (standardmäßig m3), 0 bis 1000000000."
+        },
+        "estimate": {
+          "name": "Schätzung",
+          "description": "Der Brennstoffzähler zum Zeitpunkt der Ablesung, für eine früher abgelesene Ablesung. Standardmäßig der aktuelle Zähler."
+        },
+        "at": {
+          "name": "Zeitpunkt der Ablesung",
+          "description": "Der Zeitpunkt der Ablesung, nicht in der Zukunft. Standardmäßig jetzt."
+        }
+      }
+    },
+    "undo_gas_meter_reading": {
+      "name": "Gaszählerablesung rückgängig machen",
+      "description": "Entfernt die letzte Gaszählerablesung, um einen Tippfehler zu korrigieren. Ein ersetzter Zähler braucht erst ein Rückgängigmachen und dann eine neue Ablesung."
+    },
     "get_schedule": {
       "name": "Zeitplan abrufen",
       "description": "Gibt den Wochenzeitplan einer Heizzone oder der Warmwasserzone zurück: Programme mit den Tagen, an denen sie laufen, und ihren Zeitblöcken. Eine Zone ohne Zeitplan hat keine Programme."
@@ -405,6 +430,9 @@
     },
     "no_zones": {
       "message": "Es ist keine freedo-Zone geladen."
+    },
+    "no_hub": {
+      "message": "Es ist kein freedo-Hub geladen."
     },
     "zones_failed": {
       "message": "Der Daemon hat einige Zonen abgelehnt: {failures}"
