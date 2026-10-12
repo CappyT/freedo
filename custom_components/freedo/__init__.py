@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from homeassistant.const import CONF_HOST, CONF_PORT, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv, device_registry as dr
@@ -48,7 +50,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: FreedoConfigEntry) -> bo
         config_entry_id=entry.entry_id, **hub_device_info(entry.entry_id)
     )
     entry.runtime_data = FreedoRuntime(
-        client=client, coordinator=coordinator, hub_device_id=hub.id
+        client=client,
+        coordinator=coordinator,
+        hub_device_id=hub.id,
+        room_temp_lock=asyncio.Lock(),
     )
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(async_track_firmware(hass, coordinator))

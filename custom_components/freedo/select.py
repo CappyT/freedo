@@ -248,9 +248,12 @@ class ZoneTemperatureSourceSelect(FreedoEntity, SelectEntity):
         await call_api(client.set_zone_measuring(self._number, short))
         if self._mapped_sensor:
             # Stop the external pushes and end the reading, so the daemon falls
-            # back to the manual correction of the device.
-            self._set_paused(True)
-            await call_api(client.clear_room_temp(self._number))
+            # back to the manual correction of the device. The lock keeps a push
+            # that started earlier from landing after the clear.
+            lock = self.coordinator.config_entry.runtime_data.room_temp_lock
+            async with lock:
+                self._set_paused(True)
+                await call_api(client.clear_room_temp(self._number))
         await self.coordinator.async_request_refresh()
 
     async def _select_external(self) -> None:

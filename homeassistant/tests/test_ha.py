@@ -101,6 +101,11 @@ class FakeClient:
         # Room temperature pushes and clears as the daemon receives them.
         self.room_temps: list[tuple[int, float]] = []
         self.room_temp_clears: list[int] = []
+        # The order of pushes and clears as the daemon receives them.
+        self.room_temp_events: list[tuple] = []
+        # A push that waits on the gate reaches the daemon late.
+        self.room_temp_gate: asyncio.Event | None = None
+        self.room_temp_reached: asyncio.Event = asyncio.Event()
         # Errors the next room temperature pushes and clears raise, one per call.
         self.room_temp_errors: list[Exception] = []
         # GET /api/pair/window, None for a daemon without the route. The times are
@@ -251,13 +256,18 @@ class FakeClient:
     async def push_room_temp(self, zone, temp_c):
         if self.room_temp_errors:
             raise self.room_temp_errors.pop(0)
+        if self.room_temp_gate is not None:
+            self.room_temp_reached.set()
+            await self.room_temp_gate.wait()
         self.room_temps.append((zone, temp_c))
+        self.room_temp_events.append(("push", zone, temp_c))
         return {"tempC": temp_c}
 
     async def clear_room_temp(self, zone):
         if self.room_temp_errors:
             raise self.room_temp_errors.pop(0)
         self.room_temp_clears.append(zone)
+        self.room_temp_events.append(("clear", zone))
         return {"tempC": None}
 
     async def set_away(self, away):
@@ -690,6 +700,33 @@ async def test_temperature_source_choose_device(hass, client):
     assert entry.options[CONF_ROOM_TEMP_PAUSED] == [1]
     assert not any(call[0] == "patch_zone" for call in client.calls)
     assert hass.states.get(living).state == LIVING_DEVICE
+
+
+async def test_temperature_source_device_choice_serializes_the_push(hass, client):
+    # A push that started before the pause must not land after the clear of the
+    # zone: the lock serializes the push with the pause and the clear.
+    set_room_sensor(hass, "21.4")
+    entry = await setup_entry(hass, client, options={"room_temperatures": {"1": ROOM_SENSOR}})
+    living = entity_id(hass, entry, "select", LIVING_SOURCE)
+    client.room_temp_events.clear()
+
+    # A reading change starts a push that waits on the gate, holding the lock.
+    client.room_temp_gate = asyncio.Event()
+    set_room_sensor(hass, "21.9")
+    await client.room_temp_reached.wait()
+
+    # The device choice reaches the pause and the clear; with the lock it waits.
+    select_task = asyncio.create_task(select_option(hass, living, LIVING_DEVICE))
+    await asyncio.sleep(0.02)
+
+    # Release the push. The lock keeps the clear behind it.
+    client.room_temp_gate.set()
+    await select_task
+    await hass.async_block_till_done()
+    client.room_temp_gate = None
+
+    assert client.room_temp_events == [("push", 1, 21.9), ("clear", 1)]
+    assert entry.options[CONF_ROOM_TEMP_PAUSED] == [1]
 
 
 async def test_temperature_source_choose_external(hass, client):

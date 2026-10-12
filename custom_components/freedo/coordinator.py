@@ -24,6 +24,9 @@ class FreedoRuntime:
     coordinator: FreedoCoordinator
     # Device registry id of the hub device, the via device of every other one.
     hub_device_id: str
+    # Serializes a room temperature push of a zone and the pause that clears
+    # the zone reading, so no push lands after the clear of a paused zone.
+    room_temp_lock: asyncio.Lock
 
 
 type FreedoConfigEntry = ConfigEntry[FreedoRuntime]

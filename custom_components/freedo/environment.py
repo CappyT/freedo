@@ -111,27 +111,29 @@ def async_setup_environment(
         async def push_room_temp(zone: int) -> None:
             # The temperature source select pauses the pushes of a zone whose
             # room measures on a device. The options are read here, so the
-            # change needs no reload.
-            if zone in room_temp_paused(entry.options.get(CONF_ROOM_TEMP_PAUSED) or []):
-                return
-            entity_id = room_temps[zone]
-            state = hass.states.get(entity_id)
-            if state is None:
-                return
-            payload = room_temp_payload(
-                state.state, state.attributes.get(ATTR_UNIT_OF_MEASUREMENT)
-            )
-            if payload is None:
-                _LOGGER.debug("%s is %s: room temperature not pushed", entity_id, state.state)
-                return
-            try:
-                await client.push_room_temp(zone, payload["tempC"])
-            except FreedoError as err:
-                if zone not in room_failed:
-                    _LOGGER.warning("Room temperature push for zone %s failed: %s", zone, err)
-                room_failed.add(zone)
-                return
-            room_failed.discard(zone)
+            # change needs no reload. The lock also serializes the push with the
+            # pause and the clear of the zone, so no push lands after the clear.
+            async with entry.runtime_data.room_temp_lock:
+                if zone in room_temp_paused(entry.options.get(CONF_ROOM_TEMP_PAUSED) or []):
+                    return
+                entity_id = room_temps[zone]
+                state = hass.states.get(entity_id)
+                if state is None:
+                    return
+                payload = room_temp_payload(
+                    state.state, state.attributes.get(ATTR_UNIT_OF_MEASUREMENT)
+                )
+                if payload is None:
+                    _LOGGER.debug("%s is %s: room temperature not pushed", entity_id, state.state)
+                    return
+                try:
+                    await client.push_room_temp(zone, payload["tempC"])
+                except FreedoError as err:
+                    if zone not in room_failed:
+                        _LOGGER.warning("Room temperature push for zone %s failed: %s", zone, err)
+                    room_failed.add(zone)
+                    return
+                room_failed.discard(zone)
 
         room_entity_zones: dict[str, list[int]] = {}
         for zone, entity_id in room_temps.items():
