@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -38,7 +39,11 @@ func TestDaemonCheckStateCLI(t *testing.T) {
 	}
 
 	newer := filepath.Join(dir, "newer.db")
-	if err := legacyDatabase(t, newer, "8").Close(); err != nil {
+	cur, err := strconv.Atoi(install.SchemaVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := legacyDatabase(t, newer, strconv.Itoa(cur+1)).Close(); err != nil {
 		t.Fatal(err)
 	}
 

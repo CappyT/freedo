@@ -4,8 +4,20 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 )
+
+// newerSchemaVersion is one version past SchemaVersion, so the test holds
+// across schema bumps.
+func newerSchemaVersion(t *testing.T) string {
+	t.Helper()
+	n, err := strconv.Atoi(SchemaVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strconv.Itoa(n + 1)
+}
 
 // makeDatabase writes a current-schema database at path and closes it.
 func makeDatabase(t *testing.T, path string) {
@@ -47,7 +59,8 @@ func TestInspectSchemaClassifiesTheVersion(t *testing.T) {
 
 	newer := filepath.Join(dir, "newer.db")
 	makeDatabase(t, newer)
-	setSchemaVersion(t, newer, "8")
+	next := newerSchemaVersion(t)
+	setSchemaVersion(t, newer, next)
 
 	for _, tt := range []struct {
 		name    string
@@ -58,7 +71,7 @@ func TestInspectSchemaClassifiesTheVersion(t *testing.T) {
 		{"missing", missing, SchemaMissing, ""},
 		{"current", current, SchemaReadable, SchemaVersion},
 		{"older", older, SchemaReadable, "1"},
-		{"newer", newer, SchemaNewer, "8"},
+		{"newer", newer, SchemaNewer, next},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			got, version, err := InspectSchema(tt.path)
