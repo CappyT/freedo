@@ -126,12 +126,15 @@ func (d *daemon) saveGasMeter() error {
 
 // postGasMeter records a meter reading: {"reading": number} in fuel_unit, with
 // an optional "estimate" (the fuel counter when the reading was taken, for a
-// reading from a while ago) and an optional "at" (RFC3339, display only).
+// reading from a while ago) and an optional "at" (RFC3339, display only). A
+// reading below the last one is refused, unless "replaced": true marks a new
+// meter: it drops every stored reading first and starts the factor over.
 func (d *daemon) postGasMeter(w http.ResponseWriter, r *http.Request) {
 	var b struct {
 		Reading  *float64 `json:"reading"`
 		Estimate *float64 `json:"estimate"`
 		At       *string  `json:"at"`
+		Replaced bool     `json:"replaced"`
 	}
 	if !decodeBody(w, r, &b) {
 		return
@@ -180,8 +183,11 @@ func (d *daemon) postGasMeter(w http.ResponseWriter, r *http.Request) {
 				return nil, fmt.Errorf("estimate must be from 0 up to the current counter (%.3f)", counter)
 			}
 		}
+		if b.Replaced {
+			d.energy.gasReadings = nil
+		}
 		if last := d.energy.lastGasReading(); last != nil && reading < last.Reading {
-			return nil, fmt.Errorf("reading %.3f is below the previous reading %.3f: remove the last reading for a replaced meter", reading, last.Reading)
+			return nil, fmt.Errorf("reading %.3f is below the previous reading %.3f: pass \"replaced\": true for a replaced meter", reading, last.Reading)
 		}
 		d.energy.addGasReading(gasReading{At: when.UTC(), Reading: reading, Estimate: estimate})
 		if err := d.saveGasMeter(); err != nil {

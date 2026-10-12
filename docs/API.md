@@ -885,15 +885,18 @@ unit of `energy.gas.totalM3`, and estimates the meter value between readings.
 fuel counter when the reading was taken, for a reading the user took a while ago: it is from 0 up
 to the current counter, and it defaults to the current counter. `at` is the RFC3339 time the
 reading was taken, not in the future, stored for display only, and it defaults to now.
+`replaced` is an optional boolean for a new meter: it drops every stored reading first and starts
+the correction factor over, so the new meter may read below the old one.
 
 `DELETE /api/boiler/gas/meter` removes the last reading, to undo a typo. It answers `404` while no
-reading is stored. A replaced meter is handled by DELETE then POST.
+reading is stored.
 
 The reading is finite, from 0 to 1e9, and never below the previous reading: a meter does not run
-backwards. A lower reading, an estimate outside its range and an `at` in the future are `400`. The
-route needs the fuel counter, so it answers `503` without `boiler_max_gas_m3h` and
-`boiler_min_gas_m3h`, like the rest of `energy.gas`. The daemon keeps the last 20 readings as JSON
-in `meta.boiler_gas_meter` and writes them on the call, not on the counter's minute.
+backwards. A lower reading is `400` and names the `replaced` flag. An estimate outside its range
+and an `at` in the future are `400`. The route needs the fuel counter, so it answers `503` without
+`boiler_max_gas_m3h` and `boiler_min_gas_m3h`, like the rest of `energy.gas`. The daemon keeps the
+last 20 readings as JSON in `meta.boiler_gas_meter` and writes them on the call, not on the
+counter's minute.
 
 `GET /api/boiler` reports the meter in `energy.gas.meter`, `null` while no reading is stored:
 `value`, the estimated meter value; `lastReading` and `lastReadingAt`; `readings`, the count kept;

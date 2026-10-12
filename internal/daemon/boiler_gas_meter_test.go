@@ -5,11 +5,13 @@ package daemon
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"math"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -134,6 +136,32 @@ func TestGasMeterFirstReading(t *testing.T) {
 	}
 	m := meterOf(t, url)
 	nearMeter(t, "served value", m["value"], 8785.957)
+}
+
+// TestGasMeterReplacedMeter: a reading below the last one is refused and names
+// the replaced flag; with the flag the new meter starts over from that reading.
+func TestGasMeterReplacedMeter(t *testing.T) {
+	clock := newTestClock(energyStart)
+	d, url := newMeterDaemon(t, installWithGas(t, 2.7, 0.3), clock, nil)
+	setGasCounter(t, d, 50)
+	if code, resp := postReading(t, url, map[string]any{"reading": 1000}); code != http.StatusOK {
+		t.Fatalf("first reading: code=%d %v", code, resp)
+	}
+	code, resp := postReading(t, url, map[string]any{"reading": 5})
+	if code != http.StatusBadRequest {
+		t.Fatalf("lower reading without the flag: code=%d %v, want 400", code, resp)
+	}
+	if msg := fmt.Sprint(resp["error"]); !strings.Contains(msg, "replaced") {
+		t.Fatalf("error = %q, want it to name the replaced flag", msg)
+	}
+
+	code, resp = postReading(t, url, map[string]any{"reading": 5, "replaced": true})
+	if code != http.StatusOK {
+		t.Fatalf("replaced reading: code=%d %v, want 200", code, resp)
+	}
+	if resp["readings"] != 1.0 || resp["lastReading"] != 5.0 || resp["factorReadings"] != 0.0 {
+		t.Fatalf("after replace = %v, want one reading of 5 with no factor", resp)
+	}
 }
 
 // TestGasMeterFollowsTheCounter: between readings the value follows the fuel
