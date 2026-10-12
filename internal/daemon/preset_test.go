@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 
@@ -897,5 +898,68 @@ func TestPresetStateSkipsBrokenPrograms(t *testing.T) {
 	})
 	if got[0] || got[1] || !got[2] {
 		t.Errorf("bedroom home %v away %v office %v, want the broken bedroom programs skipped and the office one kept", got[0], got[1], got[2])
+	}
+}
+
+// TestHotWaterProgramMovesInWithTheZone: the hot-water program an older daemon
+// kept in meta waits there while the installation declares no hot-water zone,
+// and moves into every preset once one is declared, at runtime or at the next
+// start, and leaves meta.
+func TestHotWaterProgramMovesInWithTheZone(t *testing.T) {
+	path := t.TempDir() + "/state.db"
+	full := presetInstall(t, nil)
+	noHotWater := presetInstall(t, func(in *tado.Install) {
+		in.Zones = slices.DeleteFunc(in.Zones, func(z tado.Zone) bool { return z.Kind == tado.ZoneHotWater })
+	})
+	if err := noHotWater.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	hwPrograms := weekPrograms(tado.ScheduleEntry{Minute: 0, SetpointCenti: 4500, Enabled: true})
+	store := newTestStore(t, path)
+	if err := store.SetHotWaterProgram(context.Background(), hwPrograms); err != nil {
+		t.Fatal(err)
+	}
+	inMeta := func() bool {
+		t.Helper()
+		var n int
+		if err := store.db.QueryRow(`SELECT count(*) FROM meta WHERE key = 'hot_water_program'`).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n == 1
+	}
+	homeOf := func(d *daemon, preset int64) []tado.ScheduleProgram {
+		return engineValue(t, d, func() []tado.ScheduleProgram { return d.presetZonePrograms(preset, 0).home })
+	}
+
+	clock := newTestClock(time.Date(2026, 1, 5, 5, 0, 0, 0, time.UTC))
+	d, url, stop := startStoredDaemon(t, noHotWater, clock, store)
+	if !inMeta() {
+		t.Fatal("the hot-water program left meta while no hot-water zone exists")
+	}
+	var created presetView
+	if code := postJSON(t, http.MethodPost, url+"/api/presets", map[string]any{"name": "Winter"}, &created); code != http.StatusOK {
+		t.Fatalf("create: code=%d %v", code, created)
+	}
+	if _, err := d.do(func(*tado.EmuState) (any, error) {
+		_, _, err := d.setInstall(full)
+		return nil, err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, preset := range []int64{1, created.ID} {
+		if got := homeOf(d, preset); !reflect.DeepEqual(got, hwPrograms) {
+			t.Errorf("preset %d holds the hot-water program %v after the zone appeared, want %v", preset, got, hwPrograms)
+		}
+	}
+	if inMeta() {
+		t.Error("the hot-water program stays in meta after it moved in")
+	}
+	stop()
+
+	d, _, _ = startStoredDaemon(t, full, clock, newTestStore(t, path))
+	for _, preset := range []int64{1, created.ID} {
+		if got := homeOf(d, preset); !reflect.DeepEqual(got, hwPrograms) {
+			t.Errorf("preset %d holds the hot-water program %v after the restart, want %v", preset, got, hwPrograms)
+		}
 	}
 }

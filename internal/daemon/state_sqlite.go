@@ -241,30 +241,63 @@ func (s *stateStore) SetAway(ctx context.Context, away bool) error {
 	return err
 }
 
-// HotWaterProgram returns the stored hot-water program, nil when none is
-// stored. It lives in meta as the hex of the weekly document: the daemon keeps
-// it and never serves it, so it has no place among the served documents. The
-// preset migration reads it once; every later write lands in zone_program.
-func (s *stateStore) HotWaterProgram(ctx context.Context) ([]tado.ScheduleProgram, error) {
+// AdoptHotWaterProgram moves the hot-water program a daemon before the program
+// presets kept in meta hot_water_program, as the hex of the weekly document,
+// into zone_program, in one transaction: it becomes the home program of zone
+// in every preset that holds none, and the meta key goes. It returns the
+// program and the presets that took it, and nil when meta holds none. A value
+// that does not decode stays in meta and comes back as an error.
+func (s *stateStore) AdoptHotWaterProgram(ctx context.Context, zone int) ([]tado.ScheduleProgram, []int64, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer tx.Rollback()
 	var raw string
-	switch err := s.db.QueryRowContext(ctx, `SELECT value FROM meta WHERE key = 'hot_water_program'`).Scan(&raw); {
+	switch err := tx.QueryRowContext(ctx, `SELECT value FROM meta WHERE key = 'hot_water_program'`).Scan(&raw); {
 	case errors.Is(err, sql.ErrNoRows):
-		return nil, nil
+		return nil, nil, nil
 	case err != nil:
-		return nil, err
+		return nil, nil, err
 	}
 	body, err := hex.DecodeString(raw)
 	if err != nil {
-		return nil, fmt.Errorf("meta hot_water_program: %w", err)
+		return nil, nil, fmt.Errorf("meta hot_water_program: %w", err)
 	}
 	programs, err := tado.DecodeSchedule(body)
+	if err == nil {
+		err = validateHotWaterSchedule(programs)
+	}
 	if err != nil {
-		return nil, fmt.Errorf("meta hot_water_program: %w", err)
+		return nil, nil, fmt.Errorf("meta hot_water_program: %w", err)
 	}
-	if err := validateHotWaterSchedule(programs); err != nil {
-		return nil, fmt.Errorf("meta hot_water_program: %w", err)
+	rows, err := tx.QueryContext(ctx,
+		`SELECT id FROM preset WHERE id NOT IN (SELECT preset FROM zone_program WHERE zone = ? AND mode = 'home') ORDER BY id`, zone)
+	if err != nil {
+		return nil, nil, err
 	}
-	return programs, nil
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, nil, err
+	}
+	for _, id := range ids {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO zone_program (preset, zone, mode, body) VALUES (?, ?, 'home', ?)`,
+			id, zone, blob(tado.EncodeSchedulePrograms(programs))); err != nil {
+			return nil, nil, err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM meta WHERE key = 'hot_water_program'`); err != nil {
+		return nil, nil, err
+	}
+	return programs, ids, tx.Commit()
 }
 
 // errPresetNameTaken marks a create or rename that repeats the name of another
@@ -493,14 +526,6 @@ func (s *stateStore) DeleteZoneProgram(ctx context.Context, preset int64, zone i
 	}
 	_, err := s.db.ExecContext(ctx, `DELETE FROM zone_program WHERE preset = ? AND zone = ? AND mode = ?`,
 		preset, zone, mode)
-	return err
-}
-
-// SetHotWaterProgram stores the hot-water program.
-func (s *stateStore) SetHotWaterProgram(ctx context.Context, programs []tado.ScheduleProgram) error {
-	_, err := s.db.ExecContext(ctx,
-		`INSERT OR REPLACE INTO meta (key, value) VALUES ('hot_water_program', ?)`,
-		hex.EncodeToString(tado.EncodeSchedulePrograms(programs)))
 	return err
 }
 

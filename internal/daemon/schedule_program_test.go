@@ -415,36 +415,13 @@ func TestPurgeHotWaterScheduleLeftover(t *testing.T) {
 	}
 }
 
-// TestHotWaterProgramSurvivesStoreReload: the program is durable and a fresh
-// database holds none.
-func TestHotWaterProgramSurvivesStoreReload(t *testing.T) {
-	path := t.TempDir() + "/state.db"
-	store, err := openStateStore(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if programs, err := store.HotWaterProgram(context.Background()); err != nil || programs != nil {
-		t.Fatalf("a fresh database reads %v err=%v, want none", programs, err)
-	}
-	want := []tado.ScheduleProgram{{DayMask: 0x7f, Entries: []tado.ScheduleEntry{
-		{Minute: 0, SetpointCenti: 4500, Enabled: true},
-		{Minute: 1320, SetpointCenti: 5000, Enabled: false},
-	}}}
-	if err := store.SetHotWaterProgram(context.Background(), want); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.Close(); err != nil {
-		t.Fatal(err)
-	}
-	reopened, err := openStateStore(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer reopened.Close()
-	got, err := reopened.HotWaterProgram(context.Background())
-	if err != nil || !reflect.DeepEqual(got, want) {
-		t.Fatalf("reloaded %+v err=%v, want %+v", got, err, want)
-	}
+// SetHotWaterProgram stores programs in meta hot_water_program, as a daemon
+// before the program presets kept the hot-water program.
+func (s *stateStore) SetHotWaterProgram(ctx context.Context, programs []tado.ScheduleProgram) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT OR REPLACE INTO meta (key, value) VALUES ('hot_water_program', ?)`,
+		hex.EncodeToString(tado.EncodeSchedulePrograms(programs)))
+	return err
 }
 
 // TestClearOfflineSchedule: dropping a per-device 02b3 makes the device follow

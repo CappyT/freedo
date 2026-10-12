@@ -100,14 +100,46 @@ func (d *daemon) restorePresets(ctx context.Context, e *tado.EmuState) error {
 		}
 	}
 	d.activePreset = active
+	d.adoptHotWaterProgram(ctx)
 	return nil
+}
+
+// adoptHotWaterProgram moves the hot-water program a daemon before the program
+// presets kept in meta into every preset that holds no home program for the
+// hot-water zone. It runs at start and at each new installation, so a program
+// stored while the installation declared no hot-water zone moves in once one
+// is declared. A program that does not decode stays in meta, logged.
+func (d *daemon) adoptHotWaterProgram(ctx context.Context) {
+	inst := d.inst.Load()
+	if d.state == nil || inst == nil || len(d.presets) == 0 {
+		return
+	}
+	z, ok := inst.HotWaterZone()
+	if !ok {
+		return
+	}
+	programs, ids, err := d.state.AdoptHotWaterProgram(ctx, z.Number)
+	if err != nil {
+		log.Printf("the hot-water program of the daemon store stays out of the presets: %v", err)
+		return
+	}
+	for _, id := range ids {
+		if rec := d.presets[id]; rec != nil {
+			zp := rec.programs[z.Number]
+			zp.home = programs
+			rec.programs[z.Number] = zp
+		}
+	}
+	if programs != nil {
+		log.Printf("the hot-water program of zone %d moved in from the daemon store into %d presets", z.Number, len(ids))
+	}
 }
 
 // migrateDefaultPreset creates the Default preset on the first start with the
 // program store and copies the programs the coordinator already holds into it
 // as home programs: each heating zone from the served sched document of the
-// first member whose document decodes and keeps the week rules, the hot-water
-// zone from its daemon-side store. It reads everything first and then writes
+// first member whose document decodes and keeps the week rules. The hot-water
+// program follows in adoptHotWaterProgram. It reads everything first and then writes
 // in one transaction, so a failed or interrupted start leaves no preset and
 // the next start migrates again. It writes only preset rows: the served
 // documents stay as they are, so a restart after the migration serves the same
@@ -118,16 +150,7 @@ func (d *daemon) migrateDefaultPreset(ctx context.Context, e *tado.EmuState) err
 	if inst := d.inst.Load(); inst != nil {
 		for i := range inst.Zones {
 			z := &inst.Zones[i]
-			if z.Kind == tado.ZoneHotWater {
-				programs, err := d.state.HotWaterProgram(ctx)
-				if err != nil {
-					log.Printf("preset %q: the hot-water program of zone %d stays out: %v", defaultPresetName, z.Number, err)
-					continue
-				}
-				if programs != nil {
-					home[z.Number] = programs
-					moved = append(moved, fmt.Sprintf("the hot-water program of zone %d moved in from the daemon store", z.Number))
-				}
+			if z.Kind != tado.ZoneHeating {
 				continue
 			}
 			members, err := inst.ZoneMembers(z.Number)

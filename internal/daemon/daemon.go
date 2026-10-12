@@ -315,6 +315,7 @@ func (d *daemon) setInstall(in *tado.Install) (added, removed []string, err erro
 		d.restateShiftedZones(d.emu, before, in)
 		d.restateAwayZones(d.emu, before, in)
 		d.forgetRemovedZones(before, in)
+		d.adoptHotWaterProgram(context.Background())
 		d.dropRoomTemps(in)
 		d.dropAutoOffsets(in)
 	}
