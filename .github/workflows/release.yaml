@@ -34,7 +34,14 @@ jobs:
           fi
           # A pre-release (vX.Y.Z-beta.N) leaves the add-on on the last stable version.
           case "$TAG" in
-            *-*) ;;
+            *-*)
+              case "$addon" in
+                *-*)
+                  echo "::error::tag '$TAG', addon/config.yaml '$addon' must stay on a stable version"
+                  exit 1
+                  ;;
+              esac
+              ;;
             *)
               if [ "v$addon" != "$TAG" ]; then
                 echo "::error::tag '$TAG', addon/config.yaml '$addon'"
