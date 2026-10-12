@@ -109,7 +109,7 @@ describe('commands', () => {
 			'POST /api/zones/3/boost',
 			'POST /api/zones/3/window',
 			'PATCH /api/home',
-			'PATCH /api/install/devices/0201',
+			'PUT /api/install/devices/0201/label',
 			'POST /api/boiler/flow',
 			'POST /api/nodes/0201/childlock',
 			'POST /api/nodes/0201/identify'

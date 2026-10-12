@@ -126,7 +126,11 @@ export function createClient(options: ClientOptions = {}) {
 		setAway: (away: boolean) => request<Home & { queued: number }>('PATCH', 'home', { away }),
 		/** The label of a device is unique in the installation, compared without case. */
 		renameDevice: (ref: string, label: string) =>
-			request<{ rev: number; device: unknown }>('PATCH', 'install/devices/' + encodeURIComponent(ref), { label }),
+			request<{ rev: number; device: unknown }>(
+				'PUT',
+				'install/devices/' + encodeURIComponent(ref) + '/label',
+				{ label }
+			),
 		flow: (tempC: number, circuit?: number) =>
 			request<Command>('POST', 'boiler/flow', circuit === undefined ? { tempC } : { tempC, id: circuit }),
 		childLock: (device: string, on: boolean) =>

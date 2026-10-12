@@ -21,7 +21,7 @@ the routes. For the radio facts behind a rule, see [PROTOCOL.md](PROTOCOL.md).
 - `--health-public` makes `GET /api/health` readable without a token, for a container
   health check. The default is off.
 - `--ingress` makes the daemon accept the calls of the dashboard from the connection address
-  `172.30.32.2`, the Home Assistant ingress gateway, without a token. It covers 17 method and path
+  `172.30.32.2`, the Home Assistant ingress gateway, without a token. It covers 18 method and path
   pairs only. Only the add-on start script sets it, and it has no effect unless `SUPERVISOR_TOKEN` is
   set. Every other request needs the token. See [Access](OPERATION.md#access).
 - With no token, the daemon accepts a loopback address only and warns at start. An address
@@ -166,6 +166,7 @@ banner.
 | `PUT /api/install/network_key` | Write the network key (only while no device is declared). |
 | `GET`, `POST /api/install/devices` | List or declare devices. |
 | `GET`, `PATCH`, `DELETE /api/install/devices/{ref}` | Read, change or delete a device. |
+| `PUT /api/install/devices/{ref}/label` | Rename a device: write the label alone. |
 | `GET /api/install/devices/{ref}/removal` | Show what a removal changes. |
 | `GET`, `POST /api/install/zones` | List or declare zones. |
 | `GET`, `PATCH`, `DELETE /api/install/zones/{number}` | Read, change or delete a zone. |

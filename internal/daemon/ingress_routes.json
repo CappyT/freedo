@@ -16,5 +16,5 @@
 	"POST /api/boiler/flow",
 	"POST /api/nodes/{id}/childlock",
 	"POST /api/nodes/{id}/identify",
-	"PATCH /api/install/devices/{ref}"
+	"PUT /api/install/devices/{ref}/label"
 ]

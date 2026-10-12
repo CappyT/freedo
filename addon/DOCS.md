@@ -46,9 +46,9 @@ Assistant gateway.
 Every Home Assistant user can open the page, also a user who is not an administrator. The sidebar entry
 shows for administrators only, but the page opens for everyone who signs in. Without the token, a user
 can read the state of the plant, set temperatures and weekly schedules, switch zones off, switch the home
-between home and away, set the flow limit, and lock or identify a valve. Pairing, the installation, the
-network key, factory reset, reboot, calibration, firmware, raw device reads and the debug routes need the
-token, also from the page. Give the right to open the page with care.
+between home and away, set the flow limit, rename a device, and lock or identify a valve. Pairing, the
+installation, the network key, factory reset, reboot, calibration, firmware, raw device reads and the debug
+routes need the token, also from the page. Give the right to open the page with care.
 
 The port 18080 does not share this rule: a client of that port needs the token for every API route. The
 page is also at `http://<host>:18080/` when the Network tab publishes the port. It then asks for the

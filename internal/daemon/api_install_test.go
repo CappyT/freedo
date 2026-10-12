@@ -602,6 +602,35 @@ func TestInstallAPIRefusesADuplicateLabel(t *testing.T) {
 	}
 }
 
+// TestInstallAPIRenamesADeviceThroughTheLabelRoute: the ingress route a Home
+// Assistant user reaches carries the label alone. The route changes the label
+// under the rule of the general patch, and refuses every other field.
+func TestInstallAPIRenamesADeviceThroughTheLabelRoute(t *testing.T) {
+	a := newInstallAPI(t)
+	a.declareDevices()
+
+	dev := a.mutate(http.MethodPut, "/api/install/devices/VA9000000002/label",
+		map[string]any{"label": "attic"})["device"].(map[string]any)
+	if dev["label"] != "attic" || dev["kind"] != "valve" || dev["serial"] != "VA9000000002" {
+		t.Fatalf("device = %v, want only the label changed", dev)
+	}
+
+	// A body that carries another field is refused, so the route cannot reach one.
+	if code, res := a.call(http.MethodPut, "/api/install/devices/VA9000000001/label",
+		map[string]any{"label": "hall", "kind": "thermostat"}); code != http.StatusBadRequest {
+		t.Fatalf("a label route with kind: got %d %v, want 400", code, res)
+	}
+	// The duplicate rule is the same as the general patch.
+	code, res := a.call(http.MethodPut, "/api/install/devices/VA9000000001/label",
+		map[string]any{"label": "attic"})
+	if code != http.StatusConflict {
+		t.Fatalf("rename onto a duplicate label: got %d %v, want 409", code, res)
+	}
+	if msg := fmt.Sprint(res["error"]); !strings.Contains(msg, "VA9000000002") {
+		t.Fatalf("error = %q, want it to name the device that holds the label", msg)
+	}
+}
+
 // TestInstallAPIServesADuplicateLabelFromTheRows: an installation seeded before
 // the label rule keeps its duplicates. The daemon serves it and reports the
 // finding, because refusing to start would leave nothing to rename it with.

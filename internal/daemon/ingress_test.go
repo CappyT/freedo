@@ -124,6 +124,7 @@ func TestIngressRefusesEveryOtherRoute(t *testing.T) {
 		{"PATCH", "/api/install"},
 		{"PUT", "/api/install/network_key"},
 		{"POST", "/api/install/devices"},
+		{"PATCH", "/api/install/devices/x"},
 		{"DELETE", "/api/install/devices/x"},
 		{"PATCH", "/api/install/zones/1"},
 		{"DELETE", "/api/install/circuits/1"},

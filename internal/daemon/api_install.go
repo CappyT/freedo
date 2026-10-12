@@ -104,6 +104,13 @@ type devicePatch struct {
 	Notes  *string `json:"notes"`
 }
 
+// deviceLabelPut is the body of PUT /api/install/devices/{ref}/label. It carries
+// the label alone, so the ingress route that reaches it cannot change any other
+// field of the device.
+type deviceLabelPut struct {
+	Label string `json:"label"`
+}
+
 type zoneCreate struct {
 	Rev     *uint64 `json:"rev"`
 	Number  *int    `json:"number"`
@@ -645,6 +652,21 @@ func (d *daemon) patchInstallDevice(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (d *daemon) putInstallDeviceLabel(w http.ResponseWriter, r *http.Request) {
+	var p deviceLabelPut
+	if !decodeBody(w, r, &p) {
+		return
+	}
+	ref := r.PathValue("ref")
+	d.mutateInstall(w, "device", func(store *stateStore) (installResult, any, error) {
+		res, key, err := store.PatchDevice(r.Context(), ref, devicePatch{Label: &p.Label})
+		if err != nil {
+			return res, nil, err
+		}
+		return res, viewDeviceOf(res.Install, key), nil
+	})
+}
+
 // viewDeviceOf renders the device a mutation left behind. A reference the new
 // installation cannot resolve renders as nothing rather than failing the answer
 // to a mutation that already committed.
@@ -943,6 +965,7 @@ func (d *daemon) installRoutes(m *http.ServeMux) {
 	m.HandleFunc("POST /api/install/devices", d.postInstallDevice)
 	m.HandleFunc("GET /api/install/devices/{ref}", d.getInstallDevice)
 	m.HandleFunc("PATCH /api/install/devices/{ref}", d.patchInstallDevice)
+	m.HandleFunc("PUT /api/install/devices/{ref}/label", d.putInstallDeviceLabel)
 	m.HandleFunc("GET /api/install/devices/{ref}/removal", d.getInstallDeviceRemoval)
 	m.HandleFunc("DELETE /api/install/devices/{ref}", d.deleteInstallDevice)
 	m.HandleFunc("GET /api/install/zones", d.getInstallZones)

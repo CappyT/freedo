@@ -28,8 +28,8 @@ session, also a user who is not an administrator: `panel_admin` hides only the s
 cannot tell the users apart.
 
 For a request from `172.30.32.2`, the daemon skips the token for these method and path pairs only. They
-are the calls of the dashboard. The list is `internal/daemon/ingress_routes.json`, and `{n}` and `{id}`
-stand for a zone number and a device:
+are the calls of the dashboard. The list is `internal/daemon/ingress_routes.json`, and `{n}`, `{id}`
+and `{ref}` stand for a zone number, a device and a device reference:
 
 - Read: `GET /api/health`, `/api/zones`, `/api/nodes`, `/api/home`, `/api/boiler`, `/api/circuits` and
   `/api/zones/{n}/schedule`.
@@ -37,13 +37,14 @@ stand for a zone number and a device:
   `PUT /api/zones/{n}/schedule`.
 - Home: `PATCH /api/home` (home or away).
 - Boiler: `POST /api/boiler/flow` (the flow limit).
-- Device: `POST /api/nodes/{id}/childlock` and `/identify`.
+- Device: `POST /api/nodes/{id}/childlock` and `/identify`, and
+  `PUT /api/install/devices/{ref}/label` (the label alone, no other field).
 
 So a Home Assistant user, without the token, can read the state of the plant, set temperatures and weekly
-schedules, switch zones off, switch the home between home and away, set the flow limit, and lock or
-identify a valve. Every other request from that address needs the token. This includes pairing, the
-installation and the network key, factory reset, reboot, calibration and firmware, the raw device reads and
-the debug routes. The daemon compares the method and the exact path. It reads the address of the TCP
+schedules, switch zones off, switch the home between home and away, set the flow limit, rename a device,
+and lock or identify a valve. Every other request from that address needs the token. This includes
+pairing, the installation and the network key, factory reset, reboot, calibration and firmware, the raw
+device reads and the debug routes. The daemon compares the method and the exact path. It reads the address of the TCP
 connection and no header. It ignores `--ingress`, and logs a warning, unless the process runs under the
 Supervisor: the variable `SUPERVISOR_TOKEN` must be set. Outside the Supervisor the address
 `172.30.32.2` belongs to some other host.
