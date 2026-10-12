@@ -101,7 +101,7 @@ export const fr: Record<Key, string> = {
 	'programs.awayFallback': 'Température d’absence de la pièce',
 	'programs.awayOffHotWater': 'Éteinte quand tu es absent',
 	'programs.activate.title': 'Activer {name} ?',
-	'programs.activate.changes': 'Ces pièces changent tout de suite : {rooms}.',
+	'programs.activate.changes': 'Ces pièces changent tout de suite :',
 	'programs.activate.none': 'Aucune pièce ne change maintenant. Les nouvelles planifications s’appliquent à leur prochain bloc.',
 	'programs.activated': 'Profil activé.',
 

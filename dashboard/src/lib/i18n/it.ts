@@ -101,7 +101,7 @@ export const it: Record<Key, string> = {
 	'programs.awayFallback': 'Temperatura fuori casa della stanza',
 	'programs.awayOffHotWater': 'Spenta quando sei fuori casa',
 	'programs.activate.title': 'Attivare {name}?',
-	'programs.activate.changes': 'Queste stanze cambiano subito: {rooms}.',
+	'programs.activate.changes': 'Queste stanze cambiano subito:',
 	'programs.activate.none': 'Nessuna stanza cambia adesso. I nuovi programmi valgono dal loro prossimo blocco.',
 	'programs.activated': 'Profilo attivato.',
 

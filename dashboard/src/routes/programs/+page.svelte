@@ -36,6 +36,7 @@
 	let confirmActivate: ConfirmDialog | undefined = $state();
 	let confirmDelete: ConfirmDialog | undefined = $state();
 	let activateBody = $state('');
+	let activateItems = $state<string[]>([]);
 
 	async function load(id: number) {
 		loading = true;
@@ -109,14 +110,8 @@
 		try {
 			const [now, next] = await Promise.all([api.presetSchedules(active.id), api.presetSchedules(selected.id)]);
 			const changes = changedZones(now, next);
-			activateBody =
-				changes.length === 0
-					? t('programs.activate.none')
-					: t('programs.activate.changes', {
-							rooms: changes
-								.map((c) => `${zoneName(c, t('zone.hotWaterName'))} ${blockText(c.from)} -> ${blockText(c.to)}`)
-								.join(', ')
-						});
+			activateBody = changes.length === 0 ? t('programs.activate.none') : t('programs.activate.changes');
+			activateItems = changes.map((c) => `${zoneName(c, t('zone.hotWaterName'))}: ${blockText(c.from)} → ${blockText(c.to)}`);
 			confirmActivate?.show();
 		} catch (error) {
 			failure = errorText(error);
@@ -271,6 +266,7 @@
 	bind:this={confirmActivate}
 	title={t('programs.activate.title', { name: selected?.name ?? '' })}
 	body={activateBody}
+	items={activateItems}
 	confirm={t('programs.activate')}
 	onconfirm={activate}
 />

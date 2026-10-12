@@ -350,8 +350,9 @@ try {
 	);
 	await clickText('Activate');
 	await tab.waitFor(`document.querySelector('dialog[open]')`);
-	const body = await tab.evaluate(`document.querySelector('dialog[open] p').textContent`);
-	check(/Living room [\d.]+ °C -> 19 °C/.test(body), `the confirmation names the rooms that change now (${body})`);
+	const rooms = await tab.evaluate(`[...document.querySelectorAll('dialog[open] li')].map((li) => li.textContent)`);
+	check(rooms.some((r) => /^Living room: [\d.]+ °C → 19 °C$/.test(r)), `the confirmation lists the rooms that change now (${rooms.join(' | ')})`);
+	check(await tab.evaluate(`document.activeElement?.textContent.trim() === 'Cancel'`), 'the confirmation focuses Cancel');
 	await tab.evaluate(`document.querySelector('dialog[open] button.primary').click()`);
 	check(await toast('Messages waiting for the device'), 'the activation is sent');
 	await sleep(500);

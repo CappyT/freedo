@@ -101,7 +101,7 @@ export const en = {
 	'programs.awayFallback': 'Away temperature of the room',
 	'programs.awayOffHotWater': 'Off while you are away',
 	'programs.activate.title': 'Activate {name}?',
-	'programs.activate.changes': 'These rooms change now: {rooms}.',
+	'programs.activate.changes': 'These rooms change now:',
 	'programs.activate.none': 'No room changes now. The new schedules apply from their next block.',
 	'programs.activated': 'Profile activated.',
 
