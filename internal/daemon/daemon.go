@@ -327,6 +327,11 @@ func (d *daemon) setInstall(in *tado.Install) (added, removed []string, err erro
 		d.restateAwayZones(d.emu, before, in)
 		d.forgetRemovedZones(before, in)
 		d.adoptHotWaterProgram(context.Background())
+		// A member that moved zones, or joined one, follows the home program of
+		// its zone in the active preset.
+		if _, err := d.serveHomePrograms(d.emu, d.requestQueuedDispatch); err != nil {
+			log.Printf("program presets: serving the home programs after the installation change: %v", err)
+		}
 		d.dropRoomTemps(in)
 		d.dropAutoOffsets(in)
 	}
@@ -3478,6 +3483,12 @@ func safeNetcmd(t int) bool {
 	return t == 1005 || t == 1006 || t == 1008
 }
 
+// putSchedule writes the document of one device. A member of a heating zone
+// takes it as the home program of its first heating zone in the active preset,
+// which every member of that zone is then served (setZoneProgram): the zone
+// has one program, so a document of one member alone would leave the devices
+// on a program the engine does not follow. A device in no heating zone keeps
+// a document of its own.
 func (d *daemon) putSchedule(w http.ResponseWriter, r *http.Request) {
 	n, target, ok := d.pathNode(w, r)
 	if !ok {
@@ -3504,13 +3515,42 @@ func (d *daemon) putSchedule(w http.ResponseWriter, r *http.Request) {
 		if b.DayMask != 0x7f {
 			return nil, errors.New("schedule requires dayMask 127")
 		}
-		if err := e.SetSchedule(target, []tado.ScheduleProgram{{DayMask: byte(b.DayMask), Entries: entries}}); err != nil {
+		programs := []tado.ScheduleProgram{{DayMask: byte(b.DayMask), Entries: entries}}
+		if zone, ok := heatingZoneOf(inst, n); ok {
+			if err := tado.ValidateSchedule(programs); err != nil {
+				return nil, err
+			}
+			d.ensurePresets()
+			return true, d.setZoneProgram(e, d.activePreset, zone, false, programs, true)
+		}
+		if err := e.SetSchedule(target, programs); err != nil {
 			return nil, err
 		}
 		d.dispatchQueued(e, target)
 		return true, nil
 	})
 	queued(w, v, d.persist(err), map[string]any{"note": "served on the valve's next zone schedule GET"})
+}
+
+// heatingZoneOf returns the first heating zone, in declaration order, that
+// lists dev as a member.
+func heatingZoneOf(inst *tado.Install, dev *tado.Device) (int, bool) {
+	for i := range inst.Zones {
+		z := &inst.Zones[i]
+		if z.Kind != tado.ZoneHeating {
+			continue
+		}
+		members, err := inst.ZoneMembers(z.Number)
+		if err != nil {
+			continue
+		}
+		for _, m := range members {
+			if m == dev || bytes.Equal(m.WireEUI(), dev.WireEUI()) {
+				return z.Number, true
+			}
+		}
+	}
+	return 0, false
 }
 
 type scheduleEntryBody struct {

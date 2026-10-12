@@ -144,7 +144,7 @@ banner.
 | `POST /api/nodes/{id}/config` | Write chosen `d/config` tags. |
 | `DELETE /api/nodes/{id}/config/offlineScheduleEnabled` | Remove the per-device offline schedule value. |
 | `POST /api/nodes/{id}/factoryreset` | Make a device leave the network. |
-| `PUT /api/nodes/{id}/schedule` | Write the schedule document to one device. |
+| `PUT /api/nodes/{id}/schedule` | Write the home program of the heating zone of a device, or the document of a device in no heating zone. |
 | `GET`, `POST`, `DELETE /api/nodes/{id}/fw` | Read the firmware state, start or cancel a transfer. |
 | `GET /api/nodes/{id}/currentlog` | Read the device log. |
 | `GET /api/nodes/{id}/dbg/mem?adr=&len=` | Read device memory (`refresh=1` forces a new read). |
@@ -389,7 +389,8 @@ of the zone. Each zone holds two modes: the `home` program it follows at home an
 optional `away` program it follows while the whole home is away. The query names the mode
 (`mode=home|away`, `home` by default) and the [program preset](#program-presets)
 (`preset=<id>`, the active one by default). The answer of `GET` and `PUT` carries the
-programs with their `mode` and `preset`.
+programs with their `mode` and `preset`. `GET` reads the program store, which the served
+documents follow.
 
 - `PUT` writes one or more day programs with a day mask and switch points. A document
   over 64 KiB gets `413`. A `mode` outside `home|away` gets `400`, an unknown preset id
@@ -422,12 +423,16 @@ programs with their `mode` and `preset`.
 - The daemon stores the block each zone received. After a restart it writes once each zone
   whose program in force moved while the daemon was down. It also stores zone rewrites that
   are queued and not confirmed, and queues them again once after a restart.
-- A device that moves to another heating zone receives the document of the new zone, taken
-  from a member that stays there. Without one the device gets `2.03` and keeps its program.
+- A device that moves to another heating zone receives the home program of the new zone in
+  the active preset. A zone without one gives the device `2.03`, and it keeps its program.
 - At start the daemon removes the stored `sched` document of the hot water thermostat when
   no heating program explains it, and logs this.
 
-`PUT /api/nodes/{id}/schedule` writes the document to one device.
+`PUT /api/nodes/{id}/schedule` on a member of a heating zone writes the home program of
+its first heating zone in the active preset, as a `PUT` on the zone does: every member
+receives the document. A zone has one program, so a document of one member alone would
+leave the devices on a program the daemon does not follow. A device in no heating zone
+receives the document alone.
 
 ### Program presets
 
@@ -465,6 +470,11 @@ served `sched` documents derive from its home programs. A schedule write without
 - A stored program that does not decode or breaks the week rules is logged and skipped at
   start. A database with presets and no valid active id starts on the first preset and logs
   the inconsistency.
+- At each start and after each installation change the daemon serves the home programs of
+  the active preset again. A member whose document differs receives the program of its
+  zone and a fetch trigger, and a member of a zone without a home program loses its
+  document. A document with unchanged bytes takes nothing, so a start after an upgrade
+  writes nothing on air.
 - The daemon has no season calendar. An outside automation, for example Home Assistant,
   switches the presets.
 

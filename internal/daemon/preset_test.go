@@ -6,6 +6,7 @@ package daemon
 // routes with mode and preset.
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
@@ -1215,5 +1216,118 @@ func TestPresetActivationPartialServe(t *testing.T) {
 	}
 	if block := engineValue(t, d, func() scheduledBlock { return d.schedPushed[10] }); block != (scheduledBlock{c: 22}) {
 		t.Errorf("the bedroom follows %v, want the 22 C block", block)
+	}
+}
+
+// TestPresetServedDocumentsFollowTheStore: the served documents follow the
+// home programs of the active preset. A start serves them again, so a program
+// stored and not served before a crash reaches the members, and a document
+// with no program behind it goes; a GET of the home program reads the store,
+// not a member; an installation change serves a member that moved zones.
+func TestPresetServedDocumentsFollowTheStore(t *testing.T) {
+	path := t.TempDir() + "/state.db"
+	in := presetInstall(t, nil)
+	bedroom := wireOf(t, in, "VA1000000005")
+	office := wireOf(t, in, "VA1000000002")
+	clock := newTestClock(time.Date(2026, 1, 5, 5, 0, 0, 0, time.UTC))
+	d, url, stop := startStoredDaemon(t, in, clock, newTestStore(t, path))
+	var view map[string]any
+	if code := postJSON(t, http.MethodPut, url+"/api/zones/10/schedule",
+		allDayProgram(map[string]any{"minute": 0, "setpoint_c": 20.0}), &view); code != http.StatusOK {
+		t.Fatalf("bedroom schedule: code=%d %v", code, view)
+	}
+	setDoc := func(d *daemon, target string, c int) {
+		t.Helper()
+		if _, err := d.do(func(e *tado.EmuState) (any, error) {
+			return nil, e.SetSchedule(target, weekPrograms(tado.ScheduleEntry{Minute: 0, SetpointCenti: c, Enabled: true}))
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A document no program explains, as a crash between two writes leaves it.
+	setDoc(d, office, 1700)
+	if err := d.persist(nil); err != nil {
+		t.Fatal(err)
+	}
+	var read scheduleView
+	if code := getJSON(t, url+"/api/zones/3/schedule", &read); code != http.StatusNotFound {
+		t.Errorf("GET the office home program with no program stored: code=%d %+v, want 404", code, read.Programs)
+	}
+	stop()
+
+	// A program stored and not served before a crash.
+	twentyTwo := weekPrograms(tado.ScheduleEntry{Minute: 0, SetpointCenti: 2200, Enabled: true})
+	store := newTestStore(t, path)
+	if err := store.SetZoneProgram(context.Background(), 1, 10, false, twentyTwo); err != nil {
+		t.Fatal(err)
+	}
+	store.Close()
+
+	d, url, stop = startStoredDaemon(t, in, clock, newTestStore(t, path))
+	served := func(target string) []tado.ScheduleProgram {
+		return engineValue(t, d, func() []tado.ScheduleProgram {
+			p, _, _ := d.emu.Schedule(target)
+			return p
+		})
+	}
+	if got := served(bedroom); !reflect.DeepEqual(got, twentyTwo) {
+		t.Errorf("the bedroom is served %v after the start, want the stored 22 C program", got)
+	}
+	if n, head := takeQueue(t, d, "VA1000000005"); n != 1 || head == nil || head.URI() != "d/sched" {
+		t.Errorf("the bedroom holds %d writes headed by %v after the start, want one fetch trigger", n, head)
+	}
+	if got := served(office); got != nil {
+		t.Errorf("the office is served %v after the start, want no document: zone 3 has no home program", got)
+	}
+	stop()
+	saved, err := newTestStore(t, path).Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body := saved.Schedule[bedroom].Body; !bytes.Equal(body, tado.EncodeSchedulePrograms(twentyTwo)) {
+		t.Errorf("the stored bedroom document is %x, want the 22 C program", body)
+	}
+	if _, held := saved.Schedule[office]; held {
+		t.Error("the stored state keeps the office document")
+	}
+
+	d, url, _ = startStoredDaemon(t, in, clock, newTestStore(t, path))
+	if code := postJSON(t, http.MethodPut, url+"/api/zones/3/schedule",
+		allDayProgram(map[string]any{"minute": 0, "setpoint_c": 19.0}), &view); code != http.StatusOK {
+		t.Fatalf("office schedule: code=%d %v", code, view)
+	}
+	setDoc(d, bedroom, 1500)
+	if code := getJSON(t, url+"/api/zones/10/schedule", &read); code != http.StatusOK || read.Programs[0].Entries[0].SetpointC != 22 {
+		t.Errorf("GET the bedroom home program: code=%d %+v, want the stored 22 C program", code, read.Programs)
+	}
+
+	// The two valves swap zones: no member stays to hand its document over.
+	swapped := presetInstall(t, func(in *tado.Install) {
+		for i := range in.Zones {
+			switch in.Zones[i].Number {
+			case 3:
+				in.Zones[i].Members, in.Zones[i].Reporter = []string{"VA1000000005"}, []string{"VA1000000005"}
+			case 10:
+				in.Zones[i].Members, in.Zones[i].Reporter = []string{"VA1000000002"}, []string{"VA1000000002"}
+			}
+		}
+	})
+	if _, err := d.do(func(*tado.EmuState) (any, error) {
+		_, _, err := d.setInstall(swapped)
+		return nil, err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	served = func(target string) []tado.ScheduleProgram {
+		return engineValue(t, d, func() []tado.ScheduleProgram {
+			p, _, _ := d.emu.Schedule(target)
+			return p
+		})
+	}
+	if got := served(bedroom); len(got) != 1 || got[0].Entries[0].SetpointCenti != 1900 {
+		t.Errorf("the bedroom valve in zone 3 is served %v, want the 19 C office program", got)
+	}
+	if got := served(office); !reflect.DeepEqual(got, twentyTwo) {
+		t.Errorf("the office valve in zone 10 is served %v, want the 22 C bedroom program", got)
 	}
 }

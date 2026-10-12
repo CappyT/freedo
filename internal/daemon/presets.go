@@ -10,6 +10,7 @@ package daemon
 // write lands in the database first, so a failed save changes nothing.
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"errors"
@@ -101,7 +102,7 @@ func (d *daemon) restorePresets(ctx context.Context, e *tado.EmuState) error {
 	}
 	d.activePreset = active
 	d.adoptHotWaterProgram(ctx)
-	return nil
+	return d.alignServedPrograms(ctx, e)
 }
 
 // adoptHotWaterProgram moves the hot-water program a daemon before the program
@@ -264,16 +265,19 @@ func (d *daemon) presetNamed(name string) bool {
 // serveHomePrograms fans the home program of the active preset out to the
 // sched document of every zone member, and drops the document of a zone
 // without one: its members then read 2.03 like a zone that never had a
-// program, and keep the program they run. A document whose bytes do not move
-// takes no fetch trigger, so serving an unchanged preset is silent. A member
-// that refuses its document does not stop the others: the errors come back
-// joined.
-func (d *daemon) serveHomePrograms(e *tado.EmuState) error {
+// program, and keep the program they run. A device in two heating zones takes
+// the program of the first, as a reload gives it (tado rehomeScheduleDocuments).
+// A document whose bytes do not move is left alone and takes no fetch trigger,
+// so serving an unchanged preset is silent; moved reports whether a document
+// changed. dispatch sends each fetch trigger queued. A member that refuses its
+// document does not stop the others: the errors come back joined.
+func (d *daemon) serveHomePrograms(e *tado.EmuState, dispatch func(string)) (moved bool, err error) {
 	inst := d.inst.Load()
-	if inst == nil {
-		return nil
+	if inst == nil || len(d.presets) == 0 {
+		return false, nil
 	}
 	var errs []error
+	served := make(map[string]bool)
 	for i := range inst.Zones {
 		z := &inst.Zones[i]
 		if z.Kind != tado.ZoneHeating {
@@ -286,6 +290,10 @@ func (d *daemon) serveHomePrograms(e *tado.EmuState) error {
 		}
 		for _, member := range members {
 			target := hex.EncodeToString(member.WireEUI())
+			if served[target] {
+				continue
+			}
+			served[target] = true
 			if !held {
 				dropped, err := e.DropSchedule(target)
 				if err != nil {
@@ -293,17 +301,41 @@ func (d *daemon) serveHomePrograms(e *tado.EmuState) error {
 					continue
 				}
 				if dropped {
+					moved = true
 					log.Printf("dropped the sched document of %s: zone %d has no home program in the active preset",
 						member.Serial, z.Number)
 				}
+				continue
+			}
+			if cur, set, err := e.Schedule(target); err == nil && set &&
+				bytes.Equal(tado.EncodeSchedulePrograms(cur), tado.EncodeSchedulePrograms(home)) {
 				continue
 			}
 			if err := e.SetSchedule(target, home); err != nil {
 				errs = append(errs, fmt.Errorf("%s: %w", member.Serial, err))
 				continue
 			}
-			d.dispatchQueued(e, target)
+			moved = true
+			dispatch(target)
 		}
 	}
-	return errors.Join(errs...)
+	return moved, errors.Join(errs...)
+}
+
+// alignServedPrograms serves the home programs of the active preset at start,
+// so the members follow the programs the engine follows after a crash between
+// two writes, a failed activation or a change made while the daemon was down.
+// A document that moves is saved; one a member refuses is logged and the start
+// goes on.
+func (d *daemon) alignServedPrograms(ctx context.Context, e *tado.EmuState) error {
+	moved, err := d.serveHomePrograms(e, d.requestQueuedDispatch)
+	if err != nil {
+		log.Printf("program presets: serving the home programs at start: %v", err)
+	}
+	if !moved {
+		return nil
+	}
+	log.Printf("program presets: realigned the served documents with the preset %q", d.presets[d.activePreset].name)
+	d.saveSeq++
+	return d.saveDesiredStateSnapshot(ctx, e.ExportDesiredState(), d.saveSeq)
 }

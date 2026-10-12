@@ -269,7 +269,7 @@ func (d *daemon) activatePreset(w http.ResponseWriter, r *http.Request) {
 		}
 		d.activePreset = id
 		changed := d.applyHomeState(e)
-		served := d.serveHomePrograms(e)
+		_, served := d.serveHomePrograms(e, func(target string) { d.dispatchQueued(e, target) })
 		queued := d.rewriteZones(e, changed, func(target string) { d.dispatchQueued(e, target) }, false)
 		// The owed writes reach the database with the pushed blocks: a restart
 		// re-evaluates from the stored preset and stored blocks, not from the

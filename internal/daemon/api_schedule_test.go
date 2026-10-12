@@ -289,3 +289,33 @@ func TestAPIScheduleEditQueuesFetchTrigger(t *testing.T) {
 	}
 	oneTrigger("VA1000000007", "node PUT")
 }
+
+// TestNodeScheduleWritesTheZoneProgram: the node schedule route on a member of
+// a heating zone writes the home program of that zone in the active preset:
+// every member is served it, the engine follows it and the zone GET reads it.
+func TestNodeScheduleWritesTheZoneProgram(t *testing.T) {
+	d, url := scheduleDaemon(t)
+	body := map[string]any{"dayMask": 127, "entries": []map[string]any{{"startMin": 0, "tempC": 19.5}}}
+	var view map[string]any
+	if code := postJSON(t, http.MethodPut, url+"/api/nodes/VA1000000001/schedule", body, &view); code != http.StatusOK {
+		t.Fatalf("put node schedule: code=%d %v", code, view)
+	}
+	want := []tado.ScheduleProgram{{DayMask: 0x7f, Entries: []tado.ScheduleEntry{{Minute: 0, SetpointCenti: 1950, Enabled: true}}}}
+	for _, ref := range []string{"VA1000000001", "VA1000000006"} {
+		target := hex.EncodeToString(mustResolve(t, ref).WireEUI())
+		got := engineValue(t, d, func() []tado.ScheduleProgram {
+			p, _, _ := d.emu.Schedule(target)
+			return p
+		})
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("%s is served %v, want %v", ref, got, want)
+		}
+	}
+	if got := engineValue(t, d, func() []tado.ScheduleProgram { p, _ := d.zonePrograms(5); return p }); !reflect.DeepEqual(got, want) {
+		t.Errorf("the engine follows %v on zone 5, want %v", got, want)
+	}
+	var read scheduleView
+	if code := getJSON(t, url+"/api/zones/5/schedule", &read); code != http.StatusOK || read.Programs[0].Entries[0].SetpointC != 19.5 {
+		t.Errorf("GET zone 5: code=%d %+v, want the 19.5 C program", code, read.Programs)
+	}
+}
