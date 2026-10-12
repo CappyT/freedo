@@ -255,6 +255,9 @@ textarea {
 .segmented {
 	justify-self: start;
 	display: inline-flex;
+	/* A fieldset keeps its default padding otherwise, and the labels do not fill the group. */
+	margin: 0;
+	padding: 0;
 	border: 1px solid var(--border-strong);
 	border-radius: var(--radius-md);
 	overflow: hidden;
