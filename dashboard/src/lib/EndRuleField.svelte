@@ -25,6 +25,8 @@
 			<span class="text">
 				<span class="title">{t(`ends.${value}`)}</span>
 				<span class="hint">{t(`ends.${value}.hint`)}</span>
+				<!-- The rule name of the API and of the Home Assistant service set_overlay. -->
+				<code class="rule mono">{value}</code>
 			</span>
 		</label>
 	{/each}
@@ -99,6 +101,14 @@
 	.hint {
 		font-size: var(--text-small-size);
 		color: var(--text-muted);
+	}
+
+	.rule {
+		justify-self: start;
+		margin-top: 0.15rem;
+		font-size: 0.75rem;
+		color: var(--text-muted);
+		opacity: 0.8;
 	}
 
 	.duration {
