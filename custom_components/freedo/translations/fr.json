@@ -251,6 +251,9 @@
         "state": {
           "external": "Capteur externe"
         }
+      },
+      "preset": {
+        "name": "Préréglage"
       }
     },
     "switch": {

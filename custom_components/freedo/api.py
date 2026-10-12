@@ -119,6 +119,16 @@ class FreedoClient:
                 return None
             raise
 
+    async def presets(self) -> dict[str, Any] | None:
+        """The program presets with the active one, None on a daemon without
+        the route."""
+        try:
+            return await self._request("GET", "/api/presets")
+        except FreedoApiError as err:
+            if err.status == 404:
+                return None
+            raise
+
     # --- writes ---
 
     async def set_away(self, away: bool) -> dict[str, Any]:
@@ -128,6 +138,10 @@ class FreedoClient:
         """Open the pair window for seconds, 0 closes it. The answer is the
         window view of the read."""
         return await self._request("POST", "/api/pair/window", {"seconds": int(seconds)})
+
+    async def activate_preset(self, preset_id: int) -> dict[str, Any]:
+        """Make a preset the active one and serve its home programs."""
+        return await self._request("POST", f"/api/presets/{int(preset_id)}/activate")
 
     async def set_offline_schedule(self, enabled: bool) -> dict[str, Any]:
         return await self._request(

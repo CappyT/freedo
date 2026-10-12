@@ -1,7 +1,8 @@
 """Display orientation of each valve (d/config tag 0149). End rule of a change
 made on a device and offset mode, of each heating zone. Temperature source: the
 device of the room or an external Home Assistant sensor that measures the room
-temperature of a heating zone."""
+temperature of a heating zone. Active program preset of the daemon: the home and
+away program of every zone."""
 
 from __future__ import annotations
 
@@ -56,6 +57,9 @@ async def async_setup_entry(
         for short, dev in sorted(coordinator.data.devices.items())
         if dev.get("kind") == KIND_VALVE and in_zone(coordinator.data, short)
     ]
+    # The preset route is optional: a daemon without it gets no select.
+    if coordinator.data.presets is not None:
+        entities.append(PresetSelect(coordinator))
     entities.extend(
         DeviceOverlayEndSelect(coordinator, zone)
         for zone in coordinator.data.heating_zones()
@@ -92,6 +96,44 @@ class OrientationSelect(FreedoDisplayEntity, SelectEntity):
 
     async def async_select_option(self, option: str) -> None:
         await self._write(orientation=option)
+
+
+class PresetSelect(FreedoEntity, SelectEntity):
+    """The active program preset of the daemon: the home program and the
+    optional away program of every zone. The daemon has no season calendar, so
+    an automation follows the season or the weather here. Choosing an option
+    activates that preset and asks for a new poll. The options come from the
+    coordinator data on each update, so a rename, a new preset and a delete
+    show up without a reload. The entity exists only on a daemon that serves
+    GET /api/presets."""
+
+    _attr_translation_key = "preset"
+
+    def __init__(self, coordinator: FreedoCoordinator) -> None:
+        super().__init__(coordinator, "preset")
+        self._attr_device_info = self.hub_device()
+
+    @property
+    def _presets(self) -> list[dict]:
+        return self.coordinator.data.presets or []
+
+    @property
+    def options(self) -> list[str]:
+        return [p["name"] for p in self._presets if p.get("name")]
+
+    @property
+    def current_option(self) -> str | None:
+        for preset in self._presets:
+            if preset.get("active"):
+                return preset.get("name")
+        return None
+
+    async def async_select_option(self, option: str) -> None:
+        preset = next((p for p in self._presets if p.get("name") == option), None)
+        if preset is None:
+            return
+        await call_api(self.coordinator.client.activate_preset(preset["id"]))
+        await self.coordinator.async_request_refresh()
 
 
 class DeviceOverlayEndSelect(FreedoZoneSettingEntity, SelectEntity):

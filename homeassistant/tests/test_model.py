@@ -173,6 +173,14 @@ INSTALL_DEVICES = {
 
 # GET /api/install/circuits and the flow limit view of GET /api/boiler for circuit 1.
 CIRCUITS = {"rev": 7, "circuits": [{"id": 1, "name": "Heating", "heat_source": "0000000000000001"}]}
+
+# GET /api/presets: the program presets, the active one flagged.
+PRESETS = {
+    "presets": [
+        {"id": 1, "name": "Winter", "active": True},
+        {"id": 2, "name": "Summer", "active": False},
+    ]
+}
 FLOW_CIRCUIT = {"id": 1, "curve": False, "computedC": None, "servedC": 45, "changedAt": None,
                 "fetched": True, "adapt": False, "defaultCurve": False, "reductionC": None}
 

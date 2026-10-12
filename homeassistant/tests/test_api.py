@@ -168,6 +168,32 @@ def test_pair_window():
         run(FreedoClient(refusing, "h", 8080).pair_window())
 
 
+def test_presets():
+    listing = {"presets": [
+        {"id": 1, "name": "Winter", "active": True},
+        {"id": 2, "name": "Summer", "active": False},
+    ]}
+    activated = {"id": 2, "name": "Summer", "active": True, "queued": 1}
+    session = FakeSession(
+        {
+            ("GET", "/api/presets"): (200, listing),
+            ("POST", "/api/presets/2/activate"): (200, activated),
+        }
+    )
+    client = FreedoClient(session, "h", 8080)
+    assert run(client.presets()) == listing
+    assert run(client.activate_preset(2)) == activated
+    assert [(c["method"], c["url"].split(":8080", 1)[-1], c["json"]) for c in session.calls] == [
+        ("GET", "/api/presets", None),
+        ("POST", "/api/presets/2/activate", None),
+    ]
+    # A daemon without the route answers 404: no presets to show.
+    assert run(FreedoClient(FakeSession(), "h", 8080).presets()) is None
+    refusing = FakeSession({("GET", "/api/presets"): (500, {"error": "engine busy"})})
+    with pytest.raises(FreedoApiError):
+        run(FreedoClient(refusing, "h", 8080).presets())
+
+
 def test_install_read():
     body = {"rev": 7, "offline_schedule": True}
     session = FakeSession({("GET", "/api/install"): (200, body)})

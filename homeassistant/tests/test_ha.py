@@ -60,6 +60,7 @@ from test_model import (  # noqa: E402
     INSTALL_ZONES,
     NODES,
     HOT_WATER_WEEK,
+    PRESETS,
     SCHEDULE,
     WEEK,
     ZONES,
@@ -111,6 +112,10 @@ class FakeClient:
         # GET /api/pair/window, None for a daemon without the route. The times are
         # left out while the window never opened.
         self.pair_window_json: dict | None = {"open": False, "responder": False, "joiners": []}
+        # GET /api/presets, None for a daemon without the route.
+        self.presets_json: dict | None = copy.deepcopy(PRESETS)
+        # The reads of GET /api/presets, to see a selection poll again.
+        self.preset_reads = 0
 
     async def health(self):
         return copy.deepcopy(self.health_json)
@@ -138,6 +143,18 @@ class FakeClient:
 
     async def pair_window(self):
         return copy.deepcopy(self.pair_window_json)
+
+    async def presets(self):
+        self.preset_reads += 1
+        return copy.deepcopy(self.presets_json)
+
+    async def activate_preset(self, preset_id):
+        self.calls.append(("activate_preset", preset_id))
+        presets = (self.presets_json or {}).get("presets", [])
+        for row in presets:
+            row["active"] = row["id"] == preset_id
+        name = next((p["name"] for p in presets if p["id"] == preset_id), "")
+        return {"id": preset_id, "name": name, "active": True, "queued": 1}
 
     async def set_pair_window(self, seconds):
         self.calls.append(("pair_window", seconds))
@@ -883,6 +900,51 @@ async def test_options_keep_the_sensors_while_the_entry_is_not_loaded(hass, clie
         "room_temperatures": {"1": ROOM_SENSOR},
     }
     assert client.room_temp_clears == []
+
+
+# --- preset select ---
+
+PRESET = "select.freedo_preset"
+
+
+async def test_preset_options_and_current(hass, client):
+    await setup_entry(hass, client)
+    state = hass.states.get(PRESET)
+    assert state.attributes["options"] == ["Winter", "Summer"]
+    assert state.state == "Winter"
+
+
+async def test_preset_choice_activates_and_polls(hass, client):
+    await setup_entry(hass, client)
+    reads = client.preset_reads
+    await select_option(hass, PRESET, "Summer")
+    # The daemon takes the id of the chosen name and the poll shows it active.
+    assert client.calls == [("activate_preset", 2)]
+    assert client.preset_reads == reads + 1
+    assert hass.states.get(PRESET).state == "Summer"
+
+
+async def test_preset_follows_the_list_without_a_reload(hass, client):
+    entry = await setup_entry(hass, client)
+    client.presets_json["presets"][1]["name"] = "Summer 2026"
+    await refresh(hass, entry)
+    assert hass.states.get(PRESET).attributes["options"] == ["Winter", "Summer 2026"]
+
+    client.presets_json["presets"].append({"id": 3, "name": "Autumn", "active": False})
+    await refresh(hass, entry)
+    assert hass.states.get(PRESET).attributes["options"] == ["Winter", "Summer 2026", "Autumn"]
+
+    client.presets_json["presets"] = [
+        p for p in client.presets_json["presets"] if p["id"] != 2
+    ]
+    await refresh(hass, entry)
+    assert hass.states.get(PRESET).attributes["options"] == ["Winter", "Autumn"]
+
+
+async def test_no_preset_select_on_a_daemon_without_the_route(hass, client):
+    client.presets_json = None
+    entry = await setup_entry(hass, client)
+    assert not has_entity(hass, entry, "select", "preset")
 
 
 # --- external room sensor ---

@@ -179,6 +179,9 @@ class FreedoData:
     # GET /api/pair/window: the pair window of the bridge. None on a daemon
     # without the route.
     pair_window: dict[str, Any] | None = None
+    # GET /api/presets "presets": the program presets, the active one flagged.
+    # None on a daemon without the route.
+    presets: list[dict[str, Any]] | None = None
 
     @property
     def hot_water_zone(self) -> Zone | None:
@@ -205,17 +208,21 @@ def parse(
     circuits: Mapping[str, Any] | None = None,
     pair_window: Mapping[str, Any] | None = None,
     install_devices: Mapping[str, Any] | None = None,
+    presets: Mapping[str, Any] | None = None,
 ) -> FreedoData:
     """Build the model from the read endpoints. install is the body of
     GET /api/install/zones, settings the body of GET /api/install, circuits the
     body of GET /api/install/circuits, pair_window the body of
-    GET /api/pair/window, install_devices the body of GET /api/install/devices."""
+    GET /api/pair/window, install_devices the body of GET /api/install/devices,
+    presets the body of GET /api/presets."""
     data = FreedoData(
         boiler=dict(boiler or {}),
         settings=dict(settings or {}),
         away=bool((home or {}).get("away")),
         pair_window=dict(pair_window) if pair_window is not None else None,
     )
+    if presets is not None:
+        data.presets = [dict(p) for p in presets.get("presets") or []]
     data.install_devices = {
         d["short"]: dict(d)
         for d in (install_devices or {}).get("devices") or []

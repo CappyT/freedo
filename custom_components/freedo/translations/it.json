@@ -251,6 +251,9 @@
         "state": {
           "external": "Sensore esterno"
         }
+      },
+      "preset": {
+        "name": "Preset"
       }
     },
     "switch": {

@@ -34,8 +34,8 @@ type FreedoConfigEntry = ConfigEntry[FreedoRuntime]
 
 class FreedoCoordinator(DataUpdateCoordinator[FreedoData]):
     """Reads health, zones, nodes, boiler, home state, the installation
-    options, the zone installation, the circuits and the pair window in one
-    poll."""
+    options, the zone installation, the circuits, the pair window and the
+    program presets in one poll."""
 
     config_entry: FreedoConfigEntry
 
@@ -55,7 +55,7 @@ class FreedoCoordinator(DataUpdateCoordinator[FreedoData]):
         try:
             (
                 health, zones, nodes, boiler, home, install, settings, circuits,
-                install_devices, pair_window,
+                install_devices, pair_window, presets,
             ) = await asyncio.gather(
                 self.client.health(),
                 self.client.zones(),
@@ -67,6 +67,7 @@ class FreedoCoordinator(DataUpdateCoordinator[FreedoData]):
                 self._install_circuits(),
                 self._install_devices(),
                 self.client.pair_window(),
+                self.client.presets(),
             )
         except FreedoAuthError as err:
             raise ConfigEntryAuthFailed(str(err)) from err
@@ -74,7 +75,7 @@ class FreedoCoordinator(DataUpdateCoordinator[FreedoData]):
             raise UpdateFailed(str(err)) from err
         return parse(
             health, zones, nodes, boiler, home, install, settings, circuits,
-            pair_window, install_devices,
+            pair_window, install_devices, presets,
         )
 
     async def _install_zones(self) -> dict:

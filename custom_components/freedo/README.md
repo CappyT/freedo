@@ -43,8 +43,8 @@ shows "invalid auth". A 401 during polling starts the reauthentication flow.
 
 The integration polls the daemon every 30 seconds. One poll reads
 `/api/health`, `/api/zones`, `/api/nodes`, `/api/boiler`, `/api/home`,
-`/api/install`, `/api/install/zones`, `/api/install/circuits` and
-`/api/pair/window`.
+`/api/install`, `/api/install/zones`, `/api/install/circuits`, `/api/pair/window`
+and `/api/presets`.
 Entities are created from the zones and devices present at setup: reload the
 integration after you add a zone or a device.
 
@@ -91,6 +91,17 @@ The integration and the options of the add-on have English, Italian, German and 
 | select Temperature offset mode | heating zone | `/api/install/zones` `offset_mode`; writes `PATCH /api/install/zones/{n}` |
 | select Temperature source | heating zone | `/api/install/devices`, `/api/zones` `declared[].measuringDevice`, `/api/install/zones` `offset_mode`; writes `PUT /api/install/zones/{n}/measuring` and the options |
 | sensor External room sensor | heating zone | `/api/zones` `declared[].externalTemp`, `/api/install/zones` `offset_mode` |
+| select Preset | hub | `/api/presets` `id`, `name`, `active`; writes `POST /api/presets/{id}/activate` |
+
+### Presets
+
+Select Preset lists the program presets of the daemon (`GET /api/presets`) and
+shows the active one. Choosing an option activates that preset
+(`POST /api/presets/{id}/activate`) and polls the daemon again. The options
+follow a rename, a new preset and a delete on the next poll, without a reload.
+The daemon has no season calendar, so an automation switches the preset by the
+season or the weather. A daemon without the route (a 0.4.0 daemon answers 404)
+gets no select: reload the integration after a daemon upgrade.
 
 ### Valve display
 
