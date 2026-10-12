@@ -59,7 +59,8 @@ check the schema version of the database. When the database is newer than the da
 add-on restores the newest copy from `/data/backup/`, moves the database written under the beta to
 `/data/backup/beta-<timestamp>/`, and starts. The data written under the beta stays in that folder:
 move it back only with the same or a newer daemon. When no copy exists, the add-on stops instead of
-starting the daemon on a database it cannot read. Keep these folders: the database holds the network
+starting the daemon on a database it cannot read. When the check fails for another reason, the add-on
+starts the daemon, which reports the problem in its log. Keep these folders: the database holds the network
 key.
 
 ## Web interface
