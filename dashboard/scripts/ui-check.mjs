@@ -11,6 +11,7 @@
 // - The schedule panel keeps the away program and an open editor across a data poll.
 // - A renamed device shows its new name right after the save, also when a poll was in flight.
 // - The buttons of a form row sit on the line of the controls, not of the labels.
+// - The Programs screen creates a profile, edits one that is not active and activates it.
 //
 // Usage: FREEDO_BIN=./freedo node scripts/ui-check.mjs
 import { findChrome, launch } from './browser.mjs';
@@ -216,16 +217,13 @@ try {
 		})
 	).json();
 	await open('#/', `document.querySelectorAll('.card').length >= 6 && document.querySelector('input[name=presence]')`);
+	await click('.profile-menu .menu-button');
 	await tab.waitFor(
-		`[...document.querySelectorAll('.actions select.input option')].some((o) => o.textContent === 'Check preset')`,
+		`[...document.querySelectorAll('.menu [role=menuitemradio]')].some((o) => o.textContent.includes('Check preset'))`,
 		8000
 	);
-	check(true, 'the home page offers the presets');
-	await tab.evaluate(`(() => {
-		const s = document.querySelector('.actions select.input');
-		s.value = '${preset.id}';
-		s.dispatchEvent(new Event('change', { bubbles: true }));
-	})()`);
+	check(true, 'the home page offers the profiles');
+	await tab.evaluate(`[...document.querySelectorAll('.menu [role=menuitemradio]')].find((o) => o.textContent.includes('Check preset')).click()`);
 	check(await toast('Messages waiting for the device'), 'switching the active preset is sent');
 	await sleep(500);
 	const active = (await (await fetch(daemon.base + '/api/home')).json()).preset;
@@ -299,19 +297,66 @@ try {
 			.filter((el) => Math.abs(el.getBoundingClientRect().bottom - control.bottom) > 1)
 			.map((el) => el.textContent.trim() || el.className);
 	})`;
-	await open('#/', `document.querySelector('.actions select.input')`);
+	await open('#/', `document.querySelector('.actions .menu-button')`);
 	const homeRow = await tab.evaluate(`(() => {
-		const tops = [...document.querySelectorAll('.page-head .actions > .btn, .page-head .actions > .segmented, .page-head .actions .field select')].map((el) => Math.round(el.getBoundingClientRect().top));
+		const tops = [...document.querySelectorAll('.page-head .actions > .btn, .page-head .actions > .segmented, .page-head .actions .menu-button')].map((el) => Math.round(el.getBoundingClientRect().top));
 		return { tops, lines: tops.filter((top, i) => tops.findIndex((other) => Math.abs(other - top) <= 2) === i).length };
 	})()`);
-	check(homeRow.lines === 1, `the preset select and the buttons of the home page share one line (${homeRow.tops})`);
-	await open('#/settings', `document.querySelector('#presets-title')`);
-	await tab.evaluate(`[...document.querySelectorAll('.presets button')].find((b) => b.textContent.includes('Rename')).click()`);
-	await tab.waitFor(`document.querySelector('.presets form')`);
+	check(homeRow.lines === 1, `the profile menu and the buttons of the home page share one line (${homeRow.tops})`);
+	await open('#/settings', `document.querySelector('#token-title')`);
+	const offSettings = await tab.evaluate(misaligned);
+	check(offSettings.length === 0, `the buttons of the settings forms sit on the line of their controls (${offSettings})`);
+	await open('#/programs', `document.querySelector('.matrix')`);
+	await clickText('Rename');
+	await tab.waitFor(`document.querySelector('#form-title')`);
 	const off = await tab.evaluate(misaligned);
-	check(off.length === 0, `the buttons of the settings forms sit on the line of their controls (${off})`);
-	const renameLine = await tab.evaluate(`new Set([...document.querySelectorAll('.presets form .input, .presets form .btn')].map((el) => Math.round(el.getBoundingClientRect().top))).size`);
-	check(renameLine === 1, 'the preset rename keeps the field, Save and Cancel on one line');
+	check(off.length === 0, `the buttons of the profile form sit on the line of their controls (${off})`);
+	const renameTops = await tab.evaluate(`[...document.querySelectorAll('[aria-labelledby=form-title] form .input, [aria-labelledby=form-title] form .btn')].map((el) => Math.round(el.getBoundingClientRect().top))`);
+	check(new Set(renameTops).size === 1, `the profile rename keeps the field, Save and Cancel on one line (${renameTops})`);
+
+	// 11. Profiles on the Programs screen: a new profile, an edit of a profile that is not active,
+	// and the activation, which names the rooms that change now.
+	const typeInto = (selector, value) =>
+		tab.evaluate(`(() => { const i = document.querySelector(${JSON.stringify(selector)}); i.value = ${JSON.stringify(value)}; i.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+	await open('#/', `document.querySelector('.actions .menu-button')`);
+	await click('.profile-menu .menu-button');
+	await tab.waitFor(`document.querySelector('.menu a[href*="new"]')`);
+	await click('.menu a[href*="new"]');
+	await tab.waitFor(`document.querySelector('#form-title')?.textContent === 'New profile'`);
+	check(true, 'New profile in the home menu opens the form of the Programs screen');
+	await typeInto('main form input', 'Spring');
+	await clickText('Create profile');
+	check(await toast('Profile created'), 'the new profile is created');
+	await tab.waitFor(`document.querySelector('#selected-title')?.textContent === 'Spring' && document.querySelector('.matrix')`);
+	check(await tab.evaluate(`document.querySelector('main .notice.tone-away') !== null`), 'the screen says the profile it edits is not active');
+	const spring = (await (await fetch(daemon.base + '/api/presets')).json()).presets.find((p) => p.name === 'Spring');
+	await tab.evaluate(`[...document.querySelectorAll('.zone')].find((z) => z.textContent.includes('Living room')).querySelector('button').click()`);
+	await tab.waitFor(`[...document.querySelectorAll('.editor button')].some((b) => b.textContent.includes('Edit schedule'))`);
+	await tab.evaluate(`[...document.querySelectorAll('.editor button')].find((b) => b.textContent.includes('Edit schedule')).click()`);
+	await tab.waitFor(`document.querySelector('.editor .block input[type=number]')`);
+	// Every block at 19 C, so the block in force of Spring is 19 C at any time of the day.
+	const blocks = await tab.evaluate(`document.querySelectorAll('.editor .block input[type=number]').length`);
+	for (let i = 0; i < blocks; i++) {
+		await tab.evaluate(`document.querySelectorAll('.editor .block input[type=number]')[${i}].focus(); document.querySelectorAll('.editor .block input[type=number]')[${i}].select()`);
+		await type('19');
+	}
+	await tab.evaluate(`[...document.querySelectorAll('.editor button')].find((b) => b.textContent.includes('Save schedule')).click()`);
+	check(await toast('Schedule saved'), 'the schedule of the profile that is not active is saved');
+	const springLiving = await (await fetch(`${daemon.base}/api/zones/8/schedule?preset=${spring.id}`)).json();
+	const activeLiving = await (await fetch(`${daemon.base}/api/zones/8/schedule`)).json();
+	check(
+		springLiving.programs?.[0]?.entries?.[0]?.setpoint_c === 19 && activeLiving.programs?.[0]?.entries?.[0]?.setpoint_c === 21.5,
+		`the edit reaches Spring only (${springLiving.programs?.[0]?.entries?.[0]?.setpoint_c}, active ${activeLiving.programs?.[0]?.entries?.[0]?.setpoint_c})`
+	);
+	await clickText('Activate');
+	await tab.waitFor(`document.querySelector('dialog[open]')`);
+	const body = await tab.evaluate(`document.querySelector('dialog[open] p').textContent`);
+	check(/Living room [\d.]+ °C -> 19 °C/.test(body), `the confirmation names the rooms that change now (${body})`);
+	await tab.evaluate(`document.querySelector('dialog[open] button.primary').click()`);
+	check(await toast('Messages waiting for the device'), 'the activation is sent');
+	await sleep(500);
+	const nowActive = (await (await fetch(daemon.base + '/api/home')).json()).preset;
+	check(nowActive?.name === 'Spring', `the daemon switched the active profile (${nowActive?.name})`);
 } catch (error) {
 	check(false, String(error?.stack ?? error));
 } finally {

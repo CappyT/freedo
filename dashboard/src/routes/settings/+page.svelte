@@ -1,31 +1,18 @@
 <script lang="ts">
-	import { act } from '#lib/actions.ts';
 	import { auth } from '#lib/auth.svelte.ts';
-	import ConfirmDialog from '#lib/ConfirmDialog.svelte';
 	import { data } from '#lib/data.svelte.ts';
 	import { serialLink } from '#lib/health.ts';
 	import { fmt, t } from '#lib/i18n.svelte.ts';
 	import Icon from '#lib/Icon.svelte';
 	import { LOCALES, prefs, type LocalePref, type Theme } from '#lib/prefs.svelte.ts';
-	import { api } from '#lib/session.ts';
 	import { toasts } from '#lib/toast.svelte.ts';
-	import type { Preset } from '#lib/types.ts';
 
 	const health = $derived(data.health);
 	const link = $derived(serialLink(health));
-	const presets = $derived(data.presets);
 	let token = $state('');
 
 	const themes: Theme[] = ['system', 'light', 'dark'];
 	const languages: Record<string, string> = { en: 'English', it: 'Italiano', de: 'Deutsch', fr: 'Français' };
-
-	let newName = $state('');
-	// Empty means the active preset, the source the daemon copies by default.
-	let copyFrom = $state('');
-	let renaming = $state<number | null>(null);
-	let renameText = $state('');
-	let deleteTarget = $state<Preset | null>(null);
-	let confirmDelete: ConfirmDialog | undefined = $state();
 
 	// The daemon names a set utc_offset_min "fixed offset", in English.
 	const zoneLabel = (name: string) => (name === 'fixed offset' ? t('settings.timezone.fixed') : name);
@@ -51,36 +38,6 @@
 		toasts.push('ok', t('settings.token.removed'));
 	}
 
-	function startRename(preset: Preset) {
-		renaming = preset.id;
-		renameText = preset.name;
-	}
-
-	async function create(event: SubmitEvent) {
-		event.preventDefault();
-		const name = newName.trim();
-		if (name === '') return;
-		const source = copyFrom === '' ? undefined : Number(copyFrom);
-		if (await act(() => api.createPreset(name, source), t('presets.created'))) {
-			newName = '';
-			copyFrom = '';
-		}
-	}
-
-	async function commitRename(event: SubmitEvent) {
-		event.preventDefault();
-		const id = renaming;
-		const name = renameText.trim();
-		if (id === null || name === '') return;
-		if (await act(() => api.renamePreset(id, name), t('presets.renamed'))) renaming = null;
-	}
-
-	async function removePreset() {
-		const target = deleteTarget;
-		if (!target) return;
-		await act(() => api.deletePreset(target.id), t('presets.deleted'));
-		deleteTarget = null;
-	}
 </script>
 
 <section class="page">
@@ -125,61 +82,6 @@
 			</label>
 			<button class="btn primary" type="submit" disabled={token.trim() === ''}><Icon name="key" size={18} />{t('token.save')}</button>
 			<button class="btn danger" type="button" onclick={removeToken} disabled={!auth.token}><Icon name="trash" size={18} />{t('settings.token.remove')}</button>
-		</form>
-	</section>
-
-	<section class="panel" aria-labelledby="presets-title">
-		<header>
-			<h2 id="presets-title">{t('presets.title')}</h2>
-			{#if presets.length > 0}<span class="badge tone-idle">{t('presets.count', { n: presets.length })}</span>{/if}
-		</header>
-		<p class="note">{t('presets.note')}</p>
-
-		<ul class="presets">
-			{#each presets as preset (preset.id)}
-				<li>
-					{#if renaming === preset.id}
-						<form class="row fill" onsubmit={commitRename}>
-							<label class="field grow">
-								<span>{t('presets.name')}</span>
-								<input class="input" bind:value={renameText} autocomplete="off" spellcheck="false" />
-							</label>
-							<button class="btn primary" type="submit" disabled={renameText.trim() === ''}>{t('presets.save')}</button>
-							<button class="btn" type="button" onclick={() => (renaming = null)}>{t('action.cancel')}</button>
-						</form>
-					{:else}
-						<span class="title">
-							<span class="name">{preset.name}</span>
-							{#if preset.active}<span class="badge tone-heating">{t('presets.activeBadge')}</span>{/if}
-						</span>
-						<button class="btn" type="button" onclick={() => startRename(preset)}>
-							<Icon name="edit" size={18} />{t('presets.rename')}
-						</button>
-						{#if !preset.active}
-							<button class="btn danger" type="button" onclick={() => { deleteTarget = preset; confirmDelete?.show(); }}>
-								<Icon name="trash" size={18} />{t('presets.delete')}
-							</button>
-						{/if}
-					{/if}
-				</li>
-			{/each}
-		</ul>
-
-		<form class="row fill" onsubmit={create}>
-			<label class="field grow">
-				<span>{t('presets.name')}</span>
-				<input class="input" bind:value={newName} placeholder={t('presets.nameHint')} autocomplete="off" spellcheck="false" />
-			</label>
-			<label class="field">
-				<span>{t('presets.copyFrom')}</span>
-				<select class="input" bind:value={copyFrom}>
-					<option value="">{t('presets.copyActive')}</option>
-					{#each presets as preset (preset.id)}<option value={String(preset.id)}>{preset.name}</option>{/each}
-				</select>
-			</label>
-			<button class="btn primary" type="submit" disabled={newName.trim() === ''}>
-				<Icon name="plus" size={18} />{t('presets.create')}
-			</button>
 		</form>
 	</section>
 
@@ -233,13 +135,6 @@
 	</section>
 </section>
 
-<ConfirmDialog
-	bind:this={confirmDelete}
-	title={t('presets.delete.confirm.title', { name: deleteTarget?.name ?? '' })}
-	body={t('presets.delete.confirm.body')}
-	confirm={t('presets.delete')}
-	onconfirm={removePreset}
-/>
 
 <style>
 	.group {
@@ -262,47 +157,5 @@
 
 	.grow {
 		flex: 1 1 16rem;
-	}
-
-	.presets {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-		display: grid;
-		gap: 0.5rem;
-	}
-
-	.presets li {
-		display: flex;
-		align-items: center;
-		flex-wrap: wrap;
-		gap: 0.5rem;
-		min-height: 2.75rem;
-	}
-
-	.presets .title {
-		display: inline-flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 0.5rem;
-	}
-
-	.presets .name {
-		font-weight: var(--weight-medium);
-	}
-
-	@media (max-width: 559px) {
-		.presets .title {
-			flex: 1 1 100%;
-		}
-
-		.presets li > .btn {
-			flex: 1 1 0;
-		}
-	}
-
-	/* The rename form takes the whole line, so the field, Save and Cancel stay together. */
-	.presets form {
-		flex: 1 1 100%;
 	}
 </style>

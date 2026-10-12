@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import { actMany, act } from '#lib/actions.ts';
 	import ConfirmDialog from '#lib/ConfirmDialog.svelte';
 	import { data } from '#lib/data.svelte.ts';
@@ -11,7 +12,8 @@
 	let busy = $state(false);
 	let homeRadio: HTMLInputElement | undefined = $state();
 	let awayRadio: HTMLInputElement | undefined = $state();
-	let presetSelect: HTMLSelectElement | undefined = $state();
+	let menuOpen = $state(false);
+	let menuRoot: HTMLDivElement | undefined = $state();
 
 	const zones = $derived(data.models);
 	const heating = $derived(data.heating);
@@ -32,15 +34,17 @@
 		if (!done) showPresence();
 	}
 
-	/** Switches the active preset. The select returns to the active one when the request fails. */
-	async function activate() {
-		if (!presetSelect || busy) return;
-		const id = Number(presetSelect.value);
-		if (id === activePreset?.id) return;
+	/** Switches the active profile. The menu shows the profile the daemon reports. */
+	async function activate(id: number) {
+		menuOpen = false;
+		if (id === activePreset?.id || busy) return;
 		busy = true;
-		const done = await act(() => api.activatePreset(id));
+		await act(() => api.activatePreset(id));
 		busy = false;
-		if (!done && presetSelect) presetSelect.value = String(activePreset?.id ?? '');
+	}
+
+	function closeOutside(event: MouseEvent) {
+		if (menuOpen && menuRoot && !menuRoot.contains(event.target as Node)) menuOpen = false;
 	}
 
 	const boostAll = () => actMany(heating.map((m) => () => api.boost(m.zone.number, true)));
@@ -52,14 +56,28 @@
 		<h1 id="title">{t('home.title')}</h1>
 		<div class="row actions fill">
 			{#if presets.length > 0}
-				<label class="field inline preset">
-					<span>{t('preset.active')}</span>
-					<select class="input" bind:this={presetSelect} value={String(activePreset?.id ?? '')} onchange={activate} disabled={busy}>
-						{#each presets as preset (preset.id)}
-							<option value={String(preset.id)}>{preset.name}</option>
-						{/each}
-					</select>
-				</label>
+				<div class="profile-menu" bind:this={menuRoot}>
+					<button class="btn menu-button" aria-haspopup="menu" aria-expanded={menuOpen} disabled={busy} onclick={() => (menuOpen = !menuOpen)}>
+						<Icon name="calendar" size={18} />
+						<span class="muted">{t('preset.active')}</span>
+						<strong>{activePreset?.name ?? '-'}</strong>
+						<span class="caret"><Icon name="chevron" size={16} /></span>
+					</button>
+					{#if menuOpen}
+						<div class="menu" role="menu" aria-label={t('home.profileMenu')}>
+							{#each presets as preset (preset.id)}
+								<button class="item" role="menuitemradio" aria-checked={preset.active} onclick={() => activate(preset.id)}>
+									<span class="radio" aria-hidden="true"></span>
+									<span class="grow">{preset.name}</span>
+									{#if preset.active}<span class="badge tone-heating">{t('presets.activeBadge')}</span>{/if}
+								</button>
+							{/each}
+							<hr />
+							<a class="item" role="menuitem" href={resolve('/programs?new=1')}><Icon name="plus" size={18} />{t('home.newProfile')}</a>
+							<a class="item" role="menuitem" href={resolve('/programs')}><Icon name="edit" size={18} />{t('home.editPrograms')}</a>
+						</div>
+					{/if}
+				</div>
 			{/if}
 			<fieldset class="segmented" disabled={busy || !data.home}>
 				<legend class="sr-only">{t('home.presence')}</legend>
@@ -98,6 +116,8 @@
 	{/if}
 </section>
 
+<svelte:window onclick={closeOutside} onkeydown={(e) => e.key === 'Escape' && (menuOpen = false)} />
+
 <ConfirmDialog
 	bind:this={confirmBoost}
 	title={t('home.boostAll')}
@@ -124,8 +144,76 @@
 		gap: 0.75rem;
 	}
 
-	.preset select {
-		min-width: 9rem;
+	.profile-menu {
+		position: relative;
+	}
+
+	.menu-button strong {
+		font-weight: var(--weight-semibold);
+	}
+
+	.caret {
+		display: inline-flex;
+		rotate: 90deg;
+	}
+
+	.menu {
+		position: absolute;
+		z-index: 30;
+		top: calc(100% + 0.4rem);
+		left: 0;
+		min-width: max(100%, 17rem);
+		display: grid;
+		gap: 0.15rem;
+		padding: 0.4rem;
+		background: var(--surface);
+		border: 1px solid var(--border-strong);
+		border-radius: var(--radius-lg);
+		box-shadow: 0 0.75rem 2rem color-mix(in srgb, var(--navy) 22%, transparent);
+	}
+
+	.menu hr {
+		width: 100%;
+		margin: 0.3rem 0;
+		border: 0;
+		border-top: 1px solid var(--border);
+	}
+
+	.item {
+		display: flex;
+		align-items: center;
+		gap: 0.6rem;
+		min-height: 2.75rem;
+		padding: 0 0.75rem;
+		border: 0;
+		border-radius: var(--radius-md);
+		background: none;
+		color: var(--text);
+		font-size: var(--text-small-size);
+		font-weight: var(--weight-medium);
+		text-align: left;
+		text-decoration: none;
+		cursor: pointer;
+	}
+
+	.item:hover {
+		background: var(--panel);
+	}
+
+	.item .grow {
+		flex: 1 1 auto;
+	}
+
+	.radio {
+		flex: none;
+		width: 1rem;
+		height: 1rem;
+		border-radius: 50%;
+		border: 2px solid var(--border-strong);
+	}
+
+	.item[aria-checked='true'] .radio {
+		border: 5px solid var(--action);
 	}
 
 	/* On a phone the header controls fill the width, like the buttons of a .row.fill. */
@@ -141,13 +229,18 @@
 	}
 
 	@media (max-width: 559px) {
-		.preset,
+		.profile-menu,
 		.actions .segmented {
 			flex: 1 1 100%;
 		}
 
-		.preset select {
+		.menu-button {
+			width: 100%;
+		}
+
+		.menu-button strong {
 			flex: 1 1 auto;
+			text-align: left;
 		}
 	}
 
