@@ -550,7 +550,8 @@ holds no `d/lock` path and it answers `4.04`. So `EnqueueChildLock` refuses it, 
 the API answers 400 for any device that is not a valve. The thermostat has no child
 lock in any form: its image holds no `0290`, its `d/config` record callback drops
 unknown tags, and its `/lock` report suffix has no caller. It registers `d/identify`
-the same way a valve does. No capture shows its answer or a visible effect. The node view reads the
+the same way a valve does, and it takes the write: on 2026-10-12 a wall thermostat RU02
+with firmware 215.2 showed "Hi!" on its display. The node view reads the
 served lock state under `ChildLock`, null on a device that is not a valve.
 
 A valve GETs `d/<serial>/lock` with Block2 0/0/128. The captured answer is a
