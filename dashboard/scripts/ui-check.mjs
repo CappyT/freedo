@@ -8,6 +8,7 @@
 //   daemon stores the schedule.
 // - A failed command puts the presence switch and the child lock back to what the daemon says.
 // - A zone with no program starts on "until I end it" and shows a hint. Turn off asks first.
+// - The schedule panel keeps the away program and an open editor across a data poll.
 //
 // Usage: FREEDO_BIN=./freedo node scripts/ui-check.mjs
 import { findChrome, launch } from './browser.mjs';
@@ -235,6 +236,25 @@ try {
 	check(await toast('Schedule saved'), 'the away program is saved');
 	const away = await (await fetch(daemon.base + '/api/zones/8/schedule?mode=away')).json();
 	check(away.programs?.length > 0, 'the daemon stores the away program');
+
+	// 8. The schedule panel keeps the away program and an edit in progress across a data poll. The hot
+	// water page passes its zone number from the model that each poll replaces.
+	await open('#/hot-water', `document.querySelector('[name=schedule-mode-0]')`);
+	await tab.evaluate(`document.querySelectorAll('[name=schedule-mode-0]')[1].click()`);
+	await tab.waitFor(`[...document.querySelectorAll('button')].some((b) => b.textContent.includes('Create away program'))`);
+	await clickText('Create away program');
+	await tab.waitFor(`document.querySelector('.block input[type=number]')`);
+	await tab.evaluate(`document.querySelector('.block input[type=number]').focus(); document.querySelector('.block input[type=number]').select()`);
+	await type('45');
+	await sleep(6500);
+	check(
+		await tab.evaluate(`document.querySelectorAll('[name=schedule-mode-0]')[1]?.checked === true`),
+		'the away program stays selected after a data poll'
+	);
+	check(
+		(await tab.evaluate(`document.querySelector('.block input[type=number]')?.value`)) === '45',
+		'an edit in progress survives a data poll'
+	);
 } catch (error) {
 	check(false, String(error?.stack ?? error));
 } finally {

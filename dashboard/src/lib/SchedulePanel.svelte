@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { act, errorText } from './actions.ts';
 	import ConfirmDialog from './ConfirmDialog.svelte';
 	import { data } from './data.svelte.ts';
@@ -48,11 +49,16 @@
 		loading = false;
 	}
 
+	// The parent passes zone as a getter, so reading the prop tracks everything the parent expression
+	// reads, such as the zone model that each poll replaces. The derived value changes only with the number.
+	const number = $derived(zone);
+
 	$effect(() => {
-		void zone;
+		void number;
 		editing = false;
 		mode = 'home';
-		void load();
+		// load reads the API token before its first await: untrack keeps a token change from reloading.
+		void untrack(load);
 	});
 
 	function switchTo(next: Mode) {
