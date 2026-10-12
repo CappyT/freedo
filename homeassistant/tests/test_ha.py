@@ -748,7 +748,7 @@ async def test_zone_rename_reaches_the_device(hass, client):
     # The hot water zone keeps its translated name.
     client.zones_json["declared"][2]["name"] = "Boiler"
     await refresh(hass, entry)
-    assert zone_device(hass, entry, 9).name == "Domestic hot water"
+    assert zone_device(hass, entry, 9).name == "Hot water"
 
 
 async def test_rooms_without_an_area_raise_one_repair_issue(hass, client):
