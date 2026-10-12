@@ -108,7 +108,7 @@
 					noProgram={model.zone.target.hasProgram === false}
 				/>
 
-				<div class="row fill">
+				<div class="commands">
 					<button class="btn primary" disabled={busy || !endOk} onclick={() => run(() => api.setpoint(model.zone.number, shown, end))}>
 						<Icon name="power" size={18} />{t('hotWater.on', { temp: fmt.temp(shown) })}
 					</button>

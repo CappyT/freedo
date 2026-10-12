@@ -118,7 +118,7 @@
 			</span>
 		</header>
 		<p class="note">{t('settings.token.note')}</p>
-		<form class="row" onsubmit={saveToken}>
+		<form class="row fill" onsubmit={saveToken}>
 			<label class="field grow">
 				<span>{t('token.label')}</span>
 				<input class="input mono" type="password" autocomplete="off" spellcheck="false" bind:value={token} />
@@ -139,7 +139,7 @@
 			{#each presets as preset (preset.id)}
 				<li>
 					{#if renaming === preset.id}
-						<form class="row" onsubmit={commitRename}>
+						<form class="row fill" onsubmit={commitRename}>
 							<label class="field grow">
 								<span>{t('presets.name')}</span>
 								<input class="input" bind:value={renameText} autocomplete="off" spellcheck="false" />
@@ -148,8 +148,10 @@
 							<button class="btn" type="button" onclick={() => (renaming = null)}>{t('action.cancel')}</button>
 						</form>
 					{:else}
-						<span class="name">{preset.name}</span>
-						{#if preset.active}<span class="badge tone-heating">{t('presets.activeBadge')}</span>{/if}
+						<span class="title">
+							<span class="name">{preset.name}</span>
+							{#if preset.active}<span class="badge tone-heating">{t('presets.activeBadge')}</span>{/if}
+						</span>
 						<button class="btn" type="button" onclick={() => startRename(preset)}>
 							<Icon name="edit" size={18} />{t('presets.rename')}
 						</button>
@@ -163,7 +165,7 @@
 			{/each}
 		</ul>
 
-		<form class="row" onsubmit={create}>
+		<form class="row fill" onsubmit={create}>
 			<label class="field grow">
 				<span>{t('presets.name')}</span>
 				<input class="input" bind:value={newName} placeholder={t('presets.nameHint')} autocomplete="off" spellcheck="false" />
@@ -278,8 +280,25 @@
 		min-height: 2.75rem;
 	}
 
+	.presets .title {
+		display: inline-flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
 	.presets .name {
 		font-weight: var(--weight-medium);
+	}
+
+	@media (max-width: 559px) {
+		.presets .title {
+			flex: 1 1 100%;
+		}
+
+		.presets li > .btn {
+			flex: 1 1 0;
+		}
 	}
 
 	/* The rename form takes the whole line, so the field, Save and Cancel stay together. */

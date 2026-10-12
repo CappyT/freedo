@@ -26,7 +26,6 @@
 				<span class="title">{t(`ends.${value}`)}</span>
 				<span class="hint">{t(`ends.${value}.hint`)}</span>
 			</span>
-			<code class="mono rule">{value}</code>
 		</label>
 	{/each}
 	{#if rule === 'timer'}
@@ -68,7 +67,7 @@
 
 	.option {
 		display: grid;
-		grid-template-columns: auto 1fr auto;
+		grid-template-columns: auto 1fr;
 		align-items: center;
 		gap: 0.75rem;
 		min-height: 2.75rem;
@@ -102,11 +101,6 @@
 		color: var(--text-muted);
 	}
 
-	.rule {
-		font-size: var(--text-caption-size);
-		color: var(--text-muted);
-	}
-
 	.duration {
 		align-items: end;
 		padding-top: 0.5rem;
@@ -114,11 +108,5 @@
 
 	.duration .field {
 		width: 7rem;
-	}
-
-	@media (max-width: 480px) {
-		.rule {
-			display: none;
-		}
 	}
 </style>

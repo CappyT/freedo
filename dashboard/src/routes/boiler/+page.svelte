@@ -102,7 +102,7 @@
 					</dl>
 					{#if canSetFlow(c)}
 						<form
-							class="row"
+							class="row fill"
 							onsubmit={(e) => {
 								e.preventDefault();
 								void setFlow(c);

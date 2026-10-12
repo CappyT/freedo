@@ -205,6 +205,23 @@ textarea {
 	min-width: 2.75rem;
 }
 
+/* The commands of a card: two columns, one on a narrow phone. An odd last button takes the whole row. */
+.commands {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 0.5rem 0.75rem;
+}
+
+.commands > .btn:last-child:nth-child(odd) {
+	grid-column: 1 / -1;
+}
+
+@media (max-width: 420px) {
+	.commands {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}
+
 /* A row of commands fills the width on a phone, so no button is left alone on a line. */
 @media (max-width: 899px) {
 	.row.fill > .btn {

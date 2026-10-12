@@ -128,6 +128,29 @@
 		min-width: 9rem;
 	}
 
+	/* On a phone the header controls fill the width, like the buttons of a .row.fill. */
+	@media (max-width: 899px) {
+		.actions .segmented {
+			flex: 1 1 auto;
+		}
+
+		.actions .segmented label {
+			flex: 1 1 0;
+			justify-content: center;
+		}
+	}
+
+	@media (max-width: 559px) {
+		.preset,
+		.actions .segmented {
+			flex: 1 1 100%;
+		}
+
+		.preset select {
+			flex: 1 1 auto;
+		}
+	}
+
 	fieldset {
 		margin: 0;
 		padding: 0;

@@ -125,7 +125,7 @@
 					noProgram={model.zone.target.hasProgram === false}
 				/>
 
-				<div class="row fill">
+				<div class="commands">
 					<button class="btn primary" disabled={busy || !endOk} onclick={() => run(() => api.setpoint(number, shown, end))}>
 						<Icon name="check" size={18} />{t('zone.apply', { temp: fmt.temp(shown) })}
 					</button>
