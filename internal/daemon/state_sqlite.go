@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"slices"
 	"strconv"
 	"strings"
@@ -292,26 +293,38 @@ type storedZonePrograms struct {
 	home, away []tado.ScheduleProgram
 }
 
-// PresetState reads the whole program store: the presets in id order, the
-// active preset id, and the home and away programs of every preset and zone.
-func (s *stateStore) PresetState(ctx context.Context) ([]presetRow, int64, map[int64]map[int]storedZonePrograms, error) {
-	var presets []presetRow
+// storedPresets is the whole program store: the presets in id order, the
+// active preset id and whether meta holds one, and the home and away programs
+// of every preset and zone.
+type storedPresets struct {
+	rows        []presetRow
+	active      int64
+	activeFound bool
+	programs    map[int64]map[int]storedZonePrograms
+}
+
+// PresetState reads the whole program store. A program that does not decode,
+// or that breaks the week rules of today, is logged and skipped: the zone
+// then holds no program of that mode, and the start goes on.
+func (s *stateStore) PresetState(ctx context.Context) (storedPresets, error) {
+	var out storedPresets
 	err := s.scan(`SELECT id, name FROM preset ORDER BY id`, func(rows *sql.Rows) error {
 		var row presetRow
 		if err := rows.Scan(&row.id, &row.name); err != nil {
 			return err
 		}
-		presets = append(presets, row)
+		out.rows = append(out.rows, row)
 		return nil
 	})
 	if err != nil {
-		return nil, 0, nil, err
+		return storedPresets{}, err
 	}
-	active, _, err := install.ReadMetaUint(ctx, s.db, "active_preset")
+	active, found, err := install.ReadMetaUint(ctx, s.db, "active_preset")
 	if err != nil {
-		return nil, 0, nil, err
+		return storedPresets{}, err
 	}
-	programs := make(map[int64]map[int]storedZonePrograms)
+	out.active, out.activeFound = int64(active), found
+	out.programs = make(map[int64]map[int]storedZonePrograms)
 	err = s.scan(`SELECT preset, zone, mode, body FROM zone_program ORDER BY preset, zone, mode`, func(rows *sql.Rows) error {
 		var preset int64
 		var zone int
@@ -321,16 +334,17 @@ func (s *stateStore) PresetState(ctx context.Context) ([]presetRow, int64, map[i
 			return err
 		}
 		decoded, err := tado.DecodeSchedule(body)
+		if err == nil {
+			err = tado.ValidateSchedule(decoded)
+		}
 		if err != nil {
-			return fmt.Errorf("zone_program preset %d zone %d mode %s: %w", preset, zone, mode, err)
+			log.Printf("zone_program preset %d zone %d mode %s skipped: %v", preset, zone, mode, err)
+			return nil
 		}
-		if err := tado.ValidateSchedule(decoded); err != nil {
-			return fmt.Errorf("zone_program preset %d zone %d mode %s: %w", preset, zone, mode, err)
+		if out.programs[preset] == nil {
+			out.programs[preset] = make(map[int]storedZonePrograms)
 		}
-		if programs[preset] == nil {
-			programs[preset] = make(map[int]storedZonePrograms)
-		}
-		zp := programs[preset][zone]
+		zp := out.programs[preset][zone]
 		switch mode {
 		case "home":
 			zp.home = decoded
@@ -339,13 +353,52 @@ func (s *stateStore) PresetState(ctx context.Context) ([]presetRow, int64, map[i
 		default:
 			return fmt.Errorf("zone_program preset %d zone %d: unknown mode %q", preset, zone, mode)
 		}
-		programs[preset][zone] = zp
+		out.programs[preset][zone] = zp
 		return nil
 	})
 	if err != nil {
-		return nil, 0, nil, err
+		return storedPresets{}, err
 	}
-	return presets, int64(active), programs, nil
+	return out, nil
+}
+
+// MigrateDefaultPreset creates the preset name with the home program of each
+// zone in home and makes it active, in one transaction. It does nothing when a
+// preset exists: the count runs inside the transaction, so a crash before the
+// commit leaves an empty table and the next start migrates again.
+func (s *stateStore) MigrateDefaultPreset(ctx context.Context, name string, home map[int][]tado.ScheduleProgram) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var presets int
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM preset`).Scan(&presets); err != nil {
+		return err
+	}
+	if presets > 0 {
+		return nil
+	}
+	res, err := tx.ExecContext(ctx, `INSERT INTO preset (name) VALUES (?)`, name)
+	if err != nil {
+		return err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return err
+	}
+	for zone, programs := range home {
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO zone_program (preset, zone, mode, body) VALUES (?, ?, 'home', ?)`,
+			id, zone, blob(tado.EncodeSchedulePrograms(programs))); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT OR REPLACE INTO meta (key, value) VALUES ('active_preset', ?)`,
+		strconv.FormatInt(id, 10)); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // CreatePreset stores a new preset and, when copyFrom names one, a copy of

@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"freedo/internal/install"
 	"freedo/internal/radio"
 	"freedo/tado"
 )
@@ -798,5 +799,103 @@ func TestPresetStoreNameAndMissingErrors(t *testing.T) {
 	}
 	if err := store.DeletePreset(ctx, copied); err != nil {
 		t.Errorf("delete a stored preset: err=%v, want nil", err)
+	}
+}
+
+// TestPresetMigrationIsAtomic: the first start with the program store writes
+// the Default preset, its programs and the active id in one transaction. A
+// write that fails after the preset row leaves no preset behind, and the next
+// start migrates the programs again.
+func TestPresetMigrationIsAtomic(t *testing.T) {
+	in := presetInstall(t, nil)
+	store := openTestStore(t)
+	officePrograms := weekPrograms(tado.ScheduleEntry{Minute: 0, SetpointCenti: 1900, Enabled: true})
+	start := func() (*daemon, error) {
+		emu := tado.NewEmu(in.EmuConfig(), tado.NewUnhandledLogger(io.Discard))
+		if err := emu.SetSchedule(wireOf(t, in, "VA1000000002"), officePrograms); err != nil {
+			t.Fatal(err)
+		}
+		d := newDaemon(in, emu, radio.NewMock(nil), true, "mock")
+		d.state = store
+		return d, d.restorePresets(context.Background(), emu)
+	}
+	failWrites(t, store, "zone_program", "")
+	if _, err := start(); err == nil {
+		t.Fatal("the start with a failing program write succeeded")
+	}
+	var presets int
+	if err := store.db.QueryRow(`SELECT count(*) FROM preset`).Scan(&presets); err != nil {
+		t.Fatal(err)
+	}
+	if presets != 0 {
+		t.Errorf("a failed migration left %d presets, want none", presets)
+	}
+	if _, found, err := install.ReadMetaUint(context.Background(), store.db, "active_preset"); err != nil || found {
+		t.Errorf("a failed migration left an active preset: found=%v err=%v", found, err)
+	}
+
+	if _, err := store.db.Exec(`DROP TRIGGER fail_zone_program`); err != nil {
+		t.Fatal(err)
+	}
+	d, err := start()
+	if err != nil {
+		t.Fatalf("the second start: %v", err)
+	}
+	if home, held := d.zonePrograms(3); !held || !reflect.DeepEqual(home, officePrograms) {
+		t.Errorf("the office home program after the second start is %v (held %v), want the served document", home, held)
+	}
+	st, err := store.PresetState(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(st.rows) != 1 || st.rows[0].name != "Default" || !st.activeFound || st.active != st.rows[0].id {
+		t.Errorf("stored presets %+v active %d (found %v), want Default alone and active", st.rows, st.active, st.activeFound)
+	}
+}
+
+// TestPresetStateSkipsBrokenPrograms: a stored program that does not decode or
+// breaks the week rules is skipped with a log line, not a failed start, and a
+// database with presets and no stored active id starts on the first preset.
+func TestPresetStateSkipsBrokenPrograms(t *testing.T) {
+	path := t.TempDir() + "/state.db"
+	in := presetInstall(t, nil)
+	store := newTestStore(t, path)
+	ctx := context.Background()
+	officePrograms := weekPrograms(tado.ScheduleEntry{Minute: 0, SetpointCenti: 1900, Enabled: true})
+	if err := store.MigrateDefaultPreset(ctx, "Default", map[int][]tado.ScheduleProgram{3: officePrograms}); err != nil {
+		t.Fatal(err)
+	}
+	mondayOnly := tado.EncodeSchedulePrograms([]tado.ScheduleProgram{{DayMask: 0x01,
+		Entries: []tado.ScheduleEntry{{Minute: 0, SetpointCenti: 2000, Enabled: true}}}})
+	for _, row := range []struct {
+		zone int
+		mode string
+		body []byte
+	}{{10, "home", mondayOnly}, {10, "away", []byte{0xff}}} {
+		if _, err := store.db.Exec(`INSERT INTO zone_program (preset, zone, mode, body) VALUES (1, ?, ?, ?)`,
+			row.zone, row.mode, row.body); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := store.db.Exec(`DELETE FROM meta WHERE key = 'active_preset'`); err != nil {
+		t.Fatal(err)
+	}
+
+	clock := newTestClock(time.Date(2026, 1, 5, 5, 0, 0, 0, time.UTC))
+	d, url, _ := startStoredDaemon(t, in, clock, store)
+	if id, name := presetHome(t, url); id != 1 || name != "Default" {
+		t.Errorf("the active preset is (%d, %q), want (1, Default)", id, name)
+	}
+	if active, found, err := install.ReadMetaUint(ctx, store.db, "active_preset"); err != nil || !found || active != 1 {
+		t.Errorf("stored active preset %d (found %v, err %v), want 1", active, found, err)
+	}
+	got := engineValue(t, d, func() []bool {
+		_, home := d.zonePrograms(10)
+		_, away := d.awayProgramOf(10)
+		_, office := d.zonePrograms(3)
+		return []bool{home, away, office}
+	})
+	if got[0] || got[1] || !got[2] {
+		t.Errorf("bedroom home %v away %v office %v, want the broken bedroom programs skipped and the office one kept", got[0], got[1], got[2])
 	}
 }

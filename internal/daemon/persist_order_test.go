@@ -138,11 +138,11 @@ func TestConcurrentHotWaterPutStoresEngineProgram(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, active, programs, err := store.PresetState(context.Background())
+		st, err := store.PresetState(context.Background())
 		if err != nil {
 			t.Fatal(err)
 		}
-		if stored := programs[active][0].home; !reflect.DeepEqual(stored, v.([]tado.ScheduleProgram)) {
+		if stored := st.programs[st.active][0].home; !reflect.DeepEqual(stored, v.([]tado.ScheduleProgram)) {
 			t.Fatalf("round %d: stored program %+v, engine program %+v", round, stored, v)
 		}
 	}

@@ -448,8 +448,14 @@ served `sched` documents derive from its home programs. A schedule write without
 - `GET /api/home` reports the active preset in `preset`, with `id` and `name`.
 - On the first start the daemon builds the preset `Default` from the programs it already
   holds, and makes it active: the heating programs from the served `sched` documents, the
-  hot water program from its own store. Only preset rows are written in this, so a restart
-  serves the same documents and ETags as before.
+  hot water program from its own store. A document that does not decode or breaks the week
+  rules stays out and is logged. The preset, its programs and the active id go into the
+  database in one transaction: a start that fails part way leaves no preset, and the next
+  start migrates again. Only preset rows are written in this, so a restart serves the same
+  documents and ETags as before.
+- A stored program that does not decode or breaks the week rules is logged and skipped at
+  start. A database with presets and no valid active id starts on the first preset and logs
+  the inconsistency.
 - The daemon has no season calendar. An outside automation, for example Home Assistant,
   switches the presets.
 

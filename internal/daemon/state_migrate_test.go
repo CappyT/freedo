@@ -7,8 +7,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
@@ -287,5 +289,80 @@ func TestOpenStateStoreMigratesInterfaceModule(t *testing.T) {
 	}
 	if got := reloaded.InterfaceModule["05a2cafa07c51b00"]; got != 71 {
 		t.Errorf("stored interface module = %d, want 71", got)
+	}
+}
+
+// TestOpenStateStoreMigratesPresets: a version "7" database gets the preset
+// and zone_program tables, empty, and keeps its served documents and its
+// hot-water program as they are. The first daemon start then builds the
+// Default preset from them: a member document that does not decode stays out
+// and does not fail the start.
+func TestOpenStateStoreMigratesPresets(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.db")
+	in := presetInstall(t, nil)
+	old := legacyDatabase(t, path, "7", `DROP TABLE zone_program`, `DROP TABLE preset`)
+	officePrograms := weekPrograms(
+		tado.ScheduleEntry{Minute: 0, SetpointCenti: 1900, Enabled: true},
+		tado.ScheduleEntry{Minute: 420, SetpointCenti: 1600, Enabled: true},
+	)
+	hwPrograms := weekPrograms(tado.ScheduleEntry{Minute: 0, SetpointCenti: 4500, Enabled: true})
+	office := tado.EncodeSchedulePrograms(officePrograms)
+	broken := []byte{0xff}
+	docs := map[string][]byte{wireOf(t, in, "VA1000000002"): office, wireOf(t, in, "VA1000000005"): broken}
+	for key, body := range docs {
+		h := fnv.New64a()
+		h.Write(body)
+		if _, err := old.Exec(`INSERT INTO sched_doc (key, body, etag) VALUES (?, ?, ?)`, key, body, h.Sum(nil)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := old.Exec(`INSERT INTO meta (key, value) VALUES ('hot_water_program', ?)`,
+		hex.EncodeToString(tado.EncodeSchedulePrograms(hwPrograms))); err != nil {
+		t.Fatal(err)
+	}
+	if err := old.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	store := newTestStore(t, path)
+	var version string
+	if err := store.db.QueryRow(`SELECT value FROM meta WHERE key = 'schema_version'`).Scan(&version); err != nil {
+		t.Fatal(err)
+	}
+	if version != "8" {
+		t.Errorf("schema version = %q, want %q", version, "8")
+	}
+	for _, table := range []string{"preset", "zone_program"} {
+		var n int
+		if err := store.db.QueryRow(`SELECT count(*) FROM ` + table).Scan(&n); err != nil || n != 0 {
+			t.Errorf("%s after the schema migration: %d rows, err %v, want an empty table", table, n, err)
+		}
+	}
+	state, err := store.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	for key, body := range docs {
+		if got := state.Schedule[key].Body; !bytes.Equal(got, body) {
+			t.Errorf("migrated schedule %s = %x, want it unchanged %x", key, got, body)
+		}
+	}
+
+	clock := newTestClock(time.Date(2026, 1, 5, 5, 0, 0, 0, time.UTC))
+	d, url, _ := startStoredDaemon(t, in, clock, store)
+	if _, name := presetHome(t, url); name != "Default" {
+		t.Errorf("the active preset is %q, want Default", name)
+	}
+	got := engineValue(t, d, func() map[int][]tado.ScheduleProgram {
+		out := map[int][]tado.ScheduleProgram{}
+		for _, zone := range []int{0, 3, 10} {
+			if home, ok := d.zonePrograms(zone); ok {
+				out[zone] = home
+			}
+		}
+		return out
+	})
+	if want := map[int][]tado.ScheduleProgram{0: hwPrograms, 3: officePrograms}; !reflect.DeepEqual(got, want) {
+		t.Errorf("the Default home programs are %v, want %v", got, want)
 	}
 }

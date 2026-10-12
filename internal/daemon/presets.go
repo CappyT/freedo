@@ -12,6 +12,8 @@ package daemon
 import (
 	"context"
 	"encoding/hex"
+	"errors"
+	"fmt"
 	"log"
 	"strings"
 
@@ -52,22 +54,25 @@ func (d *daemon) restorePresets(ctx context.Context, e *tado.EmuState) error {
 	if d.state == nil {
 		return nil
 	}
-	rows, active, programs, err := d.state.PresetState(ctx)
+	st, err := d.state.PresetState(ctx)
 	if err != nil {
 		return err
 	}
-	if len(rows) == 0 {
-		if _, err := d.migrateDefaultPreset(ctx, e); err != nil {
+	if len(st.rows) == 0 {
+		if err := d.migrateDefaultPreset(ctx, e); err != nil {
 			return err
 		}
-		if rows, active, programs, err = d.state.PresetState(ctx); err != nil {
+		if st, err = d.state.PresetState(ctx); err != nil {
 			return err
+		}
+		if len(st.rows) == 0 {
+			return errors.New("program presets: the migration stored no preset")
 		}
 	}
-	d.presets = make(map[int64]*presetRecord, len(rows))
+	d.presets = make(map[int64]*presetRecord, len(st.rows))
 	d.presetOrder = d.presetOrder[:0]
-	for _, row := range rows {
-		rec := &presetRecord{id: row.id, name: row.name, programs: programs[row.id]}
+	for _, row := range st.rows {
+		rec := &presetRecord{id: row.id, name: row.name, programs: st.programs[row.id]}
 		if rec.programs == nil {
 			rec.programs = map[int]storedZonePrograms{}
 		}
@@ -75,12 +80,21 @@ func (d *daemon) restorePresets(ctx context.Context, e *tado.EmuState) error {
 		d.presetOrder = append(d.presetOrder, row.id)
 		d.nextPresetID = max(d.nextPresetID, row.id+1)
 	}
+	active := st.active
 	if _, ok := d.presets[active]; !ok {
-		// A database can lose its active id only behind the back of the daemon:
-		// the active preset cannot be deleted through the API. Start on the
-		// first preset instead of on none.
-		log.Printf("the stored active preset %d is gone, %q takes over", active, d.presets[d.presetOrder[0]].name)
-		active = d.presetOrder[0]
+		// The migration stores the active id with the first preset, and the API
+		// cannot delete the active preset: only a database edited or damaged
+		// behind the back of the daemon gets here. The first preset takes over,
+		// so the daemon runs on a known preset.
+		first := d.presets[d.presetOrder[0]]
+		if st.activeFound {
+			log.Printf("WARNING: program presets: inconsistent database: the stored active preset %d does not exist, %q (id %d) takes over",
+				active, first.name, first.id)
+		} else {
+			log.Printf("WARNING: program presets: inconsistent database: %d presets and no stored active preset, %q (id %d) takes over",
+				len(d.presets), first.name, first.id)
+		}
+		active = first.id
 		if err := d.state.SetActivePreset(ctx, active); err != nil {
 			return err
 		}
@@ -92,29 +106,28 @@ func (d *daemon) restorePresets(ctx context.Context, e *tado.EmuState) error {
 // migrateDefaultPreset creates the Default preset on the first start with the
 // program store and copies the programs the coordinator already holds into it
 // as home programs: each heating zone from the served sched document of the
-// first member that holds one, the hot-water zone from its daemon-side store.
-// It writes only preset rows: the served documents stay as they are, so a
-// restart after the migration serves the same documents and ETags as before.
-func (d *daemon) migrateDefaultPreset(ctx context.Context, e *tado.EmuState) (int64, error) {
-	id, err := d.state.CreatePreset(ctx, defaultPresetName, 0)
-	if err != nil {
-		return 0, err
-	}
+// first member whose document decodes and keeps the week rules, the hot-water
+// zone from its daemon-side store. It reads everything first and then writes
+// in one transaction, so a failed or interrupted start leaves no preset and
+// the next start migrates again. It writes only preset rows: the served
+// documents stay as they are, so a restart after the migration serves the same
+// documents and ETags as before.
+func (d *daemon) migrateDefaultPreset(ctx context.Context, e *tado.EmuState) error {
+	home := make(map[int][]tado.ScheduleProgram)
+	var moved []string
 	if inst := d.inst.Load(); inst != nil {
 		for i := range inst.Zones {
 			z := &inst.Zones[i]
 			if z.Kind == tado.ZoneHotWater {
 				programs, err := d.state.HotWaterProgram(ctx)
 				if err != nil {
-					return 0, err
-				}
-				if programs == nil {
+					log.Printf("preset %q: the hot-water program of zone %d stays out: %v", defaultPresetName, z.Number, err)
 					continue
 				}
-				if err := d.state.SetZoneProgram(ctx, id, z.Number, false, programs); err != nil {
-					return 0, err
+				if programs != nil {
+					home[z.Number] = programs
+					moved = append(moved, fmt.Sprintf("the hot-water program of zone %d moved in from the daemon store", z.Number))
 				}
-				log.Printf("preset %q: the hot-water program of zone %d moved in from the daemon store", defaultPresetName, z.Number)
 				continue
 			}
 			members, err := inst.ZoneMembers(z.Number)
@@ -123,25 +136,30 @@ func (d *daemon) migrateDefaultPreset(ctx context.Context, e *tado.EmuState) (in
 			}
 			for _, member := range members {
 				programs, set, err := e.Schedule(hex.EncodeToString(member.WireEUI()))
+				if err == nil && set {
+					err = tado.ValidateSchedule(programs)
+				}
 				if err != nil {
-					return 0, err
+					log.Printf("preset %q: the sched document of %s stays out of zone %d: %v", defaultPresetName, member.Serial, z.Number, err)
+					continue
 				}
 				if !set {
 					continue
 				}
-				if err := d.state.SetZoneProgram(ctx, id, z.Number, false, programs); err != nil {
-					return 0, err
-				}
-				log.Printf("preset %q: the home program of zone %d moved in from the sched document of %s", defaultPresetName, z.Number, member.Serial)
+				home[z.Number] = programs
+				moved = append(moved, fmt.Sprintf("the home program of zone %d moved in from the sched document of %s", z.Number, member.Serial))
 				break
 			}
 		}
 	}
-	if err := d.state.SetActivePreset(ctx, id); err != nil {
-		return 0, err
+	if err := d.state.MigrateDefaultPreset(ctx, defaultPresetName, home); err != nil {
+		return err
+	}
+	for _, line := range moved {
+		log.Printf("preset %q: %s", defaultPresetName, line)
 	}
 	log.Printf("program presets: migrated the current programs into the preset %q and made it active", defaultPresetName)
-	return id, nil
+	return nil
 }
 
 // zonePrograms returns the home program of zone in the active preset: what the
