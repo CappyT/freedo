@@ -904,7 +904,7 @@ async def test_options_keep_the_sensors_while_the_entry_is_not_loaded(hass, clie
 
 # --- preset select ---
 
-PRESET = "select.freedo_preset"
+PRESET = "select.freedo_profile"
 
 
 async def test_preset_options_and_current(hass, client):

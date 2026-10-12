@@ -253,7 +253,7 @@
         }
       },
       "preset": {
-        "name": "Preset"
+        "name": "Profilo"
       }
     },
     "switch": {
@@ -384,15 +384,15 @@
     },
     "get_schedule": {
       "name": "Leggi programma",
-      "description": "Restituisce il programma settimanale di una zona di riscaldamento o della zona acqua calda: i programmi, con i giorni in cui sono attivi e i loro blocchi orari. Una zona senza programma settimanale non ha programmi."
+      "description": "Restituisce il programma settimanale di una zona di riscaldamento o della zona acqua calda: le fasce, con i giorni in cui sono attive e i loro blocchi orari. Una zona senza programma settimanale non ha fasce."
     },
     "set_schedule": {
       "name": "Imposta programma",
-      "description": "Sostituisce il programma settimanale di una zona di riscaldamento o della zona acqua calda. I programmi coprono ciascuno dei sette giorni una sola volta. Ogni programma inizia alle 00:00 e i suoi orari sono crescenti.",
+      "description": "Sostituisce il programma settimanale di una zona di riscaldamento o della zona acqua calda. Le fasce coprono ciascuno dei sette giorni una sola volta. Ogni fascia inizia alle 00:00 e i suoi orari sono crescenti.",
       "fields": {
         "programs": {
-          "name": "Programmi",
-          "description": "Un elenco di programmi. Ognuno ha `days` (da mon a sun) e `entries`. Ogni voce ha `time` (HH:MM), `temperature` (da 5 a 25 C per una zona di riscaldamento, da 30 a 65 C per la zona acqua calda) e `enabled` (predefinito true, false spegne la zona)."
+          "name": "Fasce",
+          "description": "Un elenco di fasce. Ognuna ha `days` (da mon a sun) e `entries`. Ogni voce ha `time` (HH:MM), `temperature` (da 5 a 25 C per una zona di riscaldamento, da 30 a 65 C per la zona acqua calda) e `enabled` (predefinito true, false spegne la zona)."
         }
       }
     },
