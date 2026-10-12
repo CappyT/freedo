@@ -225,7 +225,7 @@
         "name": "Durata finestra"
       },
       "device_overlay_timer": {
-        "name": "Timer"
+        "name": "Timer modifica"
       },
       "away_temperature": {
         "name": "Fuori casa"

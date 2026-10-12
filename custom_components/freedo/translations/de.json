@@ -225,7 +225,7 @@
         "name": "Fensterdauer"
       },
       "device_overlay_timer": {
-        "name": "Timer"
+        "name": "Änderungstimer"
       },
       "away_temperature": {
         "name": "Abwesend"
