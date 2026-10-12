@@ -1,7 +1,7 @@
 // Logic of the weekly schedule editor. The rules mirror the daemon: tado.ValidateSchedule,
 // validateScheduleRange and the size limit of one day program. The daemon stays the judge.
 
-import type { ScheduleView } from './types.ts';
+import type { ScheduleProgram, ScheduleView } from './types.ts';
 
 export const DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
 export type Day = (typeof DAYS)[number];
@@ -65,7 +65,11 @@ export interface Issue {
 }
 
 export function fromView(view: ScheduleView): Group[] {
-	return view.programs.map((program, key) => ({
+	return fromPrograms(view.programs);
+}
+
+export function fromPrograms(programs: ScheduleProgram[]): Group[] {
+	return programs.map((program, key) => ({
 		key,
 		days: DAYS.filter((day) => program.days.includes(day)),
 		blocks: program.entries.map((e) => ({ minute: e.minute, setpointC: e.setpoint_c, enabled: e.enabled }))

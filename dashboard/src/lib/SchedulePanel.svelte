@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import { untrack } from 'svelte';
 	import { act, errorText } from './actions.ts';
 	import ConfirmDialog from './ConfirmDialog.svelte';
@@ -20,9 +21,21 @@
 	} from './schedule.ts';
 	import { api } from './session.ts';
 
-	let { zone, range, hotWater = false }: { zone: number; range: Range; hotWater?: boolean } = $props();
+	interface Props {
+		zone: number;
+		range: Range;
+		hotWater?: boolean;
+		/** The profile the panel reads and writes. Absent, the active one. */
+		preset?: number;
+		/** The program the panel opens on. */
+		initialMode?: Mode;
+		/** Called after a save or a delete, so a parent can read the profile again. */
+		onsaved?: () => void;
+	}
 
-	/** The home program and the away program of the active preset. Null while the zone holds none. */
+	let { zone, range, hotWater = false, preset, initialMode = 'home', onsaved }: Props = $props();
+
+	/** The home program and the away program of the profile. Null while the zone holds none. */
 	let stored = $state<Record<Mode, Group[] | null>>({ home: null, away: null });
 	let mode = $state<Mode>('home');
 	let loading = $state(true);
@@ -36,12 +49,17 @@
 	const issues = $derived(validate(draft, range));
 	const changed = $derived(!current || !sameSchedule(draft, current));
 	const inForce = $derived(programInForce(data.away, stored.away !== null));
+	const profile = $derived(data.presets.find((p) => (preset === undefined ? p.active : p.id === preset)));
+	const query = $derived({ preset });
 
 	async function load() {
 		loading = true;
 		failure = null;
 		try {
-			const [home, away] = await Promise.all([api.schedule(zone), api.schedule(zone, { mode: 'away' })]);
+			const [home, away] = await Promise.all([
+				api.schedule(zone, { preset }),
+				api.schedule(zone, { mode: 'away', preset })
+			]);
 			stored = { home: home ? fromView(home) : null, away: away ? fromView(away) : null };
 		} catch (error) {
 			failure = errorText(error);
@@ -51,12 +69,12 @@
 
 	// The parent passes zone as a getter, so reading the prop tracks everything the parent expression
 	// reads, such as the zone model that each poll replaces. The derived value changes only with the number.
-	const number = $derived(zone);
+	const key = $derived(`${zone}:${preset ?? ''}`);
 
 	$effect(() => {
-		void number;
+		void key;
 		editing = false;
-		mode = 'home';
+		mode = untrack(() => initialMode);
 		// load reads the API token before its first await: untrack keeps a token change from reloading.
 		void untrack(load);
 	});
@@ -75,24 +93,28 @@
 
 	async function save() {
 		saving = true;
-		const view = await act(() => api.putSchedule(zone, toPrograms(draft), { mode }), t('schedule.saved'));
+		const view = await act(() => api.putSchedule(zone, toPrograms(draft), { ...query, mode }), t('schedule.saved'));
 		saving = false;
 		if (view) {
 			stored = { ...stored, [mode]: fromView(view) };
 			editing = false;
+			onsaved?.();
 		}
 	}
 
 	async function removeAway() {
-		const view = await act(() => api.deleteSchedule(zone, { mode: 'away' }), t('schedule.awayDeleted'));
-		if (view) stored = { ...stored, away: null };
+		const view = await act(() => api.deleteSchedule(zone, { ...query, mode: 'away' }), t('schedule.awayDeleted'));
+		if (view) {
+			stored = { ...stored, away: null };
+			onsaved?.();
+		}
 	}
 </script>
 
 <section class="panel" aria-labelledby="schedule-title">
 	<header>
 		<h2 id="schedule-title">{t('schedule.title')}</h2>
-		{#if !loading && !failure}
+		{#if !loading && !failure && profile?.active}
 			<span class="inforce row">
 				<span class="small muted">{t('schedule.inForce')}</span>
 				<span class="badge" class:tone-away={inForce === 'away'} class:tone-idle={inForce === 'home'}>
@@ -101,6 +123,17 @@
 			</span>
 		{/if}
 	</header>
+
+	{#if profile}
+		<p class="profile row small">
+			<span class="badge" class:tone-heating={profile.active} class:tone-off={!profile.active}>
+				{t('schedule.profile', { name: profile.name })}{profile.active ? `, ${t('schedule.profileActive')}` : ''}
+			</span>
+			{#if preset === undefined}
+				<a href={resolve('/programs')}>{t('schedule.otherProfiles')}</a>
+			{/if}
+		</p>
+	{/if}
 
 	{#if loading}
 		<p class="muted">{t('state.loading')}</p>
@@ -177,5 +210,9 @@
 
 	.segmented {
 		margin-bottom: 0.25rem;
+	}
+
+	.profile {
+		margin-top: -0.25rem;
 	}
 </style>

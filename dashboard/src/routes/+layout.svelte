@@ -25,16 +25,14 @@
 
 	const route = $derived(page.route.id ?? '/');
 	const items = $derived.by<Item[]>(() => {
-		const list: Item[] = [
-			{ href: resolve('/'), label: 'nav.home', icon: 'home', active: route === '/' || route.startsWith('/zones') }
-		];
-		if (data.hotWater) list.push({ href: resolve('/hot-water'), label: 'nav.hotWater', icon: 'drop', active: route === '/hot-water' });
-		list.push(
+		// Hot water has no item: its card on the home page leads to its page.
+		return [
+			{ href: resolve('/'), label: 'nav.home', icon: 'home', active: route === '/' || route.startsWith('/zones') || route === '/hot-water' },
+			{ href: resolve('/programs'), label: 'nav.programs', icon: 'calendar', active: route === '/programs' },
 			{ href: resolve('/boiler'), label: 'nav.boiler', icon: 'flame', active: route === '/boiler' },
 			{ href: resolve('/devices'), label: 'nav.devices', icon: 'devices', active: route === '/devices' },
 			{ href: resolve('/settings'), label: 'nav.settings', icon: 'sliders', active: route === '/settings' }
-		);
-		return list;
+		];
 	});
 
 	onMount(() => {

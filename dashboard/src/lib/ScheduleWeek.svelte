@@ -2,9 +2,24 @@
 	import { fmt, t } from './i18n.svelte.ts';
 	import { DAYS, formatTime, weekSegments, type Group, type Range } from './schedule.ts';
 
-	let { groups, range }: { groups: Group[]; range: Range } = $props();
+	// compact draws a small week with no labels and no hour axis, for a list of schedules.
+	let { groups, range, compact = false }: { groups: Group[]; range: Range; compact?: boolean } = $props();
 
 	const week = $derived(weekSegments(groups));
+	// A compact week draws one row per program: the days that share it carry the same blocks.
+	const rows = $derived(
+		compact
+			? groups.filter((g) => g.days.length > 0).map((g) => ({ key: String(g.key), day: g.days[0]!, label: dayRange(g.days) }))
+			: DAYS.map((day) => ({ key: day, day, label: fmt.day(day) }))
+	);
+
+	/** mon, tue, wed reads "mon-wed"; days that do not follow each other are listed. */
+	function dayRange(days: readonly (typeof DAYS)[number][]): string {
+		const index = days.map((d) => DAYS.indexOf(d)).sort((a, b) => a - b);
+		const consecutive = index.every((n, i) => i === 0 || n === index[i - 1]! + 1);
+		if (consecutive && index.length > 2) return `${fmt.day(DAYS[index[0]!]!)}-${fmt.day(DAYS[index.at(-1)!]!)}`;
+		return index.map((n) => fmt.day(DAYS[n]!)).join(', ');
+	}
 
 	/**
 	 * The warmer the block, the more of the heating hue it carries. Above 56 percent the
@@ -21,10 +36,10 @@
 	}
 </script>
 
-<div class="week">
-	{#each DAYS as day (day)}
+<div class="week" class:compact>
+	{#each rows as { key, day, label } (key)}
 		<div class="day">
-			<span class="name">{fmt.day(day)}</span>
+			<span class="name">{label}</span>
 			<div class="bar" role="img" aria-label={summary(day)}>
 				{#each week[day] as segment (segment.from)}
 					<span
@@ -34,7 +49,7 @@
 						style:width="{((segment.to - segment.from) / 1440) * 100}%"
 						style:background={segment.enabled ? shade(segment.setpointC) : undefined}
 					>
-						{#if segment.to - segment.from >= 150}
+						{#if !compact && segment.to - segment.from >= 150}
 							<span class="label" class:mono={segment.enabled}>{segment.enabled ? fmt.number(segment.setpointC, 1) : t('schedule.off')}</span>
 						{/if}
 					</span>
@@ -42,14 +57,16 @@
 			</div>
 		</div>
 	{/each}
-	<div class="day axis" aria-hidden="true">
-		<span class="name"></span>
-		<div class="ticks mono">
-			{#each [0, 6, 12, 18, 24] as hour (hour)}
-				<span style:left="{(hour / 24) * 100}%">{hour}</span>
-			{/each}
+	{#if !compact}
+		<div class="day axis" aria-hidden="true">
+			<span class="name"></span>
+			<div class="ticks mono">
+				{#each [0, 6, 12, 18, 24] as hour (hour)}
+					<span style:left="{(hour / 24) * 100}%">{hour}</span>
+				{/each}
+			</div>
 		</div>
-	</div>
+	{/if}
 </div>
 
 <style>
@@ -101,6 +118,24 @@
 		font-size: var(--text-caption-size);
 		color: var(--text);
 		font-weight: var(--weight-medium);
+	}
+
+	.compact {
+		gap: 0.2rem;
+	}
+
+	.compact .day {
+		grid-template-columns: minmax(3.5rem, max-content) minmax(0, 1fr);
+		gap: 0.6rem;
+	}
+
+	.compact .name {
+		font-size: var(--text-caption-size);
+	}
+
+	.compact .bar {
+		height: 0.9rem;
+		border-radius: 4px;
 	}
 
 	.ticks {
