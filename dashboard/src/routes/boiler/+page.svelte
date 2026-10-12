@@ -205,8 +205,4 @@
 	form .field {
 		width: 12rem;
 	}
-
-	form {
-		align-items: end;
-	}
 </style>

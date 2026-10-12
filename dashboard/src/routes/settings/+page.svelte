@@ -147,7 +147,6 @@
 					{:else}
 						<span class="name">{preset.name}</span>
 						{#if preset.active}<span class="badge tone-heating">{t('presets.activeBadge')}</span>{/if}
-						<span class="spacer"></span>
 						<button class="btn" type="button" onclick={() => startRename(preset)}>
 							<Icon name="edit" size={18} />{t('presets.rename')}
 						</button>
@@ -280,7 +279,8 @@
 		font-weight: var(--weight-medium);
 	}
 
-	.presets .spacer {
-		flex: 1 1 auto;
+	/* The rename form takes the whole line, so the field, Save and Cancel stay together. */
+	.presets form {
+		flex: 1 1 100%;
 	}
 </style>

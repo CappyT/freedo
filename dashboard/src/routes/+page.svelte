@@ -52,7 +52,7 @@
 		<h1 id="title">{t('home.title')}</h1>
 		<div class="row actions fill">
 			{#if presets.length > 0}
-				<label class="field preset">
+				<label class="field inline preset">
 					<span>{t('preset.active')}</span>
 					<select class="input" bind:this={presetSelect} value={String(activePreset?.id ?? '')} onchange={activate} disabled={busy}>
 						{#each presets as preset (preset.id)}
@@ -124,9 +124,8 @@
 		gap: 0.75rem;
 	}
 
-	.preset {
-		flex: 0 1 11rem;
-		min-width: 8rem;
+	.preset select {
+		min-width: 9rem;
 	}
 
 	fieldset {

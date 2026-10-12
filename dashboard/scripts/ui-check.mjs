@@ -10,6 +10,7 @@
 // - A zone with no program starts on "until I end it" and shows a hint. Turn off asks first.
 // - The schedule panel keeps the away program and an open editor across a data poll.
 // - A renamed device shows its new name right after the save, also when a poll was in flight.
+// - The buttons of a form row sit on the line of the controls, not of the labels.
 //
 // Usage: FREEDO_BIN=./freedo node scripts/ui-check.mjs
 import { findChrome, launch } from './browser.mjs';
@@ -288,6 +289,29 @@ try {
 			.then(() => true, () => false),
 		'the new name shows right after the save, with a poll in flight'
 	);
+
+	// 10. In a row with a labelled field, the buttons sit on the line of the controls, and an inline
+	// rename keeps the field, Save and Cancel on one line. The page is 1280 px wide.
+	const misaligned = `[...document.querySelectorAll('.row')].filter((row) => row.querySelector(':scope > .field')).flatMap((row) => {
+		const control = row.querySelector(':scope > .field .input').getBoundingClientRect();
+		return [...row.querySelectorAll(':scope > .btn, :scope > .segmented, :scope > .field .input')]
+			.filter((el) => el.getBoundingClientRect().top < control.bottom && el.getBoundingClientRect().bottom > control.top)
+			.filter((el) => Math.abs(el.getBoundingClientRect().bottom - control.bottom) > 1)
+			.map((el) => el.textContent.trim() || el.className);
+	})`;
+	await open('#/', `document.querySelector('.actions select.input')`);
+	const homeRow = await tab.evaluate(`(() => {
+		const tops = [...document.querySelectorAll('.page-head .actions > .btn, .page-head .actions > .segmented, .page-head .actions .field select')].map((el) => Math.round(el.getBoundingClientRect().top));
+		return { tops, lines: tops.filter((top, i) => tops.findIndex((other) => Math.abs(other - top) <= 2) === i).length };
+	})()`);
+	check(homeRow.lines === 1, `the preset select and the buttons of the home page share one line (${homeRow.tops})`);
+	await open('#/settings', `document.querySelector('#presets-title')`);
+	await tab.evaluate(`[...document.querySelectorAll('.presets button')].find((b) => b.textContent.includes('Rename')).click()`);
+	await tab.waitFor(`document.querySelector('.presets form')`);
+	const off = await tab.evaluate(misaligned);
+	check(off.length === 0, `the buttons of the settings forms sit on the line of their controls (${off})`);
+	const renameLine = await tab.evaluate(`new Set([...document.querySelectorAll('.presets form .input, .presets form .btn')].map((el) => Math.round(el.getBoundingClientRect().top))).size`);
+	check(renameLine === 1, 'the preset rename keeps the field, Save and Cancel on one line');
 } catch (error) {
 	check(false, String(error?.stack ?? error));
 } finally {

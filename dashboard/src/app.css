@@ -145,6 +145,11 @@ textarea {
 	gap: 0.5rem 0.75rem;
 }
 
+/* A field puts its label above the control. In a row that holds one, every item sits on the line of the controls. */
+.row:has(> .field:not(.inline)) {
+	align-items: flex-end;
+}
+
 .note {
 	font-size: var(--text-small-size);
 	color: var(--text-muted);
@@ -220,6 +225,13 @@ textarea {
 	color: var(--text-muted);
 }
 
+/* A label beside its control, for a field in a row of buttons. */
+.field.inline {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5rem;
+}
+
 .input {
 	min-height: 2.75rem;
 	padding: 0.4rem 0.75rem;
@@ -254,7 +266,8 @@ textarea {
 	display: inline-flex;
 	align-items: center;
 	gap: 0.4rem;
-	min-height: 2.75rem;
+	/* With the 1 px border of the group, the control is 44 px high, like a button and a field. */
+	min-height: calc(2.75rem - 2px);
 	padding: 0.4rem 1rem;
 	font-size: var(--text-small-size);
 	font-weight: var(--weight-medium);
