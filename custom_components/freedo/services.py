@@ -14,6 +14,7 @@ from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.entity_platform import async_get_platforms
 from homeassistant.helpers.service import async_extract_entities
+from homeassistant.util import dt as dt_util
 
 from .climate import FreedoZoneClimate
 from .const import (
@@ -47,6 +48,14 @@ def _runtimes(hass: HomeAssistant) -> list:
         for entry in hass.config_entries.async_entries(DOMAIN)
         if getattr(entry, "runtime_data", None) is not None
     ]
+
+
+def _reading_time(at):
+    """The reading time with an offset. The datetime selector sends a naive
+    local time, and the daemon parses RFC3339 and refuses a value without one."""
+    if at is not None and at.tzinfo is None:
+        return dt_util.as_utc(dt_util.as_local(at))
+    return at
 
 
 @callback
@@ -95,7 +104,9 @@ def async_setup_services(hass: HomeAssistant) -> None:
         for runtime in runtimes:
             await call_api(
                 runtime.client.record_gas_meter(
-                    call.data["value"], call.data.get("estimate"), call.data.get("at")
+                    call.data["value"],
+                    call.data.get("estimate"),
+                    _reading_time(call.data.get("at")),
                 )
             )
             await runtime.coordinator.async_request_refresh()

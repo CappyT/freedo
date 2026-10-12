@@ -2613,6 +2613,19 @@ async def test_calibrate_gas_meter_sends_the_estimate_and_time(hass, client):
     assert client.calls == [("gas_meter", 8786.5, 300.0, at)]
 
 
+async def test_calibrate_gas_meter_localizes_a_naive_time(hass, client):
+    # The datetime selector sends a naive local time, which the daemon refuses:
+    # the sent value must carry an offset.
+    with_meter(client, dict(METER))
+    await setup_entry(hass, client)
+    await call_freedo(
+        hass, "calibrate_gas_meter", {"value": 8786.5, "at": "2026-01-01T00:00:00"}
+    )
+    sent = client.calls[0][3]
+    assert sent == dt_util.as_utc(dt_util.as_local(dt_util.parse_datetime("2026-01-01T00:00:00")))
+    assert sent.isoformat().endswith("+00:00")
+
+
 async def test_calibrate_gas_meter_error_is_a_home_assistant_error(hass, client):
     with_meter(client, dict(METER))
     await setup_entry(hass, client)
