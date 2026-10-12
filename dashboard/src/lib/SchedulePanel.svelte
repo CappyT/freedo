@@ -124,58 +124,31 @@
 		{/if}
 	</header>
 
-	{#if profile}
-		<p class="profile row small">
-			<span class="badge" class:tone-heating={profile.active} class:tone-off={!profile.active}>
-				{t('schedule.profile', { name: profile.name })}{profile.active ? `, ${t('schedule.profileActive')}` : ''}
-			</span>
-			{#if preset === undefined}
-				<a href={resolve('/programs')}>{t('schedule.otherProfiles')}</a>
-			{/if}
-		</p>
-	{/if}
-
-	{#if loading}
-		<p class="muted">{t('state.loading')}</p>
-	{:else if failure}
-		<p class="notice tone-fault" role="alert"><Icon name="fault" /><span>{failure}</span></p>
-		<div><button class="btn" onclick={load}><Icon name="refresh" size={18} />{t('action.retry')}</button></div>
-	{:else}
-		<fieldset class="segmented" disabled={saving}>
-			<legend class="sr-only">{t('schedule.mode')}</legend>
-			<label>
-				<input type="radio" name={`schedule-mode-${zone}`} checked={mode === 'home'} onchange={() => switchTo('home')} />
-				{t('schedule.home')}
-			</label>
-			<label>
-				<input type="radio" name={`schedule-mode-${zone}`} checked={mode === 'away'} onchange={() => switchTo('away')} />
-				{t('schedule.away')}
-			</label>
-		</fieldset>
-
-		{#if editing}
-			<ScheduleEditor bind:groups={draft} {range} {issues} />
-			<ScheduleWeek groups={draft} {range} />
-			<div class="row">
-				<button class="btn primary" onclick={save} disabled={saving || issues.length > 0 || !changed}>
-					<Icon name="check" size={18} />{t('schedule.save')}
-				</button>
-				<button class="btn" onclick={() => (editing = false)} disabled={saving}>{t('action.cancel')}</button>
-			</div>
-		{:else if mode === 'away' && !stored.away}
-			<p class="muted">{t(hotWater ? 'schedule.noAwayHotWater' : 'schedule.noAway')}</p>
-			<div class="row">
-				<button class="btn primary" onclick={() => edit()}>
-					<Icon name="plus" size={18} />{t('schedule.createAway')}
-				</button>
-				{#if stored.home}
-					<button class="btn" onclick={() => edit(stored.home ?? undefined)}>
-						<Icon name="calendar" size={18} />{t('schedule.copyHome')}
-					</button>
+	<!-- One line on a wide screen: the profile, the program shown and what can be done with it. -->
+	<div class="toolbar row">
+		{#if profile}
+			<span class="profile row small">
+				<span class="badge" class:tone-heating={profile.active} class:tone-off={!profile.active}>
+					{t('schedule.profile', { name: profile.name })}{profile.active ? `, ${t('schedule.profileActive')}` : ''}
+				</span>
+				{#if preset === undefined}
+					<a href={resolve('/programs')}>{t('schedule.otherProfiles')}</a>
 				{/if}
-			</div>
-		{:else}
-			<div class="row">
+			</span>
+		{/if}
+		{#if !loading && !failure}
+			<fieldset class="segmented" disabled={saving}>
+				<legend class="sr-only">{t('schedule.mode')}</legend>
+				<label>
+					<input type="radio" name={`schedule-mode-${zone}`} checked={mode === 'home'} onchange={() => switchTo('home')} />
+					{t('schedule.home')}
+				</label>
+				<label>
+					<input type="radio" name={`schedule-mode-${zone}`} checked={mode === 'away'} onchange={() => switchTo('away')} />
+					{t('schedule.away')}
+				</label>
+			</fieldset>
+			{#if !editing && !(mode === 'away' && !stored.away)}
 				<button class="btn" onclick={() => edit()}>
 					<Icon name="calendar" size={18} />{current ? t('schedule.edit') : t('schedule.create')}
 				</button>
@@ -184,13 +157,40 @@
 						<Icon name="trash" size={18} />{t('schedule.deleteAway')}
 					</button>
 				{/if}
-			</div>
-			{#if current}
-				<ScheduleWeek groups={current} {range} />
-			{:else}
-				<p class="muted">{t('schedule.none')}</p>
 			{/if}
 		{/if}
+	</div>
+
+	{#if loading}
+		<p class="muted">{t('state.loading')}</p>
+	{:else if failure}
+		<p class="notice tone-fault" role="alert"><Icon name="fault" /><span>{failure}</span></p>
+		<div><button class="btn" onclick={load}><Icon name="refresh" size={18} />{t('action.retry')}</button></div>
+	{:else if editing}
+		<ScheduleEditor bind:groups={draft} {range} {issues} />
+		<ScheduleWeek groups={draft} {range} />
+		<div class="row">
+			<button class="btn primary" onclick={save} disabled={saving || issues.length > 0 || !changed}>
+				<Icon name="check" size={18} />{t('schedule.save')}
+			</button>
+			<button class="btn" onclick={() => (editing = false)} disabled={saving}>{t('action.cancel')}</button>
+		</div>
+	{:else if mode === 'away' && !stored.away}
+		<p class="muted">{t(hotWater ? 'schedule.noAwayHotWater' : 'schedule.noAway')}</p>
+		<div class="row">
+			<button class="btn primary" onclick={() => edit()}>
+				<Icon name="plus" size={18} />{t('schedule.createAway')}
+			</button>
+			{#if stored.home}
+				<button class="btn" onclick={() => edit(stored.home ?? undefined)}>
+					<Icon name="calendar" size={18} />{t('schedule.copyHome')}
+				</button>
+			{/if}
+		</div>
+	{:else if current}
+		<ScheduleWeek groups={current} {range} />
+	{:else}
+		<p class="muted">{t('schedule.none')}</p>
 	{/if}
 </section>
 
@@ -208,11 +208,7 @@
 		gap: 0.5rem;
 	}
 
-	.segmented {
-		margin-bottom: 0.25rem;
-	}
-
-	.profile {
-		margin-top: -0.25rem;
+	.toolbar {
+		gap: 0.75rem 1rem;
 	}
 </style>
