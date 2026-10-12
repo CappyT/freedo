@@ -1499,3 +1499,74 @@ func TestAwayTemperatureChangeSkipsAwayProgramZones(t *testing.T) {
 		}
 	}
 }
+
+// A wall thermostat that is a member of every heating zone, listed first in a
+// zone of valves, holds the document of its own zone. The migration takes the
+// zone program from the valve, so the start serves the valves nothing new.
+func TestPresetMigrationPrefersASingleZoneMember(t *testing.T) {
+	path := t.TempDir() + "/state.db"
+	in := presetInstall(t, func(in *tado.Install) {
+		for i := range in.Zones {
+			if in.Zones[i].Number == 3 {
+				in.Zones[i].Members = append([]string{"RU1000000001"}, in.Zones[i].Members...)
+			}
+		}
+		circuit := 1
+		in.Zones = append(in.Zones, tado.Zone{Number: 1, Name: "hall", Kind: tado.ZoneHeating, Circuit: &circuit,
+			Members: []string{"RU1000000001"}, Reporter: []string{"RU1000000001"}})
+	})
+	if err := in.Validate(); err != nil {
+		t.Fatalf("fixture: %v", err)
+	}
+	hallPrograms := weekPrograms(tado.ScheduleEntry{Minute: 0, SetpointCenti: 2200, Enabled: true})
+	officePrograms := weekPrograms(
+		tado.ScheduleEntry{Minute: 0, SetpointCenti: 1900, Enabled: true},
+		tado.ScheduleEntry{Minute: 420, SetpointCenti: 1600, Enabled: true},
+	)
+	emu := tado.NewEmu(in.EmuConfig(), tado.NewUnhandledLogger(io.Discard))
+	hall, office := wireOf(t, in, "RU1000000001"), wireOf(t, in, "VA1000000002")
+	if err := emu.SetSchedule(hall, hallPrograms); err != nil {
+		t.Fatal(err)
+	}
+	if err := emu.SetSchedule(office, officePrograms); err != nil {
+		t.Fatal(err)
+	}
+	store := newTestStore(t, path)
+	if err := store.Save(context.Background(), emu.ExportDesiredState(), 1); err != nil {
+		t.Fatal(err)
+	}
+	st, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	officeETag, hallETag := string(st.Schedule[office].ETag), string(st.Schedule[hall].ETag)
+
+	clock := newTestClock(time.Date(2026, 1, 5, 5, 0, 0, 0, time.UTC))
+	d, _, _ := startStoredDaemon(t, in, clock, store)
+	if got := engineValue(t, d, func() []tado.ScheduleProgram {
+		home, _ := d.zonePrograms(3)
+		return home
+	}); !reflect.DeepEqual(got, officePrograms) {
+		t.Errorf("the office home program is %v, want the valve's, not the thermostat's", got)
+	}
+	if got := engineValue(t, d, func() []tado.ScheduleProgram {
+		home, _ := d.zonePrograms(1)
+		return home
+	}); !reflect.DeepEqual(got, hallPrograms) {
+		t.Errorf("the hall home program is %v, want the thermostat's", got)
+	}
+	for _, c := range []struct{ name, wire, etag string }{{"office", office, officeETag}, {"thermostat", hall, hallETag}} {
+		v, err := d.do(func(e *tado.EmuState) (any, error) {
+			return string(e.ExportDesiredState().Schedule[c.wire].ETag), nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if v.(string) != c.etag {
+			t.Errorf("the %s ETag is %q, want %q as before the migration", c.name, v, c.etag)
+		}
+		if n := pending(t, d, c.wire); n != 0 {
+			t.Errorf("the %s took %d writes at start, want none", c.name, n)
+		}
+	}
+}

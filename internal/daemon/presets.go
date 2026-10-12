@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"slices"
 	"strings"
 
 	"freedo/tado"
@@ -149,6 +150,7 @@ func (d *daemon) migrateDefaultPreset(ctx context.Context, e *tado.EmuState) err
 	home := make(map[int][]tado.ScheduleProgram)
 	var moved []string
 	if inst := d.inst.Load(); inst != nil {
+		own, count := heatingHomes(inst)
 		for i := range inst.Zones {
 			z := &inst.Zones[i]
 			if z.Kind != tado.ZoneHeating {
@@ -158,6 +160,14 @@ func (d *daemon) migrateDefaultPreset(ctx context.Context, e *tado.EmuState) err
 			if err != nil {
 				continue
 			}
+			// A member of several heating zones holds the document of its own
+			// zone only, and a member of this zone alone speaks for it first.
+			members = slices.DeleteFunc(members, func(m *tado.Device) bool {
+				return own[hex.EncodeToString(m.WireEUI())] != z.Number
+			})
+			slices.SortStableFunc(members, func(a, b *tado.Device) int {
+				return count[hex.EncodeToString(a.WireEUI())] - count[hex.EncodeToString(b.WireEUI())]
+			})
 			for _, member := range members {
 				programs, set, err := e.Schedule(hex.EncodeToString(member.WireEUI()))
 				if err == nil && set {
@@ -262,11 +272,54 @@ func (d *daemon) presetNamed(name string) bool {
 	return false
 }
 
+// heatingHomes maps each device in a heating zone to its own zone and to the
+// number of heating zones that list it. The own zone of a device in several,
+// as a wall thermostat that is a member of every zone, is the zone whose demand
+// it reports, else the zone it measures, else the first that lists it: its sched
+// document carries the program of that zone only.
+func heatingHomes(inst *tado.Install) (own, count map[string]int) {
+	zones := make(map[string][]int)
+	for i := range inst.Zones {
+		z := &inst.Zones[i]
+		if z.Kind != tado.ZoneHeating {
+			continue
+		}
+		members, err := inst.ZoneMembers(z.Number)
+		if err != nil {
+			continue
+		}
+		for _, m := range members {
+			key := hex.EncodeToString(m.WireEUI())
+			zones[key] = append(zones[key], z.Number)
+		}
+	}
+	own, count = make(map[string]int, len(zones)), make(map[string]int, len(zones))
+	for key, list := range zones {
+		own[key], count[key] = list[0], len(list)
+		if len(list) == 1 {
+			continue
+		}
+		pick := func(role func(int) (*tado.Device, error)) bool {
+			for _, n := range list {
+				if dev, err := role(n); err == nil && hex.EncodeToString(dev.WireEUI()) == key {
+					own[key] = n
+					return true
+				}
+			}
+			return false
+		}
+		if !pick(inst.DemandReporter) {
+			pick(inst.MeasuringDevice)
+		}
+	}
+	return own, count
+}
+
 // serveHomePrograms fans the home program of the active preset out to the
 // sched document of every zone member, and drops the document of a zone
 // without one: its members then read 2.03 like a zone that never had a
-// program, and keep the program they run. A device in two heating zones takes
-// the program of the first, as a reload gives it (tado rehomeScheduleDocuments).
+// program, and keep the program they run. A device in several heating zones
+// takes the program of its own zone (heatingHomes).
 // A document whose bytes do not move is left alone and takes no fetch trigger,
 // so serving an unchanged preset is silent; moved reports whether a document
 // changed. dispatch sends each fetch trigger queued. A member that refuses its
@@ -277,7 +330,7 @@ func (d *daemon) serveHomePrograms(e *tado.EmuState, dispatch func(string)) (mov
 		return false, nil
 	}
 	var errs []error
-	served := make(map[string]bool)
+	own, _ := heatingHomes(inst)
 	for i := range inst.Zones {
 		z := &inst.Zones[i]
 		if z.Kind != tado.ZoneHeating {
@@ -290,10 +343,9 @@ func (d *daemon) serveHomePrograms(e *tado.EmuState, dispatch func(string)) (mov
 		}
 		for _, member := range members {
 			target := hex.EncodeToString(member.WireEUI())
-			if served[target] {
+			if own[target] != z.Number {
 				continue
 			}
-			served[target] = true
 			if !held {
 				dropped, err := e.DropSchedule(target)
 				if err != nil {
