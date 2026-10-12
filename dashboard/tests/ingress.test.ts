@@ -24,6 +24,7 @@ const calls: Record<string, Call> = {
 	renamePreset: (c) => c.renamePreset(1, 'Winter'),
 	deletePreset: (c) => c.deletePreset(1),
 	activatePreset: (c) => c.activatePreset(1),
+	presetSchedules: (c) => c.presetSchedules(1),
 	setpoint: (c) => c.setpoint(3, 20, { mode: 'manual' }),
 	off: (c) => c.off(3, { mode: 'manual' }),
 	auto: (c) => c.auto(3),

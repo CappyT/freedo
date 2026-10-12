@@ -1854,6 +1854,7 @@ func (d *daemon) mux() *http.ServeMux {
 	m.HandleFunc("PATCH /api/presets/{id}", d.patchPreset)
 	m.HandleFunc("DELETE /api/presets/{id}", d.deletePreset)
 	m.HandleFunc("POST /api/presets/{id}/activate", d.activatePreset)
+	m.HandleFunc("GET /api/presets/{id}/schedules", d.getPresetSchedules)
 	m.HandleFunc("POST /api/zones/{number}/window", d.postZoneWindow)
 	m.HandleFunc("POST /api/zones/{number}/temperature", d.postZoneTemperature)
 	m.HandleFunc("DELETE /api/zones/{number}/temperature", d.deleteZoneTemperature)

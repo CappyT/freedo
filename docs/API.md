@@ -120,6 +120,7 @@ banner.
 | `GET`, `POST /api/presets` | List the program presets, create one. |
 | `PATCH`, `DELETE /api/presets/{id}` | Rename or delete a preset. |
 | `POST /api/presets/{id}/activate` | Switch the active preset. |
+| `GET /api/presets/{id}/schedules` | Read every program of one preset, zone by zone. |
 | `GET`, `PUT /api/zones/{n}/early-start` | Read or switch the early start. |
 | `DELETE /api/zones/{n}/early-start/model` | Delete the learned heat-up model. |
 | `GET /api/zones/{n}/episodes` | Recorded heating and cooling episodes. |
@@ -461,6 +462,14 @@ served `sched` documents derive from its home programs. A schedule write without
   preset. A member that refuses its document does not undo the switch: the answer is `500`
   and names the preset that is active, every other member and zone still takes its document
   and its write, and the next start serves the documents again.
+- `GET /api/presets/{id}/schedules` reads one preset whole: `preset` (`id`, `name`,
+  `active`) and `zones`, one row per declared zone in installation order with `zone`,
+  `name`, `kind`, `home` and `away` (the programs in the form of the schedule routes, `null`
+  for a mode without a program) and `inForce`. `inForce` is the block the preset holds now
+  in the current home state, `{"mode": "home"|"away", "setpointC": 21, "off": false}`, or
+  `null` when the preset holds no program in force for the zone: in away, a zone without an
+  away program keeps the away fallback, which no preset holds. Comparing `inForce` of a
+  preset with the one of the active preset gives the zones an activation writes at once.
 - `GET /api/home` reports the active preset in `preset`, with `id` and `name`.
 - On the first start the daemon builds the preset `Default` from the programs it already
   holds, and makes it active: the heating programs from the served `sched` documents. A document that does not decode or breaks the week

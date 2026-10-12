@@ -295,3 +295,79 @@ func (d *daemon) activatePreset(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, v)
 }
+
+// presetSchedulesView is the answer of GET /api/presets/{id}/schedules: every
+// declared zone with the home and away programs the preset holds for it.
+type presetSchedulesView struct {
+	Preset presetView            `json:"preset"`
+	Zones  []presetZoneSchedules `json:"zones"`
+}
+
+// presetZoneSchedules is one zone of a preset. Home and Away are null while
+// the preset holds no program of that mode. InForce is the block the preset
+// holds now in the current home state, null when it holds no program in force
+// for the zone: a client compares it with the active preset to name the zones
+// an activation writes at once.
+type presetZoneSchedules struct {
+	Zone    int                   `json:"zone"`
+	Name    string                `json:"name"`
+	Kind    tado.ZoneKind         `json:"kind"`
+	Home    []scheduleProgramView `json:"home"`
+	Away    []scheduleProgramView `json:"away"`
+	InForce *presetBlockView      `json:"inForce"`
+}
+
+type presetBlockView struct {
+	Mode      string  `json:"mode"`
+	SetpointC float64 `json:"setpointC"`
+	Off       bool    `json:"off"`
+}
+
+// getPresetSchedules answers every program of one preset in one read, so a
+// screen that shows a whole preset needs no request per zone and mode.
+func (d *daemon) getPresetSchedules(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathPresetID(w, r)
+	if !ok {
+		return
+	}
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
+		d.ensurePresets()
+		p := d.presets[id]
+		if p == nil {
+			return nil, apiErrf(http.StatusNotFound, "preset %d is not declared", id)
+		}
+		out := presetSchedulesView{
+			Preset: presetView{ID: p.id, Name: p.name, Active: p.id == d.activePreset},
+			Zones:  []presetZoneSchedules{},
+		}
+		inst := d.inst.Load()
+		if inst == nil {
+			return out, nil
+		}
+		now := d.retryNow()
+		for _, z := range inst.Zones {
+			zp := p.programs[z.Number]
+			row := presetZoneSchedules{
+				Zone: z.Number, Name: z.Name, Kind: z.Kind,
+				Home: programViews(zp.home), Away: programViews(zp.away),
+			}
+			// In away a zone without an away program keeps the away fallback,
+			// which no preset holds.
+			programs, mode := zp.home, "home"
+			if d.away {
+				programs, mode = zp.away, "away"
+			}
+			if programs != nil {
+				if block, ok := scheduledBlockAt(programs, now, d.programClock(inst)); ok {
+					row.InForce = &presetBlockView{Mode: mode, SetpointC: block.c, Off: block.off}
+				}
+			}
+			out.Zones = append(out.Zones, row)
+		}
+		return out, nil
+	})
+	if writeAPIErr(w, err) {
+		return
+	}
+	writeJSON(w, http.StatusOK, v)
+}

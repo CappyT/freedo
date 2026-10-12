@@ -6,6 +6,7 @@ import type {
 	Home,
 	NodeView,
 	Preset,
+	PresetSchedules,
 	Queued,
 	ScheduleView,
 	WindowView,
@@ -142,6 +143,8 @@ export function createClient(options: ClientOptions = {}) {
 		renamePreset: (id: number, name: string) => request<Preset>('PATCH', 'presets/' + id, { name }),
 		/** Removes a preset and its programs. The active preset answers 409. */
 		deletePreset: (id: number) => request<{ dropped: number }>('DELETE', 'presets/' + id),
+		/** Every program of one preset, zone by zone, with the block it holds now. */
+		presetSchedules: (id: number) => request<PresetSchedules>('GET', 'presets/' + id + '/schedules'),
 		activatePreset: (id: number) =>
 			request<{ id: number; name: string; active: boolean; queued: number }>('POST', 'presets/' + id + '/activate'),
 		/** The label of a device is unique in the installation, compared without case. */

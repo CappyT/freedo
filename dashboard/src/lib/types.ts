@@ -242,6 +242,22 @@ export interface ScheduleProgram {
 	entries: ScheduleEntry[];
 }
 
+/** One zone of GET /api/presets/{id}/schedules. A mode without a program is null. */
+export interface PresetZoneSchedules {
+	zone: number;
+	name: string;
+	kind: ZoneKind;
+	home: ScheduleProgram[] | null;
+	away: ScheduleProgram[] | null;
+	/** The block the preset holds now in the current home state, null when none is in force. */
+	inForce: { mode: 'home' | 'away'; setpointC: number; off: boolean } | null;
+}
+
+export interface PresetSchedules {
+	preset: Preset;
+	zones: PresetZoneSchedules[];
+}
+
 export interface ScheduleView {
 	zone: number;
 	members: string[];

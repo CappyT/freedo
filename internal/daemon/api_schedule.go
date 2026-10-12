@@ -515,6 +515,17 @@ func newScheduleView(zone int, members []*tado.Device, programs []tado.ScheduleP
 	for _, member := range members {
 		out.Members = append(out.Members, member.Short())
 	}
+	out.Programs = append(out.Programs, programViews(programs)...)
+	return out
+}
+
+// programViews renders programs for the API. A nil list stays nil, so a mode
+// without a program reads null.
+func programViews(programs []tado.ScheduleProgram) []scheduleProgramView {
+	if programs == nil {
+		return nil
+	}
+	out := make([]scheduleProgramView, 0, len(programs))
 	for _, program := range programs {
 		view := scheduleProgramView{
 			Days:    daysOf(program.DayMask),
@@ -528,7 +539,7 @@ func newScheduleView(zone int, members []*tado.Device, programs []tado.ScheduleP
 				Enabled:   entry.Enabled,
 			})
 		}
-		out.Programs = append(out.Programs, view)
+		out = append(out, view)
 	}
 	return out
 }

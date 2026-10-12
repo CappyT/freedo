@@ -13,6 +13,7 @@
 	"PATCH /api/presets/{id}",
 	"DELETE /api/presets/{id}",
 	"POST /api/presets/{id}/activate",
+	"GET /api/presets/{id}/schedules",
 	"POST /api/zones/{n}/setpoint",
 	"POST /api/zones/{n}/off",
 	"POST /api/zones/{n}/auto",

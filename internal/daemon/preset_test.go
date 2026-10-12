@@ -771,6 +771,85 @@ func TestScheduleRoutesModeAndPreset(t *testing.T) {
 	}
 }
 
+// TestPresetSchedulesRoute: GET /api/presets/{id}/schedules answers every
+// declared zone of one preset with its home and away programs, null for a
+// mode without one, and the block the preset holds now in the current home
+// state.
+func TestPresetSchedulesRoute(t *testing.T) {
+	clock := newTestClock(time.Date(2026, 1, 5, 5, 0, 0, 0, time.UTC))
+	_, url := newPresetDaemon(t, clock)
+	var view map[string]any
+	if code := postJSON(t, http.MethodPut, url+"/api/zones/10/schedule", allDayProgram(
+		map[string]any{"minute": 0, "setpoint_c": 18.0},
+		map[string]any{"minute": 360, "setpoint_c": 21.0}), &view); code != http.StatusOK {
+		t.Fatalf("bedroom schedule: code=%d %v", code, view)
+	}
+	var created presetView
+	if code := postJSON(t, http.MethodPost, url+"/api/presets", map[string]any{"name": "Summer"}, &created); code != http.StatusOK {
+		t.Fatalf("create: code=%d %v", code, created)
+	}
+	if code := postJSON(t, http.MethodPut, url+"/api/zones/10/schedule?preset=2&mode=away",
+		allDayProgram(map[string]any{"minute": 0, "setpoint_c": 15.0, "enabled": false}), &view); code != http.StatusOK {
+		t.Fatalf("away schedule of the Summer preset: code=%d %v", code, view)
+	}
+
+	read := func(id string) presetSchedulesView {
+		t.Helper()
+		var out presetSchedulesView
+		if code := getJSON(t, url+"/api/presets/"+id+"/schedules", &out); code != http.StatusOK {
+			t.Fatalf("GET /api/presets/%s/schedules: code=%d", id, code)
+		}
+		return out
+	}
+	zoneOf := func(v presetSchedulesView, n int) presetZoneSchedules {
+		t.Helper()
+		for _, z := range v.Zones {
+			if z.Zone == n {
+				return z
+			}
+		}
+		t.Fatalf("zone %d missing from %+v", n, v.Zones)
+		return presetZoneSchedules{}
+	}
+
+	def := read("1")
+	if !def.Preset.Active || def.Preset.Name != "Default" || len(def.Zones) != 3 {
+		t.Fatalf("Default reads %+v, want the active preset with the three zones", def)
+	}
+	bedroom := zoneOf(def, 10)
+	if bedroom.Name != "bedroom" || bedroom.Kind != tado.ZoneHeating || len(bedroom.Home) != 1 || bedroom.Away != nil {
+		t.Errorf("bedroom of Default=%+v, want one home program and no away program", bedroom)
+	}
+	if bedroom.InForce == nil || *bedroom.InForce != (presetBlockView{Mode: "home", SetpointC: 18}) {
+		t.Errorf("bedroom in force=%+v, want the 18 C home block of 05:00", bedroom.InForce)
+	}
+	if office := zoneOf(def, 3); office.Home != nil || office.InForce != nil {
+		t.Errorf("office of Default=%+v, want no program and nothing in force", office)
+	}
+
+	summer := zoneOf(read("2"), 10)
+	if summer.Away == nil || summer.Away[0].Entries[0].Enabled {
+		t.Errorf("bedroom of Summer=%+v, want the copied home program and the off away program", summer)
+	}
+
+	if code := postJSON(t, http.MethodPatch, url+"/api/home", map[string]any{"away": true}, &view); code != http.StatusOK {
+		t.Fatalf("away: code=%d %v", code, view)
+	}
+	if in := zoneOf(read("1"), 10).InForce; in != nil {
+		t.Errorf("in away, Default holds %+v for the bedroom, want nothing: the away fallback applies", in)
+	}
+	if in := zoneOf(read("2"), 10).InForce; in == nil || *in != (presetBlockView{Mode: "away", SetpointC: 15, Off: true}) {
+		t.Errorf("in away, Summer holds %+v for the bedroom, want its off away block", in)
+	}
+
+	if code := getJSON(t, url+"/api/presets/9/schedules", &view); code != http.StatusNotFound {
+		t.Errorf("GET an unknown preset: code=%d, want 404", code)
+	}
+	if code := getJSON(t, url+"/api/presets/x/schedules", &view); code != http.StatusBadRequest {
+		t.Errorf("GET a preset id that is not a number: code=%d, want 400", code)
+	}
+}
+
 // TestPresetStoreNameAndMissingErrors: the preset store maps the unique
 // violation of a name, in a create or a rename, to errPresetNameTaken, and a
 // rename or a delete of an unknown id to sql.ErrNoRows, so the routes answer
