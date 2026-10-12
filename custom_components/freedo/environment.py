@@ -34,6 +34,7 @@ from homeassistant.helpers.event import (
 from .api import FreedoApiError, FreedoClient, FreedoError
 from .const import (
     CONF_OUTDOOR_ENTITY,
+    CONF_ROOM_TEMP_PAUSED,
     CONF_ROOM_TEMPS,
     CONF_WINDOWS,
     OUTDOOR_PUSH_INTERVAL,
@@ -44,6 +45,7 @@ from .coordinator import FreedoConfigEntry
 from .model import (
     outdoor_payload,
     room_temp_payload,
+    room_temp_paused,
     room_temp_zones,
     window_payload,
     window_zones,
@@ -107,6 +109,11 @@ def async_setup_environment(
         room_failed: set[int] = set()
 
         async def push_room_temp(zone: int) -> None:
+            # The temperature source select pauses the pushes of a zone whose
+            # room measures on a device. The options are read here, so the
+            # change needs no reload.
+            if zone in room_temp_paused(entry.options.get(CONF_ROOM_TEMP_PAUSED) or []):
+                return
             entity_id = room_temps[zone]
             state = hass.states.get(entity_id)
             if state is None:

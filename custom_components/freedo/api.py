@@ -106,6 +106,9 @@ class FreedoClient:
     async def install_circuits(self) -> dict[str, Any]:
         return await self._request("GET", "/api/install/circuits")
 
+    async def install_devices(self) -> dict[str, Any]:
+        return await self._request("GET", "/api/install/devices")
+
     async def pair_window(self) -> dict[str, Any] | None:
         """The pair window of the bridge, None on a daemon without the route."""
         try:
@@ -168,6 +171,13 @@ class FreedoClient:
         open_window_duration_sec, device_overlay_end, device_overlay_end_sec,
         offset_mode, away_temperature_c."""
         return await self._request("PATCH", f"/api/install/zones/{int(zone)}", fields)
+
+    async def set_zone_measuring(self, zone: int, ref: str) -> dict[str, Any]:
+        """Set the measuring device of a zone. ref is a device reference: its
+        short address or its EUI. DELETE clears it."""
+        return await self._request(
+            "PUT", f"/api/install/zones/{int(zone)}/measuring", {"ref": ref}
+        )
 
     async def zone_schedule(self, zone: int) -> dict[str, Any] | None:
         """The weekly schedule of a zone, None when no member holds one. Any

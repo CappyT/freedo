@@ -239,6 +239,12 @@
           "dbg2": "Enregistrement de débogage de la vanne",
           "setpoint": "Décalage de la consigne"
         }
+      },
+      "temperature_source": {
+        "name": "Source de température",
+        "state": {
+          "external": "Capteur externe"
+        }
       }
     },
     "switch": {

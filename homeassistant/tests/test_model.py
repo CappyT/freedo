@@ -11,6 +11,7 @@ from model import (
     boiler_energy,
     boiler_gas,
     boiler_unsupported,
+    device_option_label,
     energy_state,
     flow_circuit,
     flow_managed,
@@ -24,6 +25,7 @@ from model import (
     node_temperature,
     outdoor_payload,
     parse,
+    room_temp_paused,
     room_temp_payload,
     room_temp_state,
     room_temp_zones,
@@ -36,6 +38,7 @@ from model import (
     zone_demand_pct,
     zone_has_program,
     zone_heating,
+    zone_measuring_candidates,
     zone_mode,
     zone_offset_mode,
     zone_operation,
@@ -144,6 +147,22 @@ INSTALL_ZONES = {
     ],
 }
 
+# GET /api/install/devices: the devices placed in each room. The wall thermostat
+# cccc sits in the hot water room, not in a heating room.
+INSTALL_DEVICES = {
+    "rev": 7,
+    "devices": [
+        {"eui": "0000000000000001", "short": "aaaa", "kind": "valve",
+         "serial": "VA0000000001", "label": "Living", "notes": "", "zone": 1},
+        {"eui": "0000000000000002", "short": "bbbb", "kind": "valve",
+         "serial": "VA0000000002", "label": "", "notes": "", "zone": 1},
+        {"eui": "0000000000000003", "short": "dddd", "kind": "valve",
+         "serial": "VA0000000004", "label": "Bedroom", "notes": "", "zone": 2},
+        {"eui": "0000000000000004", "short": "cccc", "kind": "thermostat",
+         "serial": "RU0000000001", "label": "", "notes": "", "zone": 9},
+    ],
+}
+
 # GET /api/install/circuits and the flow limit view of GET /api/boiler for circuit 1.
 CIRCUITS = {"rev": 7, "circuits": [{"id": 1, "name": "Heating", "heat_source": "0000000000000001"}]}
 FLOW_CIRCUIT = {"id": 1, "curve": False, "computedC": None, "servedC": 45, "changedAt": None,
@@ -210,6 +229,30 @@ def test_parse():
     assert list(d.fallback) == [2]
     assert d.away is True
     assert d.offline_schedule is None
+
+
+def test_install_devices():
+    d = parse(HEALTH, ZONES, NODES, BOILER, HOME, install_devices=INSTALL_DEVICES)
+    assert d.install_devices["bbbb"]["serial"] == "VA0000000002"
+    # The candidates of a room are its own devices, by label then serial.
+    rows = zone_measuring_candidates(d, d.zones[1])
+    assert [r["short"] for r in rows] == ["aaaa", "bbbb"]
+    assert [device_option_label(r) for r in rows] == ["Living (VA0000000001)", "VA0000000002"]
+    # A device placed in another room is not a candidate of this one.
+    assert [r["short"] for r in zone_measuring_candidates(d, d.zones[2])] == ["dddd"]
+    assert zone_measuring_candidates(d, d.zones[2])[0]["short"] != "cccc"
+
+
+def test_device_option_label_needs_no_label():
+    # A device without a label shows its serial, and its short address without one.
+    assert device_option_label({"label": "Living", "serial": "VA1"}) == "Living (VA1)"
+    assert device_option_label({"label": "", "serial": "VA2"}) == "VA2"
+    assert device_option_label({"short": "bbbb"}) == "bbbb"
+
+
+def test_room_temp_paused():
+    assert room_temp_paused([1, "2", "x", None]) == {1, 2}
+    assert room_temp_paused(None) == set()
 
 
 def test_pair_window():

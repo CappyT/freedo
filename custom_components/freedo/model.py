@@ -69,6 +69,11 @@ ROOM_TEMP_MAX_C = 50.0
 # is not. See room_temp_state.
 ROOM_TEMP_STATES = ("active", "wrong_offset_mode", "no_reading", "stale")
 
+# The option of the temperature source select that reads the room temperature
+# from an external Home Assistant sensor. The state is a fixed name, so it
+# carries a translation; a device option is dynamic and does not.
+ROOM_TEMP_EXTERNAL = "external"
+
 # The daemon rejects a pair window longer than this with 400.
 PAIR_WINDOW_MAX_SEC = 600
 
@@ -149,6 +154,8 @@ class FreedoData:
     devices: dict[str, dict[str, Any]] = field(default_factory=dict)
     # GET /api/health "zoneFallback": active fallbacks by zone number.
     fallback: dict[int, dict[str, Any]] = field(default_factory=dict)
+    # GET /api/install/devices devices[]: the declared devices by short address.
+    install_devices: dict[str, dict[str, Any]] = field(default_factory=dict)
     # GET /api/install/circuits circuits[] heat_source: the wall thermostat that
     # drives each circuit, by circuit id.
     circuit_sources: dict[int, str] = field(default_factory=dict)
@@ -190,17 +197,23 @@ def parse(
     settings: Mapping[str, Any] | None = None,
     circuits: Mapping[str, Any] | None = None,
     pair_window: Mapping[str, Any] | None = None,
+    install_devices: Mapping[str, Any] | None = None,
 ) -> FreedoData:
     """Build the model from the read endpoints. install is the body of
     GET /api/install/zones, settings the body of GET /api/install, circuits the
     body of GET /api/install/circuits, pair_window the body of
-    GET /api/pair/window."""
+    GET /api/pair/window, install_devices the body of GET /api/install/devices."""
     data = FreedoData(
         boiler=dict(boiler or {}),
         settings=dict(settings or {}),
         away=bool((home or {}).get("away")),
         pair_window=dict(pair_window) if pair_window is not None else None,
     )
+    data.install_devices = {
+        d["short"]: dict(d)
+        for d in (install_devices or {}).get("devices") or []
+        if d.get("short")
+    }
     offline = (settings or {}).get("offline_schedule")
     if isinstance(offline, bool):
         data.offline_schedule = offline
@@ -474,6 +487,49 @@ def room_temp_state(data: FreedoData, zone: Zone) -> str | None:
     if view.get("tempC") is None:
         return "no_reading"
     return "stale" if view.get("stale") else None
+
+
+def zone_measuring_candidates(data: FreedoData, zone: Zone) -> list[dict[str, Any]]:
+    """The declared members of the zone, with their row of GET
+    /api/install/devices. A member whose install zone names another room is left
+    out; most installations leave that field empty. The order is stable: the
+    labelled devices first, by label, then the others by serial."""
+    rows = []
+    for short in zone.members:
+        row = dict(data.install_devices.get(short) or {"short": short})
+        if row.get("zone") not in (None, zone.number):
+            continue
+        rows.append(row)
+    rows.sort(
+        key=lambda r: (
+            0 if r.get("label") else 1,
+            str(r.get("label") or ""),
+            str(r.get("serial") or ""),
+            str(r.get("short") or ""),
+        )
+    )
+    return rows
+
+
+def device_option_label(row: Mapping[str, Any]) -> str:
+    """The text of a device option of the temperature source select: the label
+    and the serial. The serial keeps two devices with the same label apart. A
+    device without a label shows its serial, or its short address."""
+    label = row.get("label")
+    serial = row.get("serial") or row.get("short") or ""
+    return f"{label} ({serial})" if label else str(serial)
+
+
+def room_temp_paused(value: Any) -> set[int]:
+    """The zone numbers whose external room temperature pushes the options pause.
+    An item that is not a number is dropped."""
+    out: set[int] = set()
+    for item in value or ():
+        try:
+            out.add(int(item))
+        except (TypeError, ValueError):
+            continue
+    return out
 
 
 def flow_circuit(data: FreedoData, circuit: int) -> Mapping[str, Any] | None:

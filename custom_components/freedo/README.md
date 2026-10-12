@@ -87,6 +87,7 @@ The integration and the options of the add-on have English, Italian, German and 
 | number Away temperature | heating zone | `/api/install/zones` `away_temperature_c`; writes `PATCH /api/install/zones/{n}` |
 | number Temperature offset | heating zone | `/api/install/zones` `setpoint_offset_c`; writes `POST /api/zones/{n}/offset` |
 | select Temperature offset mode | heating zone | `/api/install/zones` `offset_mode`; writes `PATCH /api/install/zones/{n}` |
+| select Temperature source | heating zone | `/api/install/devices`, `/api/zones` `declared[].measuringDevice`, `/api/install/zones` `offset_mode`; writes `PUT /api/install/zones/{n}/measuring` and the options |
 | sensor External room sensor | heating zone | `/api/zones` `declared[].externalTemp`, `/api/install/zones` `offset_mode` |
 
 ### Valve display
@@ -351,6 +352,30 @@ daemon answers. They exist only while the daemon holds an installation.
     zone, 503 while it holds no installation, and 500 when the running daemon
     does not take the saved change. The select shows the answer as an error and
     keeps the mode.
+
+### Temperature source
+
+Select Temperature source chooses where the room temperature of a heating zone
+comes from: a device placed in the room, or the external sensor mapped in the
+options. The select exists while the room has a device of its own or a mapped
+sensor.
+
+- The options are the declared members of the zone (`members` of
+  `GET /api/zones`), labelled with the device label and the serial from
+  `GET /api/install/devices`. A member whose `zone` field names another room is
+  left out. The option `external` appears while the options map a sensor to the
+  zone.
+- The current option is `external` while a sensor is mapped, its pushes are not
+  paused and the offset mode is `setpoint`; otherwise it is the effective
+  measuring device (`measuringDevice` of `GET /api/zones`).
+- Choosing a device writes `PUT /api/install/zones/{n}/measuring` with the
+  device reference. The measuring device reaches the valves in the next zone
+  document, at their next hourly check. When a sensor is mapped to the zone, the
+  choice also pauses its pushes and sends `DELETE /api/zones/{n}/temperature`, so
+  the daemon returns to the manual correction. The offset mode does not change.
+- Choosing `external` resumes the pushes, sends the current reading at once and
+  sets the offset mode `setpoint` if it is not. See Room temperature of a zone.
+- The pause is stored in the options, so it survives a restart.
 
 ### Pairing mode
 

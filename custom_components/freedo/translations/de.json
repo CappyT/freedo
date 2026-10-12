@@ -239,6 +239,12 @@
           "dbg2": "Debug-Datensatz des Ventils",
           "setpoint": "Sollwertverschiebung"
         }
+      },
+      "temperature_source": {
+        "name": "Temperaturquelle",
+        "state": {
+          "external": "Externer Sensor"
+        }
       }
     },
     "switch": {

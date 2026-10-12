@@ -17,6 +17,9 @@ CONF_OUTDOOR_ENTITY = "outdoor_entity"
 CONF_WINDOW_ENTITIES = "window_entities"
 CONF_WINDOWS = "windows"
 CONF_ROOM_TEMPS = "room_temperatures"
+# Zones whose external room temperature pushes are paused, because the user chose
+# a measuring device of the room in the temperature source select.
+CONF_ROOM_TEMP_PAUSED = "room_temperature_paused"
 
 # A write reaches a device at its next wake-up, so a reported value lags. An entity
 # shows the requested value until the daemon reports it, or at most this long.

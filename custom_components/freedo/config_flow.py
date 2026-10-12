@@ -23,6 +23,7 @@ from homeassistant.helpers.service_info.hassio import HassioServiceInfo
 from .api import FreedoAuthError, FreedoClient, FreedoConnectionError, FreedoError
 from .const import (
     CONF_OUTDOOR_ENTITY,
+    CONF_ROOM_TEMP_PAUSED,
     CONF_ROOM_TEMPS,
     CONF_TOKEN,
     CONF_WINDOW_ENTITIES,
@@ -30,7 +31,7 @@ from .const import (
     DEFAULT_PORT,
     DOMAIN,
 )
-from .model import room_temp_zones
+from .model import room_temp_paused, room_temp_zones
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -281,4 +282,10 @@ class FreedoOptionsFlow(OptionsFlowWithReload):
             data[CONF_OUTDOOR_ENTITY] = self._outdoor
         if room_temps:
             data[CONF_ROOM_TEMPS] = room_temps
+        # The step replaces the whole options mapping, so keep the pause of the
+        # zones that still map a sensor.
+        paused = room_temp_paused(self.config_entry.options.get(CONF_ROOM_TEMP_PAUSED) or [])
+        kept = sorted(zone for zone in paused if str(zone) in room_temps)
+        if kept:
+            data[CONF_ROOM_TEMP_PAUSED] = kept
         return self.async_create_entry(data=data)

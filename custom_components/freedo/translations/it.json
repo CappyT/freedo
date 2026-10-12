@@ -239,6 +239,12 @@
           "dbg2": "Record di debug della valvola",
           "setpoint": "Spostamento del setpoint"
         }
+      },
+      "temperature_source": {
+        "name": "Sorgente della temperatura",
+        "state": {
+          "external": "Sensore esterno"
+        }
       }
     },
     "switch": {

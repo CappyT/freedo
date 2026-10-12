@@ -173,6 +173,12 @@
           "dbg2": "Valve debug record",
           "setpoint": "Setpoint shift"
         }
+      },
+      "temperature_source": {
+        "name": "Temperature source",
+        "state": {
+          "external": "External sensor"
+        }
       }
     },
     "switch": {
