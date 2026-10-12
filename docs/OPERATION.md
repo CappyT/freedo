@@ -83,6 +83,32 @@ installation and never prints the key. Manage the installation with the routes u
 The tools that read the installation read it from the database, not from the bootstrap file.
 The tools never create an identity. Only the daemon does.
 
+### Schema upgrade and rollback
+
+The daemon migrates the database forward at start, and only forward. An older daemon refuses
+a database of a newer schema and stops with `schema version "8" is unsupported`. Schema 8
+adds the [program presets](API.md#program-presets).
+
+To go back to a daemon before schema 8, stop the daemon and restore a copy of the database
+that you made before the upgrade. The add-on keeps a copy of the database before it runs a
+beta version: see [addon/DOCS.md](../addon/DOCS.md). Outside the add-on, copy
+`freedo-state.db` while the daemon is stopped, before you install a newer version.
+
+The restored copy holds the state at the time of the copy. You lose every change made after
+it, and in particular:
+
+- every preset other than `Default`, and the choice of the active preset;
+- every away program, of the heating zones and of the hot water zone;
+- every change of a home program, the hot water program included.
+
+The restored copy does not tell the devices that their documents changed. A device keeps the
+program it fetched last until a schedule write changes its document. Check the programs after
+the restore, and write again each one that differs from the one you want.
+
+Do not change `schema_version` by hand. An older daemon then ignores the presets and the
+away programs, and it runs without the hot water program once schema 8 moved it into the
+presets.
+
 ## Container
 
 The image `ghcr.io/cappyt/freedo` exists for `linux/amd64` and `linux/arm64`, with the
