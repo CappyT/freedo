@@ -6,7 +6,7 @@
 	import Icon from './Icon.svelte';
 	import { HEATING_RANGE, HOT_WATER_RANGE } from './schedule.ts';
 	import StatusBadge from './StatusBadge.svelte';
-	import type { ZoneModel } from './zones.ts';
+	import { zoneName, type ZoneModel } from './zones.ts';
 
 	let { model }: { model: ZoneModel } = $props();
 
@@ -19,7 +19,7 @@
 
 <a class="card tone-{model.status.tone}" {href}>
 	<header>
-		<h2>{model.zone.name}</h2>
+		<h2>{zoneName(model.zone, t('zone.hotWaterName'))}</h2>
 		<StatusBadge state={model.status.state} tone={model.status.tone} />
 	</header>
 

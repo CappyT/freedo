@@ -1,4 +1,4 @@
-import type { Health, NodeView } from './types.ts';
+import type { Health, NodeView, ZoneKind } from './types.ts';
 import { firmwareOf, type AlertKey, type ZoneModel } from './zones.ts';
 
 export interface DeviceRow {
@@ -6,7 +6,7 @@ export interface DeviceRow {
 	label: string;
 	serial: string;
 	kind: string;
-	zones: { number: number; name: string }[];
+	zones: { number: number; name: string; kind: ZoneKind }[];
 	batteryPct: number | null;
 	batteryMV: number | null;
 	lastSeenUnix: number;
@@ -25,7 +25,7 @@ export function buildDevices(nodes: NodeView[], health: Health | null, models: Z
 		const node = nodeByShort.get(h.short);
 		const zones = models
 			.filter((m) => m.zone.members.includes(h.short))
-			.map((m) => ({ number: m.zone.number, name: m.zone.name }));
+			.map((m) => ({ number: m.zone.number, name: m.zone.name, kind: m.zone.kind }));
 		const alerts: AlertKey[] = [];
 		if (h.lowBattery) alerts.push('lowBattery');
 		if (h.fault) alerts.push('deviceFault');

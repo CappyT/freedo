@@ -1,12 +1,24 @@
 import { describe, expect, it } from 'vitest';
 import type { DeclaredZone, Health, HealthDevice, NodeView, ZoneDemand } from '../src/lib/types.ts';
-import { buildZones, zoneStatus, type Member } from '../src/lib/zones.ts';
+import { buildZones, zoneName, zoneStatus, type Member } from '../src/lib/zones.ts';
 import { demand, device, target, zone } from './fixtures.ts';
 
 const member = (h: HealthDevice | undefined): Member => ({ short: '0201', label: 'bath', kind: 'valve', node: undefined, health: h });
 
 const status = (z: DeclaredZone, d: ZoneDemand | undefined, members: Member[], away = false) =>
 	zoneStatus(z, d, members, away, []);
+
+describe('zone name', () => {
+	it('shows the fixed text for the hot water zone, whatever the installation stores', () => {
+		expect(zoneName(zone({ kind: 'hotwater', name: 'acqua calda sanitaria' }), 'Domestic hot water')).toBe(
+			'Domestic hot water'
+		);
+	});
+
+	it('keeps the name of a heating zone', () => {
+		expect(zoneName(zone({ name: 'Bath' }), 'Domestic hot water')).toBe('Bath');
+	});
+});
 
 describe('zone state', () => {
 	it('is idle with no demand and heating with demand', () => {

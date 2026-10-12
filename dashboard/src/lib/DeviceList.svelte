@@ -5,6 +5,7 @@
 	import { fmt, t } from './i18n.svelte.ts';
 	import Icon from './Icon.svelte';
 	import { api } from './session.ts';
+	import { zoneName } from './zones.ts';
 
 	let { devices, detailed = false }: { devices: DeviceRow[]; detailed?: boolean } = $props();
 </script>
@@ -22,7 +23,7 @@
 						<span class="mono">{device.serial}</span>
 					</span>
 					{#if detailed && device.zones.length > 0}
-						<span class="small muted">{t('devices.zone')}: {device.zones.map((z) => z.name).join(', ')}</span>
+						<span class="small muted">{t('devices.zone')}: {device.zones.map((z) => zoneName(z, t('zone.hotWaterName'))).join(', ')}</span>
 					{/if}
 				</div>
 

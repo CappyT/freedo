@@ -123,6 +123,15 @@ export function zoneHumidity(zone: DeclaredZone, members: Member[]): number | nu
 	return first?.node?.HumidityPct ?? null;
 }
 
+/**
+ * The name shown for a zone. A hot water zone carries no name of its own: it shows one
+ * fixed text, the translated one the caller passes. Any other zone keeps the name stored
+ * in the installation.
+ */
+export function zoneName(zone: Pick<DeclaredZone, 'kind' | 'name'>, hotWaterName: string): string {
+	return zone.kind === 'hotwater' ? hotWaterName : zone.name;
+}
+
 /** Firmware shown for a device: the running version, else the build tag, else null. */
 export function firmwareOf(node: NodeView | undefined): string | null {
 	const t = node?.Telemetry;

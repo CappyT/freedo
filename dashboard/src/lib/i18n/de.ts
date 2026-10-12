@@ -101,6 +101,7 @@ export const de: Record<Key, string> = {
 	'zone.demand': 'Wärmebedarf',
 	'zone.scheduled': 'Jetzt geplant',
 	'zone.devices': 'Geräte dieser Zone',
+	'zone.hotWaterName': 'Warmwasser',
 
 	'ends.legend': 'Wie lange die Änderung gilt',
 	'ends.until_next': 'Bis zum nächsten Block',

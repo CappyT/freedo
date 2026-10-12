@@ -17,6 +17,7 @@
 	import { api } from '#lib/session.ts';
 	import StatusBadge from '#lib/StatusBadge.svelte';
 	import type { EndRule } from '#lib/types.ts';
+	import { zoneName } from '#lib/zones.ts';
 
 	const range = HEATING_RANGE;
 	const number = $derived(Number(page.params.n));
@@ -74,7 +75,7 @@
 		</div>
 	{:else}
 		<div class="page-head">
-			<h1>{model.zone.name}</h1>
+			<h1>{zoneName(model.zone, t('zone.hotWaterName'))}</h1>
 			<StatusBadge state={model.status.state} tone={model.status.tone} />
 		</div>
 		{#if model.status.alerts.length > 0}
@@ -181,7 +182,7 @@
 
 <ConfirmDialog
 	bind:this={confirmOff}
-	title={t('zone.off.confirm.title', { zone: model?.zone.name ?? '' })}
+	title={t('zone.off.confirm.title', { zone: model ? zoneName(model.zone, t('zone.hotWaterName')) : '' })}
 	body={t('zone.off.confirm.body', { rule: offRule })}
 	confirm={t('zone.off')}
 	onconfirm={() => run(() => api.off(number, end))}
