@@ -15,7 +15,7 @@ export function errorText(error: unknown): string {
 
 /**
  * Runs a command, tells the user what happened and reads the state again.
- * It returns the answer, or undefined when the daemon refused.
+ * It returns the answer once the page shows the state after the command, or undefined when the daemon refused.
  */
 export async function act<T>(command: () => Promise<T>, done?: string): Promise<T | undefined> {
 	try {
@@ -27,7 +27,7 @@ export async function act<T>(command: () => Promise<T>, done?: string): Promise<
 		const dryRun = data.health !== null && !data.health.tx;
 		const text = queued === null ? (done ?? t('toast.done')) : t('toast.queued', { n: queued });
 		toasts.push('ok', dryRun ? `${text} ${t('toast.dryRun')}` : text);
-		void data.refresh();
+		await data.refresh();
 		return result;
 	} catch (error) {
 		toasts.push('error', errorText(error));
@@ -46,5 +46,5 @@ export async function actMany(commands: (() => Promise<unknown>)[]): Promise<voi
 		toasts.push('ok', dryRun ? `${text} ${t('toast.dryRun')}` : text);
 	}
 	if (failed[0]) toasts.push('error', errorText(failed[0].reason));
-	void data.refresh();
+	await data.refresh();
 }

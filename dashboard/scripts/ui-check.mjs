@@ -9,6 +9,7 @@
 // - A failed command puts the presence switch and the child lock back to what the daemon says.
 // - A zone with no program starts on "until I end it" and shows a hint. Turn off asks first.
 // - The schedule panel keeps the away program and an open editor across a data poll.
+// - A renamed device shows its new name right after the save, also when a poll was in flight.
 //
 // Usage: FREEDO_BIN=./freedo node scripts/ui-check.mjs
 import { findChrome, launch } from './browser.mjs';
@@ -44,10 +45,14 @@ try {
 	const requests = [];
 	const failing = new Set();
 	let zonesPatch = null;
+	// While holdHealth is set, the answers of GET /api/health wait in held: a poll stays in flight.
+	let holdHealth = false;
+	const held = [];
 	await tab.call('Fetch.enable', {
 		patterns: [
 			{ urlPattern: '*/api/*', requestStage: 'Request' },
-			{ urlPattern: '*/api/zones', requestStage: 'Response' }
+			{ urlPattern: '*/api/zones', requestStage: 'Response' },
+			{ urlPattern: '*/api/health', requestStage: 'Response' }
 		]
 	});
 	tab.on('Fetch.requestPaused', async (p) => {
@@ -67,6 +72,11 @@ try {
 					return;
 				}
 				await tab.call('Fetch.continueRequest', { requestId: p.requestId });
+				return;
+			}
+			if (path.endsWith('/api/health')) {
+				if (holdHealth) held.push(p.requestId);
+				else await tab.call('Fetch.continueResponse', { requestId: p.requestId });
 				return;
 			}
 			if (zonesPatch === null) return void (await tab.call('Fetch.continueResponse', { requestId: p.requestId }));
@@ -254,6 +264,29 @@ try {
 	check(
 		(await tab.evaluate(`document.querySelector('.block input[type=number]')?.value`)) === '45',
 		'an edit in progress survives a data poll'
+	);
+
+	// 9. A renamed device shows its new name right after the save. A poll in flight when the daemon
+	// takes the new label answers with the old one, so the page must read the state once more after it.
+	await open('#/devices', `document.querySelector('.device strong')?.textContent === 'hall thermostat'`);
+	await clickText('Rename');
+	await tab.waitFor(`document.querySelector('.rename input')`);
+	await tab.evaluate(`document.querySelector('.rename input').select()`);
+	await type('Hall wall unit');
+	holdHealth = true;
+	for (let i = 0; held.length === 0; i++) {
+		if (i > 120) throw new Error('no poll of /api/health while held');
+		await sleep(50);
+	}
+	await click('.rename button[type=submit]');
+	check(await toast('Device renamed'), 'the rename is accepted');
+	holdHealth = false;
+	for (const requestId of held.splice(0)) await tab.call('Fetch.continueResponse', { requestId });
+	check(
+		await tab
+			.waitFor(`!document.querySelector('.rename') && document.querySelector('.device strong')?.textContent === 'Hall wall unit'`, 1500)
+			.then(() => true, () => false),
+		'the new name shows right after the save, with a poll in flight'
 	);
 } catch (error) {
 	check(false, String(error?.stack ?? error));
