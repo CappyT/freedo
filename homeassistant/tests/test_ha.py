@@ -1585,6 +1585,9 @@ async def test_auto_offset_switch_writes_and_shows_the_view(hass, client):
     assert hass.states.get(auto).attributes["sample_span_sec"] == 0
     assert hass.states.get(auto).attributes["filtered_diff_c"] == 0.0
     assert hass.states.get(auto).attributes["last_write_at"] is None
+    assert hass.states.get(auto).attributes["stop_reason"] is None
+    stopped = entity_id(hass, entry, "switch", "zone2_auto_offset")
+    assert hass.states.get(stopped).attributes["stop_reason"].startswith("the filtered difference")
 
     await turn(hass, "turn_on", auto)
     await turn(hass, "turn_off", auto)

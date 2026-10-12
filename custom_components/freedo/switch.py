@@ -322,4 +322,5 @@ class AutoOffsetSwitch(_ZoneFlagSwitch):
             "next_at": view.get("nextAt"),
             "filtered_diff_c": view.get("filteredDiffC"),
             "sample_span_sec": view.get("sampleSpanSec"),
+            "stop_reason": view.get("stopReason"),
         }

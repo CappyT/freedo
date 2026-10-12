@@ -444,26 +444,41 @@ it is on.
 `POST /api/zones/{n}/temperature` feeds the reading. It is accepted in `config` and `dbg2`
 with `auto_offset` on, and refused with `409` otherwise.
 
-- The daemon filters the difference between the external reading and the zone temperature
-  `4060` with the same first-order filter as `setpoint` (2 hour time constant). It takes no
-  sample while the reading is stale (`room_temp_max_age_sec`), while the zone window is open,
-  or while a heat-up episode of the learner runs.
+- The daemon filters the difference between the external reading and the calibrated
+  temperature `012d` of the measuring device, with the same first-order filter as `setpoint`
+  (2 hour time constant). The correction goes to that device, and `012d = 012e + 0140`, so a
+  write moves `012d` by the written delta. The zone temperature `4060` comes from the member
+  that pushed it last, which a write to another member does not move.
+- It takes no sample while the reading is stale (`room_temp_max_age_sec`), while the measuring
+  device sends no frame for `offline_after_sec`, before the device reports `012d` after the
+  last correction change, while the zone window is open, or while a heat-up episode of the
+  learner runs. A device report carries only the tags that changed, so `012d` holds while the
+  device sends frames.
 - At most once per interval per zone, once the filter holds two hours of samples since its
   last restart, it takes the new correction as the current one plus the filtered difference,
   rounds it to 0.1 C and clamps it to -5 to +5 C. It writes it through the path of
   `POST /api/zones/{n}/offset`, and only when it differs from the current correction by at
   least 0.3 C.
-- After each write the filter restarts, because the write moves `4060` by the written delta.
+- After each write the filter restarts, because the write moves `012d` by the written delta.
   A manual offset in `config` or `dbg2` restarts it too.
-- The interval starts at daemon start and at the last write. The last write time and the
-  tracked correction survive a restart, so a restart causes no extra write.
+- When the filter next holds two hours of samples, the absolute filtered difference must be
+  at least 0.15 C smaller than at the write. If it is not, the write did not move the
+  temperature the filter reads: the daemon stops the automatic writes of the zone, and
+  `stopReason` says why. A further write would grow the correction to the bound and, in mode
+  `config`, home the motor each time. A change of the difference in the two hours before a
+  write can also stop it. Switch `auto_offset` off and on to start the writes again. A
+  manual offset drops the check.
+- The interval starts at daemon start and at the last write. The last write time, the
+  tracked correction, the pending check and the stop survive a restart, so a restart causes
+  no extra write.
 
 Mode `config` homes the motor of the valve on each write, so the battery and the noise pay
 for every calibration. The default interval of a day bounds that cost, and the deadband keeps
 a change inside the noise of the difference away from the valve.
 
 `declared[].autoOffset` in `GET /api/zones` shows `enabled`, `intervalSec`, `lastWriteAt`,
-`nextAt`, `filteredDiffC` and `sampleSpanSec`.
+`nextAt`, `filteredDiffC`, `sampleSpanSec` and `stopReason`. `stopReason` is null while the
+writes run. A stopped zone has `nextAt` null.
 
 ### External room temperature
 

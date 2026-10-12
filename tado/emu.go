@@ -186,6 +186,8 @@ type NodeState struct {
 	faultCodes  []uint32
 	// hvacMonAt is when the last hvac/mon report arrived, zero before one.
 	hvacMonAt time.Time
+	// tempAt is when the last report carrying 012d arrived, zero before one.
+	tempAt time.Time
 
 	// battery holds the tag 0162 readings of the last BatteryWindow.
 	battery    []batteryReading
@@ -1962,8 +1964,11 @@ func (e *EmuState) cacheTLVs(ns *NodeState, tlvs []TLV, uri string, class FrameC
 	}
 	for _, t := range tlvs {
 		ns.raw[t.Tag] = append([]byte{}, t.Val...)
-		if t.Tag == "0162" {
+		switch t.Tag {
+		case "0162":
 			e.noteBattery(ns, rawInt(t.Val))
+		case "012d":
+			ns.tempAt = e.cfg.Now()
 		}
 		info, ok := tagFor(t.Tag, res)
 		if !ok {

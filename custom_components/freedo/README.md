@@ -339,8 +339,10 @@ daemon answers. They exist only while the daemon holds an installation.
   external room temperature, at most once per Number Automatic correction
   interval. It applies in the offset modes `config` and `dbg2`. The daemon
   refuses it on the hot water zone and in mode `setpoint`. Its attributes
-  `last_write_at`, `next_at`, `filtered_diff_c` and `sample_span_sec` are the
-  `autoOffset` view of `GET /api/zones`. See Room temperature of a zone.
+  `last_write_at`, `next_at`, `filtered_diff_c`, `sample_span_sec` and
+  `stop_reason` are the `autoOffset` view of `GET /api/zones`. `stop_reason`
+  says why the daemon stopped the automatic writes of the zone. Switch the
+  correction off and on to start them again. See Room temperature of a zone.
 - Number Automatic correction interval is that interval
   (`auto_offset_interval_sec`), in hours, 1 to 168.
 - Select Device change end rule is how long a change made on a device lasts, as

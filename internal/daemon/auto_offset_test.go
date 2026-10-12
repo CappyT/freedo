@@ -8,6 +8,7 @@ import (
 	"context"
 	"math"
 	"net/http"
+	"strconv"
 	"testing"
 	"time"
 
@@ -67,14 +68,47 @@ func (r *autoRig) deliverAll() {
 	}
 }
 
+// sen sends the d/<serial>/sen report of the valve of zone 3 with its
+// calibrated temperature 012d.
+func (r *autoRig) sen(c float64) {
+	r.t.Helper()
+	centi := int(math.Round(c * 100))
+	deviceReport(r.t, r.d, r.in, earlyValve, "sen", 0x6800+uint16(earlyMID.Add(1)),
+		tado.TLV{Tag: "012d", Val: []byte{byte(centi >> 8), byte(centi)}})
+}
+
+// calibrated is a valve whose 012d is rawC plus the correction 0140 of the last
+// write it took.
+func (r *autoRig) calibrated(rawC float64) func(int) float64 {
+	return func(int) float64 {
+		for i := len(r.writes) - 1; i >= 0; i-- {
+			if v, err := strconv.ParseUint(r.writes[i].tags["0140"], 16, 16); err == nil {
+				return rawC + float64(int16(v))/100
+			}
+		}
+		return rawC
+	}
+}
+
 // run moves the clock by minutes in steps of roomStepMin. Every step the valve
-// reports deviceAt(step) and the external sensor pushes extC, unless it is NaN.
-// The report and the push come before the clock moves, so a tick finds both.
+// reports deviceAt(step) as its 012d and as the zone temperature 4060, and the
+// external sensor pushes extC, unless it is NaN.
 func (r *autoRig) run(minutes int, deviceAt func(int) float64, extC float64) {
+	r.t.Helper()
+	r.runReports(minutes, deviceAt, deviceAt, extC)
+}
+
+// runReports is run with the zone temperature 4060 apart from the 012d of the
+// valve. The reports and the push come before the clock moves, so a tick finds
+// them.
+func (r *autoRig) runReports(minutes int, deviceAt, zoneAt func(int) float64, extC float64) {
 	r.t.Helper()
 	for range minutes / roomStepMin {
 		if deviceAt != nil {
-			zoneAct(r.t, r.d, r.in, deviceAt(r.steps), 50)
+			r.sen(deviceAt(r.steps))
+		}
+		if zoneAt != nil {
+			zoneAct(r.t, r.d, r.in, zoneAt(r.steps), 50)
 		}
 		if !math.IsNaN(extC) {
 			if code := r.push(extC); code != http.StatusOK {
@@ -163,6 +197,7 @@ func TestAutoOffsetSamplesAtTheEngineTick(t *testing.T) {
 	runTicks := func(d time.Duration) {
 		for range int(d / zoneProxySweep) {
 			if ticks%int(roomStepMin*time.Minute/zoneProxySweep) == 0 {
+				r.sen(22)
 				zoneAct(t, r.d, r.in, 22, 50)
 				if code := r.push(20); code != http.StatusOK {
 					t.Fatalf("push: code=%d", code)
@@ -170,9 +205,9 @@ func TestAutoOffsetSamplesAtTheEngineTick(t *testing.T) {
 			}
 			r.clock.advance(zoneProxySweep)
 			r.tick()
+			r.deliverAll()
 			ticks++
 		}
-		r.deliverAll()
 	}
 	runTicks(time.Hour)
 	if got := autoOffsetOf(t, r.url, 3)["sampleSpanSec"]; got.(float64) < 3500 {
@@ -246,6 +281,118 @@ func TestAutoOffsetRestartsTheFilterAfterAWrite(t *testing.T) {
 	r.run(20, constant(22), 20)
 	if got := autoOffsetOf(t, r.url, 3)["sampleSpanSec"]; got.(float64) >= 3600 {
 		t.Errorf("sample span after the write = %v, want the filter restarted", got)
+	}
+}
+
+// TestAutoOffsetReadsTheMeasuringDevice: the filter reads the 012d of the
+// device the correction goes to, not the zone temperature 4060, which comes
+// from the member that pushed it last.
+func TestAutoOffsetReadsTheMeasuringDevice(t *testing.T) {
+	r := newAutoRig(t, 3600, nil)
+	r.runReports(135, constant(21), constant(22), 20)
+	if len(r.writes) != 1 {
+		t.Fatalf("%d writes, want one", len(r.writes))
+	}
+	// 20 - 21 = -1.0 C = -100 centi-degrees.
+	wantTags(t, "the calibration from 012d", r.writes[0].tags, map[string]string{"0140": "ff9c"})
+}
+
+// TestAutoOffsetSkipsAStaleDevice: a measuring device silent for longer than
+// offline_after_sec gives no sample.
+func TestAutoOffsetSkipsAStaleDevice(t *testing.T) {
+	r := newAutoRig(t, 3600, nil)
+	r.sen(22)
+	r.clock.advance(r.in.Options.OfflineAfter() + time.Minute)
+	r.runReports(135, nil, nil, 20)
+	if len(r.writes) != 0 {
+		t.Errorf("%d writes from a stale device, want none", len(r.writes))
+	}
+	if got := autoOffsetOf(t, r.url, 3)["sampleSpanSec"]; got != 0.0 {
+		t.Errorf("sample span = %v, want 0", got)
+	}
+}
+
+// TestAutoOffsetWaitsForAReportAfterTheWrite: a 012d from before the write does
+// not hold the new correction, so the filter waits for the next report, also
+// while the valve sends other frames.
+func TestAutoOffsetWaitsForAReportAfterTheWrite(t *testing.T) {
+	r := newAutoRig(t, 3600, nil)
+	for len(r.writes) == 0 && r.steps < 40 {
+		r.run(roomStepMin, constant(22), 20)
+	}
+	if len(r.writes) != 1 {
+		t.Fatalf("%d writes, want one", len(r.writes))
+	}
+	r.runReports(30, nil, constant(22), 20)
+	if got := autoOffsetOf(t, r.url, 3)["sampleSpanSec"]; got != 0.0 {
+		t.Errorf("sample span with no 012d after the write = %v, want 0", got)
+	}
+}
+
+// TestAutoOffsetStopsWhenTheWriteDoesNotMoveTheDifference: the valve keeps its
+// 012d after the write, so the next filtered difference has not shrunk. The
+// daemon writes no more, shows why, keeps the stop over a restart, and clears
+// it when the option is switched off and on.
+func TestAutoOffsetStopsWhenTheWriteDoesNotMoveTheDifference(t *testing.T) {
+	r := newAutoRig(t, 3600, nil)
+	r.run(135, constant(22), 20)
+	if len(r.writes) != 1 {
+		t.Fatalf("%d writes, want one", len(r.writes))
+	}
+	r.run(135, constant(22), 20)
+	if len(r.writes) != 1 {
+		t.Fatalf("%d writes after a write that did not move the difference, want one", len(r.writes))
+	}
+	view := autoOffsetOf(t, r.url, 3)
+	if view["stopReason"] == nil || view["nextAt"] != nil {
+		t.Fatalf("view = %v, want a stop reason and no next calibration", view)
+	}
+
+	clock := newTestClock(r.clock.now().Add(5 * time.Minute))
+	d, url := newWindowDaemon(t, r.in, clock, r.a.store)
+	if _, err := d.do(func(*tado.EmuState) (any, error) { return nil, d.restoreAutoOffsets() }); err != nil {
+		t.Fatal(err)
+	}
+	seedBlock(t, d, r.in, earlyValve, 3)
+	if got := autoOffsetOf(t, url, 3)["stopReason"]; got != view["stopReason"] {
+		t.Errorf("stop reason after a restart = %v, want %v", got, view["stopReason"])
+	}
+	r2 := &autoRig{t: t, a: r.a, d: d, url: url, in: r.in, clock: clock, valve: r.valve}
+	r2.run(135, constant(22), 20)
+	if len(r2.writes) != 0 {
+		t.Errorf("%d writes after a restart of a stopped zone, want none", len(r2.writes))
+	}
+
+	var res map[string]any
+	for _, on := range []bool{false, true} {
+		if code := postJSON(t, http.MethodPatch, url+"/api/install/zones/3", map[string]any{"auto_offset": on}, &res); code != http.StatusOK {
+			t.Fatalf("auto_offset %v: code=%d %v", on, code, res)
+		}
+	}
+	if got := autoOffsetOf(t, url, 3)["stopReason"]; got != nil {
+		t.Errorf("stop reason after the option switched off and on = %v, want none", got)
+	}
+}
+
+// TestAutoOffsetKeepsWritingWhenTheWriteWorks: the valve's 012d moves by the
+// written delta, so the check passes, and a later drift of its raw sensor gets
+// a second write.
+func TestAutoOffsetKeepsWritingWhenTheWriteWorks(t *testing.T) {
+	r := newAutoRig(t, 21600, nil)
+	r.run(9*60, r.calibrated(22), 20)
+	if len(r.writes) != 1 {
+		t.Fatalf("%d writes, want one", len(r.writes))
+	}
+	wantTags(t, "the first calibration", r.writes[0].tags, map[string]string{"0140": "ff38"})
+	if got := autoOffsetOf(t, r.url, 3)["stopReason"]; got != nil {
+		t.Fatalf("stop reason after a write that worked = %v, want none", got)
+	}
+	r.run(7*60, r.calibrated(23), 20)
+	if len(r.writes) != 2 {
+		t.Fatalf("%d writes after the drift, want two", len(r.writes))
+	}
+	if got := autoOffsetOf(t, r.url, 3)["stopReason"]; got != nil {
+		t.Errorf("stop reason after the second write = %v, want none", got)
 	}
 }
 

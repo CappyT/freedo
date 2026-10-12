@@ -213,3 +213,20 @@ func (e *EmuState) ServedCalibOffset(target string) (int, bool) {
 	}
 	return 0, false
 }
+
+// DeviceTemp returns the calibrated temperature 012d that target last reported,
+// which a write of its 0140 moves by the written delta (012d = 012e + 0140).
+// reported is when that report arrived and seen when target last sent a frame.
+// ok is false until target reports 012d. A device report carries only the tags
+// that changed, so the value holds while the device sends frames.
+func (e *EmuState) DeviceTemp(target string) (tempC float64, reported, seen time.Time, ok bool) {
+	wire, _, err := e.resolve(target)
+	if err != nil {
+		return 0, time.Time{}, time.Time{}, false
+	}
+	ns, known := e.nodes[hexEUI(wire)]
+	if !known || len(ns.raw["012d"]) == 0 {
+		return 0, time.Time{}, time.Time{}, false
+	}
+	return centiC(ns.raw["012d"]), ns.tempAt, ns.LastSeen, true
+}

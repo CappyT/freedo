@@ -310,6 +310,7 @@ func (d *daemon) setInstall(in *tado.Install) (added, removed []string, err erro
 		d.restateAwayZones(d.emu, before, in)
 		d.forgetRemovedZones(before, in)
 		d.dropRoomTemps(in)
+		d.dropAutoOffsets(in)
 	}
 	return added, removed, nil
 }
