@@ -226,11 +226,27 @@ func (d *daemon) deletePreset(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, v)
 }
 
+// partialActivation is an activation whose preset is active and stored while
+// some members refused their documents.
+type partialActivation struct {
+	id   int64
+	name string
+	err  error
+}
+
+func (p *partialActivation) Error() string {
+	return fmt.Sprintf("preset %d (%q) is active, but serving its home programs failed: %v; the next start serves them again",
+		p.id, p.name, p.err)
+}
+
 // activatePreset switches the active preset. The database takes the active id
 // first, so a failed save leaves the old preset serving. Then the preset
 // serves its home programs to the zone members and each zone whose program in
 // force moved to another block gets one write. The write is a program block
-// write: it carries no 6440, whether the block moved at home or in away.
+// write: it carries no 6440, whether the block moved at home or in away. A
+// member that refuses its document leaves the switch in place: the answer is a
+// 500 that names the active preset, and every other member and zone still
+// takes its document and its write.
 func (d *daemon) activatePreset(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathPresetID(w, r)
 	if !ok {
@@ -253,16 +269,27 @@ func (d *daemon) activatePreset(w http.ResponseWriter, r *http.Request) {
 		}
 		d.activePreset = id
 		changed := d.applyHomeState(e)
-		if err := d.serveHomePrograms(e); err != nil {
-			return nil, err
-		}
+		served := d.serveHomePrograms(e)
 		queued := d.rewriteZones(e, changed, func(target string) { d.dispatchQueued(e, target) }, false)
 		// The owed writes reach the database with the pushed blocks: a restart
 		// re-evaluates from the stored preset and stored blocks, not from the
 		// old preset.
 		d.saveProgramBlocks()
+		if served != nil {
+			return nil, &partialActivation{id: p.id, name: p.name, err: served}
+		}
 		return map[string]any{"id": p.id, "name": p.name, "active": true, "queued": queued}, nil
 	})
+	var partial *partialActivation
+	if errors.As(err, &partial) {
+		// The documents that moved are saved like those of a full switch.
+		if err := d.persist(nil); err != nil {
+			writeAPIErr(w, err)
+			return
+		}
+		writeErr(w, http.StatusInternalServerError, partial.Error())
+		return
+	}
 	if writeAPIErr(w, d.persist(err)) {
 		return
 	}

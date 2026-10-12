@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -1159,5 +1160,60 @@ func TestScheduleFailedSaveServesNothing(t *testing.T) {
 	var read scheduleView
 	if code := getJSON(t, url+"/api/zones/10/schedule", &read); code != http.StatusNotFound {
 		t.Errorf("GET after the failed save: code=%d %+v, want 404", code, read.Programs)
+	}
+}
+
+// TestPresetActivationPartialServe: a member that refuses its document leaves
+// the switch in place. The answer is a 500 that names the active preset, the
+// active id is stored, and every other member and zone still takes its
+// document and its write.
+func TestPresetActivationPartialServe(t *testing.T) {
+	in := presetInstall(t, nil)
+	store := openTestStore(t)
+	d, url, _ := startStoredDaemon(t, in, newTestClock(time.Date(2026, 1, 5, 5, 0, 0, 0, time.UTC)), store)
+	bedroom := wireOf(t, in, "VA1000000005")
+	var view map[string]any
+	put := func(path string, c float64) {
+		t.Helper()
+		if code := postJSON(t, http.MethodPut, url+path, allDayProgram(map[string]any{"minute": 0, "setpoint_c": c}), &view); code != http.StatusOK {
+			t.Fatalf("PUT %s: code=%d %v", path, code, view)
+		}
+	}
+	put("/api/zones/10/schedule", 20)
+	tickHome(t, d)
+	dropQueue(t, d, bedroom)
+	var created presetView
+	if code := postJSON(t, http.MethodPost, url+"/api/presets", map[string]any{"name": "Summer"}, &created); code != http.StatusOK {
+		t.Fatalf("create: code=%d %v", code, created)
+	}
+	put("/api/zones/10/schedule?preset=2", 22)
+	put("/api/zones/3/schedule?preset=2", 19)
+	// A program the emulator refuses: the office member fails its document.
+	engineValue(t, d, func() bool {
+		zp := d.presets[2].programs[3]
+		zp.home = []tado.ScheduleProgram{{DayMask: 0x01, Entries: []tado.ScheduleEntry{{Minute: 0, SetpointCenti: 1900, Enabled: true}}}}
+		d.presets[2].programs[3] = zp
+		return true
+	})
+
+	var answer struct {
+		Error string `json:"error"`
+	}
+	if code := postJSON(t, http.MethodPost, url+"/api/presets/2/activate", nil, &answer); code != http.StatusInternalServerError ||
+		!strings.Contains(answer.Error, "is active") {
+		t.Errorf("activate with a refused document: code=%d %q, want 500 naming the active preset", code, answer.Error)
+	}
+	if id, _ := presetHome(t, url); id != 2 {
+		t.Errorf("the active preset is %d, want 2", id)
+	}
+	if active, _, err := install.ReadMetaUint(context.Background(), store.db, "active_preset"); err != nil || active != 2 {
+		t.Errorf("the stored active preset is %d (err %v), want 2", active, err)
+	}
+	n, head := takeQueue(t, d, "VA1000000005")
+	if n != 2 || head == nil || head.URI() != "d/sched" {
+		t.Errorf("the bedroom holds %d writes headed by %v, want the fetch trigger and one block write", n, head)
+	}
+	if block := engineValue(t, d, func() scheduledBlock { return d.schedPushed[10] }); block != (scheduledBlock{c: 22}) {
+		t.Errorf("the bedroom follows %v, want the 22 C block", block)
 	}
 }

@@ -265,12 +265,15 @@ func (d *daemon) presetNamed(name string) bool {
 // sched document of every zone member, and drops the document of a zone
 // without one: its members then read 2.03 like a zone that never had a
 // program, and keep the program they run. A document whose bytes do not move
-// takes no fetch trigger, so serving an unchanged preset is silent.
+// takes no fetch trigger, so serving an unchanged preset is silent. A member
+// that refuses its document does not stop the others: the errors come back
+// joined.
 func (d *daemon) serveHomePrograms(e *tado.EmuState) error {
 	inst := d.inst.Load()
 	if inst == nil {
 		return nil
 	}
+	var errs []error
 	for i := range inst.Zones {
 		z := &inst.Zones[i]
 		if z.Kind != tado.ZoneHeating {
@@ -286,7 +289,8 @@ func (d *daemon) serveHomePrograms(e *tado.EmuState) error {
 			if !held {
 				dropped, err := e.DropSchedule(target)
 				if err != nil {
-					return err
+					errs = append(errs, fmt.Errorf("%s: %w", member.Serial, err))
+					continue
 				}
 				if dropped {
 					log.Printf("dropped the sched document of %s: zone %d has no home program in the active preset",
@@ -295,10 +299,11 @@ func (d *daemon) serveHomePrograms(e *tado.EmuState) error {
 				continue
 			}
 			if err := e.SetSchedule(target, home); err != nil {
-				return err
+				errs = append(errs, fmt.Errorf("%s: %w", member.Serial, err))
+				continue
 			}
 			d.dispatchQueued(e, target)
 		}
 	}
-	return nil
+	return errors.Join(errs...)
 }

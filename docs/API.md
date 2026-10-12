@@ -448,7 +448,10 @@ served `sched` documents derive from its home programs. A schedule write without
   fetch trigger, and a zone without a home program loses its served document — and writes
   once each zone whose block in force moved, in the home or away shape of the moment.
   The write is a program block write and carries no `6440`. Activating the active preset
-  changes nothing.
+  changes nothing. The active id is stored first: a failed save gets `500` and keeps the old
+  preset. A member that refuses its document does not undo the switch: the answer is `500`
+  and names the preset that is active, every other member and zone still takes its document
+  and its write, and the next start serves the documents again.
 - `GET /api/home` reports the active preset in `preset`, with `id` and `name`.
 - On the first start the daemon builds the preset `Default` from the programs it already
   holds, and makes it active: the heating programs from the served `sched` documents. A document that does not decode or breaks the week
