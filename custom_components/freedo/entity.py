@@ -15,7 +15,16 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .api import FreedoError
 from .const import DOMAIN
 from .coordinator import FreedoCoordinator
-from .model import FUEL_KG, FUEL_LITRE, FUEL_M3, Zone, node_display, schedule_payload, schedule_programs
+from .model import (
+    FUEL_KG,
+    FUEL_LITRE,
+    FUEL_M3,
+    KIND_HOT_WATER,
+    Zone,
+    node_display,
+    schedule_payload,
+    schedule_programs,
+)
 
 # The unit of the fuel flow by options.fuel_unit. A mass flow has no device
 # class.
@@ -54,9 +63,11 @@ class FreedoEntity(CoordinatorEntity[FreedoCoordinator]):
         return hub_device_info(self.coordinator.config_entry.entry_id)
 
     def zone_device(self, zone: Zone) -> DeviceInfo:
+        # The hot water zone shows one translated name, whatever the installation stores.
         return DeviceInfo(
             identifiers={(DOMAIN, f"{self.coordinator.config_entry.entry_id}_zone{zone.number}")},
             name=zone.name,
+            translation_key="hot_water_zone" if zone.kind == KIND_HOT_WATER else None,
             manufacturer="tado",
             model=f"{zone.kind} zone",
             via_device_id=self._hub_device_id,

@@ -63,6 +63,11 @@
       "no_heating_zone": "The installation declares no heating zone."
     }
   },
+  "device": {
+    "hot_water_zone": {
+      "name": "Domestic hot water"
+    }
+  },
   "entity": {
     "binary_sensor": {
       "zone_window": { "name": "Window" },

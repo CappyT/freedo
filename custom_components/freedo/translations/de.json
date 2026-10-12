@@ -63,6 +63,11 @@
       "no_heating_zone": "Die Installation deklariert keine Heizzone."
     }
   },
+  "device": {
+    "hot_water_zone": {
+      "name": "Warmwasser"
+    }
+  },
   "entity": {
     "binary_sensor": {
       "zone_window": {

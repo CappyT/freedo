@@ -63,6 +63,11 @@
       "no_heating_zone": "L'installation ne déclare aucune zone de chauffage."
     }
   },
+  "device": {
+    "hot_water_zone": {
+      "name": "Eau chaude sanitaire"
+    }
+  },
   "entity": {
     "binary_sensor": {
       "zone_window": {

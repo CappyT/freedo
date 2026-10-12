@@ -66,7 +66,8 @@ from test_model import (  # noqa: E402
 DOMAIN = "freedo"
 LIVING = "climate.living"
 BEDROOM = "climate.bedroom"
-HOT_WATER = "water_heater.hot_water"
+# The hot water device takes its translated name, so a new entity id follows it.
+HOT_WATER = "water_heater.domestic_hot_water"
 OFFLINE_SCHEDULE = "switch.freedo_offline_schedule"
 
 
@@ -404,7 +405,8 @@ async def test_devices_link_to_hub(hass, client, caplog):
         d for d in dr.async_entries_for_config_entry(registry, entry.entry_id) if d.id != hub.id
     ]
     names = {d.name for d in children}
-    assert {"Living", "Bedroom", "Hot water"} <= names
+    # The hot water zone takes its translated name, not the stored one.
+    assert {"Living", "Bedroom", "Domestic hot water"} <= names
     assert any(d.serial_number == "VA0000000001" for d in children)
     assert all(d.via_device_id == hub.id for d in children), [
         (d.name, d.via_device_id) for d in children
