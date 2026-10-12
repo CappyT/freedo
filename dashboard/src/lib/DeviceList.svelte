@@ -118,9 +118,9 @@
 				</div>
 
 				{#if detailed}
-					<div class="actions row">
+					<div class="actions row fill">
 						<button class="btn" onclick={() => start(device)}>
-							{t('devices.rename')}
+							<Icon name="edit" size={18} />{t('devices.rename')}
 						</button>
 						{#if device.canIdentify}
 							<button class="btn" onclick={() => act(() => api.identify(device.short))}>
@@ -184,8 +184,13 @@
 
 	.battery {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
-		gap: 0.5rem;
+		gap: 0.25rem 0.5rem;
+	}
+
+	.battery span {
+		white-space: nowrap;
 	}
 
 	.flags {
@@ -213,10 +218,40 @@
 		cursor: pointer;
 	}
 
+	/* A checkbox drawn as a switch. Off is an outline, so the control keeps 3:1 on its ground. */
 	.switch input {
-		width: 1.15rem;
-		height: 1.15rem;
-		accent-color: var(--action);
+		appearance: none;
+		position: relative;
+		flex: none;
+		width: 2.75rem;
+		height: 1.5rem;
+		margin: 0;
+		border: 2px solid var(--text-muted);
+		border-radius: var(--radius-pill);
+		background: var(--surface);
+		cursor: pointer;
+	}
+
+	.switch input::before {
+		content: '';
+		position: absolute;
+		top: 2px;
+		left: 2px;
+		width: 1rem;
+		height: 1rem;
+		border-radius: 50%;
+		background: var(--text-muted);
+		transition: translate 0.15s ease-out;
+	}
+
+	.switch input:checked {
+		border-color: var(--action);
+		background: var(--action);
+	}
+
+	.switch input:checked::before {
+		translate: 1.25rem 0;
+		background: var(--action-text);
 	}
 
 	.rename {
@@ -235,6 +270,11 @@
 
 		.id {
 			grid-column: 1 / -1;
+		}
+
+		.fw {
+			display: flex;
+			gap: 0.4rem;
 		}
 	}
 </style>

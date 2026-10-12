@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DeclaredZone, Health, HealthDevice, NodeView, ZoneDemand } from '../src/lib/types.ts';
-import { buildZones, zoneName, zoneStatus, type Member } from '../src/lib/zones.ts';
+import { buildZones, targetIsTemp, zoneName, zoneStatus, type Member } from '../src/lib/zones.ts';
 import { demand, device, target, zone } from './fixtures.ts';
 
 const member = (h: HealthDevice | undefined): Member => ({ short: '0201', label: 'bath', kind: 'valve', node: undefined, health: h });
@@ -113,3 +113,15 @@ describe('zone view model', () => {
 	});
 });
 
+
+describe('target as a number', () => {
+	it('is a number while the zone is on and follows a temperature', () => {
+		expect(targetIsTemp(target())).toBe(true);
+	});
+
+	it('is a reason when the zone is off, a window is open or no value is known', () => {
+		expect(targetIsTemp(target({ on: false }))).toBe(false);
+		expect(targetIsTemp(target({ source: 'window' }))).toBe(false);
+		expect(targetIsTemp(target({ targetC: null }))).toBe(false);
+	});
+});

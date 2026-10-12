@@ -6,7 +6,7 @@
 	import Icon from './Icon.svelte';
 	import { HEATING_RANGE, HOT_WATER_RANGE } from './schedule.ts';
 	import StatusBadge from './StatusBadge.svelte';
-	import { zoneName, type ZoneModel } from './zones.ts';
+	import { targetIsTemp, zoneName, type ZoneModel } from './zones.ts';
 
 	let { model }: { model: ZoneModel } = $props();
 
@@ -23,36 +23,42 @@
 		<StatusBadge state={model.status.state} tone={model.status.tone} />
 	</header>
 
-	<Dial
-		current={model.tempC}
-		center={hotWater ? model.zone.target.targetC : model.tempC}
-		target={model.zone.target.on ? model.zone.target.targetC : null}
-		min={range.min}
-		max={range.max}
-		step={range.step}
-		tone={model.status.tone}
-		caption={hotWater ? t('card.target') : t('card.now')}
-		size="12.5rem"
-	/>
+	<div class="gauge">
+		<Dial
+			current={model.tempC}
+			center={hotWater ? model.zone.target.targetC : model.tempC}
+			target={model.zone.target.on ? model.zone.target.targetC : null}
+			min={range.min}
+			max={range.max}
+			step={range.step}
+			tone={model.status.tone}
+			caption={hotWater ? t('card.target') : t('card.now')}
+			size="12.5rem"
+		/>
+	</div>
 
-	<dl class="meta">
+	<div class="info">
 		{#if !hotWater}
-			<div>
-				<dt>{t('card.target')}</dt>
-				<dd class="text">{targetText(model)}</dd>
-			</div>
-			<div>
-				<dt>{t('card.humidity')}</dt>
-				<dd class="mono">{fmt.percent(model.humidityPct)}</dd>
-			</div>
+			<dl class="meta">
+				<div>
+					<dt>{t('card.target')}</dt>
+					<dd class:mono={targetIsTemp(model.zone.target)}>{targetText(model)}</dd>
+				</div>
+				<div>
+					<dt>{t('card.humidity')}</dt>
+					<dd class="mono">{fmt.percent(model.humidityPct)}</dd>
+				</div>
+			</dl>
 		{:else if model.zone.target.targetC === null}
-			<div>
-				<dt>{t('card.target')}</dt>
-				<dd class="text">{targetText(model)}</dd>
-			</div>
+			<dl class="meta">
+				<div>
+					<dt>{t('card.target')}</dt>
+					<dd>{targetText(model)}</dd>
+				</div>
+			</dl>
 		{/if}
-	</dl>
-	<p class="mode small muted">{modeLine(model.zone.target)}</p>
+		<p class="mode small muted">{modeLine(model.zone.target)}</p>
+	</div>
 
 	{#if model.status.alerts.length > 0}
 		<ul class="alerts">
@@ -79,7 +85,7 @@
 	}
 
 	.card:hover {
-		border-color: var(--dot);
+		border-color: var(--accent);
 		color: var(--text);
 	}
 
@@ -97,9 +103,23 @@
 		gap: 0.5rem;
 	}
 
+	.gauge {
+		display: grid;
+		justify-items: center;
+		width: 100%;
+	}
+
+	.info {
+		display: grid;
+		gap: 0.6rem;
+		justify-items: center;
+	}
+
 	.meta {
 		display: flex;
-		gap: 2rem;
+		flex-wrap: wrap;
+		justify-content: center;
+		gap: 0.25rem 2rem;
 		margin: 0;
 	}
 
@@ -133,5 +153,48 @@
 		right: 0.9rem;
 		bottom: 0.9rem;
 		color: var(--text-muted);
+	}
+
+	/* One column of cards on a phone: the dial sits beside the facts, so a screen shows
+	   three zones instead of one and a half. */
+	@media (max-width: 559px) {
+		.card {
+			grid-template-columns: 8rem minmax(0, 1fr);
+			gap: 0.75rem 0.875rem;
+			align-items: center;
+			justify-items: stretch;
+			padding: 1rem 1rem 1rem 1.1rem;
+		}
+
+		header,
+		.alerts {
+			grid-column: 1 / -1;
+		}
+
+		.alerts {
+			justify-content: flex-start;
+		}
+
+		.info {
+			justify-items: start;
+			padding-right: 1rem;
+		}
+
+		.meta {
+			justify-content: flex-start;
+			gap: 0.25rem 1rem;
+		}
+
+		.mode {
+			text-align: start;
+			padding-inline: 0;
+		}
+
+		.go {
+			right: 0.75rem;
+			bottom: auto;
+			top: 50%;
+			translate: 0 -50%;
+		}
 	}
 </style>

@@ -36,7 +36,7 @@
 <section class="page" aria-labelledby="title">
 	<div class="page-head">
 		<h1 id="title">{t('home.title')}</h1>
-		<div class="row actions">
+		<div class="row actions fill">
 			<fieldset class="segmented" disabled={busy || !data.home}>
 				<legend class="sr-only">{t('home.presence')}</legend>
 				<label>
@@ -104,11 +104,5 @@
 		margin: 0;
 		padding: 0;
 		min-width: 0;
-	}
-
-	@media (max-width: 899px) {
-		.actions :global(.btn) {
-			flex: 1 1 auto;
-		}
 	}
 </style>

@@ -57,7 +57,7 @@
 			<p>{t('hotWater.missing.body')}</p>
 		</div>
 	{:else}
-		<div class="page-head">
+		<div class="page-head titled">
 			<h1>{zoneName(model.zone, t('zone.hotWaterName'))}</h1>
 			<StatusBadge state={model.status.state} tone={model.status.tone} />
 		</div>
@@ -108,7 +108,7 @@
 					noProgram={model.zone.target.hasProgram === false}
 				/>
 
-				<div class="row">
+				<div class="row fill">
 					<button class="btn primary" disabled={busy || !endOk} onclick={() => run(() => api.setpoint(model.zone.number, shown, end))}>
 						<Icon name="power" size={18} />{t('hotWater.on', { temp: fmt.temp(shown) })}
 					</button>
@@ -125,9 +125,9 @@
 				<header><h2 id="state-title">{t('zone.state')}</h2></header>
 				<dl class="facts">
 					<div><dt>{t('hotWater.power')}</dt><dd class="text">{model.zone.target.on ? t('state.on') : t('state.off')}</dd></div>
-					<div><dt>{t('card.target')}</dt><dd class="text">{model.zone.target.on ? fmt.temp(model.zone.target.targetC) : t('target.off')}</dd></div>
+					<div><dt>{t('card.target')}</dt><dd class:text={!model.zone.target.on}>{model.zone.target.on ? fmt.temp(model.zone.target.targetC) : t('target.off')}</dd></div>
 					{#if model.zone.target.hasProgram !== false}
-						<div><dt>{t('zone.scheduled')}</dt><dd>{model.zone.target.programOff ? t('schedule.off') : fmt.temp(model.zone.target.programC)}</dd></div>
+						<div><dt>{t('zone.scheduled')}</dt><dd class:text={model.zone.target.programOff}>{model.zone.target.programOff ? t('schedule.off') : fmt.temp(model.zone.target.programC)}</dd></div>
 					{/if}
 					<div><dt>{t('boiler.dhw')}</dt><dd>{fmt.temp(data.boiler?.DHWC)}</dd></div>
 					<div><dt>{t('hotWater.reported')}</dt><dd>{fmt.temp(data.boiler?.DHWSetpointC)}</dd></div>

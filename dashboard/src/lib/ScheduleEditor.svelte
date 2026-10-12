@@ -171,7 +171,7 @@
 		display: inline-grid;
 		place-items: center;
 		min-width: 3rem;
-		min-height: 2.5rem;
+		min-height: 2.75rem;
 		padding: 0 0.7rem;
 		border: 1px solid var(--border-strong);
 		border-radius: var(--radius-pill);
@@ -242,8 +242,17 @@
 			grid-template-columns: 1fr 1fr;
 		}
 
+		.block + .block {
+			padding-top: 0.75rem;
+			border-top: 1px solid var(--border);
+		}
+
 		.block .off {
 			grid-column: 1;
+		}
+
+		.block .btn.icon {
+			justify-self: end;
 		}
 	}
 </style>

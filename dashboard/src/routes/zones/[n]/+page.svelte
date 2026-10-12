@@ -17,7 +17,7 @@
 	import { api } from '#lib/session.ts';
 	import StatusBadge from '#lib/StatusBadge.svelte';
 	import type { EndRule } from '#lib/types.ts';
-	import { zoneName } from '#lib/zones.ts';
+	import { targetIsTemp, zoneName } from '#lib/zones.ts';
 
 	const range = HEATING_RANGE;
 	const number = $derived(Number(page.params.n));
@@ -74,7 +74,7 @@
 			<p>{t('zone.missing.body')}</p>
 		</div>
 	{:else}
-		<div class="page-head">
+		<div class="page-head titled">
 			<h1>{zoneName(model.zone, t('zone.hotWaterName'))}</h1>
 			<StatusBadge state={model.status.state} tone={model.status.tone} />
 		</div>
@@ -125,7 +125,7 @@
 					noProgram={model.zone.target.hasProgram === false}
 				/>
 
-				<div class="row">
+				<div class="row fill">
 					<button class="btn primary" disabled={busy || !endOk} onclick={() => run(() => api.setpoint(number, shown, end))}>
 						<Icon name="check" size={18} />{t('zone.apply', { temp: fmt.temp(shown) })}
 					</button>
@@ -145,29 +145,33 @@
 				<header><h2 id="state-title">{t('zone.state')}</h2></header>
 				<dl class="facts">
 					<div><dt>{t('card.now')}</dt><dd>{fmt.temp(model.tempC)}</dd></div>
-					<div><dt>{t('card.target')}</dt><dd class="text">{targetText(model)}</dd></div>
+					<div><dt>{t('card.target')}</dt><dd class:text={!targetIsTemp(model.zone.target)}>{targetText(model)}</dd></div>
 					<div><dt>{t('card.humidity')}</dt><dd>{fmt.percent(model.humidityPct)}</dd></div>
 					<div><dt>{t('zone.demand')}</dt><dd>{fmt.percent(model.demandPct)}</dd></div>
 					{#if model.zone.target.hasProgram !== false}
-						<div><dt>{t('zone.scheduled')}</dt><dd>{model.zone.target.programOff ? t('schedule.off') : fmt.temp(model.zone.target.programC)}</dd></div>
+						<div><dt>{t('zone.scheduled')}</dt><dd class:text={model.zone.target.programOff}>{model.zone.target.programOff ? t('schedule.off') : fmt.temp(model.zone.target.programC)}</dd></div>
 					{/if}
 				</dl>
 
-				<h3>{t('window.title')}</h3>
-				{#if windowState}
-					<p class="row">
-						<span class="badge tone-{windowState.open ? 'warning' : 'idle'}">{windowState.open ? t('window.open') : t('window.closed')}</span>
-						{#if windowState.open && windowState.deadline}
-							<span class="small muted">{t('window.until', { time: fmt.when(windowState.deadline) })}</span>
+				<div class="window">
+					<div class="row">
+						<h3>{t('window.title')}</h3>
+						{#if windowState}
+							<span class="badge tone-{windowState.open ? 'warning' : 'idle'}">{windowState.open ? t('window.open') : t('window.closed')}</span>
+							{#if windowState.open && windowState.deadline}
+								<span class="small muted">{t('window.until', { time: fmt.when(windowState.deadline) })}</span>
+							{/if}
 						{/if}
-					</p>
-					<div>
-						<button class="btn" disabled={busy} onclick={() => run(() => api.window(number, !windowState.open))}>
-							<Icon name="window" size={18} />{windowState.open ? t('window.markClosed') : t('window.markOpen')}
-						</button>
 					</div>
-					<p class="note">{t('window.note')}</p>
-				{/if}
+					{#if windowState}
+						<div>
+							<button class="btn" disabled={busy} onclick={() => run(() => api.window(number, !windowState.open))}>
+								<Icon name="window" size={18} />{windowState.open ? t('window.markClosed') : t('window.markOpen')}
+							</button>
+						</div>
+						<p class="note">{t('window.note')}</p>
+					{/if}
+				</div>
 			</section>
 		</div>
 
@@ -189,11 +193,21 @@
 />
 
 <style>
+	/* A 44 px target; the negative margin keeps the link close to the title it belongs to. */
 	.back {
 		display: inline-flex;
 		align-items: center;
 		gap: 0.25rem;
 		width: fit-content;
+		min-height: 2.75rem;
+		margin-block: -0.5rem -0.75rem;
+	}
+
+	.window {
+		display: grid;
+		gap: 0.75rem;
+		padding-top: 1rem;
+		border-top: 1px solid var(--border);
 	}
 
 	.alerts {

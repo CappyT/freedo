@@ -141,6 +141,7 @@
 	}
 
 	nav a {
+		position: relative;
 		display: flex;
 		align-items: center;
 		gap: 0.75rem;
@@ -161,7 +162,17 @@
 	nav a.active {
 		color: var(--text);
 		background: var(--panel);
-		box-shadow: inset 3px 0 0 var(--accent);
+	}
+
+	nav a.active::before {
+		content: '';
+		position: absolute;
+		left: 0;
+		top: 0.65rem;
+		bottom: 0.65rem;
+		width: 3px;
+		border-radius: var(--radius-pill);
+		background: var(--accent);
 	}
 
 	main {
@@ -215,12 +226,17 @@
 			min-height: 3.75rem;
 			padding: 0.4rem 0.25rem;
 			border-radius: 0;
-			font-size: 0.6875rem;
+			font-size: 0.75rem;
 			text-align: center;
 		}
 
-		nav a.active {
-			box-shadow: inset 0 3px 0 var(--accent);
+		nav a.active::before {
+			left: 28%;
+			right: 28%;
+			top: 0;
+			bottom: auto;
+			width: auto;
+			height: 3px;
 		}
 	}
 

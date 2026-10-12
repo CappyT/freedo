@@ -41,6 +41,8 @@
 
 	const C = 100;
 	const R = 78;
+	// The arc is open at the bottom: below y = 176 the box holds nothing, not even the knob.
+	const HEIGHT = 176;
 	const track = arcPath(C, C, R, START, START + SPAN);
 	const angle = $derived(target === null ? START : valueToAngle(target, min, max));
 	const progress = $derived(target === null ? '' : arcPath(C, C, R, START, Math.max(angle, START + 0.1)));
@@ -101,7 +103,7 @@
 	<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 	<svg
 		bind:this={svg}
-		viewBox="0 0 200 200"
+		viewBox="0 0 200 {HEIGHT}"
 		role={interactive ? 'slider' : undefined}
 		tabindex={interactive ? 0 : undefined}
 		aria-hidden={interactive ? undefined : 'true'}
@@ -140,11 +142,14 @@
 </div>
 
 <style>
+	/* Idle is the normal state, so it keeps the accent of the mark. Only the other states
+	   colour the arc, and heating stays the one warm arc on the page. */
 	.dial {
 		--arc: var(--accent);
 		position: relative;
 		width: 100%;
-		aspect-ratio: 1;
+		aspect-ratio: 200 / 176;
+		container-type: inline-size;
 	}
 
 	.tone-heating {
@@ -166,10 +171,6 @@
 
 	.tone-fault {
 		--arc: var(--status-fault);
-	}
-
-	.tone-idle {
-		--arc: var(--status-idle);
 	}
 
 	svg {
@@ -230,9 +231,11 @@
 		stroke-width: 6;
 	}
 
+	/* A square on the top of the box: its middle is the centre of the arc. */
 	.center {
 		position: absolute;
-		inset: 0;
+		inset: 0 0 auto;
+		aspect-ratio: 1;
 		display: grid;
 		place-content: center;
 		justify-items: center;
@@ -260,9 +263,5 @@
 	.caption {
 		font-size: var(--text-small-size);
 		color: var(--text-muted);
-	}
-
-	.dial {
-		container-type: inline-size;
 	}
 </style>

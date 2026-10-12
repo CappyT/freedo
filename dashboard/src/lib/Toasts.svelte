@@ -46,12 +46,19 @@
 		padding-top: 0.1rem;
 	}
 
+	/* A 44 px target that does not make the toast taller. */
 	.close {
+		flex: none;
+		display: grid;
+		place-items: center;
+		width: 2.75rem;
+		height: 2.75rem;
+		margin: -0.75rem -0.5rem -0.75rem 0;
 		border: 0;
 		background: transparent;
 		color: inherit;
 		cursor: pointer;
-		padding: 0.15rem;
+		padding: 0;
 		border-radius: var(--radius-xs);
 	}
 

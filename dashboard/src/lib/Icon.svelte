@@ -28,6 +28,7 @@
 		chevron: ['M9 6l6 6-6 6'],
 		back: ['M15 6l-6 6 6 6'],
 		key: ['M8 15a4 4 0 1 1 3.5-6H21v3h-2v2h-3v-2h-4.5A4 4 0 0 1 8 15z'],
+		edit: ['M5 19l1-4L16 5l3 3L9 18z', 'M13.5 7.5l3 3'],
 		trash: ['M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13']
 	} as const;
 

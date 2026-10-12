@@ -1,4 +1,4 @@
-import type { DeclaredZone, Health, HealthDevice, NodeView, ZoneDemand, ZoneFallback } from './types.ts';
+import type { DeclaredZone, Health, HealthDevice, NodeView, Target, ZoneDemand, ZoneFallback } from './types.ts';
 
 /** The colour family of a status token. Each one is shown with an icon and a label. */
 export type Tone = 'heating' | 'idle' | 'away' | 'off' | 'warning' | 'fault' | 'offline';
@@ -130,6 +130,14 @@ export function zoneHumidity(zone: DeclaredZone, members: Member[]): number | nu
  */
 export function zoneName(zone: Pick<DeclaredZone, 'kind' | 'name'>, hotWaterName: string): string {
 	return zone.kind === 'hotwater' ? hotWaterName : zone.name;
+}
+
+/**
+ * The wanted temperature is a number, not a reason such as off or window open. The page
+ * shows a number as data and a reason as text.
+ */
+export function targetIsTemp(target: Target): boolean {
+	return target.on && target.source !== 'window' && target.targetC !== null;
 }
 
 /** Firmware shown for a device: the running version, else the build tag, else null. */

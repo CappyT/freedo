@@ -6,10 +6,13 @@
 
 	const week = $derived(weekSegments(groups));
 
-	/** The warmer the block, the more of the heating hue it carries. */
+	/**
+	 * The warmer the block, the more of the heating hue it carries. Above 56 percent the
+	 * label on the dark theme falls under 4.5:1.
+	 */
 	function shade(setpointC: number): string {
 		const fraction = Math.min(1, Math.max(0, (setpointC - range.min) / (range.max - range.min)));
-		return `color-mix(in srgb, var(--status-heating) ${Math.round(18 + 47 * fraction)}%, var(--surface))`;
+		return `color-mix(in srgb, var(--status-heating) ${Math.round(16 + 40 * fraction)}%, var(--surface))`;
 	}
 
 	function summary(day: (typeof DAYS)[number]): string {
@@ -32,7 +35,7 @@
 						style:background={segment.enabled ? shade(segment.setpointC) : undefined}
 					>
 						{#if segment.to - segment.from >= 150}
-							<span class="label mono">{segment.enabled ? fmt.number(segment.setpointC, 1) : t('schedule.off')}</span>
+							<span class="label" class:mono={segment.enabled}>{segment.enabled ? fmt.number(segment.setpointC, 1) : t('schedule.off')}</span>
 						{/if}
 					</span>
 				{/each}

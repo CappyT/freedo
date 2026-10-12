@@ -29,7 +29,7 @@
 </script>
 
 <section class="page">
-	<div class="page-head">
+	<div class="page-head titled">
 		<h1>{t('boiler.title')}</h1>
 		{#if boiler}
 			<span class="badge" class:tone-heating={boiler.HeatActive} class:tone-idle={!boiler.HeatActive}>
@@ -92,7 +92,7 @@
 						{/each}
 					</div>
 					<dl class="facts">
-						<div><dt>{t('boiler.served')}</dt><dd class="text">{c.servedC === null ? t('boiler.noLimit') : fmt.temp(c.servedC)}</dd></div>
+						<div><dt>{t('boiler.served')}</dt><dd class:text={c.servedC === null}>{c.servedC === null ? t('boiler.noLimit') : fmt.temp(c.servedC)}</dd></div>
 						<div><dt>{t('boiler.computed')}</dt><dd>{fmt.temp(c.computedC)}</dd></div>
 						<div><dt>{t('boiler.bounds')}</dt><dd>{t('boiler.range', { min: fmt.number(c.minC, 0), max: fmt.number(c.maxC, 0) })}</dd></div>
 						<div><dt>{t('boiler.fetched')}</dt><dd class="text">{c.fetched ? t('state.yes') : t('state.no')}</dd></div>
