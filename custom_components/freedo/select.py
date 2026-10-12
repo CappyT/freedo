@@ -30,6 +30,7 @@ from .model import (
     room_temp_payload,
     room_temp_paused,
     room_temp_zones,
+    zone_auto_offset,
     zone_measuring_candidates,
     zone_offset_mode,
     zone_setting,
@@ -154,7 +155,9 @@ class ZoneTemperatureSourceSelect(FreedoEntity, SelectEntity):
     zone, the choice also pauses its pushes and clears the zone reading, so the
     daemon returns to the manual correction. Choosing the external sensor resumes
     the pushes, sends the current reading at once and sets the offset mode
-    setpoint if it is not. The offset mode never changes on a device choice.
+    setpoint if it is not, unless auto_offset is on: that mode takes the reading
+    too, and the daemon refuses setpoint while the automatic correction runs. The
+    offset mode never changes on a device choice.
 
     The option text of a device is its label and serial, which is dynamic, so
     Home Assistant does not translate it; two devices of one room can carry the
@@ -209,7 +212,10 @@ class ZoneTemperatureSourceSelect(FreedoEntity, SelectEntity):
         if (
             self._mapped_sensor
             and not self._paused
-            and zone_offset_mode(self.coordinator.data, zone) == OFFSET_MODE_SETPOINT
+            and (
+                zone_offset_mode(self.coordinator.data, zone) == OFFSET_MODE_SETPOINT
+                or zone_auto_offset(self.coordinator.data, zone)
+            )
         ):
             return ROOM_TEMP_EXTERNAL
         short = zone.measuring
@@ -254,8 +260,12 @@ class ZoneTemperatureSourceSelect(FreedoEntity, SelectEntity):
             return
         client = self.coordinator.client
         # The reading needs the offset mode setpoint first, or the daemon refuses
-        # it with 409.
-        if zone_offset_mode(self.coordinator.data, zone) != OFFSET_MODE_SETPOINT:
+        # it with 409. Mode config and dbg2 take it too while auto_offset is on,
+        # and the daemon refuses a switch to setpoint then.
+        if (
+            zone_offset_mode(self.coordinator.data, zone) != OFFSET_MODE_SETPOINT
+            and not zone_auto_offset(self.coordinator.data, zone)
+        ):
             await call_api(
                 client.patch_install_zone(self._number, offset_mode=OFFSET_MODE_SETPOINT)
             )

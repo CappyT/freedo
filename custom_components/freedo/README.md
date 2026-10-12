@@ -84,6 +84,7 @@ The integration and the options of the add-on have English, Italian, German and 
 | button Calibrate motor | valve | `POST /api/nodes/{id}/calibrate` |
 | sensor Calibration | valve | `/api/nodes` `Telemetry` `calib_state` and `calib_error` |
 | switch Early start, switch Open window detection, number Open window duration | heating zone | `/api/install/zones`; writes `PATCH /api/install/zones/{n}` |
+| switch Automatic correction, number Automatic correction interval | heating zone | `/api/zones` `declared[].autoOffset`, `/api/install/zones` `auto_offset`, `auto_offset_interval_sec`; writes `PATCH /api/install/zones/{n}` |
 | select Device change end rule, number Device change timer | heating zone | `/api/install/zones` `device_overlay_end`, `device_overlay_end_sec`; writes `PATCH /api/install/zones/{n}` |
 | number Away temperature | heating zone | `/api/install/zones` `away_temperature_c`; writes `PATCH /api/install/zones/{n}` |
 | number Temperature offset | heating zone | `/api/install/zones` `setpoint_offset_c`; writes `POST /api/zones/{n}/offset` |
@@ -279,14 +280,14 @@ replaced meter is an undo and then a new reading.
   Reports.
 - Sensor External room sensor shows whether a heating zone regulates on the
   reading of its room temperature sensor. The state is `active`, or the cause:
-  `wrong_offset_mode` (the offset mode is not `setpoint`), `no_reading` (the
-  daemon holds no reading) or `stale` (the last reading is older than
-  `room_temp_max_age_sec`). It is unknown while the daemon serves no offset
-  mode. The attributes are `offset_mode`, `temperature_c` and `age_sec` (the
-  reading), `device_temperature_c` (the temperature of the valve), `shift_c`
-  (the shift applied to the setpoints) and `wanted_shift_c` (the shift it moves
-  toward). The sensor needs a daemon that serves `externalTemp` in
-  `GET /api/zones`.
+  `wrong_offset_mode` (the offset mode is not `setpoint` and switch Automatic
+  correction is off), `no_reading` (the daemon holds no reading) or `stale` (the
+  last reading is older than `room_temp_max_age_sec`). It is unknown while the
+  daemon serves no offset mode. The attributes are `offset_mode`,
+  `temperature_c` and `age_sec` (the reading), `device_temperature_c` (the
+  temperature of the valve), `shift_c` (the shift applied to the setpoints) and
+  `wanted_shift_c` (the shift it moves toward). The sensor needs a daemon that
+  serves `externalTemp` in `GET /api/zones`.
 - Binary sensor Communication warning is on while the device shows a radio link
   warning. The attribute `warnings` lists them: `noNeighbour` and
   `noConfigAnswer`. These are the link bits of the fault word. They clear
@@ -334,6 +335,14 @@ daemon answers. They exist only while the daemon holds an installation.
   the zone on or off (`open_window_detection`).
 - Number Open window duration is the time the zone stays open after a
   detection (`open_window_duration_sec`), in minutes, 1 to 1092.
+- Switch Automatic correction calibrates the correction of the zone from the
+  external room temperature, at most once per Number Automatic correction
+  interval. It applies in the offset modes `config` and `dbg2`. The daemon
+  refuses it on the hot water zone and in mode `setpoint`. Its attributes
+  `last_write_at`, `next_at`, `filtered_diff_c` and `sample_span_sec` are the
+  `autoOffset` view of `GET /api/zones`. See Room temperature of a zone.
+- Number Automatic correction interval is that interval
+  (`auto_offset_interval_sec`), in hours, 1 to 168.
 - Select Device change end rule is how long a change made on a device lasts, as
   the rule `device_overlay_end`: `manual` until the next command, `until_next`
   until the next block of the weekly program, `timer` for a set time. The rule
@@ -393,15 +402,18 @@ sensor.
   left out. The option `external` appears while the options map a sensor to the
   zone.
 - The current option is `external` while a sensor is mapped, its pushes are not
-  paused and the offset mode is `setpoint`; otherwise it is the effective
-  measuring device (`measuringDevice` of `GET /api/zones`).
+  paused and the daemon uses the reading: the offset mode is `setpoint`, or
+  switch Automatic correction is on; otherwise it is the effective measuring
+  device (`measuringDevice` of `GET /api/zones`).
 - Choosing a device writes `PUT /api/install/zones/{n}/measuring` with the
   device reference. The measuring device reaches the valves in the next zone
   document, at their next hourly check. When a sensor is mapped to the zone, the
   choice also pauses its pushes and sends `DELETE /api/zones/{n}/temperature`, so
   the daemon returns to the manual correction. The offset mode does not change.
-- Choosing `external` resumes the pushes, sends the current reading at once and
-  sets the offset mode `setpoint` if it is not. See Room temperature of a zone.
+- Choosing `external` resumes the pushes and sends the current reading at once.
+  When switch Automatic correction is off, the choice also sets the offset mode
+  `setpoint` if it is not: the daemon refuses that mode while the automatic
+  correction runs. See Room temperature of a zone.
 - The pause is stored in the options, so it survives a restart.
 
 ### Pairing mode
@@ -670,12 +682,22 @@ target on the reading of that sensor.
   sent. A value outside -10..50 C is not sent, because the daemon rejects it.
   The integration logs the first failed push of a zone and stays silent until a
   push succeeds.
-- The zone needs the offset mode `setpoint`. Set it with the select Temperature
-  offset mode of the zone (option Setpoint shift). See Zone settings. The
-  options do not change the mode. In the modes `config` and `dbg2` the daemon
-  answers 409 to a reading, because those modes write tag `0140` to the device.
-  The integration keeps the mapping and logs the first refusal of a zone. The
-  sensor External room sensor shows `wrong_offset_mode`.
+- The daemon uses the reading in two ways.
+  - Offset mode `setpoint` shifts the setpoints of the zone continuously from
+    the reading. Set it with the select Temperature offset mode of the zone
+    (option Setpoint shift). See Zone settings.
+  - Switch Automatic correction (`auto_offset`) calibrates the correction of the
+    zone from the reading, at most once per Number Automatic correction
+    interval. It applies in the modes `config` and `dbg2`, where the correction
+    is tag `0140` on the valve. In mode `config` each write makes the valve home
+    its motor, so the interval bounds the battery and the noise. The daemon
+    refuses the switch on the hot water zone and in mode `setpoint`, and refuses
+    the mode `setpoint` while the switch is on.
+- The options do not change the mode. In the modes `config` and `dbg2` without
+  automatic correction the daemon answers 409 to a reading, because those modes
+  write tag `0140` to the device. The integration keeps the mapping and logs the
+  first refusal of a zone. The sensor External room sensor shows
+  `wrong_offset_mode`.
 - The correction is slow by design, because a valve next to a radiator swings
   by several degrees. The daemon cannot change what the valve measures, so it
   filters the difference with a time constant of 2 hours, shifts the setpoints

@@ -25,6 +25,8 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from .coordinator import FreedoConfigEntry, FreedoCoordinator
 from .entity import FUEL_FLOW_UNITS, FreedoEntity, FreedoZoneSettingEntity, call_api
 from .model import (
+    AUTO_OFFSET_INTERVAL_MAX_SEC,
+    AUTO_OFFSET_INTERVAL_MIN_SEC,
     BOILER_GAS_MAX_M3H,
     FUEL_KG,
     BOILER_POWER_MAX_KW,
@@ -62,6 +64,10 @@ async def async_setup_entry(
             entities.append(OpenWindowDurationNumber(coordinator, zone))
         if zone_setting(data, zone, "device_overlay_end") is not None:
             entities.append(DeviceOverlayTimerNumber(coordinator, zone))
+        # The daemon refuses an automatic correction on the hot water zone, and
+        # the heating zone loop leaves it out.
+        if zone_setting(data, zone, "auto_offset_interval_sec") is not None:
+            entities.append(AutoOffsetIntervalNumber(coordinator, zone))
         # The row carries the field, null when unset, from a daemon that has the
         # away temperature.
         if "away_temperature_c" in (data.zone_settings.get(zone.number) or {}):
@@ -179,6 +185,32 @@ class DeviceOverlayTimerNumber(_MinutesNumber):
     @property
     def available(self) -> bool:
         return super().available and (self._setting or {}).get("device_overlay_end") == "timer"
+
+
+class AutoOffsetIntervalNumber(FreedoZoneSettingEntity, NumberEntity):
+    """The shortest interval between two automatic corrections of the zone
+    (auto_offset_interval_sec), shown in hours. In mode config each write homes
+    the motor of the valve, so the interval bounds that cost."""
+
+    _attr_device_class = NumberDeviceClass.DURATION
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_native_unit_of_measurement = UnitOfTime.HOURS
+    _attr_translation_key = "auto_offset_interval"
+    _attr_native_min_value = AUTO_OFFSET_INTERVAL_MIN_SEC // 3600
+    _attr_native_max_value = AUTO_OFFSET_INTERVAL_MAX_SEC // 3600
+    _attr_native_step = 1
+    _attr_mode = NumberMode.BOX
+
+    def __init__(self, coordinator: FreedoCoordinator, zone: Zone) -> None:
+        super().__init__(coordinator, zone, "auto_offset_interval_sec")
+
+    @property
+    def native_value(self) -> float | None:
+        seconds = (self._setting or {}).get("auto_offset_interval_sec")
+        return None if seconds is None else round(seconds / 3600, 2)
+
+    async def async_set_native_value(self, value: float) -> None:
+        await self._write(auto_offset_interval_sec=round(value * 3600))
 
 
 class AwayTemperatureNumber(FreedoZoneSettingEntity, NumberEntity):

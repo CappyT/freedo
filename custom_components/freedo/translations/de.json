@@ -203,6 +203,9 @@
       "away_temperature": {
         "name": "Abwesenheitstemperatur"
       },
+      "auto_offset_interval": {
+        "name": "Intervall der automatischen Korrektur"
+      },
       "flow_limit": {
         "name": "Heizkreis {circuit} max. Vorlauftemperatur"
       },
@@ -277,6 +280,9 @@
       },
       "open_window_detection": {
         "name": "Fenster-offen-Erkennung"
+      },
+      "auto_offset": {
+        "name": "Automatische Korrektur"
       }
     }
   },

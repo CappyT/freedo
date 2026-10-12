@@ -45,6 +45,11 @@ OFFSET_MODE_SETPOINT = "setpoint"
 # GET /api/install/zones offset_mode: how the correction of a zone reaches it.
 OFFSET_MODES = ("config", "dbg2", OFFSET_MODE_SETPOINT)
 
+# The daemon rejects an auto_offset_interval_sec outside this range with 400:
+# one hour to one week.
+AUTO_OFFSET_INTERVAL_MIN_SEC = 3600
+AUTO_OFFSET_INTERVAL_MAX_SEC = 604800
+
 # The end rules of a change made on a device (GET /api/install/zones
 # device_overlay_end), and the timer length the daemon accepts in seconds.
 OVERLAY_END_RULES = ("manual", "until_next", "timer")
@@ -146,6 +151,8 @@ class FreedoData:
     windows: dict[int, dict[str, Any]] = field(default_factory=dict)
     # GET /api/zones "declared"[].externalTemp, heating zones only.
     room_temps: dict[int, dict[str, Any]] = field(default_factory=dict)
+    # GET /api/zones "declared"[].autoOffset, heating zones only.
+    auto_offsets: dict[int, dict[str, Any]] = field(default_factory=dict)
     # GET /api/zones "declared"[].target: what the zone targets now.
     targets: dict[int, dict[str, Any]] = field(default_factory=dict)
     # GET /api/nodes: ValveView by short address.
@@ -240,6 +247,8 @@ def parse(
             data.windows[number] = dict(z["window"])
         if isinstance(z.get("externalTemp"), Mapping):
             data.room_temps[number] = dict(z["externalTemp"])
+        if isinstance(z.get("autoOffset"), Mapping):
+            data.auto_offsets[number] = dict(z["autoOffset"])
         if isinstance(z.get("target"), Mapping):
             data.targets[number] = dict(z["target"])
     for view in zones.get("demand") or []:
@@ -469,11 +478,18 @@ def zone_offset_mode(data: FreedoData, zone: Zone) -> str | None:
     return (data.zone_settings.get(zone.number) or {}).get("offset_mode")
 
 
+def zone_auto_offset(data: FreedoData, zone: Zone) -> bool:
+    """GET /api/install/zones auto_offset: the daemon calibrates the correction
+    of the zone from an external room temperature, in mode config or dbg2."""
+    return bool((data.zone_settings.get(zone.number) or {}).get("auto_offset"))
+
+
 def room_temp_state(data: FreedoData, zone: Zone) -> str | None:
     """"active" while the zone regulates on the external room temperature, else
-    the cause: the offset mode is not setpoint (the daemon refuses a reading
-    then), no reading came, or the reading is older than room_temp_max_age_sec.
-    None when the daemon does not serve the view or the offset mode."""
+    the cause: the offset mode takes no reading (the daemon refuses one then),
+    no reading came, or the reading is older than room_temp_max_age_sec. None
+    when the daemon does not serve the view or the offset mode. Modes config and
+    dbg2 take the reading too while auto_offset is on."""
     view = data.room_temps.get(zone.number)
     if view is None:
         return None
@@ -482,7 +498,7 @@ def room_temp_state(data: FreedoData, zone: Zone) -> str | None:
     mode = zone_offset_mode(data, zone)
     if mode is None:
         return None
-    if mode != OFFSET_MODE_SETPOINT:
+    if mode != OFFSET_MODE_SETPOINT and not zone_auto_offset(data, zone):
         return "wrong_offset_mode"
     if view.get("tempC") is None:
         return "no_reading"

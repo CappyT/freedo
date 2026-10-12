@@ -203,6 +203,9 @@
       "away_temperature": {
         "name": "Temperatura fuori casa"
       },
+      "auto_offset_interval": {
+        "name": "Intervallo della correzione automatica"
+      },
       "flow_limit": {
         "name": "Circuito {circuit} temperatura massima di mandata"
       },
@@ -277,6 +280,9 @@
       },
       "open_window_detection": {
         "name": "Rilevamento finestra aperta"
+      },
+      "auto_offset": {
+        "name": "Correzione automatica"
       }
     }
   },

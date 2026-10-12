@@ -1573,6 +1573,103 @@ async def test_offset_mode_select_error_is_a_home_assistant_error(hass, client):
     assert hass.states.get(living).state == "setpoint"
 
 
+# --- automatic correction ---
+
+
+async def test_auto_offset_switch_writes_and_shows_the_view(hass, client):
+    entry = await setup_entry(hass, client)
+    auto = entity_id(hass, entry, "switch", "zone1_auto_offset")
+    assert hass.states.get(auto).state == "off"
+    assert er.async_get(hass).async_get(auto).entity_category == "config"
+    # The attributes are the autoOffset view of GET /api/zones.
+    assert hass.states.get(auto).attributes["sample_span_sec"] == 0
+    assert hass.states.get(auto).attributes["filtered_diff_c"] == 0.0
+    assert hass.states.get(auto).attributes["last_write_at"] is None
+
+    await turn(hass, "turn_on", auto)
+    await turn(hass, "turn_off", auto)
+    assert client.calls == [
+        ("patch_zone", 1, {"auto_offset": True}),
+        ("patch_zone", 1, {"auto_offset": False}),
+    ]
+    # The entities show the row the daemon answered.
+    assert hass.states.get(auto).state == "off"
+    # The other zone keeps its own value, and the hot water zone has none.
+    assert hass.states.get(entity_id(hass, entry, "switch", "zone2_auto_offset")).state == "off"
+    assert not has_entity(hass, entry, "switch", "zone9_auto_offset")
+
+
+async def test_auto_offset_error_is_a_home_assistant_error(hass, client):
+    entry = await setup_entry(hass, client)
+    # Zone 1 is in offset mode setpoint: the daemon refuses the automatic
+    # correction there.
+    auto = entity_id(hass, entry, "switch", "zone1_auto_offset")
+
+    async def refuse(zone, **fields):
+        raise FreedoApiError(400, "zone 1: auto_offset is refused in offset_mode setpoint")
+
+    client.patch_install_zone = refuse
+    with pytest.raises(HomeAssistantError, match="offset_mode setpoint"):
+        await turn(hass, "turn_on", auto)
+    assert hass.states.get(auto).state == "off"
+
+
+async def test_auto_offset_interval_number_reads_and_writes_seconds(hass, client):
+    entry = await setup_entry(hass, client)
+    interval = entity_id(hass, entry, "number", "zone1_auto_offset_interval_sec")
+    state = hass.states.get(interval)
+    # The daemon holds seconds, the number shows hours.
+    assert float(state.state) == 24
+    assert state.attributes["unit_of_measurement"] == "h"
+    assert (state.attributes["min"], state.attributes["max"], state.attributes["step"]) == (1, 168, 1)
+    assert er.async_get(hass).async_get(interval).entity_category == "config"
+
+    await hass.services.async_call(
+        "number", "set_value", {ATTR_ENTITY_ID: interval, "value": 48}, blocking=True
+    )
+    assert client.calls == [("patch_zone", 1, {"auto_offset_interval_sec": 172800})]
+    assert float(hass.states.get(interval).state) == 48
+
+
+async def test_temperature_source_external_with_auto_offset(hass, client):
+    set_room_sensor(hass, "21.4", entity=HALL_SENSOR)
+    # Zone 2 is in offset mode config and runs the automatic correction: the
+    # daemon takes the external reading there too.
+    client.install_json["zones"][1]["auto_offset"] = True
+    entry = await setup_entry(hass, client, options={"room_temperatures": {"2": HALL_SENSOR}})
+    bedroom = entity_id(hass, entry, "select", BEDROOM_SOURCE)
+    assert hass.states.get(bedroom).state == "external"
+
+
+async def test_temperature_source_external_keeps_the_auto_offset_mode(hass, client):
+    set_room_sensor(hass, "21.8", entity=HALL_SENSOR)
+    client.zones_json["declared"][1]["measuringDevice"] = "dddd"
+    client.install_json["zones"][1]["auto_offset"] = True
+    entry = await setup_entry(
+        hass,
+        client,
+        options={"room_temperatures": {"2": HALL_SENSOR}, CONF_ROOM_TEMP_PAUSED: [2]},
+    )
+    bedroom = entity_id(hass, entry, "select", BEDROOM_SOURCE)
+    assert hass.states.get(bedroom).state == "Bedroom (VA0000000004)"
+
+    await select_option(hass, bedroom, "external")
+    # The mode setpoint would be refused while the automatic correction runs, so
+    # the choice leaves the offset mode alone.
+    assert not any(call[0] == "patch_zone" for call in client.calls)
+    assert 2 not in entry.options.get(CONF_ROOM_TEMP_PAUSED, [])
+    assert client.room_temps == [(2, 21.8)]
+    assert hass.states.get(bedroom).state == "external"
+
+
+async def test_room_temp_state_with_auto_offset_is_not_wrong_mode(hass, client):
+    client.install_json["zones"][1]["auto_offset"] = True
+    entry = await setup_entry(hass, client)
+    # Mode config with the automatic correction accepts the reading: no reading
+    # came yet, and the cause is not the offset mode.
+    assert external_room_sensor(hass, entry, 2).state == "no_reading"
+
+
 # --- weekly schedule ---
 
 

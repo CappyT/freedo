@@ -77,7 +77,9 @@ ZONES = {
                                 "endsAt": "2026-01-01T00:30:00Z"}},
          "externalTemp": {"tempC": 21.4, "at": "2026-01-01T00:00:00Z", "ageSec": 120,
                           "stale": False, "inUse": True, "deviceC": 20.9, "wantedC": 0.4,
-                          "shiftC": 0.2, "offsetC": 0.0}},
+                          "shiftC": 0.2, "offsetC": 0.0},
+         "autoOffset": {"enabled": False, "intervalSec": 86400, "lastWriteAt": None,
+                        "nextAt": None, "filteredDiffC": 0.0, "sampleSpanSec": 0}},
         {"number": 2, "name": "Bedroom", "kind": "heating", "members": ["dddd"],
          "window": {"open": False, "source": None, "since": None, "deadline": None,
                     "undelivered": []},
@@ -86,7 +88,9 @@ ZONES = {
                     "overlay": None},
          "externalTemp": {"tempC": None, "at": None, "ageSec": None, "stale": False,
                           "inUse": False, "deviceC": None, "wantedC": None, "shiftC": 0.0,
-                          "offsetC": 0.0}},
+                          "offsetC": 0.0},
+         "autoOffset": {"enabled": False, "intervalSec": 43200, "lastWriteAt": None,
+                        "nextAt": None, "filteredDiffC": 0.0, "sampleSpanSec": 0}},
         {"number": 9, "name": "Hot water", "kind": "hotwater", "members": ["cccc"],
          "target": {"targetC": None, "source": "overlay", "programC": 55.0,
                     "programOff": False, "hasProgram": True, "boost": False, "known": True,
@@ -129,12 +133,14 @@ INSTALL_ZONES = {
         {"number": 1, "name": "Living", "kind": "heating", "members": ["VA0000000001"],
          "circuit": 1, "reporter": "VA0000000001", "measuring_device": None,
          "offset_mode": "setpoint", "setpoint_offset_c": 0.5,
+         "auto_offset": False, "auto_offset_interval_sec": 86400,
          "open_window_detection": True, "open_window_duration_sec": 900,
          "early_start": False, "device_overlay_end": "until_next",
          "device_overlay_end_sec": None, "away_temperature_c": 21.5},
         {"number": 2, "name": "Bedroom", "kind": "heating", "members": ["VA0000000002"],
          "circuit": 1, "reporter": None, "measuring_device": None,
          "offset_mode": "config", "setpoint_offset_c": None,
+         "auto_offset": False, "auto_offset_interval_sec": 43200,
          "open_window_detection": False, "open_window_duration_sec": 600,
          "early_start": True, "device_overlay_end": "timer",
          "device_overlay_end_sec": 1800, "away_temperature_c": None},
@@ -585,6 +591,12 @@ def test_room_temp_state():
     assert room_temp_state(_room_temp(inUse=False), d.zones[1]) is None
     # No installation read: the mode is unknown, and so is the cause.
     assert room_temp_state(parse(HEALTH, ZONES, NODES, BOILER, HOME), d.zones[2]) is None
+    # Mode config with auto_offset on takes the reading: the cause is not the
+    # mode, and no reading came yet.
+    auto = copy.deepcopy(INSTALL_ZONES)
+    next(r for r in auto["zones"] if r["number"] == 2)["auto_offset"] = True
+    d2 = parse(HEALTH, ZONES, NODES, BOILER, HOME, auto)
+    assert room_temp_state(d2, d2.zones[2]) == "no_reading"
 
 
 WEEK = [

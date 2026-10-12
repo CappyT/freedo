@@ -145,6 +145,7 @@
       "open_window_duration": { "name": "Open window duration" },
       "device_overlay_timer": { "name": "Device change timer" },
       "away_temperature": { "name": "Away temperature" },
+      "auto_offset_interval": { "name": "Automatic correction interval" },
       "flow_limit": { "name": "Circuit {circuit} flow limit" },
       "boiler_max_power": { "name": "Boiler maximum power" },
       "boiler_min_power": { "name": "Boiler minimum power" },
@@ -191,7 +192,8 @@
       "notification": { "name": "Change notification" },
       "child_lock": { "name": "Child lock" },
       "early_start": { "name": "Early start" },
-      "open_window_detection": { "name": "Open window detection" }
+      "open_window_detection": { "name": "Open window detection" },
+      "auto_offset": { "name": "Automatic correction" }
     }
   },
   "services": {

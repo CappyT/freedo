@@ -203,6 +203,9 @@
       "away_temperature": {
         "name": "Température d'absence"
       },
+      "auto_offset_interval": {
+        "name": "Intervalle de la correction automatique"
+      },
       "flow_limit": {
         "name": "Circuit {circuit} température de départ maximale"
       },
@@ -277,6 +280,9 @@
       },
       "open_window_detection": {
         "name": "Détection de fenêtre ouverte"
+      },
+      "auto_offset": {
+        "name": "Correction automatique"
       }
     }
   },
