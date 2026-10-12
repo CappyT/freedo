@@ -443,7 +443,7 @@ heating zone has it.
     with the device label and the serial from `GET /api/install/devices`. A
     member whose `zone` field names another room is left out.
   - `other_sensor`, shown as "Another sensor...". It changes nothing and
-    answers with a message: map a sensor of another area in the step Rooms of
+    answers with a message: map a sensor of another area in the branch Rooms of
     the options.
 - The labels are built at each poll and kept until the next one, so the label
   of a sensor shows the reading of the last poll. A label that repeats gets the
@@ -686,13 +686,20 @@ take no target.
 
 ## Environment inputs
 
-Open the integration options to map Home Assistant entities to the daemon:
+Configure of the integration opens a menu of two branches. Each branch saves
+its own options and keeps those of the other one.
+
+- Environment maps Home Assistant entities to the daemon: the outdoor sensor and
+  the window sensors, then the zone of each window sensor.
+- Rooms edits the rooms you choose: see Rooms.
+
+The branch Environment holds these inputs:
 
 - Outdoor temperature sensor. The integration sends `POST /api/outdoor` with
   `{"tempC": n}` on each state change and every 15 minutes. The daemon keeps
   the reading in memory only, so the periodic push also covers a daemon
   restart. A value in degrees Fahrenheit or kelvin is converted.
-- Window and door sensors. The second options step selects the heating zone of
+- Window and door sensors. The next page selects the heating zone of
   each sensor. On each change of a zone state, the integration sends
   `POST /api/zones/{n}/window` with `{"open": bool}`. A zone is open when one
   of its sensors is on. The pushes of one zone go one at a time, and each
@@ -701,9 +708,6 @@ Open the integration options to map Home Assistant entities to the daemon:
   starts. When the daemon does not answer or answers 5xx, the integration
   sends the current state of the zone again every 30 seconds until the daemon
   takes it. A 4xx answer is not sent again.
-- Rooms. The last options step has one page per heating zone, with its area,
-  an optional room temperature sensor and the correction. See Rooms and Room
-  temperature of a zone.
 
 The window sensors and the service `freedo.set_window` write the same hold of a
 zone. A sensor pushes its zone when its state changes, when the integration
@@ -717,19 +721,21 @@ temperature outside -60..60 C is not sent, because the daemon rejects it.
 ### Rooms
 
 Each heating zone is a room. The Home Assistant area of a zone is the area of
-its zone device in the device registry. The step Rooms of the options sets it,
+its zone device in the device registry. The branch Rooms of Configure sets it,
 and so does the device page of the zone. The integration reads it at each poll.
 
-- The step Rooms has one page per heating zone, the zones without an area
-  first. A page holds the area, an optional room temperature sensor and the
-  correction. A zone with no area starts from the area with the zone name,
+- The branch Rooms starts with a list of the heating rooms, each with its area
+  and its mapped sensor. The rooms without an area are chosen. Choose the rooms
+  to edit: a page per chosen room follows, then the branch saves. To change one
+  room: Configure, Rooms, choose it, one page. A page holds the area, an
+  optional room temperature sensor and the correction. A zone with no area starts from the area with the zone name,
   without case. The sensor list shows the temperature sensors of the area of
   the zone first, then the others with their area. With no temperature sensor
   at all, the field is an entity selector. Each page writes the area and the
   correction when you submit it; the last page saves the sensors. A new sensor
   ends the pause that select Temperature source set on its zone. A refused
-  correction shows the page again with an error. The step needs the loaded
-  integration: otherwise it keeps the saved sensors.
+  correction shows the page again with an error. The branch needs the loaded
+  integration.
 - When the area of a zone changes, its valves and thermostats take the new
   area if they have no area or still have the previous area of the zone. A
   device that you placed in another area keeps it. A device that appears later,
@@ -759,7 +765,7 @@ A heating zone regulates on the sensor of its valve. With a room temperature
 sensor, the daemon corrects the setpoints it writes, so the room reaches the
 target on the reading of that sensor.
 
-- Map a sensor to a zone on its page of the step Rooms, or with select
+- Map a sensor to a zone on its page of the branch Rooms, or with select
   Temperature source. A sensor can serve several zones. The hot water zone has
   no sensor.
 - On each state change and every 15 minutes, the integration sends
@@ -781,7 +787,7 @@ target on the reading of that sensor.
     makes the valve home its motor, so the interval bounds the battery and the
     noise.
 - A new sensor sets Continuous shift on a zone with the correction None, in
-  the step Rooms and in select Temperature source. With the correction None the
+  the branch Rooms and in select Temperature source. With the correction None the
   daemon answers 409 to a reading, because the other modes write tag `0140` to
   the device. The integration keeps the mapping and logs the first refusal of a
   zone. The sensor External room sensor shows `wrong_offset_mode`.
@@ -798,7 +804,7 @@ target on the reading of that sensor.
   `room_temp_max_age_sec` (30 minutes by default) ends the correction, and the
   shift returns to the manual offset at the same slow pace. A sensor that stays
   unavailable ends the correction in this way.
-- When you remove the sensor of a zone in the step Rooms, the integration sends
+- When you remove the sensor of a zone in the branch Rooms, the integration sends
   `DELETE /api/zones/{n}/temperature`. The release starts at once and runs at
   the same pace. If the call fails, the age limit ends the correction.
 - Sensor External room sensor shows whether the zone uses the reading, and the

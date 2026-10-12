@@ -38,6 +38,13 @@
   "options": {
     "step": {
       "init": {
+        "title": "Options de freedo",
+        "menu_options": {
+          "environment": "Environnement",
+          "rooms": "Pièces"
+        }
+      },
+      "environment": {
         "title": "Données d'environnement",
         "description": "Home Assistant envoie ces états à freedo.",
         "data": {
@@ -54,17 +61,24 @@
         "description": "Sélectionnez la zone de chauffage de chaque capteur. Une zone est ouverte quand l'un de ses capteurs est ouvert."
       },
       "rooms": {
-        "title": "Pièce {zone}",
-        "description": "Pièce {index} sur {count}. Chaque zone de chauffage est une pièce. Sélectionnez sa pièce Home Assistant et, si vous le souhaitez, un capteur de température. L'appareil de la zone passe dans la pièce. Ses vannes et ses thermostats y passent aussi, sauf si vous les avez placés dans une autre pièce.",
+        "title": "Pièces",
+        "description": "Sélectionnez les pièces à modifier. Les pièces sans pièce Home Assistant sont sélectionnées.",
+        "data": {
+          "rooms": "Pièces à modifier"
+        }
+      },
+      "room": {
+        "title": "Pièce {room}",
+        "description": "Pièce {index} sur {count}. Sélectionnez la pièce Home Assistant de la pièce et, si vous le souhaitez, un capteur de température. L'appareil de la pièce y passe. Ses vannes et ses thermostats y passent aussi, sauf si vous les avez placés dans une autre pièce.",
         "data": {
           "area": "Pièce",
           "room_temperature": "Capteur de température ambiante",
           "correction": "Correction avec la température ambiante"
         },
         "data_description": {
-          "area": "La pièce de l'appareil de la zone. Vous pouvez aussi la définir sur la page de l'appareil.",
-          "room_temperature": "Les capteurs de la pièce de la zone viennent en premier. Laissez vide pour utiliser le capteur de la vanne.",
-          "correction": "Décalage continu déplace lentement les consignes selon la mesure. C'est la méthode recommandée. Calibrage de la vanne écrit le décalage de la vanne au plus une fois par intervalle, et chaque écriture déplace le moteur une fois. Un nouveau capteur règle Décalage continu quand la zone n'a pas de correction."
+          "area": "La pièce Home Assistant de l'appareil de la pièce. Vous pouvez aussi la définir sur la page de l'appareil.",
+          "room_temperature": "Les capteurs de la pièce Home Assistant de la pièce viennent en premier. Laissez vide pour utiliser le capteur de la vanne.",
+          "correction": "Décalage continu déplace lentement les consignes selon la mesure. C'est la méthode recommandée. Calibrage de la vanne écrit le décalage de la vanne au plus une fois par intervalle, et chaque écriture déplace le moteur une fois. Un nouveau capteur règle Décalage continu quand la pièce n'a pas de correction."
         }
       }
     },

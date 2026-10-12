@@ -38,6 +38,13 @@
   "options": {
     "step": {
       "init": {
+        "title": "freedo options",
+        "menu_options": {
+          "environment": "Environment",
+          "rooms": "Rooms"
+        }
+      },
+      "environment": {
         "title": "Environment inputs",
         "description": "Home Assistant sends these states to freedo.",
         "data": {
@@ -54,17 +61,24 @@
         "description": "Select the heating zone of each sensor. A zone is open when one of its sensors is open."
       },
       "rooms": {
-        "title": "Room {zone}",
-        "description": "Room {index} of {count}. Each heating zone is a room. Select its Home Assistant area and, if you want, a temperature sensor. The zone device moves to the area. Its valves and thermostats move too, unless you placed them in another area.",
+        "title": "Rooms",
+        "description": "Select the rooms to edit. The rooms without an area are selected.",
+        "data": {
+          "rooms": "Rooms to edit"
+        }
+      },
+      "room": {
+        "title": "Room {room}",
+        "description": "Room {index} of {count}. Select the Home Assistant area of the room and, if you want, a temperature sensor. The room device moves to the area. Its valves and thermostats move too, unless you placed them in another area.",
         "data": {
           "area": "Area",
           "room_temperature": "Room temperature sensor",
           "correction": "Correction with the room temperature"
         },
         "data_description": {
-          "area": "The area of the zone device. You can also set it on the device page.",
-          "room_temperature": "The sensors in the area of the zone come first. Leave it empty to use the sensor of the valve.",
-          "correction": "Continuous shift moves the setpoints slowly from the reading. It is the recommended method. Valve calibration writes the valve offset at most once per interval, and each write moves the motor once. A new sensor sets continuous shift when the zone has no correction."
+          "area": "The area of the room device. You can also set it on the device page.",
+          "room_temperature": "The sensors in the area of the room come first. Leave it empty to use the sensor of the valve.",
+          "correction": "Continuous shift moves the setpoints slowly from the reading. It is the recommended method. Valve calibration writes the valve offset at most once per interval, and each write moves the motor once. A new sensor sets continuous shift when the room has no correction."
         }
       }
     },

@@ -38,6 +38,13 @@
   "options": {
     "step": {
       "init": {
+        "title": "freedo-Optionen",
+        "menu_options": {
+          "environment": "Umgebung",
+          "rooms": "Räume"
+        }
+      },
+      "environment": {
         "title": "Umgebungsdaten",
         "description": "Home Assistant sendet diese Zustände an freedo.",
         "data": {
@@ -54,17 +61,24 @@
         "description": "Wähle die Heizzone jedes Sensors aus. Eine Zone ist offen, wenn einer ihrer Sensoren offen ist."
       },
       "rooms": {
-        "title": "Raum {zone}",
-        "description": "Raum {index} von {count}. Jede Heizzone ist ein Raum. Wähle ihren Home Assistant-Bereich und, wenn du willst, einen Temperatursensor aus. Das Gerät der Zone kommt in den Bereich. Ihre Ventile und Thermostate kommen auch dorthin, außer du hast sie in einen anderen Bereich gesetzt.",
+        "title": "Räume",
+        "description": "Wähle die Räume aus, die du bearbeiten willst. Die Räume ohne Bereich sind ausgewählt.",
+        "data": {
+          "rooms": "Zu bearbeitende Räume"
+        }
+      },
+      "room": {
+        "title": "Raum {room}",
+        "description": "Raum {index} von {count}. Wähle den Home Assistant-Bereich des Raums und, wenn du willst, einen Temperatursensor aus. Das Gerät des Raums kommt in den Bereich. Seine Ventile und Thermostate kommen auch dorthin, außer du hast sie in einen anderen Bereich gesetzt.",
         "data": {
           "area": "Bereich",
           "room_temperature": "Raumtemperatursensor",
           "correction": "Korrektur mit der Raumtemperatur"
         },
         "data_description": {
-          "area": "Der Bereich des Geräts der Zone. Du kannst ihn auch auf der Geräteseite setzen.",
-          "room_temperature": "Die Sensoren im Bereich der Zone stehen zuerst. Lasse das Feld leer, um den Sensor des Ventils zu verwenden.",
-          "correction": "Kontinuierliche Verschiebung verschiebt die Sollwerte langsam nach dem Messwert. Das ist die empfohlene Methode. Ventilkalibrierung schreibt den Ventiloffset höchstens einmal pro Intervall, und jeder Schreibvorgang bewegt den Motor einmal. Ein neuer Sensor setzt Kontinuierliche Verschiebung, wenn die Zone keine Korrektur hat."
+          "area": "Der Bereich des Geräts des Raums. Du kannst ihn auch auf der Geräteseite setzen.",
+          "room_temperature": "Die Sensoren im Bereich des Raums stehen zuerst. Lasse das Feld leer, um den Sensor des Ventils zu verwenden.",
+          "correction": "Kontinuierliche Verschiebung verschiebt die Sollwerte langsam nach dem Messwert. Das ist die empfohlene Methode. Ventilkalibrierung schreibt den Ventiloffset höchstens einmal pro Intervall, und jeder Schreibvorgang bewegt den Motor einmal. Ein neuer Sensor setzt Kontinuierliche Verschiebung, wenn der Raum keine Korrektur hat."
         }
       }
     },
