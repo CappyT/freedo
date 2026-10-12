@@ -418,6 +418,7 @@ func (d *daemon) run(ctx context.Context) {
 			flowChanged := d.tickFlowLimits(d.emu)
 			utcChanged := d.tickUTCOffset(d.emu)
 			d.tickFwRead(d.emu)
+			d.tickSerials(d.emu)
 			targets, err := d.emu.ExpireBoosts(d.retryNow())
 			if err != nil {
 				log.Printf("boost restore: %v", err)

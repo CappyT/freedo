@@ -610,6 +610,10 @@ type EmuState struct {
 	fwChanged bool
 	fwReads   map[string]bool
 	fwReadAt  time.Time
+	// serialSeen holds the serial noted for each device in this run, and
+	// serialLearned the ones the owner has not taken yet. See serial_learn.go.
+	serialSeen    map[string]string
+	serialLearned map[string]string
 	// owReports holds the open window reports received since the daemon last
 	// took them: the daemon owns the zone window state they drive.
 	owReports []OpenWindowReport
@@ -723,6 +727,8 @@ func NewEmu(cfg EmuConfig, log *UnhandledLogger) *EmuState {
 		fwPut:          map[string]FwStateReport{},
 		fwGet:          map[string]FwStateReport{},
 		fwReads:        map[string]bool{},
+		serialSeen:     map[string]string{},
+		serialLearned:  map[string]string{},
 		schedC:         map[int]float64{},
 		zoneDelivered:  map[string]uint64{},
 		tx:             cfg.TxCounter,
@@ -917,6 +923,7 @@ func (e *EmuState) onData(class FrameClass, raw []byte) []Action {
 		e.learnZone(msg, f)
 		e.observeReports(msg, ns)
 		e.observeFwState(msg, srcEUI)
+		e.learnSerial(msg, srcEUI)
 		e.observeSession(ns, msg, class, srcLbl, dstLbl, f.Hex())
 	}
 

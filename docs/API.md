@@ -821,6 +821,11 @@ devices, or without an open window, pass `{"target": "<short>"}`. A target outsi
 installation must appear in `joiners`. `networkKeyHex` replaces the network key of the
 installation for this call.
 
+A device declared without a serial gets it from its first own `d/<serial>/...` request. The
+daemon writes the serial into the installation when the prefix fits the kind (`VA` for a
+valve, `RU` for a wall thermostat) and no other device holds it. A declared serial never
+changes this way.
+
 The full procedure is in [OPERATION.md](OPERATION.md#pairing-a-device). Pairing has not been
 verified on air with the current firmware.
 
