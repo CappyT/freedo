@@ -567,6 +567,37 @@ func TestAutoOffsetOptionValidation(t *testing.T) {
 	}
 }
 
+// TestAutoOffsetPatchChecksThePatchedValues: one PATCH that changes the mode
+// and auto_offset together is checked on the values it leaves, not on the ones
+// the zone held.
+func TestAutoOffsetPatchChecksThePatchedValues(t *testing.T) {
+	a := newInstallAPIOn(t, windowInstall(t, nil))
+	a.mutate(http.MethodPatch, "/api/install/zones/3", map[string]any{"offset_mode": "setpoint"})
+	for _, tc := range []struct {
+		body map[string]any
+		mode string
+		auto bool
+	}{
+		{map[string]any{"offset_mode": "config", "auto_offset": true}, tado.OffsetModeConfig, true},
+		{map[string]any{"offset_mode": "setpoint", "auto_offset": false}, tado.OffsetModeSetpoint, false},
+	} {
+		if code, res := a.call(http.MethodPatch, "/api/install/zones/3", tc.body); code != http.StatusOK {
+			t.Fatalf("%v: code=%d %v, want 200", tc.body, code, res)
+		}
+		in := loadStored(t, a)
+		if got := in.Options.ZoneOffset(3).Mode; got != tc.mode {
+			t.Errorf("%v: offset mode = %q, want %q", tc.body, got, tc.mode)
+		}
+		if got := in.Options.AutoOffset(3).Enabled; got != tc.auto {
+			t.Errorf("%v: auto_offset = %v, want %v", tc.body, got, tc.auto)
+		}
+	}
+	if code, res := a.call(http.MethodPatch, "/api/install/zones/3",
+		map[string]any{"offset_mode": "setpoint", "auto_offset": true}); code != http.StatusBadRequest {
+		t.Errorf("setpoint with auto_offset on: code=%d %v, want 400", code, res)
+	}
+}
+
 // heatUpRunning reports whether zone runs a heat-up episode now.
 func heatUpRunning(t *testing.T, d *daemon, zone int) bool {
 	t.Helper()

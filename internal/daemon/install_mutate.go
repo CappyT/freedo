@@ -877,16 +877,21 @@ func patchDeviceOverlayEnd(ctx context.Context, tx querier, cur *tado.Install, n
 // patchZoneOffset applies the correction fields of p on the mode the zone
 // holds. A mode other than setpoint drops the coordinator's own correction, so
 // it cannot come back unseen with a later switch. The default is not stored.
+// The check against auto_offset reads the value p leaves.
 func patchZoneOffset(ctx context.Context, tx querier, cur *tado.Install, number int, p zonePatch) error {
 	if p.OffsetMode == nil && p.SetpointOffsetCenti == nil {
 		return nil
 	}
 	off := cur.Options.ZoneOffset(number)
 	if p.OffsetMode != nil {
+		auto := cur.Options.AutoOffset(number).Enabled
+		if p.AutoOffset != nil {
+			auto = *p.AutoOffset
+		}
 		off.Mode = *p.OffsetMode
 		if off.Mode != tado.OffsetModeSetpoint {
 			off.SetpointCenti = 0
-		} else if cur.Options.AutoOffset(number).Enabled {
+		} else if auto {
 			return badf("offset_mode: zone %d has auto_offset on, switch it off first", number)
 		}
 	}
@@ -908,7 +913,7 @@ func patchZoneOffset(ctx context.Context, tx querier, cur *tado.Install, number 
 
 // patchZoneAutoOffset applies the automatic calibration fields of p on the
 // settings the zone holds. Only a heating zone outside offset mode setpoint
-// takes it. The default is not stored.
+// takes it, with the mode p leaves. The default is not stored.
 func patchZoneAutoOffset(ctx context.Context, tx querier, cur *tado.Install, number int, p zonePatch) error {
 	if p.AutoOffset == nil && p.AutoOffsetIntervalSec == nil {
 		return nil
@@ -928,10 +933,14 @@ func patchZoneAutoOffset(ctx context.Context, tx querier, cur *tado.Install, num
 		if err != nil {
 			return notFoundf("no zone %d", number)
 		}
+		mode := cur.Options.ZoneOffset(number).Mode
+		if p.OffsetMode != nil {
+			mode = *p.OffsetMode
+		}
 		switch {
 		case z.Kind != tado.ZoneHeating:
 			return badf("auto_offset: zone %d is not a heating zone", number)
-		case cur.Options.ZoneOffset(number).Mode == tado.OffsetModeSetpoint:
+		case mode == tado.OffsetModeSetpoint:
 			return badf("auto_offset: zone %d is in offset mode setpoint, which corrects continuously from the reading", number)
 		}
 	}
