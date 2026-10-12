@@ -140,6 +140,9 @@ type zonePatch struct {
 	// AwayTemperatureC is the temperature a heating zone keeps in away, in
 	// degrees C; null clears it. Unset and 5 C both read as off in away.
 	AwayTemperatureC optFloat `json:"away_temperature_c"`
+	// HAArea is the Home Assistant area of the zone, {"id", "name"}; null
+	// clears it. The dashboard shows it, and the coordinator never acts on it.
+	HAArea optHAArea `json:"ha_area"`
 	// SetpointOffsetCenti is set by POST /api/zones/{number}/offset alone.
 	SetpointOffsetCenti *int `json:"-"`
 }
@@ -211,6 +214,7 @@ func zoneView(in *tado.Install, z *tado.Zone) map[string]any {
 		"auto_offset_interval_sec": nil,
 		"pid":                      nil,
 		"away_temperature_c":       nil,
+		"ha_area":                  haAreaView(in, z.Number),
 	}
 	if z.Kind == tado.ZoneHeating {
 		end := in.Options.DeviceOverlayEnd(z.Number)
@@ -241,6 +245,14 @@ func zoneView(in *tado.Install, z *tado.Zone) map[string]any {
 		out["measuring_device"] = normalizeRef(in, z.MeasuringDevice)
 	}
 	return out
+}
+
+// haAreaView is the Home Assistant area of a zone, nil without one.
+func haAreaView(in *tado.Install, zone int) any {
+	if area, ok := in.Options.HAAreas[zone]; ok {
+		return area
+	}
+	return nil
 }
 
 func zoneMemberRefs(in *tado.Install, z *tado.Zone) []string {

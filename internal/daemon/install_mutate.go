@@ -168,6 +168,40 @@ func (o *optString) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+// optHAArea is the ha_area field of a zone patch: absent, null or an area.
+// Like optPID, it checks the exact key spelling before the strict decode.
+type optHAArea struct {
+	set   bool
+	value *tado.HAArea
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (o *optHAArea) UnmarshalJSON(b []byte) error {
+	o.set = true
+	if string(bytes.TrimSpace(b)) == "null" {
+		o.value = nil
+		return nil
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(b, &fields); err != nil {
+		return err
+	}
+	var unknown []string
+	for key := range fields {
+		if key != "id" && key != "name" {
+			unknown = append(unknown, strconv.Quote(key))
+		}
+	}
+	if len(unknown) > 0 {
+		sort.Strings(unknown)
+		return fmt.Errorf("ha_area: unknown field %s, want id or name", strings.Join(unknown, ", "))
+	}
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.DisallowUnknownFields()
+	o.value = &tado.HAArea{}
+	return dec.Decode(o.value)
+}
+
 // mutate is the discipline every mutation follows. cur is the installation the
 // rows described when the transaction opened, which is what a reference in the
 // request resolves against; the candidate comes back out of the rows apply left
@@ -839,6 +873,9 @@ func (s *stateStore) PatchZone(ctx context.Context, number int, p zonePatch) (in
 		if err := patchZoneAway(ctx, tx, number, p.AwayTemperatureC); err != nil {
 			return err
 		}
+		if err := patchZoneHAArea(ctx, tx, number, p.HAArea); err != nil {
+			return err
+		}
 		switch {
 		case p.EarlyStart == nil:
 		case *p.EarlyStart:
@@ -1011,6 +1048,24 @@ func patchZoneAway(ctx context.Context, tx querier, number int, p optFloat) erro
 	return setInstallValue(ctx, tx, install.AwayTemperatureKey(number), strconv.FormatFloat(*p.value, 'g', -1, 64))
 }
 
+// patchZoneHAArea stores the Home Assistant area of a zone; null clears it.
+func patchZoneHAArea(ctx context.Context, tx querier, number int, p optHAArea) error {
+	switch {
+	case !p.set:
+		return nil
+	case p.value == nil:
+		return clearInstallValue(ctx, tx, install.HAAreaKey(number))
+	}
+	if msg := p.value.Check(); msg != "" {
+		return badf("ha_area: %s", msg)
+	}
+	raw, err := json.Marshal(p.value)
+	if err != nil {
+		return err
+	}
+	return setInstallValue(ctx, tx, install.HAAreaKey(number), string(raw))
+}
+
 func (s *stateStore) DeleteZone(ctx context.Context, number int, expect *uint64) (installResult, *tado.Zone, error) {
 	var gone *tado.Zone
 	res, err := s.mutate(ctx, expect, func(ctx context.Context, tx querier, cur *tado.Install) error {
@@ -1052,6 +1107,9 @@ func (s *stateStore) DeleteZone(ctx context.Context, number int, expect *uint64)
 			return err
 		}
 		if err := clearInstallValue(ctx, tx, install.AwayTemperatureKey(number)); err != nil {
+			return err
+		}
+		if err := clearInstallValue(ctx, tx, install.HAAreaKey(number)); err != nil {
 			return err
 		}
 		// A zone later declared under the same number starts with no program.

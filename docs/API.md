@@ -272,6 +272,7 @@ allows it.
 | `auto_offset_interval_sec` | 86400 | Shortest interval between two automatic corrections, 3600 to 604800 seconds. |
 | `pid` | 1000, 500, 1500 | Controller gains `kp`, `ki`, `kd` of the valve, each 0 to 65535. `kp` and `ki` cannot both be 0. `null` restores the defaults. |
 | `away_temperature_c` | `null` | Temperature in away, 5 to 25 C with at most two decimals. `null` and 5 mean off in away. The hot water zone refuses it. An away program of the zone replaces the fixed temperature while the home is away. |
+| `ha_area` | `null` | Home Assistant area of the zone, `{"id": "...", "name": "..."}`, each 1 to 255 bytes with no control character. `null` clears it. The integration writes it and the dashboard shows it. The daemon never acts on it. `GET /api/zones` shows it in `declared[].haArea`. |
 
 A `pid` change gives the zone document a new ETag and writes nothing to the valve. The
 valve rereads the document after its hourly check, applies the gains and resets the

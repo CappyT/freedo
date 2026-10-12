@@ -2351,6 +2351,7 @@ func (d *daemon) declaredZones(e *tado.EmuState) []map[string]any {
 		}
 		zone := map[string]any{
 			"number": z.Number, "name": z.Name, "kind": string(z.Kind), "members": members,
+			"haArea": haAreaView(inst, z.Number),
 		}
 		if z.Circuit != nil {
 			zone["circuit"] = *z.Circuit

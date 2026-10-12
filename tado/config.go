@@ -246,6 +246,9 @@ type Options struct {
 	// AwayTemperatures holds the temperature a heating zone keeps in away, per
 	// zone. A zone outside the map, or at RoomMinC, is off in away.
 	AwayTemperatures map[int]float64 `yaml:"away_temperature_c"`
+	// HAAreas holds the Home Assistant area of each zone that the integration
+	// reports. The dashboard shows it; the coordinator never acts on it.
+	HAAreas map[int]HAArea `yaml:"ha_area"`
 	// BoilerMaxPowerKW is the heat output of the boiler at 100 % modulation, in
 	// kW. Without it the daemon does not estimate the boiler energy.
 	BoilerMaxPowerKW *float64 `yaml:"boiler_max_power_kw"`
@@ -795,6 +798,7 @@ func (in *Install) checkOptions(c *issues) {
 	in.checkZonePIDs(c)
 	in.checkAutoOffsets(c)
 	in.checkAwayTemperatures(c)
+	in.checkHAAreas(c)
 }
 
 // NetworkKey returns the resolved 16-byte PAN key. It is nil until Validate ran.
