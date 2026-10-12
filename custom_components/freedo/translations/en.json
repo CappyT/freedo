@@ -268,12 +268,16 @@
         "at": {
           "name": "Reading time",
           "description": "The time the reading was taken, not in the future. Defaults to now."
+        },
+        "replaced": {
+          "name": "Replaced meter",
+          "description": "Set this when the physical meter was replaced: the daemon drops the stored readings and starts the new meter from this reading."
         }
       }
     },
     "undo_gas_meter_reading": {
       "name": "Undo gas meter reading",
-      "description": "Removes the last gas meter reading, to undo a typo. A replaced meter is an undo and then a new reading."
+      "description": "Removes the last gas meter reading, to undo a typo."
     },
     "get_schedule": {
       "name": "Get schedule",

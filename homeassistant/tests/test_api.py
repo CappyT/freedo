@@ -322,12 +322,14 @@ def test_gas_meter_payloads():
     run(client.record_gas_meter(8785.957))
     run(client.record_gas_meter(8785.957, 300.0))
     run(client.record_gas_meter(8785.957, 300.0, datetime(2026, 1, 1, tzinfo=timezone.utc)))
+    run(client.record_gas_meter(12.0, replaced=True))
     assert run(client.undo_gas_meter_reading()) == {"meter": None}
     assert [(c["method"], c["url"].split(":8080", 1)[-1], c["json"]) for c in session.calls] == [
         ("POST", "/api/boiler/gas/meter", {"reading": 8785.957}),
         ("POST", "/api/boiler/gas/meter", {"reading": 8785.957, "estimate": 300.0}),
         ("POST", "/api/boiler/gas/meter",
          {"reading": 8785.957, "estimate": 300.0, "at": "2026-01-01T00:00:00+00:00"}),
+        ("POST", "/api/boiler/gas/meter", {"reading": 12.0, "replaced": True}),
         ("DELETE", "/api/boiler/gas/meter", None),
     ]
 

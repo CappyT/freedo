@@ -208,15 +208,23 @@ class FreedoClient:
         return await self._request("POST", "/api/outdoor", {"tempC": temp_c})
 
     async def record_gas_meter(
-        self, reading: float, estimate: float | None = None, at: datetime | None = None
+        self,
+        reading: float,
+        estimate: float | None = None,
+        at: datetime | None = None,
+        replaced: bool = False,
     ) -> dict[str, Any]:
         """Record a gas meter reading. estimate is the fuel counter when the
-        reading was taken, for a reading taken earlier, and at its time."""
+        reading was taken, for a reading taken earlier, and at its time.
+        replaced drops the stored readings and starts the new meter from this
+        reading."""
         payload: dict[str, Any] = {"reading": reading}
         if estimate is not None:
             payload["estimate"] = estimate
         if at is not None:
             payload["at"] = at.isoformat()
+        if replaced:
+            payload["replaced"] = True
         return await self._request("POST", "/api/boiler/gas/meter", payload)
 
     async def undo_gas_meter_reading(self) -> dict[str, Any]:

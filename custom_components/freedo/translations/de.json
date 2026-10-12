@@ -358,12 +358,16 @@
         "at": {
           "name": "Zeitpunkt der Ablesung",
           "description": "Der Zeitpunkt der Ablesung, nicht in der Zukunft. Standardmäßig jetzt."
+        },
+        "replaced": {
+          "name": "Zähler ersetzt",
+          "description": "Setzen Sie dies, wenn der physische Zähler ersetzt wurde: der Daemon verwirft die gespeicherten Ablesungen und beginnt mit diesem Wert."
         }
       }
     },
     "undo_gas_meter_reading": {
       "name": "Gaszählerablesung rückgängig machen",
-      "description": "Entfernt die letzte Gaszählerablesung, um einen Tippfehler zu korrigieren. Ein ersetzter Zähler braucht erst ein Rückgängigmachen und dann eine neue Ablesung."
+      "description": "Entfernt die letzte Gaszählerablesung, um einen Tippfehler zu korrigieren."
     },
     "get_schedule": {
       "name": "Zeitplan abrufen",

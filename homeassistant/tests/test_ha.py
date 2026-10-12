@@ -266,8 +266,8 @@ class FakeClient:
     async def set_display(self, node, orientation=None, notification=None):
         return {}
 
-    async def record_gas_meter(self, reading, estimate=None, at=None):
-        self.calls.append(("gas_meter", reading, estimate, at))
+    async def record_gas_meter(self, reading, estimate=None, at=None, replaced=False):
+        self.calls.append(("gas_meter", reading, estimate, at, replaced))
         meter = {"value": reading, "lastReading": reading,
                  "lastReadingAt": at.isoformat() if at is not None else "2026-01-01T00:00:00Z",
                  "readings": 1, "factor": 1.0, "factorReadings": 0}
@@ -2562,9 +2562,9 @@ async def test_gas_meter_sensor(hass, client):
     assert float(meter.state) == 8785.957
     assert meter.attributes["device_class"] == "gas"
     assert meter.attributes["unit_of_measurement"] == "m³"
-    # Total, not total increasing: a new reading can step the value down, which
-    # total increasing counts as a meter reset.
-    assert meter.attributes["state_class"] == "total"
+    # Total increasing: a reading below 0.9 of the previous value is a meter
+    # reset, as after a replacement, and a small dip only gives a negative delta.
+    assert meter.attributes["state_class"] == "total_increasing"
     assert meter.attributes["last_reading"] == 8785.957
     assert meter.attributes["last_reading_at"] == "2026-01-01T00:00:00Z"
     assert meter.attributes["readings"] == 3
@@ -2598,7 +2598,7 @@ async def test_calibrate_gas_meter_records_the_reading(hass, client):
     assert hass.states.get(meter).state == "unavailable"
 
     await call_freedo(hass, "calibrate_gas_meter", {"value": 8786.5})
-    assert client.calls == [("gas_meter", 8786.5, None, None)]
+    assert client.calls == [("gas_meter", 8786.5, None, None, False)]
     # The service refreshes the coordinator: the sensor shows the new reading.
     assert float(hass.states.get(meter).state) == 8786.5
 
@@ -2610,7 +2610,15 @@ async def test_calibrate_gas_meter_sends_the_estimate_and_time(hass, client):
     await call_freedo(
         hass, "calibrate_gas_meter", {"value": 8786.5, "estimate": 300.0, "at": at}
     )
-    assert client.calls == [("gas_meter", 8786.5, 300.0, at)]
+    assert client.calls == [("gas_meter", 8786.5, 300.0, at, False)]
+
+
+async def test_calibrate_gas_meter_replaced_starts_a_new_meter(hass, client):
+    # A replaced meter drops the stored readings and starts from this one.
+    with_meter(client, dict(METER))
+    await setup_entry(hass, client)
+    await call_freedo(hass, "calibrate_gas_meter", {"value": 12.0, "replaced": True})
+    assert client.calls == [("gas_meter", 12.0, None, None, True)]
 
 
 async def test_calibrate_gas_meter_localizes_a_naive_time(hass, client):
@@ -2630,7 +2638,7 @@ async def test_calibrate_gas_meter_error_is_a_home_assistant_error(hass, client)
     with_meter(client, dict(METER))
     await setup_entry(hass, client)
 
-    async def refuse(reading, estimate=None, at=None):
+    async def refuse(reading, estimate=None, at=None, replaced=False):
         raise FreedoApiError(400, "reading 8000 is below the previous reading 8785.957")
 
     client.record_gas_meter = refuse

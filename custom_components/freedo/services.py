@@ -107,6 +107,7 @@ def async_setup_services(hass: HomeAssistant) -> None:
                     call.data["value"],
                     call.data.get("estimate"),
                     _reading_time(call.data.get("at")),
+                    call.data.get("replaced", False),
                 )
             )
             await runtime.coordinator.async_request_refresh()
@@ -151,6 +152,7 @@ def async_setup_services(hass: HomeAssistant) -> None:
                 vol.Required("value"): vol.Coerce(float),
                 vol.Optional("estimate"): vol.Coerce(float),
                 vol.Optional("at"): cv.datetime,
+                vol.Optional("replaced"): cv.boolean,
             }
         ),
     )

@@ -358,12 +358,16 @@
         "at": {
           "name": "Heure du relevé",
           "description": "L'heure à laquelle le relevé a été effectué, pas dans le futur. Par défaut, maintenant."
+        },
+        "replaced": {
+          "name": "Compteur remplacé",
+          "description": "Activez cette option lorsque le compteur physique a été remplacé : le démon supprime les relevés stockés et repart de ce relevé."
         }
       }
     },
     "undo_gas_meter_reading": {
       "name": "Annuler le relevé du compteur de gaz",
-      "description": "Supprime le dernier relevé du compteur de gaz, pour corriger une faute de frappe. Un compteur remplacé demande d'abord une annulation, puis un nouveau relevé."
+      "description": "Supprime le dernier relevé du compteur de gaz, pour corriger une faute de frappe."
     },
     "get_schedule": {
       "name": "Lire la planification",

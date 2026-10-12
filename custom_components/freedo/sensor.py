@@ -246,12 +246,13 @@ GAS_STATUS = FreedoSensorDescription(
 )
 
 # GET /api/boiler energy.gas.meter: the meter value the daemon estimates from
-# the readings the user records. Total, not total increasing: a new reading can
-# step the value down a little, which total increasing counts as a reset.
+# the readings the user records. Total increasing: a reading below 0.9 of the
+# previous value is a meter reset, as after a replacement, and a small dip after
+# a reading only gives a negative delta.
 GAS_METER = FreedoSensorDescription(
     key="gas_meter",
     translation_key="gas_meter",
-    state_class=SensorStateClass.TOTAL,
+    state_class=SensorStateClass.TOTAL_INCREASING,
     value_fn=_gas_meter("value"),
 )
 
@@ -383,9 +384,9 @@ class GasSensor(BoilerSensor):
 class GasMeterSensor(BoilerSensor):
     """GET /api/boiler energy.gas.meter: the meter value the daemon estimates
     between the readings the user records, in the unit of options.fuel_unit.
-    Unavailable while the daemon stores no reading. Total, not total increasing:
-    a new reading can step the value down a little, which total increasing
-    counts as a meter reset and adds the whole reading to the statistics."""
+    Unavailable while the daemon stores no reading. Total increasing: a reading
+    below 0.9 of the previous value is a meter reset, as after a replacement,
+    and a small dip after a reading only gives a negative delta."""
 
     @property
     def _meter(self) -> Mapping[str, Any] | None:

@@ -130,5 +130,9 @@ calibrate_gas_meter:
     at:
       selector:
         datetime:
+    replaced:
+      default: false
+      selector:
+        boolean:
 
 undo_gas_meter_reading:

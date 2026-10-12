@@ -242,21 +242,21 @@ difference with the difference of Gas volume over the same period.
 The user reads the gas meter now and then. Record a reading with the service
 `freedo.calibrate_gas_meter`. The field `value` is the meter reading, `estimate`
 the fuel counter when the reading was taken (for a reading taken earlier, else
-the current counter) and `at` the time it was taken (else now). The daemon
-refuses a reading below the previous one and an estimate outside its range with
-`400`, and answers `503` while the installation holds no gas flows. The service
-`freedo.undo_gas_meter_reading` removes the last reading, to undo a typo: a
-replaced meter is an undo and then a new reading.
+the current counter) and `at` the time it was taken (else now). The field
+`replaced` says the physical meter was replaced: the daemon drops the stored
+readings and starts the new meter from this reading. The daemon refuses a
+reading below the previous one and an estimate outside its range with `400`, and
+answers `503` while the installation holds no gas flows. The service
+`freedo.undo_gas_meter_reading` removes the last reading, to undo a typo.
 
 - Sensor Gas meter is the meter value the daemon estimates between the readings,
   in the unit of `fuel_unit`. It is unavailable while no reading is stored. The
   attributes are `last_reading`, `last_reading_at`, `readings` (the count kept,
   at most 20), `factor` and `factor_readings`.
-- Its state class is total, not total increasing. A new reading can step the
-  value down a little, because `totalM3` is an estimate and the meter also
-  counts other users of the same gas, such as a hob. Total increasing would
-  count that step down as a meter reset and add the whole reading to the
-  statistics.
+- Its state class is total increasing. HA treats a reading below 0.9 of the
+  previous value as a meter reset, which is right after a replacement, and a
+  small dip after a reading, because `totalM3` is an estimate and the meter also
+  counts other users of the same gas such as a hob, only gives a negative delta.
 - The daemon corrects the meter value with a factor it learns from the two most
   recent readings whose estimate is at least one unit apart. Until then the
   factor is `1`, so `factor_readings` is 0 and the meter follows the fuel

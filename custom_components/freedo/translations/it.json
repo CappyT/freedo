@@ -358,12 +358,16 @@
         "at": {
           "name": "Ora della lettura",
           "description": "L'ora in cui è stata effettuata la lettura, non nel futuro. Predefinita a ora."
+        },
+        "replaced": {
+          "name": "Contatore sostituito",
+          "description": "Attiva questa opzione quando il contatore fisico è stato sostituito: il daemon elimina le letture memorizzate e riparte da questa lettura."
         }
       }
     },
     "undo_gas_meter_reading": {
       "name": "Annulla la lettura del contatore gas",
-      "description": "Rimuove l'ultima lettura del contatore gas, per correggere un refuso. Un contatore sostituito richiede prima l'annullamento e poi una nuova lettura."
+      "description": "Rimuove l'ultima lettura del contatore gas, per correggere un refuso."
     },
     "get_schedule": {
       "name": "Leggi programma",
