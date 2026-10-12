@@ -1,0 +1,191 @@
+blueprint:
+  name: freedo season profile
+  description: >-
+    Sets the active freedo profile for the season. A profile holds the weekly
+    programs of every room.
+
+
+    - Method dates: the winter profile is active from the winter start to the
+    summer start, the summer profile for the rest of the year. The year of the
+    two dates does not count. The automation checks the date every day just
+    after midnight and when Home Assistant starts.
+
+    - Method outdoor temperature: the winter profile becomes active when the
+    outdoor temperature stays below the winter threshold for the delay, the
+    summer profile when it stays above the summer threshold for the delay.
+    Between the two thresholds the profile does not change.
+
+    - The automation changes the profile only when another one is active, and
+    only to a profile that exists.
+  domain: automation
+  author: CappyT
+  homeassistant:
+    min_version: "2026.8.0"
+  input:
+    profile_select:
+      name: Profile select
+      description: The freedo select of the active profile.
+      selector:
+        entity:
+          filter:
+            - domain: select
+              integration: freedo
+    winter_profile:
+      name: Winter profile
+      description: The name of the profile for the heating season, as the select lists it.
+      default: Winter
+      selector:
+        text:
+    summer_profile:
+      name: Summer profile
+      description: The name of the profile for the rest of the year, as the select lists it.
+      default: Summer
+      selector:
+        text:
+    method:
+      name: Method
+      description: What decides the season.
+      default: dates
+      selector:
+        select:
+          options:
+            - label: Dates
+              value: dates
+            - label: Outdoor temperature
+              value: temperature
+    dates:
+      name: Dates
+      description: Used with the method dates.
+      collapsed: true
+      input:
+        winter_start:
+          name: Winter start
+          description: The first day of the winter profile. The year does not count.
+          default: "2026-10-15"
+          selector:
+            date:
+        summer_start:
+          name: Summer start
+          description: The first day of the summer profile. The year does not count.
+          default: "2026-04-15"
+          selector:
+            date:
+    temperature:
+      name: Outdoor temperature
+      description: Used with the method outdoor temperature.
+      collapsed: true
+      input:
+        outdoor_sensor:
+          name: Outdoor temperature sensor
+          description: >-
+            The default names a sensor that does not exist. Select a sensor to
+            use this method.
+          default: sensor.freedo_outdoor_unset
+          selector:
+            entity:
+              filter:
+                - domain: sensor
+                  device_class: temperature
+        winter_below:
+          name: Winter threshold
+          description: The winter profile starts below this temperature.
+          default: 14
+          selector:
+            number:
+              min: -20
+              max: 30
+              step: 0.5
+              unit_of_measurement: °C
+              mode: box
+        summer_above:
+          name: Summer threshold
+          description: >-
+            The summer profile starts above this temperature. Keep it above the
+            winter threshold.
+          default: 18
+          selector:
+            number:
+              min: -20
+              max: 35
+              step: 0.5
+              unit_of_measurement: °C
+              mode: box
+        temperature_delay:
+          name: Delay
+          description: >-
+            The outdoor temperature stays beyond a threshold for this time
+            before the profile changes. A long delay ignores a cold night or a
+            warm afternoon.
+          default:
+            hours: 12
+            minutes: 0
+            seconds: 0
+          selector:
+            duration:
+
+mode: single
+max_exceeded: silent
+
+variables:
+  profile_select: !input profile_select
+  winter_profile: !input winter_profile
+  summer_profile: !input summer_profile
+  method: !input method
+  winter_start: !input winter_start
+  summer_start: !input summer_start
+
+# A numeric_state trigger logs an error at each start when its entity does not
+# exist, as the default outdoor sensor does. A template trigger reads it as no
+# number and stays quiet.
+trigger_variables:
+  outdoor_sensor: !input outdoor_sensor
+  winter_below: !input winter_below
+  summer_above: !input summer_above
+
+triggers:
+  - trigger: time
+    at: "00:00:30"
+    id: day
+  - trigger: homeassistant
+    event: start
+    id: day
+  - trigger: template
+    value_template: >-
+      {{ is_number(states(outdoor_sensor))
+         and states(outdoor_sensor) | float < winter_below | float }}
+    for: !input temperature_delay
+    id: cold
+  - trigger: template
+    value_template: >-
+      {{ is_number(states(outdoor_sensor))
+         and states(outdoor_sensor) | float > summer_above | float }}
+    for: !input temperature_delay
+    id: warm
+
+actions:
+  - variables:
+      target: >-
+        {% if method == 'dates' and trigger.id == 'day' %}
+          {% set today = now().strftime('%m-%d') %}
+          {% set w = (winter_start | string)[5:10] %}
+          {% set s = (summer_start | string)[5:10] %}
+          {% if w <= s %}
+            {% set winter = w <= today < s %}
+          {% else %}
+            {% set winter = today >= w or today < s %}
+          {% endif %}
+          {{ winter_profile if winter else summer_profile }}
+        {% elif method == 'temperature' and trigger.id == 'cold' %}
+          {{ winter_profile }}
+        {% elif method == 'temperature' and trigger.id == 'warm' %}
+          {{ summer_profile }}
+        {% endif %}
+  - condition: template
+    value_template: >-
+      {{ target != '' and target != states(profile_select)
+         and target in (state_attr(profile_select, 'options') or []) }}
+  - action: select.select_option
+    target:
+      entity_id: !input profile_select
+    data:
+      option: "{{ target }}"

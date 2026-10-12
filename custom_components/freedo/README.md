@@ -917,6 +917,46 @@ Overlapping zones:
   covers an unplanned return. Early start covers the program: it starts a warmer
   block early, from the heat-up time the daemon learns for the zone.
 
+## Season profile blueprint
+
+The automation blueprint `homeassistant/blueprints/automation/freedo/season_profile.yaml`
+sets select Profile for the season. The daemon has no season calendar.
+
+### Import
+
+Copy the file to `<config>/blueprints/automation/freedo/season_profile.yaml` and
+reload the automations. Then open the blueprint "freedo season profile", select
+Create automation and fill the inputs. The blueprint needs Home Assistant 2026.8
+or later.
+
+### Inputs
+
+| Input | Default | Meaning |
+|---|---|---|
+| Profile select | none | The freedo select Profile. The selector lists the selects of freedo, so the entity id does not matter. |
+| Winter profile | `Winter` | The profile name for the heating season, as the select lists it. |
+| Summer profile | `Summer` | The profile name for the rest of the year. |
+| Method | Dates | Dates or Outdoor temperature. |
+| Winter start, Summer start | 15 October, 15 April | Method Dates. The first day of each profile. The year does not count. |
+| Outdoor temperature sensor | `sensor.freedo_outdoor_unset` | Method Outdoor temperature. The default names a sensor that does not exist. |
+| Winter threshold, Summer threshold | 14 C, 18 C | Method Outdoor temperature. Keep the summer threshold above the winter one. |
+| Delay | 12 hours | Method Outdoor temperature. The time beyond a threshold before the change. |
+
+### Behavior
+
+- Method Dates: the winter profile is active from the winter start to the
+  summer start, the summer profile for the rest of the year. The automation
+  checks the date every day at 00:00:30 and when Home Assistant starts.
+- Method Outdoor temperature: the winter profile becomes active when the
+  outdoor temperature stays below the winter threshold for the delay, the
+  summer profile when it stays above the summer threshold for the delay. A
+  state that is not a number counts as neither. Between the thresholds, and at
+  a start, the profile does not change. The daemon keeps the active profile
+  across restarts.
+- The automation calls the select only when another profile is active and the
+  target profile exists. A manual change holds until the next change of date or
+  season.
+
 ## Reports
 
 tado shows the heating activity of each room and a daily climate report. freedo
