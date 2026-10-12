@@ -2,7 +2,7 @@
 	import { fmt, t } from './i18n.svelte.ts';
 	import { DAYS, formatTime, weekSegments, type Group, type Range } from './schedule.ts';
 
-	// compact draws a small week with no labels and no hour axis, for a list of schedules.
+	// compact draws a small week with one row per program and no hour axis, for a list of schedules.
 	let { groups, range, compact = false }: { groups: Group[]; range: Range; compact?: boolean } = $props();
 
 	const week = $derived(weekSegments(groups));
@@ -21,26 +21,34 @@
 		return index.map((n) => fmt.day(DAYS[n]!)).join(', ');
 	}
 
-	/**
-	 * The warmer the block, the more of the heating hue it carries. Above 56 percent the
-	 * label on the dark theme falls under 4.5:1.
-	 */
+	// The ramp spans the temperatures of this schedule, at least a fifth of the range, so blocks a
+	// few degrees apart differ at a glance. The editor and the compact week share it.
+	const temps = $derived(groups.flatMap((g) => g.blocks.filter((b) => b.enabled).map((b) => b.setpointC)));
+	const low = $derived(temps.length > 0 ? Math.min(...temps) : range.min);
+	const span = $derived(Math.max((temps.length > 0 ? Math.max(...temps) : range.max) - low, (range.max - range.min) / 5));
+
+	/** The warmer the block, the more of the heating hue it carries. The theme sets the ends of the ramp. */
 	function shade(setpointC: number): string {
-		const fraction = Math.min(1, Math.max(0, (setpointC - range.min) / (range.max - range.min)));
-		return `color-mix(in srgb, var(--status-heating) ${Math.round(16 + 40 * fraction)}%, var(--surface))`;
+		const fraction = Math.min(1, Math.max(0, (setpointC - low) / span));
+		return `color-mix(in srgb, var(--status-heating) calc(var(--ramp-low) + var(--ramp-span) * ${fraction.toFixed(3)}), var(--surface))`;
 	}
 
-	function summary(day: (typeof DAYS)[number]): string {
-		const parts = week[day].map((s) => `${formatTime(s.from)} ${s.enabled ? fmt.temp(s.setpointC) : t('schedule.off')}`);
-		return `${fmt.day(day, 'long')}: ${parts.join(', ')}`;
+	function summary(day: (typeof DAYS)[number], label: string): string {
+		const parts = week[day].map(
+			(s) => `${formatTime(s.from)}-${formatTime(s.to)} ${s.enabled ? fmt.temp(s.setpointC) : t('schedule.off')}`
+		);
+		return `${label}: ${parts.join(', ')}`;
 	}
+
+	// The shortest block that fits its temperature label.
+	const labelMin = $derived(compact ? 240 : 150);
 </script>
 
 <div class="week" class:compact>
 	{#each rows as { key, day, label } (key)}
 		<div class="day">
 			<span class="name">{label}</span>
-			<div class="bar" role="img" aria-label={summary(day)}>
+			<div class="bar" role="img" aria-label={summary(day, compact ? label : fmt.day(day, 'long'))} title={summary(day, compact ? label : fmt.day(day, 'long'))}>
 				{#each week[day] as segment (segment.from)}
 					<span
 						class="segment"
@@ -49,7 +57,7 @@
 						style:width="{((segment.to - segment.from) / 1440) * 100}%"
 						style:background={segment.enabled ? shade(segment.setpointC) : undefined}
 					>
-						{#if !compact && segment.to - segment.from >= 150}
+						{#if segment.to - segment.from >= labelMin}
 							<span class="label" class:mono={segment.enabled}>{segment.enabled ? fmt.number(segment.setpointC, 1) : t('schedule.off')}</span>
 						{/if}
 					</span>
@@ -70,9 +78,24 @@
 </div>
 
 <style>
+	/* Above 56 percent of the hue the label on the dark theme falls under 4.5:1. */
 	.week {
+		--ramp-low: 14%;
+		--ramp-span: 58%;
 		display: grid;
 		gap: 0.4rem;
+	}
+
+	@media (prefers-color-scheme: dark) {
+		:global(:root:not([data-theme='light'])) .week {
+			--ramp-low: 20%;
+			--ramp-span: 36%;
+		}
+	}
+
+	:global(:root[data-theme='dark']) .week {
+		--ramp-low: 20%;
+		--ramp-span: 36%;
 	}
 
 	.day {
@@ -134,8 +157,12 @@
 	}
 
 	.compact .bar {
-		height: 0.9rem;
-		border-radius: 4px;
+		height: 1.25rem;
+		border-radius: 5px;
+	}
+
+	.compact .label {
+		font-size: 0.7rem;
 	}
 
 	.ticks {
