@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.5.1
+
+- Dashboard: the page First setup shows the six steps of a new installation with their live state.
+  The page Rooms and devices creates, renames and deletes rooms, pairs a device and places it in a
+  room, moves and removes devices, and sets the heating circuit, the measuring device and the
+  demand reporter of a room. Both pages work from Home Assistant with no token. Every Home
+  Assistant user who can open the page can change the installation and pair devices.
+- Pairing: the dashboard opens the pair window for ten minutes, waits for the device after you hold
+  its button, and reports success only when the device joined. A new pairing ran on a real plant
+  with one valve.
+- Device warnings: a valve that is not mounted on a radiator, has a short travel, calibrates again
+  or has a weak supply for the motor reports a warning and no fault. Home Assistant gets the
+  binary sensor Valve warning, and the Fault sensor lists the names of the faults. The dashboard
+  shows each warning and fault by name.
+- The removal preview of a device lists the rooms it leaves.
+- `PATCH /api/install` with `"flow_limit_c": null` clears a stored flow limit.
+
 ## 0.5.0
 
 - Profiles: a profile holds a home schedule and an away schedule for each room and for hot water.
