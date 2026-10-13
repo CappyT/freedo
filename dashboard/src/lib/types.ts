@@ -314,6 +314,31 @@ export interface InstallZone {
 	circuit: number | null;
 	reporter: string | null;
 	measuring_device: string | null;
+	open_window_detection: boolean;
+	open_window_duration_sec: number;
+	early_start: boolean;
+	/** The fields below are null on the hot water zone, which has none of these options. */
+	device_overlay_end: 'manual' | 'until_next' | 'timer' | null;
+	device_overlay_end_sec: number | null;
+	offset_mode: 'config' | 'dbg2' | 'setpoint' | null;
+	/** The correction the daemon holds in mode setpoint. Null in the other modes: the valve holds it there. */
+	setpoint_offset_c: number | null;
+	auto_offset: boolean | null;
+	auto_offset_interval_sec: number | null;
+	away_temperature_c: number | null;
+}
+
+/** The option fields of PATCH /api/install/zones/{n} that the dashboard writes. */
+export interface ZoneOptionsPatch {
+	open_window_detection?: boolean;
+	open_window_duration_sec?: number;
+	early_start?: boolean;
+	device_overlay_end?: 'manual' | 'until_next' | 'timer';
+	device_overlay_end_sec?: number;
+	offset_mode?: 'config' | 'dbg2' | 'setpoint';
+	auto_offset?: boolean;
+	auto_offset_interval_sec?: number;
+	away_temperature_c?: number;
 }
 
 export interface InstallCircuit {

@@ -37,7 +37,8 @@ and every page request gets `404`. The API works as before.
   page leads there.
 - `devices` lists the devices room by room, with No room as the last group. It adds a room, pairs a device
   and manages the heating circuits. `rooms/[n]` holds the settings of one room: the name, the members
-  with rename, move and removal, the circuit, the measuring device, the demand reporter and the delete.
+  with rename, move and removal, the circuit, the measuring device, the demand reporter, the room options
+  and the delete. `src/lib/roomoptions.ts` holds the ranges and builds the patch of the room options.
   `rooms/none` is the same page for the devices in no room. `setup` is the first
   setup: one card for each step, with the state that `GET /api/health` reports. Rooms and devices and Settings link to it,
   and so does the home page while the installation has no room.

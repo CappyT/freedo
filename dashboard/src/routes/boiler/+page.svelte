@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { act } from '#lib/actions.ts';
-	import { burnerHours, burnerState, canSetFlow, flowDrivers, flowInRange } from '#lib/boiler.ts';
+	import { boilerFaults, burnerHours, burnerState, canSetFlow, flowDrivers, flowInRange } from '#lib/boiler.ts';
 	import { data } from '#lib/data.svelte.ts';
 	import { fmt, t, type Key } from '#lib/i18n.svelte.ts';
 	import Icon from '#lib/Icon.svelte';
@@ -9,6 +9,7 @@
 	import type { FlowCircuit } from '#lib/types.ts';
 
 	const boiler = $derived(data.boiler);
+	const faults = $derived(boilerFaults(boiler));
 	const circuits = $derived(boiler?.flowLimit.circuits ?? []);
 	const names = $derived(new Map(data.circuits.map((c) => [c.ID, c.Name])));
 	let wanted = $state<Record<number, number | undefined>>({});
@@ -49,11 +50,9 @@
 		{#if !boiler.Present}
 			<p class="notice tone-off" role="status"><Icon name="warning" /><span>{t('boiler.notReported')}</span></p>
 		{/if}
-		{#if boiler.FaultCode !== 0 || (boiler.FaultCodes?.length ?? 0) > 0}
-			<p class="notice tone-fault" role="alert">
-				<Icon name="fault" />
-				<span>{t('boiler.faults', { codes: (boiler.FaultCodes ?? [boiler.FaultCode]).join(', ') })}</span>
-			</p>
+		<!-- The banner of every page names the fault codes. Here the page says what a code is. -->
+		{#if faults.state === 'fault'}
+			<p class="note" data-testid="fault-meaning">{t('boiler.faults.meaning')}</p>
 		{/if}
 
 		<section class="panel" aria-labelledby="live-title">
@@ -68,6 +67,12 @@
 				<div><dt>{t('boiler.maxCh')}</dt><dd>{fmt.temp(boiler.MaxChSetpointC)}</dd></div>
 				<div><dt>{t('boiler.demand')}</dt><dd>{fmt.percent(boiler.CircuitDemandPct)}</dd></div>
 				<div><dt>{t('boiler.pressure')}</dt><dd>{boiler.ChPressureBar === null ? '-' : fmt.number(boiler.ChPressureBar, 1) + ' bar'}</dd></div>
+				<div>
+					<dt>{t('boiler.faultState')}</dt>
+					<dd class="text" data-testid="fault-state">
+						{faults.state === 'fault' ? faults.codes.join(', ') : faults.state === 'none' ? t('boiler.faults.none') : t('boiler.faults.unknown')}
+					</dd>
+				</div>
 				<div><dt>{t('boiler.starts')}</dt><dd>{fmt.number(boiler.BurnerStarts, 0)}</dd></div>
 				<div><dt>{t('boiler.hours')}</dt><dd>{fmt.number(burnerHours(boiler.BurnerHoursMin), 1)}</dd></div>
 			</dl>

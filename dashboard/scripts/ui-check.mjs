@@ -16,7 +16,9 @@
 // - Rooms and devices adds a room and pairs a device that the pair window heard. The settings of a
 //   room move a device, show the effects of a removal before the delete, offer only free devices,
 //   and rename and delete the room. No room is the group of the devices in no room.
+// - The settings of a heated room save its options in one request and keep the ranges of the daemon.
 // - The burner badge of the boiler page follows the burner flag, also while no room asks for heat.
+//   A boiler fault code shows on the boiler page and as a banner.
 // - The first setup takes a daemon with an empty database to a room, a paired thermostat and a circuit.
 //   The device that the pair window hears and the session of the joined device are put into the
 //   answers here: the daemon has no radio.
@@ -495,6 +497,57 @@ try {
 	joinedShort = null;
 	await clickIn('#add-device-title ~', 'Close');
 
+	// The options of a room: one form, one save, and the checks of the daemon before the request.
+	const opt = (n, rest) => `[data-testid=room-options] fieldset:nth-of-type(${n}) ${rest}`;
+	await open('#/rooms/2', `document.querySelector('[data-testid=room-options]')`);
+	const saveDisabled = () => tab.evaluate(`[...document.querySelectorAll('[data-testid=room-options] button')].find((b) => b.textContent.trim() === 'Save options').disabled`);
+	check(await saveDisabled(), 'the room options cannot be saved before a change');
+	check(
+		/full motor stroke/.test(await tab.evaluate(`document.querySelector('[data-testid=mode-hint]').textContent`)),
+		'the offset mode that homes the valve motor says so'
+	);
+	await typeInto(opt(1, 'input[type=number]'), '20');
+	await typeInto(opt(2, 'input'), '16.5');
+	await choose(opt(3, 'select'), 'timer');
+	await tab.waitFor(`document.querySelector(${JSON.stringify(opt(3, 'input[type=number]'))})`);
+	await typeInto(opt(3, 'input[type=number]'), '90');
+	await click(opt(4, 'input[type=checkbox]'));
+	await choose(opt(5, 'select'), 'setpoint');
+	check(
+		/no motor stroke/.test(await tab.evaluate(`document.querySelector('[data-testid=mode-hint]').textContent`)) &&
+			(await tab.evaluate(`document.querySelector(${JSON.stringify(opt(5, 'input[type=checkbox]'))}).disabled`)),
+		'the mode Setpoint shift says it costs no motor stroke and closes the valve calibration'
+	);
+	await typeInto(opt(5, '.pair .input.num'), '-0.7');
+	await sleep(6500);
+	check(
+		(await valueOf(opt(1, 'input[type=number]'))) === '20' && (await valueOf(opt(2, 'input'))) === '16.5' && (await valueOf(opt(5, '.pair .input.num'))) === '-0.7',
+		'the room options keep their values across a data poll'
+	);
+	await typeInto(opt(1, 'input[type=number]'), '0');
+	check(
+		(await saveDisabled()) && /Window time: 1 to 1092 minutes/.test(await tab.evaluate(`document.querySelector('[data-testid=room-options] .issues')?.innerText ?? ''`)),
+		'a value outside the range of the daemon is named and cannot be saved'
+	);
+	await typeInto(opt(1, 'input[type=number]'), '20');
+	requests.length = 0;
+	await clickIn('[data-testid=room-options]', 'Save options');
+	check(await toast('Room saved'), 'the room options are saved');
+	const bathOptions = (await api(daemon.base, 'install/zones/2')).zone;
+	check(
+		bathOptions.open_window_duration_sec === 1200 && bathOptions.away_temperature_c === 16.5 && bathOptions.device_overlay_end === 'timer' &&
+			bathOptions.device_overlay_end_sec === 5400 && bathOptions.early_start === true && bathOptions.offset_mode === 'setpoint' && bathOptions.setpoint_offset_c === -0.7,
+		`the daemon stores the window time, the away temperature, the end rule, the early start, the offset mode and the offset (${JSON.stringify([bathOptions.open_window_duration_sec, bathOptions.away_temperature_c, bathOptions.device_overlay_end, bathOptions.device_overlay_end_sec, bathOptions.early_start, bathOptions.offset_mode, bathOptions.setpoint_offset_c])})`
+	);
+	check(
+		requests.filter((r) => r === 'PATCH /api/install/zones/2').length === 1 && requests.filter((r) => r === 'POST /api/zones/2/offset').length === 1,
+		'the options go in one request, and the offset in one more'
+	);
+	await tab.waitFor(`document.querySelector(${JSON.stringify(opt(5, '.pair .input.num'))})?.value === '-0.7'`, 3000);
+	check(await saveDisabled(), 'the saved options show again, with nothing left to save');
+	await open('#/rooms/0', `document.querySelector('[data-member]')`);
+	check(!(await tab.evaluate(`!!document.querySelector('[data-testid=room-options]')`)), 'the hot water room has no room options');
+
 	// The actions on a device live in the settings of its room.
 	const member = (label) => `document.querySelector('[data-member=${JSON.stringify(label)}]')`;
 	const memberSelect = (label, value) =>
@@ -627,6 +680,22 @@ try {
 	check(waiting.join() === 'Burner off,Heating requested', `a call for heat with the burner off does not show the burner as on (${waiting})`);
 	const noFlag = await burner({ Present: true, Active: false, HeatActive: false, Mon: {} });
 	check(noFlag.join() === 'Burner state not reported,', `a boiler with no burner flag shows no burner state (${noFlag})`);
+	// The fault codes of the boiler: a banner on every page, and the numbers on the boiler page.
+	boilerPatch = { Present: true, FaultCodes: [133, 28], FaultCode: 133 };
+	await open('#/boiler', `document.querySelector('[data-testid=fault-state]')`);
+	await tab.waitFor(`document.querySelector('[data-testid=fault-state]').textContent.trim() === '133, 28'`, 8000);
+	check(
+		await tab.evaluate(`/maker/.test(document.querySelector('[data-testid=fault-meaning]')?.textContent ?? '')`),
+		'the boiler page shows the fault codes as numbers and says that it does not know their meaning'
+	);
+	await open('#/', `[...document.querySelectorAll('main .notice')].some((n) => /fault codes: 133, 28/.test(n.textContent))`);
+	check(true, 'a boiler fault shows as a banner on the home page');
+	boilerPatch = { Present: true, FaultCodes: [], FaultCode: 0 };
+	await open('#/boiler', `document.querySelector('[data-testid=fault-state]')?.textContent.trim() === 'None'`);
+	check(
+		!(await tab.evaluate(`[...document.querySelectorAll('main .notice')].some((n) => /fault codes/.test(n.textContent))`)),
+		'a boiler with no fault code shows None and no banner'
+	);
 	boilerPatch = null;
 
 	// 13. The first setup on a daemon with an empty database.

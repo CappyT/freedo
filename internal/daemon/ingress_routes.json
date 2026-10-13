@@ -19,6 +19,7 @@
 	"POST /api/zones/{n}/auto",
 	"POST /api/zones/{n}/boost",
 	"POST /api/zones/{n}/window",
+	"POST /api/zones/{n}/offset",
 	"PATCH /api/home",
 	"POST /api/boiler/flow",
 	"POST /api/nodes/{id}/childlock",

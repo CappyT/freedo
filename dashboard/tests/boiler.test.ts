@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { burnerHours, burnerState, canSetFlow, flowDrivers, flowInRange } from '../src/lib/boiler.ts';
+import { boilerFaults, burnerHours, burnerState, canSetFlow, flowDrivers, flowInRange } from '../src/lib/boiler.ts';
 import type { FlowCircuit } from '../src/lib/types.ts';
 
 describe('flow limit drivers', () => {
@@ -72,5 +72,21 @@ describe('the burner state', () => {
 		expect(burnerState(boiler(null, false))).toBe('unknown');
 		expect(burnerState({ Present: true, Active: false })).toBe('unknown');
 		expect(burnerState(boiler(1, true, false))).toBe('unknown');
+	});
+});
+
+describe('the fault codes of the boiler', () => {
+	it('are unknown before the boiler view and before the first fault report', () => {
+		expect(boilerFaults(null)).toEqual({ state: 'unknown', codes: [] });
+		expect(boilerFaults({ FaultCodes: null, FaultCode: 0 })).toEqual({ state: 'unknown', codes: [] });
+	});
+
+	it('are none after a report with no code', () => {
+		expect(boilerFaults({ FaultCodes: [], FaultCode: 0 })).toEqual({ state: 'none', codes: [] });
+	});
+
+	it('are the numbers the boiler reports, with no meaning added', () => {
+		expect(boilerFaults({ FaultCodes: [133, 28], FaultCode: 133 })).toEqual({ state: 'fault', codes: [133, 28] });
+		expect(boilerFaults({ FaultCodes: null, FaultCode: 133 })).toEqual({ state: 'fault', codes: [133] });
 	});
 });

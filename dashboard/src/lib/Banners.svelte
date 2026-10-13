@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { boilerFaults } from './boiler.ts';
 	import { data } from './data.svelte.ts';
 	import Icon, { type IconName } from './Icon.svelte';
 	import { t } from './i18n.svelte.ts';
@@ -19,6 +20,8 @@
 		if (h?.bridgePresent) list.push({ tone: 'fault', icon: 'warning', text: t('banner.bridge') });
 		if (h && h.mode === 'live' && !h.tx) list.push({ tone: 'warning', icon: 'warning', text: t('banner.dryRun') });
 		if (h && h.mode !== 'live') list.push({ tone: 'warning', icon: 'warning', text: t('banner.noRadio') });
+		const faults = boilerFaults(data.boiler);
+		if (faults.state === 'fault') list.push({ tone: 'fault', icon: 'fault', text: t('boiler.faults', { codes: faults.codes.join(', ') }) });
 		return list;
 	});
 </script>

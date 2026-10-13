@@ -9,6 +9,17 @@
 	import Icon from '#lib/Icon.svelte';
 	import { manage } from '#lib/install.svelte.ts';
 	import { canJoin, describeEffect, movePlan, moveTargets } from '#lib/install.ts';
+	import {
+		AWAY_C,
+		CALIBRATION_HOURS,
+		END_MINUTES,
+		WINDOW_MINUTES,
+		optionIssues,
+		optionsOf,
+		optionsPatch,
+		parseOffset,
+		type RoomOptions
+	} from '#lib/roomoptions.ts';
 	import { api } from '#lib/session.ts';
 	import { toasts } from '#lib/toast.svelte.ts';
 	import type { InstallCircuit, InstallDevice, InstallZone, Removal } from '#lib/types.ts';
@@ -32,6 +43,10 @@
 	let draft = $state('');
 	let removal = $state<Removal | null>(null);
 	let removing = $state<InstallDevice | null>(null);
+	// The options in the form. They follow the room until the person changes one.
+	let options = $state<RoomOptions | null>(null);
+	let offsetText = $state('');
+	let optionsDirty = $state(false);
 	let confirmDelete: ConfirmDialog | undefined = $state();
 	let confirmRemove: ConfirmDialog | undefined = $state();
 
@@ -66,10 +81,44 @@
 			[zones, devices, circuits] = await Promise.all([api.installZones(), api.installDevices(), api.installCircuits()]);
 			problem = null;
 			if (!typed) name = zone?.name ?? '';
+			if (!optionsDirty) showOptions();
 		} catch (error) {
 			problem = errorText(error);
 		}
 		loaded = true;
+	}
+
+	const issues = $derived(options ? optionIssues(options, offsetText) : []);
+	// The valve calibration writes the offset itself while it is on, so the field is closed then.
+	const offsetClosed = $derived(zone?.auto_offset === true || options?.calibration === true);
+
+	function showOptions() {
+		options = zone?.kind === 'heating' ? optionsOf(zone) : null;
+		// Only mode setpoint holds the offset in the daemon. In the other modes the valve holds it, and no report carries it.
+		offsetText = zone?.offset_mode === 'setpoint' && zone.setpoint_offset_c !== null ? String(zone.setpoint_offset_c) : '';
+	}
+
+	async function saveOptions(event: SubmitEvent) {
+		event.preventDefault();
+		if (!zone || !options || issues.length > 0) return;
+		const room = zone.number;
+		const patch = optionsPatch(zone, options);
+		const typedOffset = offsetClosed ? null : parseOffset(offsetText);
+		const sameOffset = zone.offset_mode === 'setpoint' && options.offsetMode === 'setpoint' && typedOffset === zone.setpoint_offset_c;
+		const offset = typedOffset === undefined || sameOffset ? null : typedOffset;
+		if (Object.keys(patch).length === 0 && offset === null) {
+			optionsDirty = false;
+			return;
+		}
+		const done = await run(async () => {
+			// The options go first: the offset applies in the mode they leave.
+			if (Object.keys(patch).length > 0) await api.patchZone(room, patch);
+			if (offset !== null) await api.setOffset(room, offset);
+		}, t('rooms.saved'));
+		if (done) {
+			optionsDirty = false;
+			showOptions();
+		}
 	}
 
 	// The first read, and one more when the person opens another room.
@@ -323,6 +372,107 @@
 			</section>
 		{/if}
 
+		{#if zone?.kind === 'heating' && options}
+			<section class="panel" aria-labelledby="options-title">
+				<header><h2 id="options-title">{t('opt.title')}</h2></header>
+				<form class="options" onsubmit={saveOptions} oninput={() => (optionsDirty = true)} onchange={() => (optionsDirty = true)} data-testid="room-options">
+					<fieldset>
+						<legend>{t('window.title')}</legend>
+						<label class="check"><input type="checkbox" bind:checked={options.windowDetection} />{t('opt.windowDetection')}</label>
+						<label class="field">
+							<span>{t('opt.windowTime')}</span>
+							<input class="input num" type="number" inputmode="numeric" min={WINDOW_MINUTES.min} max={WINDOW_MINUTES.max} step="1" bind:value={options.windowMinutes} disabled={!options.windowDetection} aria-invalid={issues.includes('window')} />
+						</label>
+						<p class="note">{t('opt.window.hint')}</p>
+					</fieldset>
+
+					<fieldset>
+						<legend>{t('opt.away')}</legend>
+						<label class="field">
+							<span>{t('opt.awayC')}</span>
+							<input class="input num" type="number" inputmode="decimal" min={AWAY_C.min} max={AWAY_C.max} step="0.1" bind:value={options.awayC} aria-invalid={issues.includes('away')} />
+						</label>
+						<p class="note">{t('opt.away.hint')}</p>
+					</fieldset>
+
+					<fieldset>
+						<legend>{t('opt.endRule')}</legend>
+						<label class="field">
+							<span>{t('ends.legend')}</span>
+							<select class="input" bind:value={options.endRule}>
+								<option value="until_next">{t('ends.until_next')}</option>
+								<option value="timer">{t('ends.timer')}</option>
+								<option value="manual">{t('ends.manual')}</option>
+							</select>
+						</label>
+						{#if options.endRule === 'timer'}
+							<label class="field">
+								<span>{t('opt.endTimer')}</span>
+								<input class="input num" type="number" inputmode="numeric" min={END_MINUTES.min} max={END_MINUTES.max} step="1" bind:value={options.endMinutes} aria-invalid={issues.includes('endTimer')} />
+							</label>
+						{/if}
+						<p class="note">{t('opt.endRule.hint')}</p>
+					</fieldset>
+
+					<fieldset>
+						<legend>{t('opt.earlyStart')}</legend>
+						<label class="check"><input type="checkbox" bind:checked={options.earlyStart} />{t('opt.earlyStart')}</label>
+						<p class="note">{t('opt.earlyStart.hint')}</p>
+					</fieldset>
+
+					<fieldset class="wide">
+						<legend>{t('opt.correction')}</legend>
+						<div class="pair">
+							<label class="field">
+								<span>{t('opt.offsetMode')}</span>
+								<select
+									class="input"
+									bind:value={options.offsetMode}
+									onchange={() => {
+										// The daemon refuses the valve calibration in mode setpoint.
+										if (options && options.offsetMode === 'setpoint') options.calibration = false;
+									}}
+								>
+									<option value="config">{t('opt.mode.config')}</option>
+									<option value="dbg2">{t('opt.mode.dbg2')}</option>
+									<option value="setpoint">{t('opt.mode.setpoint')}</option>
+								</select>
+							</label>
+							<label class="field">
+								<span>{t('opt.offset')}</span>
+								<input class="input num" inputmode="decimal" autocomplete="off" bind:value={offsetText} disabled={offsetClosed} aria-invalid={issues.includes('offset')} />
+							</label>
+						</div>
+						<p class="note" data-testid="mode-hint">{t(`opt.mode.${options.offsetMode}.hint`)}</p>
+						<p class="note">{offsetClosed ? t('opt.offset.closed') : options.offsetMode === 'setpoint' ? t('opt.offset.hint') : t('opt.offset.hint.valve')}</p>
+						<div class="pair">
+							<label class="check">
+								<input type="checkbox" bind:checked={options.calibration} disabled={options.offsetMode === 'setpoint'} />{t('opt.calibration')}
+							</label>
+							{#if options.calibration}
+								<label class="field">
+									<span>{t('opt.calibrationHours')}</span>
+									<input class="input num" type="number" inputmode="numeric" min={CALIBRATION_HOURS.min} max={CALIBRATION_HOURS.max} step="1" bind:value={options.calibrationHours} aria-invalid={issues.includes('calibrationHours')} />
+								</label>
+							{/if}
+						</div>
+						<p class="note">{t('opt.calibration.hint')}</p>
+					</fieldset>
+
+					{#if issues.length > 0}
+						<ul class="issues small" role="alert">
+							{#each issues as issue (issue)}<li>{t(`opt.issue.${issue}`)}</li>{/each}
+						</ul>
+					{/if}
+					<div class="row">
+						<button class="btn primary" type="submit" disabled={busy || !optionsDirty || issues.length > 0}>
+							<Icon name="check" size={18} />{t('opt.save')}
+						</button>
+					</div>
+				</form>
+			</section>
+		{/if}
+
 		{#if zone}
 			<section class="panel" aria-labelledby="delete-title">
 				<header><h2 id="delete-title">{t('rooms.delete')}</h2></header>
@@ -405,5 +555,72 @@
 
 	.grow {
 		flex: 1 1 14rem;
+	}
+
+	.options {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+		gap: 1.25rem 1.5rem;
+		align-items: start;
+	}
+
+	.options fieldset {
+		margin: 0;
+		padding: 0;
+		border: 0;
+		min-width: 0;
+		display: grid;
+		gap: 0.6rem;
+		justify-items: start;
+	}
+
+	.options legend {
+		padding: 0;
+		margin-bottom: 0.5rem;
+		font-family: var(--font-display);
+		font-weight: var(--weight-semibold);
+	}
+
+	.options .wide,
+	.options .issues,
+	.options > .row {
+		grid-column: 1 / -1;
+	}
+
+	.options .pair {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: flex-end;
+		gap: 0.6rem 1.5rem;
+	}
+
+	.options select {
+		max-width: 100%;
+	}
+
+	.num {
+		width: 8rem;
+	}
+
+	.check {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		min-height: 2.75rem;
+		font-size: var(--text-small-size);
+		font-weight: var(--weight-medium);
+		cursor: pointer;
+	}
+
+	.check input {
+		width: 1.1rem;
+		height: 1.1rem;
+		accent-color: var(--action);
+	}
+
+	.issues {
+		margin: 0;
+		padding-left: 1.25rem;
+		color: var(--status-fault-text);
 	}
 </style>

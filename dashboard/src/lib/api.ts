@@ -17,6 +17,7 @@ import type {
 	ScheduleView,
 	WindowView,
 	ZoneKind,
+	ZoneOptionsPatch,
 	Zones
 } from './types.ts';
 
@@ -194,8 +195,10 @@ export function createClient(options: ClientOptions = {}) {
 		installZones: async () => (await request<{ zones: InstallZone[] }>('GET', 'install/zones')).zones,
 		createZone: (body: { number: number; name: string; kind: ZoneKind; circuit?: number }) =>
 			request<{ zone: InstallZone }>('POST', 'install/zones', body),
-		patchZone: (n: number, patch: { name?: string; circuit?: number | null }) =>
+		patchZone: (n: number, patch: { name?: string; circuit?: number | null } & ZoneOptionsPatch) =>
 			request<{ zone: InstallZone }>('PATCH', installZone(n), patch),
+		/** The temperature correction of a heated room, -10 to 10 C. The offset mode of the room says how it applies. */
+		setOffset: (n: number, offsetC: number) => request<unknown>('POST', zone(n) + '/offset', { offsetC }),
 		deleteZone: (n: number) => request<{ rev: number }>('DELETE', installZone(n)),
 		addMember: (n: number, ref: string) => request<{ members: string[] }>('POST', installZone(n) + '/members', { ref }),
 		removeMember: (n: number, ref: string) =>

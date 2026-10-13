@@ -146,7 +146,6 @@ func TestIngressRefusesEveryOtherRoute(t *testing.T) {
 		{"DELETE", "/api/queue/x"},
 		{"POST", "/api/outdoor"},
 		{"POST", "/api/boiler/dhw"},
-		{"POST", "/api/zones/3/offset"},
 		{"POST", "/api/zones/3/temperature"},
 		{"PUT", "/api/zones/3/early-start"},
 		{"GET", "/api/stats"},

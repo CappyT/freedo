@@ -39,3 +39,17 @@ export function burnerState(boiler: Pick<Boiler, 'Present' | 'Active' | 'Mon'>):
 	if (!boiler.Present || typeof boiler.Mon?.boiler_flag !== 'number') return 'unknown';
 	return boiler.Active ? 'on' : 'off';
 }
+
+export type FaultState = 'unknown' | 'none' | 'fault';
+
+/**
+ * The fault codes that the boiler reports through the wall thermostat. The daemon passes the codes
+ * as numbers and gives them no meaning: a code is a number of the boiler maker. The state is
+ * unknown before the first fault report.
+ */
+export function boilerFaults(boiler: Pick<Boiler, 'FaultCodes' | 'FaultCode'> | null): { state: FaultState; codes: number[] } {
+	if (!boiler) return { state: 'unknown', codes: [] };
+	const codes = boiler.FaultCodes ?? (boiler.FaultCode !== 0 ? [boiler.FaultCode] : []);
+	if (codes.length > 0) return { state: 'fault', codes };
+	return { state: boiler.FaultCodes === null ? 'unknown' : 'none', codes: [] };
+}
