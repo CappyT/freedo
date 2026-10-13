@@ -29,3 +29,16 @@ pre-release has its notes here.
 - Run on a real plant with 0.7.0-beta.1: the move from the add-on freedo to freedo beta, the
   room options and a room created and deleted from the dashboard, a window that the wall
   thermostat detected and its reset, and a valve paired from the dashboard.
+
+## 0.7.0-beta.3
+
+- Dashboard: the room settings have a Restart action for a valve and for the wall thermostat, with
+  a confirmation. The restart command is open to Home Assistant ingress: every Home Assistant
+  user who can open the page can restart a device.
+- Dashboard: Add device has no default room. The page declares the device, adds it to the room and
+  then pairs it, and it sends no pair command when the room is refused. The end state shows the
+  room that the daemon holds, and it offers the repair when the chosen room is missing.
+- Dashboard: the page reads the join of a device from the frames that verified under the network
+  key, or from the learned serial.
+- Run on a real plant with 0.7.0-beta.2: a valve paired from the dashboard, and the warning for a
+  valve that is not mounted, with no fault alert.
