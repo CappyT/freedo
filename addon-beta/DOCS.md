@@ -46,7 +46,8 @@ each database continues its own sequence.
 - With Transmit on, a start less than 250 seconds after the stop of the other add-on waits for the rest
   of that time.
 - With Transmit on, a start less than 250 seconds after a restore waits for the rest of that time. The
-  web interface does not answer while the daemon waits.
+  web interface shows the seconds that are left and takes no command while the daemon waits. A restart
+  of the add-on does not shorten the wait.
 
 The log says how long each wait is.
 

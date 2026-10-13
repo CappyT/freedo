@@ -17,7 +17,7 @@ SvelteKit 3 needs Node 22.17 or later. Run the commands in this directory.
 | `npm run embed` | Copy `build/` to `../internal/web/dist`, the directory that the daemon embeds. |
 | `npm run dev` | Start the development server. `FREEDO_DEV_API` names the daemon (default `http://127.0.0.1:8080`). |
 | `npm run prefix-check` | Check the build under a path prefix. See below. |
-| `npm run ui-check` | Drive the controls in headless Chrome against the daemon: typing in the schedule editor, a refused command, the first end rule, Turn off, the profiles on the Programs screen, the rooms and devices, the first setup on an empty database, the download and the restore of a backup. `FREEDO_BIN` names a daemon binary that embeds the build. |
+| `npm run ui-check` | Drive the controls in headless Chrome against the daemon: typing in the schedule editor, a refused command, the first end rule, Turn off, the profiles on the Programs screen, the rooms and devices, the first setup on an empty database, the download and the restore of a backup, the banner and the return to normal of a daemon that waits after an import. `FREEDO_BIN` names a daemon binary that embeds the build. |
 
 To run the daemon with the dashboard:
 
@@ -48,6 +48,11 @@ and every page request gets `404`. The API works as before.
 - `src/lib/schedule.ts`: the rules and the operations of the schedule editor.
 - `src/lib/backup.ts`: the download and the upload of a backup, and the wait for the restart of the
   daemon. The section Backup of `settings` uses it.
+- `src/lib/importwait.ts`: the countdown of a daemon that waits after an import. Such a daemon
+  answers `GET /api/health` with `importWait` and every other call with `503`. `data.svelte.ts` then
+  reads the health alone, `Banners.svelte` shows the seconds that are left, and the layout makes the
+  page and the navigation inert, so no page sends a command. A page that opens in the wait shows the
+  banner alone.
 - `src/lib/i18n`: the texts. `en.ts` is the reference. `it.ts`, `de.ts` and `fr.ts` must define the
   same keys, and the type checker enforces it. The page picks the language from the browser.
 - `src/lib/fonts`: the fonts, with their licences. See the README in that directory.

@@ -80,8 +80,10 @@ asks for a backup. The security rating of the add-on does not change.
 The backup holds the network key. Anyone who has the file can read the radio traffic and command the
 devices. Keep it private and delete it when you do not need it.
 
-With Transmit on, the daemon waits 250 seconds after a restore before it starts, and the web interface
-does not answer during that time. A device keeps the message identifiers it saw for 247 seconds, and
+With Transmit on, the daemon waits 250 seconds after a restore before it starts. During that time the
+web interface shows the seconds that are left and takes no command, and the entities of the integration
+are unavailable. A restart of the add-on does not shorten the wait: the time counts from the restore.
+A device keeps the message identifiers it saw for 247 seconds, and
 the restored state continues its own sequence of identifiers. The devices keep their programs while
 the daemon waits. Check the programs after a restore: a device keeps the program it fetched last until
 a schedule write changes its document.

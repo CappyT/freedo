@@ -770,7 +770,9 @@ at least one alarm. `/api/nodes` shows the same data as `LowBattery`, `Fault`, `
 - `GET /api/health` answers within three seconds. It answers `503` with `"ok": false` when
   the engine is busy (`"engine": "busy"`) or when the live radio loop ended (`radioError`).
   It reports `fsctrl0` and `calibrated` in live mode, and a `warning` that names the
-  calibration command when none is stored.
+  calibration command when none is stored. While the daemon waits after an import it answers
+  `200` with `importWait` and no other state: see
+  [State export and import](#state-export-and-import).
 - `serialErrors` in `GET /api/health` is the number of serial replies that the link to the
   bridge lost since the daemon started. It exists in live mode. A reply that stops short is
   discarded and the daemon reads the next one, so the radio frame inside it is lost. The live
@@ -1171,8 +1173,27 @@ finishes them at its next start. The API does not answer for a few seconds.
 `waitSec` is `250` when the daemon transmits on a live radio, else `0`. A device keeps the CoAP
 message identifiers that it saw for 247 seconds, and the imported database continues its own
 sequence of identifiers. So a start with `--tx` on a live radio waits until 250 seconds have passed
-since the import, before it opens the radio and the API. The devices keep their programs during
-that time. A dry-run start does not wait. The devices do not check the frame counter, so a lower
+since the import, before it opens the radio. The devices keep their programs during
+that time. A dry-run start does not wait. The time counts from the import, so a restart in the wait
+does not shorten it.
+
+During the wait the daemon listens on its address with the same token and ingress rules, and holds
+no engine:
+
+- The files of the dashboard load.
+- `GET /api/health` answers `200` with `importWait`. `leftSec` is the wait that is left, in whole
+  seconds, rounded up. The answer carries no state of the devices:
+
+  ```json
+  {"ok": true, "mode": "live", "tx": true, "txArmed": false, "transmitAllowed": false, "importWait": {"leftSec": 227}}
+  ```
+
+- Every other route under `/api` answers `503` with the reason in `error` and the seconds that are
+  left in the `Retry-After` header. No request changes the state or queues a message. The export
+  and the import are refused too: the daemon does not serve its database before it starts.
+
+At the end of the wait the daemon closes this listener and starts as usual in the same process.
+The API does not answer for the moment in which the radio opens. The devices do not check the frame counter, so a lower
 counter in the imported database is accepted.
 
 ```sh

@@ -130,8 +130,11 @@ the three newest only, and restarts the daemon by itself. What restarts the daem
 When the replacement of the process fails, the daemon exits with status 1 and the imported file
 stays staged. The next start, by a restart policy or by hand, applies it.
 
-With `--tx` on a live radio, the start waits until 250 seconds have passed since the import, and the
-API does not answer during that time. The log says how long. To go back to the replaced state, stop
+With `--tx` on a live radio, the start waits until 250 seconds have passed since the import. The log
+says how long. During that time the radio is closed and the daemon serves the dashboard,
+`GET /api/health` with `importWait`, and `503` with `Retry-After` on every other route: see
+[API.md](API.md#state-export-and-import). The time counts from the import, so a restart in the wait does not shorten
+it. A container health check on `GET /api/health` passes during the wait. To go back to the replaced state, stop
 the daemon and copy the files of the newest `before-import` folder over the database.
 
 ## Container
@@ -187,9 +190,11 @@ see [Serial link faults](#serial-link-faults).
 
 Settings also has the section Backup. Download backup saves the [state export](#backup) as a file,
 and the section warns that the file holds the network key. Restore backup takes a file, asks first
-with the list of what the backup replaces, and sends it. The page then shows that freedo restarts,
-with the 250 seconds of a transmitting daemon when they apply, and reconnects by itself: a missing
-answer during the restart is not shown as a fault. Under the Home Assistant add-on both actions
+with the list of what the backup replaces, and sends it. The page then shows that freedo restarts
+and reconnects by itself: a missing answer during the restart is not shown as a fault. While a
+transmitting daemon waits its 250 seconds, every page shows one banner with the seconds that are
+left, keeps its last data and takes no command. A page that opens during the wait shows the banner
+alone. Under the Home Assistant add-on both actions
 work for an administrator with no token, and another user reads in the section that only a Home
 Assistant administrator can download or restore a backup. Outside the add-on both actions need the
 API token of the page. A refusal stays in the section, and every other page keeps working.
