@@ -17,7 +17,7 @@ from .const import DOMAIN, SCAN_INTERVAL
 from .model import FreedoData, parse
 
 if TYPE_CHECKING:
-    from .environment import RoomTemps
+    from .environment import RoomTemps, Windows
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -33,6 +33,8 @@ class FreedoRuntime:
     room_temp_lock: asyncio.Lock
     # The room temperature pushes, set once the environment listeners run.
     room_temps: RoomTemps | None = None
+    # The window pushes, set once the environment listeners run.
+    windows: Windows | None = None
 
 
 type FreedoConfigEntry = ConfigEntry[FreedoRuntime]

@@ -75,11 +75,6 @@ ROOM_TEMP_MAX_C = 50.0
 # is not. See room_temp_state.
 ROOM_TEMP_STATES = ("active", "no_correction", "no_reading", "stale")
 
-# The last option of the temperature source select. It maps nothing: choosing
-# it explains where to map a sensor. The option is a fixed name, so it carries a
-# translation; a sensor or device option is dynamic and does not.
-SOURCE_OTHER_SENSOR = "other_sensor"
-
 # How a heating zone corrects its regulation with a room temperature: not at
 # all, by a continuous shift of the setpoints (offset_mode setpoint), or by
 # calibrating the valve offset (auto_offset in offset_mode config or dbg2).

@@ -92,8 +92,8 @@ The integration and the options of the add-on have English, Italian, German and 
 | number Away | heating zone | `/api/install/zones` `away_temperature_c`; writes `PATCH /api/install/zones/{n}` |
 | number Offset | heating zone | `/api/install/zones` `setpoint_offset_c`; writes `POST /api/zones/{n}/offset` |
 | select Offset mode (diagnostic, disabled by default) | heating zone | `/api/install/zones` `offset_mode`; writes `PATCH /api/install/zones/{n}` |
-| select Temperature source | heating zone | the sensors in the area of the zone device, `/api/install/devices`, `/api/zones` `declared[].measuringDevice`, `/api/install/zones` `offset_mode`, `auto_offset`; writes `PUT /api/install/zones/{n}/measuring`, `PATCH /api/install/zones/{n}` and the options |
-| sensor Room sensor | heating zone | `/api/zones` `declared[].externalTemp`, `/api/install/zones` `offset_mode` |
+| select Temperature source | heating zone | the temperature sensors of Home Assistant, `/api/install/devices`, `/api/zones` `declared[].measuringDevice`, `/api/install/zones` `offset_mode`, `auto_offset`; writes `PUT /api/install/zones/{n}/measuring`, `PATCH /api/install/zones/{n}` and the options |
+| sensor Temperature source state | heating zone | `/api/zones` `declared[].externalTemp`, `/api/install/zones` `offset_mode` |
 | select Profile | hub | `/api/presets` `id`, `name`, `active`; writes `POST /api/presets/{id}/activate` |
 
 ### Profiles
@@ -296,8 +296,8 @@ hub, so both do not record the same reading.
   is unknown until the zone reports. The attribute `hvac_action` of the climate
   entity follows the same rule. Reports count the state of this sensor: see
   Reports.
-- Sensor Room sensor shows whether a heating zone regulates on the
-  reading of its room temperature sensor. The state is `active`, or the cause:
+- Sensor Temperature source state shows whether a heating zone regulates on
+  the reading of a Home Assistant sensor. The state is `active`, or the cause:
   `no_correction` (select Room temperature correction is None), `no_reading`
   (the daemon holds no reading) or `stale` (the
   last reading is older than `room_temp_max_age_sec`). It is unknown while the
@@ -446,23 +446,24 @@ daemon answers. They exist only while the daemon holds an installation.
 ### Temperature source
 
 Select Temperature source chooses where the room temperature of a heating zone
-comes from: a Home Assistant sensor or a device placed in the room. Every
-heating zone has it.
+comes from: a device of the room or a Home Assistant sensor. Every heating zone
+has it. The page of the room in Configure shows the same list and the same
+current source, and both write the same state: see Rooms.
 
 - The options come in this order:
+  - The declared members of the zone (`members` of `GET /api/zones`), labelled
+    with the device label and the serial from `GET /api/install/devices`. A
+    member whose `zone` field names another room is left out. The device the
+    zone measures on is always an option.
   - The sensors with the device class temperature in the area of the zone
     device, labelled with their name and reading. A sensor counts in the area
     when the entity or its device is there. The entities of freedo are left out.
-    The sensor mapped to the zone comes first when it is in another area.
-  - The declared members of the zone (`members` of `GET /api/zones`), labelled
-    with the device label and the serial from `GET /api/install/devices`. A
-    member whose `zone` field names another room is left out.
-  - `other_sensor`, shown as "Another sensor…". It changes nothing and
-    answers with a message: map a sensor of another area in the branch Rooms of
-    the options.
+    The sensor mapped to the zone is always an option, also without the device
+    class.
+  - The other temperature sensors, labelled with their name, reading and area.
 - The labels are built at each poll and kept until the next one, so the label
   of a sensor shows the reading of the last poll. A label that repeats gets the
-  entity id or the short address.
+  short address or the entity id.
 - The current option is the mapped sensor while its pushes are not paused and
   the zone has a correction (Continuous shift or Valve calibration); otherwise
   it is the effective measuring device (`measuringDevice` of `GET /api/zones`).
@@ -473,9 +474,11 @@ heating zone has it.
   device reference. The measuring device reaches the valves in the next zone
   document, at their next hourly check. When a sensor is mapped to the zone, the
   choice also pauses its pushes and sends `DELETE /api/zones/{n}/temperature`, so
-  the daemon returns to the manual correction. The correction does not change.
+  the daemon returns to the manual correction. The release starts at once. If
+  the call fails, the age limit of the reading ends the correction. The
+  correction method does not change.
 - The mapping and the pause are stored in the options, so they survive a
-  restart.
+  restart. Neither choice reloads the integration.
 
 ### Pairing mode
 
@@ -564,12 +567,12 @@ heating zone has it.
 - Service `freedo.set_window` (field `open`, default true) activates or resets
   the open window state of the zone by hand, as the tado app does
   (`POST /api/zones/{n}/window` with `{"open": bool}`).
-  - It is the same hold as the one the window sensors of the options set: the
+  - It is the same hold as the one the window sensors of a room set: the
     daemon keeps one hold from Home Assistant for each zone, and the last write
-    wins. See Environment inputs.
+    wins. See Window and door sensors of a room.
   - An activated state ends at the reset, or when the daemon ends it after
     `external_window_max_sec` (2 hours by default, an option of the
-    installation).
+    installation). An activation of an active state restarts that time.
   - A reset ends the hold from Home Assistant only. A state the valves detected
     (`window_source` `device`) runs until its time ends (number Window time),
     and the daemon has no route to reset it. When both hold the zone,
@@ -699,58 +702,57 @@ take no target.
   the daemon refuses does not stop the others: the service raises one error
   that lists them.
 
-## Environment inputs
+## Configure
 
-Configure of the integration opens a menu of two branches. Each branch saves
-its own options and keeps those of the other one.
+Configure of the integration opens a menu of two branches.
 
-- Environment maps Home Assistant entities to the daemon: the outdoor sensor and
-  the window sensors, then the zone of each window sensor.
-- Rooms edits the rooms you choose: see Rooms.
-
-The branch Environment holds these inputs:
-
-- Outdoor temperature sensor. The integration sends `POST /api/outdoor` with
-  `{"tempC": n}` on each state change and every 15 minutes. The daemon keeps
-  the reading in memory only, so the periodic push also covers a daemon
-  restart. A value in degrees Fahrenheit or kelvin is converted.
-- Window and door sensors. The next page selects the heating zone of
-  each sensor. On each change of a zone state, the integration sends
-  `POST /api/zones/{n}/window` with `{"open": bool}`. A zone is open when one
-  of its sensors is on. The pushes of one zone go one at a time, and each
-  sends the sensor states of its send time, so the daemon ends on the last
-  state. The integration also sends the current state of each zone when it
-  starts. When the daemon does not answer or answers 5xx, the integration
-  sends the current state of the zone again every 30 seconds until the daemon
-  takes it. A 4xx answer is not sent again.
-
-The window sensors and the service `freedo.set_window` write the same hold of a
-zone. A sensor pushes its zone when its state changes, when the integration
-starts and when a push needs a retry. Between those pushes, the last write
-stands. For example, after a reset with the service the daemon keeps the zone
-closed while a sensor stays open, until a sensor of the zone changes state.
-
-A state that is `unavailable`, `unknown` or not a number is not sent. An outdoor
-temperature outside -60..60 C is not sent, because the daemon rejects it.
+- Rooms lists the heating rooms and opens the page of one: see Rooms.
+- Outdoor temperature maps the outdoor temperature sensor. The integration
+  sends `POST /api/outdoor` with `{"tempC": n}` on each state change and every
+  15 minutes. The daemon keeps the reading in memory only, so the periodic push
+  also covers a daemon restart. A value in degrees Fahrenheit or kelvin is
+  converted. A state that is `unavailable`, `unknown` or not a number is not
+  sent. A value outside -60..60 C is not sent, because the daemon rejects it.
+  Saving a changed sensor reloads the integration.
 
 ### Rooms
 
-Each heating zone is a room. The Home Assistant area of a zone is the area of
-its zone device in the device registry. The branch Rooms of Configure sets it,
-and so does the device page of the zone. The integration reads it at each poll.
+Each heating zone is a room. The branch Rooms holds everything that ties a room
+to Home Assistant: its area, its temperature source, its window and door
+sensors and its correction.
 
-- The branch Rooms starts with a list of the heating rooms, each with its area
-  and its mapped sensor. The rooms without an area are chosen. Choose the rooms
-  to edit: a page per chosen room follows, then the branch saves. To change one
-  room: Configure, Rooms, choose it, one page. A page holds the area, an
-  optional room temperature sensor and the correction. A zone with no area starts from the area with the zone name,
-  without case. The sensor list shows the temperature sensors of the area of
-  the zone first, then the others with their area. With no temperature sensor
-  at all, the field is an entity selector. Each page writes the area and the
-  correction when you submit it; the last page saves the sensors. A new sensor
-  ends the pause that select Temperature source set on its zone. A refused
-  correction shows the page again with an error. The branch needs the loaded
-  integration.
+- The branch starts with a list of the heating rooms. Each line shows the room
+  name, its area, its temperature source with the reading, and the number of
+  its window sensors. Choose a room to open its page, or Done to close. The
+  branch needs the loaded integration.
+- The page of a room holds four settings:
+  - Area: the Home Assistant area of the room. See Area of a room.
+  - Temperature source: a device of the room or a Home Assistant temperature
+    sensor. The list and the current source are those of select Temperature
+    source: see Temperature source. The field shows the source in use and is
+    required when the room has one. The list is in the order of the area the
+    room has when the page opens: after a change of the area, submit and open
+    the room again to see the sensors of the new area first.
+  - Window and door sensors: see Window and door sensors of a room.
+  - Correction, in the closed section Advanced: the choice of select Room
+    temperature correction. A Home Assistant sensor chosen as the source of a
+    room with the correction None sets Continuous shift.
+- Submit writes the room and returns to the list, which shows the new values.
+  A page writes only what it changes, and only its room. It does not reload the
+  integration. When freedo refuses the correction or the source, the page comes
+  back with an error and writes nothing else.
+- A sensor that is mapped to a room but is not in use, because the room has the
+  correction None, still sends readings. A page saved with a device as the
+  source pauses it, so a correction set later does not bring it back unseen.
+
+### Area of a room
+
+The Home Assistant area of a zone is the area of its zone device in the device
+registry. The page of the room sets it, and so does the device page of the
+zone. The integration reads it at each poll.
+
+- A zone with no area starts, on its page, from the area with the zone name,
+  without case.
 - When the area of a zone changes, its valves and thermostats take the new
   area if they have no area or still have the previous area of the zone. A
   device that you placed in another area keeps it. A device that appears later,
@@ -774,13 +776,50 @@ and so does the device page of the zone. The integration reads it at each poll.
   stored label is also the previous area of the zone after a restart. A daemon
   that does not show `ha_area` in `GET /api/install/zones` gets no label.
 
+### Window and door sensors of a room
+
+The page of a room maps binary sensors to it. The heating of the room stops
+while one of them is open.
+
+- The list shows the binary sensors with the device class window, door, opening
+  or garage door, by name: those in the area of the room first, then the others
+  with their area. A sensor that is already mapped stays in the list without
+  such a device class. With no such sensor at all, the field is an entity
+  selector.
+- A sensor serves one room. A sensor of another room shows that room in its
+  label, and it moves to the room that chooses it.
+- On each change of the state of a room, the integration sends
+  `POST /api/zones/{n}/window` with `{"open": bool}`. A room is open when one
+  of its sensors is on. The pushes of one room go one at a time, and each
+  sends the sensor states of its send time, so the daemon ends on the last
+  state. The integration also sends the state of a room when it starts and when
+  the page changes its sensors. A room that loses its sensors while they hold
+  it open is closed. A state that is `unavailable` or `unknown` does not count.
+- When the daemon does not answer or answers 5xx, the integration sends the
+  current state of the room again every 30 seconds until the daemon takes it. A
+  4xx answer is not sent again.
+- The daemon ends a hold that no close follows at its `deadline`
+  (`external_window_max_sec`, 2 hours by default). This guards a room against a
+  Home Assistant that stopped. While a sensor keeps the room open, the
+  integration compares the room with `declared[].window` of each poll. It sends
+  the open again once when the deadline is closer than 5 minutes, and the
+  daemon restarts the time without a write to the devices. It also sends the
+  open again when the view shows no hold from Home Assistant. So the room stays
+  off as long as a sensor is open. The comparison uses the clocks of both
+  hosts: they must agree within a few minutes.
+- A daemon that does not restart the time on a repeated open ends the hold at
+  the deadline. The room then closes, and the next poll opens it again.
+- The window sensors and the service `freedo.set_window` write the same hold of
+  a room. A reset with the service lasts while every sensor of the room is
+  closed: with an open sensor, the next poll opens the room again.
+
 ### Room temperature of a zone
 
 A heating zone regulates on the sensor of its valve. With a room temperature
 sensor, the daemon corrects the setpoints it writes, so the room reaches the
 target on the reading of that sensor.
 
-- Map a sensor to a zone on its page of the branch Rooms, or with select
+- Map a sensor to a zone on the page of its room in Configure, or with select
   Temperature source. A sensor can serve several zones. The hot water zone has
   no sensor.
 - On each state change and every 15 minutes, the integration sends
@@ -802,10 +841,10 @@ target on the reading of that sensor.
     makes the valve home its motor, so the interval bounds the battery and the
     noise.
 - A new sensor sets Continuous shift on a zone with the correction None, in
-  the branch Rooms and in select Temperature source. With the correction None the
+  the page of the room and in select Temperature source. With the correction None the
   daemon answers 409 to a reading, because the other modes write tag `0140` to
   the device. The integration keeps the mapping and logs the first refusal of a
-  zone. The sensor Room sensor shows `no_correction`.
+  zone. The sensor Temperature source state shows `no_correction`.
 - The correction is slow by design, because a valve next to a radiator swings
   by several degrees. The daemon cannot change what the valve measures, so it
   filters the difference with a time constant of 2 hours, shifts the setpoints
@@ -819,10 +858,10 @@ target on the reading of that sensor.
   `room_temp_max_age_sec` (30 minutes by default) ends the correction, and the
   shift returns to the manual offset at the same slow pace. A sensor that stays
   unavailable ends the correction in this way.
-- When you remove the sensor of a zone in the branch Rooms, the integration sends
-  `DELETE /api/zones/{n}/temperature`. The release starts at once and runs at
-  the same pace. If the call fails, the age limit ends the correction.
-- Sensor Room sensor shows whether the zone uses the reading, and the
+- When you choose a device of the room as the temperature source, the
+  integration sends `DELETE /api/zones/{n}/temperature`. The release starts at
+  once and runs at the same pace.
+- Sensor Temperature source state shows whether the zone uses the reading, and the
   cause when it does not. See Diagnostics.
 
 ## Presence blueprint

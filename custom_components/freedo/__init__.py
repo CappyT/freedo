@@ -59,7 +59,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: FreedoConfigEntry) -> bo
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(async_track_firmware(hass, coordinator))
     entry.async_on_unload(async_track_rooms(hass, coordinator))
-    entry.runtime_data.room_temps = async_setup_environment(hass, entry, client)
+    entry.runtime_data.room_temps, entry.runtime_data.windows = async_setup_environment(
+        hass, entry, client
+    )
     return True
 
 

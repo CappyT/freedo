@@ -40,50 +40,54 @@
       "init": {
         "title": "freedo-Optionen",
         "menu_options": {
-          "environment": "Umgebung",
-          "rooms": "Räume"
+          "rooms": "Räume",
+          "outdoor": "Außentemperatur"
         }
-      },
-      "environment": {
-        "title": "Umgebungsdaten",
-        "description": "Home Assistant sendet diese Zustände an freedo.",
-        "data": {
-          "outdoor_entity": "Außentemperatursensor",
-          "window_entities": "Fenster- und Türsensoren"
-        },
-        "data_description": {
-          "outdoor_entity": "Wird bei jeder Änderung und alle 15 Minuten an freedo gesendet. Er steuert die Heizkurven der Vorlaufgrenze.",
-          "window_entities": "Auf der nächsten Seite wählst du den Raum jedes Sensors aus."
-        }
-      },
-      "windows": {
-        "title": "Raum jedes Fenstersensors",
-        "description": "Wähle den Raum jedes Sensors aus. Ein Raum ist offen, wenn einer seiner Sensoren offen ist."
       },
       "rooms": {
         "title": "Räume",
-        "description": "Wähle die Räume aus, die du bearbeiten willst. Die Räume ohne Bereich sind ausgewählt.",
+        "description": "Jeder Raum zeigt seinen Bereich, seine Temperaturquelle und die Anzahl seiner Fenstersensoren. Wähle einen Raum aus, um ihn zu ändern, oder Fertig zum Schließen.",
         "data": {
-          "rooms": "Zu bearbeitende Räume"
+          "room": "Raum"
         }
       },
       "room": {
         "title": "Raum {room}",
-        "description": "Raum {index} von {count}. Wähle den Home Assistant-Bereich des Raums und, wenn du willst, einen Temperatursensor aus. Das Gerät des Raums kommt in den Bereich. Seine Ventile und Thermostate kommen auch dorthin, außer du hast sie in einen anderen Bereich gesetzt.",
+        "description": "Absenden speichert diesen Raum und kehrt zur Liste der Räume zurück. Wenn du einen Home Assistant-Sensor als Temperaturquelle auswählst und der Raum keine Korrektur hat, setzt freedo die Korrektur Kontinuierliche Verschiebung.",
         "data": {
           "area": "Bereich",
-          "room_temperature": "Raumtemperatursensor",
-          "correction": "Korrektur mit der Raumtemperatur"
+          "temperature_source": "Temperaturquelle",
+          "windows": "Fenster- und Türsensoren"
         },
         "data_description": {
-          "area": "Der Bereich des Geräts des Raums. Du kannst ihn auch auf der Geräteseite setzen.",
-          "room_temperature": "Die Sensoren im Bereich des Raums stehen zuerst. Lasse das Feld leer, um den Sensor des Ventils zu verwenden.",
-          "correction": "Kontinuierliche Verschiebung verschiebt die Sollwerte langsam nach dem Messwert. Das ist die empfohlene Methode. Ventilkalibrierung schreibt den Ventiloffset höchstens einmal pro Intervall, und jeder Schreibvorgang bewegt den Motor einmal. Ein neuer Sensor setzt Kontinuierliche Verschiebung, wenn der Raum keine Korrektur hat."
+          "area": "Das Gerät des Raums kommt in den Bereich. Seine Ventile und Thermostate kommen auch dorthin, außer du hast sie in einen anderen Bereich gesetzt. Du kannst den Bereich auch auf der Geräteseite setzen.",
+          "temperature_source": "Was die Temperatur des Raums misst: ein Gerät des Raums oder ein Home Assistant-Sensor. Die Liste zeigt zuerst die Geräte des Raums, dann die Sensoren des Bereichs, den der Raum jetzt hat, dann die anderen Sensoren mit ihrem Bereich. Nach einer Änderung des Bereichs: absenden und den Raum erneut öffnen, um die Sensoren des neuen Bereichs zuerst zu sehen.",
+          "windows": "Die Heizung des Raums stoppt, solange einer dieser Sensoren offen ist. Ein Sensor dient einem Raum: Ein Sensor, den ein anderer Raum verwendet, wechselt zu diesem Raum."
+        },
+        "sections": {
+          "advanced": {
+            "name": "Erweitert",
+            "data": {
+              "correction": "Raumtemperaturkorrektur"
+            },
+            "data_description": {
+              "correction": "Kontinuierliche Verschiebung verschiebt die Sollwerte langsam nach dem Messwert. Das ist die empfohlene Methode. Ventilkalibrierung schreibt den Ventiloffset höchstens einmal pro Intervall, und jeder Schreibvorgang bewegt den Motor einmal."
+            }
+          }
+        }
+      },
+      "outdoor": {
+        "title": "Außentemperatur",
+        "data": {
+          "outdoor_entity": "Außentemperatursensor"
+        },
+        "data_description": {
+          "outdoor_entity": "Wird bei jeder Änderung und alle 15 Minuten an freedo gesendet. Er steuert die Heizkurven der Vorlaufgrenze."
         }
       }
     },
     "error": {
-      "correction_failed": "freedo hat die Korrektur abgelehnt. Das Home Assistant-Protokoll zeigt den Grund."
+      "write_failed": "freedo hat die Änderung abgelehnt. Das Home Assistant-Protokoll zeigt den Grund."
     },
     "abort": {
       "not_loaded": "Die Integration ist nicht geladen. Lade sie und öffne die Optionen dann erneut.",
@@ -197,7 +201,7 @@
         "name": "Heizbedarf"
       },
       "external_room_sensor": {
-        "name": "Raumsensor",
+        "name": "Status Temperaturquelle",
         "state": {
           "active": "In Verwendung",
           "no_correction": "Keine Korrektur",
@@ -285,10 +289,7 @@
         }
       },
       "temperature_source": {
-        "name": "Temperaturquelle",
-        "state": {
-          "other_sensor": "Anderer Sensor…"
-        }
+        "name": "Temperaturquelle"
       },
       "preset": {
         "name": "Profil"
@@ -446,6 +447,14 @@
     }
   },
   "selector": {
+    "room_text": {
+      "options": {
+        "no_area": "Kein Bereich",
+        "window_sensors": "Fenstersensoren",
+        "used_by": "verwendet von",
+        "done": "Fertig"
+      }
+    },
     "correction_method": {
       "options": {
         "none": "Keine",
@@ -475,7 +484,6 @@
     }
   },
   "exceptions": {
-    "another_sensor": { "message": "Um für {room} einen Sensor aus einem anderen Bereich zu verwenden, ordne ihn unter Einstellungen > Geräte & Dienste > freedo > Konfigurieren > Räume zu." },
     "overlay_temperature_required": {
       "message": "Lege im Modus Heizen eine Temperatur fest."
     },

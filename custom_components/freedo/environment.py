@@ -10,11 +10,7 @@
   room_temp_max_age_sec, so the periodic push also covers a daemon restart. The
   push names the sensor as its source. A failed push is logged once until a push
   succeeds. See RoomTemps.
-- The window sensors of a zone go to POST /api/zones/{n}/window on each
-  change of the zone state, one push per zone at a time. A push the daemon
-  did not take (no answer or a 5xx) is sent again, with the state the
-  sensors have then, every WINDOW_RETRY_INTERVAL until it succeeds. A 4xx is
-  not retried.
+- The window sensors of a zone go to POST /api/zones/{n}/window. See Windows.
 
 Unavailable or unknown states are never pushed.
 """
@@ -32,6 +28,7 @@ from homeassistant.helpers.event import (
     async_track_state_change_event,
     async_track_time_interval,
 )
+from homeassistant.util import dt as dt_util
 
 from .api import FreedoApiError, FreedoClient, FreedoError
 from .const import (
@@ -41,6 +38,7 @@ from .const import (
     CONF_WINDOWS,
     OUTDOOR_PUSH_INTERVAL,
     ROOM_TEMP_PUSH_INTERVAL,
+    WINDOW_REFRESH_MARGIN,
     WINDOW_RETRY_INTERVAL,
 )
 from .coordinator import FreedoConfigEntry
@@ -65,12 +63,11 @@ def _transient(err: FreedoError) -> bool:
 @callback
 def async_setup_environment(
     hass: HomeAssistant, entry: FreedoConfigEntry, client: FreedoClient
-) -> RoomTemps:
+) -> tuple[RoomTemps, Windows]:
     """Register the listeners. The entry unload removes them. The room
-    temperature pushes come back, so the temperature source select can map a
-    sensor without a reload."""
+    temperature and window pushes come back, so the options step of a room and
+    the temperature source select can map a sensor without a reload."""
     outdoor = entry.options.get(CONF_OUTDOOR_ENTITY)
-    zones = window_zones(entry.options.get(CONF_WINDOWS) or {})
 
     if outdoor:
 
@@ -107,75 +104,165 @@ def async_setup_environment(
             hass, push_outdoor(), "freedo outdoor initial push"
         )
 
-    if zones:
-        last: dict[int, bool] = {}
-        # Zones whose last push failed on a transient error.
-        failed: set[int] = set()
-        # One push per zone at a time. A push reads the sensor states once it
-        # holds the lock, so a later change never lands before an earlier one.
-        locks = {zone: asyncio.Lock() for zone in zones}
+    windows = Windows(hass, entry, client)
+    windows.async_start()
+    room_temps = RoomTemps(hass, entry, client)
+    room_temps.async_start()
+    return room_temps, windows
 
-        async def push_window(zone: int, force: bool = False) -> None:
-            async with locks[zone]:
+
+class Windows:
+    """The window pushes: the window and door sensors of each heating zone go to
+    POST /api/zones/{n}/window. A zone is open when one of its sensors is on.
+
+    - A zone is pushed on each change of its state, when the integration starts
+      and when the options change its sensors. A zone that lost its sensors
+      while they held it open is closed.
+    - One push per zone at a time. A push reads the sensor states once it holds
+      the lock, so a later change never lands before an earlier one.
+    - A push the daemon did not take (no answer or a 5xx) is sent again, with
+      the state the sensors have then, every WINDOW_RETRY_INTERVAL until it
+      succeeds. A 4xx is not retried.
+    - The daemon ends a hold that no close follows at its deadline, which
+      guards a room against a Home Assistant that stopped. While the sensors
+      keep a zone open, each poll compares it with the window view of the
+      daemon: the open goes out again when the view shows no hold from Home
+      Assistant, and once per deadline when the deadline is closer than
+      WINDOW_REFRESH_MARGIN. So the room stays open as long as its sensors.
+
+    The mapping is read from the options at each push; async_remap follows a
+    changed mapping."""
+
+    def __init__(
+        self, hass: HomeAssistant, entry: FreedoConfigEntry, client: FreedoClient
+    ) -> None:
+        self._hass = hass
+        self._entry = entry
+        self._client = client
+        # The sensors of each zone that the listener follows now.
+        self._zones: dict[int, list[str]] = {}
+        # The state of each zone as the daemon took it last.
+        self._last: dict[int, bool] = {}
+        # Zones whose last push failed on a transient error.
+        self._failed: set[int] = set()
+        self._locks: dict[int, asyncio.Lock] = {}
+        # The deadline of each zone the open was sent again for.
+        self._refreshed: dict[int, str] = {}
+        self._unsub_state: Callable[[], None] | None = None
+
+    def mapping(self) -> dict[int, list[str]]:
+        return window_zones(self._entry.options.get(CONF_WINDOWS) or {})
+
+    @callback
+    def async_start(self) -> None:
+        self._entry.async_on_unload(self._stop)
+        self._entry.async_on_unload(
+            async_track_time_interval(self._hass, self._retry_tick, WINDOW_RETRY_INTERVAL)
+        )
+        self._entry.async_on_unload(
+            self._entry.runtime_data.coordinator.async_add_listener(self._polled)
+        )
+        self.async_remap()
+
+    @callback
+    def async_remap(self) -> None:
+        """Follow the sensors the options map now, and push the zones whose
+        sensors changed."""
+        self._stop()
+        previous, self._zones = self._zones, self.mapping()
+        entities = sorted({e for zone in self._zones.values() for e in zone})
+        if entities:
+            self._unsub_state = async_track_state_change_event(
+                self._hass, entities, self._changed
+            )
+        changed = [
+            zone
+            for zone in sorted(previous.keys() | self._zones.keys())
+            if previous.get(zone) != self._zones.get(zone)
+        ]
+        if changed:
+            self._entry.async_create_background_task(
+                self._hass, self._push_all(changed), "freedo window push"
+            )
+
+    @callback
+    def _stop(self) -> None:
+        if self._unsub_state is not None:
+            self._unsub_state()
+            self._unsub_state = None
+
+    async def _push_all(self, zones: list[int]) -> None:
+        for zone in zones:
+            await self.push(zone, force=True)
+
+    @callback
+    def _changed(self, event: Event[EventStateChangedData]) -> None:
+        for zone, entities in self._zones.items():
+            if event.data["entity_id"] in entities:
+                self._hass.async_create_task(self.push(zone))
+
+    @callback
+    def _retry_tick(self, _: datetime) -> None:
+        for zone in sorted(self._failed):
+            self._hass.async_create_task(self.push(zone, force=True))
+
+    @callback
+    def _polled(self) -> None:
+        data = self._entry.runtime_data.coordinator.data
+        now = dt_util.utcnow()
+        for zone in self._zones:
+            view = data.windows.get(zone) if data else None
+            if view is None or not self._last.get(zone):
+                continue
+            if view.get("open") and view.get("source") in ("external", "both"):
+                deadline = view.get("deadline")
+                at = dt_util.parse_datetime(deadline) if isinstance(deadline, str) else None
+                if (
+                    at is None
+                    or at - now > WINDOW_REFRESH_MARGIN
+                    or self._refreshed.get(zone) == deadline
+                ):
+                    continue
+                self._refreshed[zone] = deadline
+            self._hass.async_create_task(self.push(zone, force=True))
+
+    async def push(self, zone: int, force: bool = False) -> None:
+        async with self._locks.setdefault(zone, asyncio.Lock()):
+            entities = self.mapping().get(zone)
+            if entities is None:
+                if not self._last.get(zone):
+                    return
+                is_open = False
+            else:
                 states = []
-                for entity_id in zones[zone]:
-                    state = hass.states.get(entity_id)
+                for entity_id in entities:
+                    state = self._hass.states.get(entity_id)
                     states.append(state.state if state else None)
                 payload = window_payload(states)
                 if payload is None:
                     return
-                if not force and last.get(zone) == payload["open"]:
+                is_open = payload["open"]
+                if not force and self._last.get(zone) == is_open:
                     return
-                try:
-                    await client.push_window(zone, payload["open"])
-                except FreedoError as err:
-                    if _transient(err):
-                        if zone not in failed:
-                            _LOGGER.warning(
-                                "Window push for zone %s failed, retrying every %s: %s",
-                                zone, WINDOW_RETRY_INTERVAL, err,
-                            )
-                        failed.add(zone)
-                    else:
-                        failed.discard(zone)
-                        _LOGGER.warning("Window push for zone %s refused: %s", zone, err)
-                    return
-                failed.discard(zone)
-                last[zone] = payload["open"]
-
-        @callback
-        def window_retry_tick(_: datetime) -> None:
-            for zone in sorted(failed):
-                hass.async_create_task(push_window(zone, force=True))
-
-        entry.async_on_unload(
-            async_track_time_interval(hass, window_retry_tick, WINDOW_RETRY_INTERVAL)
-        )
-
-        entity_zone = {e: z for z, entities in zones.items() for e in entities}
-
-        @callback
-        def window_changed(event: Event[EventStateChangedData]) -> None:
-            zone = entity_zone.get(event.data["entity_id"])
-            if zone is not None:
-                hass.async_create_task(push_window(zone))
-
-        entry.async_on_unload(
-            async_track_state_change_event(hass, list(entity_zone), window_changed)
-        )
-
-        async def initial_sync() -> None:
-            # Align the daemon after a Home Assistant or options reload.
-            for zone in zones:
-                await push_window(zone, force=True)
-
-        entry.async_create_background_task(
-            hass, initial_sync(), "freedo window initial push"
-        )
-
-    room_temps = RoomTemps(hass, entry, client)
-    room_temps.async_start()
-    return room_temps
+            try:
+                await self._client.push_window(zone, is_open)
+            except FreedoError as err:
+                if _transient(err):
+                    if zone not in self._failed:
+                        _LOGGER.warning(
+                            "Window push for zone %s failed, retrying every %s: %s",
+                            zone, WINDOW_RETRY_INTERVAL, err,
+                        )
+                    self._failed.add(zone)
+                else:
+                    self._failed.discard(zone)
+                    _LOGGER.warning("Window push for zone %s refused: %s", zone, err)
+                return
+            self._failed.discard(zone)
+            if entities is None:
+                self._last.pop(zone, None)
+            else:
+                self._last[zone] = is_open
 
 
 class RoomTemps:

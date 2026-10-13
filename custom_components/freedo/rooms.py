@@ -16,6 +16,10 @@ device page both set that area; the integration reads it at each poll.
 - The area goes to the daemon as the display field ha_area of the zone row, on a
   daemon that serves it. The stored value is also the previous area of the zone
   after a restart.
+- The temperature source of a heating zone is a device of the room or a Home
+  Assistant sensor. The options step of a room and the select Temperature
+  source both read it with current_source, list it with source_choices and
+  write it with async_set_source.
 """
 
 from __future__ import annotations
@@ -25,6 +29,7 @@ from datetime import datetime
 import logging
 from typing import Any
 
+from homeassistant.components.binary_sensor import BinarySensorDeviceClass
 from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.const import ATTR_DEVICE_CLASS, ATTR_UNIT_OF_MEASUREMENT
 from homeassistant.core import HomeAssistant, State, callback
@@ -37,13 +42,39 @@ from homeassistant.helpers import (
 from homeassistant.util import dt as dt_util
 
 from .api import FreedoError
-from .const import DOMAIN
+from .const import CONF_ROOM_TEMP_PAUSED, CONF_ROOM_TEMPS, DOMAIN
 from .coordinator import FreedoConfigEntry, FreedoCoordinator
-from .model import KIND_HEATING, FreedoData, device_zones
+from .model import (
+    CORRECTION_NONE,
+    CORRECTION_SHIFT,
+    KIND_HEATING,
+    OFFSET_MODE_SETPOINT,
+    FreedoData,
+    Zone,
+    correction_patch,
+    device_option_label,
+    device_zones,
+    room_temp_paused,
+    room_temp_zones,
+    zone_auto_offset,
+    zone_correction,
+    zone_measuring_candidates,
+    zone_offset_mode,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
 ISSUE_NO_AREA = "rooms_no_area"
+# The kinds of a temperature source.
+SOURCE_DEVICE = "device"
+SOURCE_SENSOR = "sensor"
+# The binary sensors that tell that a room is open.
+OPENING_CLASSES = (
+    BinarySensorDeviceClass.WINDOW,
+    BinarySensorDeviceClass.DOOR,
+    BinarySensorDeviceClass.OPENING,
+    BinarySensorDeviceClass.GARAGE_DOOR,
+)
 # hass.data key: the node device ids each entry saw at its last poll. It
 # survives a reload, which creates the devices of a new pairing.
 _SEEN = f"{DOMAIN}_seen_devices"
@@ -250,15 +281,17 @@ def async_track_rooms(
     return coordinator.async_add_listener(update)
 
 
-def temperature_sensors(hass: HomeAssistant) -> list[tuple[State, str | None]]:
-    """The sensor states with the device class temperature, each with its area:
+def _class_states(
+    hass: HomeAssistant, domain: str, classes: tuple[str, ...]
+) -> list[tuple[State, str | None]]:
+    """The states of domain with a device class of classes, each with its area:
     the area of the entity, else the area of its device. The entities of freedo
-    are left out: the devices of a room are options of their own."""
+    are left out."""
     entities = er.async_get(hass)
     devices = dr.async_get(hass)
     out: list[tuple[State, str | None]] = []
-    for state in hass.states.async_all("sensor"):
-        if state.attributes.get(ATTR_DEVICE_CLASS) != SensorDeviceClass.TEMPERATURE:
+    for state in hass.states.async_all(domain):
+        if state.attributes.get(ATTR_DEVICE_CLASS) not in classes:
             continue
         entry = entities.async_get(state.entity_id)
         area_id = None
@@ -274,6 +307,17 @@ def temperature_sensors(hass: HomeAssistant) -> list[tuple[State, str | None]]:
     return out
 
 
+def temperature_sensors(hass: HomeAssistant) -> list[tuple[State, str | None]]:
+    """The temperature sensors of Home Assistant. The entities of freedo are
+    left out: the devices of a room are sources of their own."""
+    return _class_states(hass, "sensor", (SensorDeviceClass.TEMPERATURE,))
+
+
+def opening_sensors(hass: HomeAssistant) -> list[tuple[State, str | None]]:
+    """The window and door sensors of Home Assistant."""
+    return _class_states(hass, "binary_sensor", OPENING_CLASSES)
+
+
 def sensor_label(state: State) -> str:
     """The sensor name with its reading, the name alone without a number."""
     try:
@@ -282,3 +326,111 @@ def sensor_label(state: State) -> str:
         return state.name
     unit = state.attributes.get(ATTR_UNIT_OF_MEASUREMENT)
     return f"{state.name} ({state.state} {unit})" if unit else f"{state.name} ({state.state})"
+
+
+def source_choices(
+    hass: HomeAssistant, entry: FreedoConfigEntry, data: FreedoData, zone: Zone, area_id: str | None
+) -> list[tuple[str, str, str]]:
+    """The temperature sources of a heating zone as (kind, target, label), in
+    this order: the devices of the room, the temperature sensors in area_id,
+    then the other temperature sensors with their area. The device the zone
+    measures on and the mapped sensor are always in the list, so the current
+    source is one of the choices."""
+    rows = zone_measuring_candidates(data, zone)
+    if zone.measuring and all(row.get("short") != zone.measuring for row in rows):
+        rows.append(data.install_devices.get(zone.measuring) or {"short": zone.measuring})
+    choices = [(SOURCE_DEVICE, str(row.get("short")), device_option_label(row)) for row in rows]
+    areas = ar.async_get(hass)
+    mapped = room_temp_zones(entry.options.get(CONF_ROOM_TEMPS) or {}).get(zone.number)
+    near: list[tuple[str, str, str]] = []
+    far: list[tuple[str, str, str]] = []
+    for state, sensor_area in temperature_sensors(hass):
+        label = sensor_label(state)
+        if state.entity_id == mapped:
+            mapped = None
+        if area_id is not None and sensor_area == area_id:
+            near.append((SOURCE_SENSOR, state.entity_id, label))
+            continue
+        area = areas.async_get_area(sensor_area) if sensor_area else None
+        far.append((SOURCE_SENSOR, state.entity_id, f"{label}, {area.name}" if area else label))
+    if mapped:
+        # A mapped sensor the list does not know, such as one without a device
+        # class, stays a choice.
+        state = hass.states.get(mapped)
+        near.insert(0, (SOURCE_SENSOR, mapped, sensor_label(state) if state else mapped))
+    return choices + near + far
+
+
+def current_source(
+    entry: FreedoConfigEntry, data: FreedoData, zone: Zone
+) -> tuple[str, str] | None:
+    """The source the zone regulates on, as (kind, target): the mapped sensor
+    while its pushes are not paused and the zone has a correction, else the
+    device the zone measures on."""
+    mapped = room_temp_zones(entry.options.get(CONF_ROOM_TEMPS) or {}).get(zone.number)
+    paused = room_temp_paused(entry.options.get(CONF_ROOM_TEMP_PAUSED) or [])
+    if (
+        mapped
+        and zone.number not in paused
+        and (zone_offset_mode(data, zone) == OFFSET_MODE_SETPOINT or zone_auto_offset(data, zone))
+    ):
+        return (SOURCE_SENSOR, mapped)
+    return (SOURCE_DEVICE, zone.measuring) if zone.measuring else None
+
+
+async def async_set_source(
+    hass: HomeAssistant, entry: FreedoConfigEntry, number: int, kind: str, target: str
+) -> None:
+    """Make a device of the room or a Home Assistant sensor the temperature
+    source of zone number. It raises FreedoError when the daemon refuses.
+
+    A sensor is mapped to the zone in the options, its pushes resume and its
+    reading goes out at once. A zone with no correction gets the continuous
+    shift, because the daemon refuses a reading (409) there.
+
+    A device becomes the measuring device of the zone (PUT
+    /api/install/zones/{n}/measuring). When a sensor is mapped, its pushes
+    pause and the zone reading is cleared, so the daemon returns to the manual
+    correction. The correction does not change."""
+    runtime = entry.runtime_data
+    client = runtime.client
+    data = runtime.coordinator.data
+    zone = data.zones.get(number)
+    if zone is None:
+        return
+
+    def save(paused: bool, sensor: str | None = None) -> None:
+        zones = room_temp_paused(entry.options.get(CONF_ROOM_TEMP_PAUSED) or [])
+        if paused:
+            zones.add(number)
+        else:
+            zones.discard(number)
+        options = {**entry.options, CONF_ROOM_TEMP_PAUSED: sorted(zones)}
+        if sensor is not None:
+            options[CONF_ROOM_TEMPS] = {
+                **(entry.options.get(CONF_ROOM_TEMPS) or {}),
+                str(number): sensor,
+            }
+        hass.config_entries.async_update_entry(entry, options=options)
+
+    if kind == SOURCE_DEVICE:
+        await client.set_zone_measuring(number, target)
+        if room_temp_zones(entry.options.get(CONF_ROOM_TEMPS) or {}).get(number):
+            # The lock keeps a push that started earlier from landing after
+            # the clear.
+            async with runtime.room_temp_lock:
+                save(paused=True)
+                await client.clear_room_temp(number)
+        return
+    if zone_correction(data, zone) == CORRECTION_NONE:
+        fields = correction_patch(
+            zone_offset_mode(data, zone), zone_auto_offset(data, zone), CORRECTION_SHIFT
+        )
+        result = await client.patch_install_zone(number, **fields)
+        row = result.get("zone") if isinstance(result, Mapping) else None
+        if isinstance(row, Mapping):
+            data.zone_settings[number] = dict(row)
+    save(paused=False, sensor=target)
+    if runtime.room_temps is not None:
+        runtime.room_temps.async_remap()
+        await runtime.room_temps.push(number)

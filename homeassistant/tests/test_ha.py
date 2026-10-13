@@ -42,6 +42,7 @@ from homeassistant.helpers import (  # noqa: E402
     entity_registry as er,
     issue_registry as ir,
 )
+from homeassistant.helpers.data_entry_flow import _BaseFlowManagerView  # noqa: E402
 from homeassistant.util import dt as dt_util  # noqa: E402
 from pytest_homeassistant_custom_component.common import (  # noqa: E402
     MockConfigEntry,
@@ -101,6 +102,8 @@ class FakeClient:
         self.end_rules: list[tuple] = []
         # Window pushes as the daemon receives them, in arrival order.
         self.windows: list[tuple[int, bool]] = []
+        # False for a daemon where a repeated open keeps the deadline.
+        self.window_restarts_hold = True
         self.window_gate: asyncio.Event | None = None
         # Errors the next window pushes raise, one per push.
         self.window_errors: list[Exception] = []
@@ -280,7 +283,12 @@ class FakeClient:
         if is_open and self.window_gate is not None:
             await self.window_gate.wait()
         self.windows.append((zone, is_open))
-        return {"open": is_open}
+        view = self.zones_json["declared"][zone - 1]["window"]
+        if not is_open:
+            hold_window(self, zone, None, None)
+        elif self.window_restarts_hold or view["source"] not in ("external", "both"):
+            hold_window(self, zone, dt_util.utcnow() + timedelta(hours=2))
+        return copy.deepcopy(view)
 
     async def push_outdoor(self, temp_c):
         return {}
@@ -322,6 +330,16 @@ class FakeClient:
         if self.boiler_json.get("energy", {}).get("gas"):
             self.boiler_json["energy"]["gas"]["meter"] = None
         return {"meter": None}
+
+
+def hold_window(client, zone, deadline, source="external"):
+    """The window view of the daemon for a zone: a hold of source until
+    deadline, or a closed zone with source None."""
+    client.zones_json["declared"][zone - 1]["window"].update(
+        open=source is not None,
+        source=source,
+        deadline=deadline.strftime("%Y-%m-%dT%H:%M:%SZ") if source else None,
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -839,6 +857,70 @@ async def test_failed_window_push_is_retried(hass, client):
     assert client.windows == [(1, False), (1, True)]
 
 
+async def test_open_window_is_stated_again_before_the_deadline(hass, client, freezer):
+    sensor = "binary_sensor.living_window"
+    hass.states.async_set(sensor, "on")
+    start = dt_util.utcnow()
+    entry = await setup_entry(hass, client, options={"windows": {sensor: 1}})
+    assert client.windows == [(1, True)]
+
+    # The polls write nothing while the deadline is far.
+    freezer.move_to(start + timedelta(minutes=110))
+    for _ in range(3):
+        await refresh(hass, entry)
+    assert client.windows == [(1, True)]
+
+    # Closer than the margin: one open. The daemon restarts the hold, and the
+    # new deadline is far.
+    freezer.move_to(start + timedelta(minutes=116))
+    for _ in range(3):
+        await refresh(hass, entry)
+    assert client.windows == [(1, True), (1, True)]
+    freezer.move_to(start + timedelta(minutes=230))
+    await refresh(hass, entry)
+    assert client.windows == [(1, True), (1, True)]
+    freezer.move_to(start + timedelta(minutes=232))
+    await refresh(hass, entry)
+    assert client.windows == [(1, True), (1, True), (1, True)]
+
+    # A closed sensor ends it.
+    hass.states.async_set(sensor, "off")
+    await hass.async_block_till_done()
+    freezer.move_to(start + timedelta(hours=8))
+    await refresh(hass, entry)
+    assert client.windows == [(1, True), (1, True), (1, True), (1, False)]
+
+
+async def test_open_window_on_a_daemon_that_keeps_the_deadline(hass, client, freezer):
+    # A repeated open restarts nothing there: one open per deadline, then the
+    # hold ends and the open sensor opens the room again.
+    client.window_restarts_hold = False
+    sensor = "binary_sensor.living_window"
+    hass.states.async_set(sensor, "on")
+    start = dt_util.utcnow()
+    hold_window(client, 1, None, None)
+    entry = await setup_entry(hass, client, options={"windows": {sensor: 1}})
+    freezer.move_to(start + timedelta(minutes=116))
+    for _ in range(3):
+        await refresh(hass, entry)
+    assert client.windows == [(1, True), (1, True)]
+
+    hold_window(client, 1, None, None)
+    await refresh(hass, entry)
+    assert client.windows == [(1, True), (1, True), (1, True)]
+
+
+async def test_open_window_is_stated_again_under_the_valve_detector(hass, client):
+    # The valve detector alone holds the room: the hold of Home Assistant is
+    # gone, and the sensor is still open.
+    sensor = "binary_sensor.living_window"
+    hass.states.async_set(sensor, "on")
+    entry = await setup_entry(hass, client, options={"windows": {sensor: 1}})
+    hold_window(client, 1, dt_util.utcnow() + timedelta(minutes=10), "device")
+    await refresh(hass, entry)
+    assert client.windows == [(1, True), (1, True)]
+
+
 async def test_refused_window_push_is_not_retried(hass, client):
     sensor = "binary_sensor.living_window"
     hass.states.async_set(sensor, "off")
@@ -971,7 +1053,6 @@ BEDROOM_SOURCE = "zone2_temperature_source"
 LIVING_DEVICE = "Living (VA0000000001)"
 # The label of the mapped sensors: their name from the entity id, and the reading.
 ROOM_LABEL = "living temperature (21.4 °C)"
-OTHER = "other_sensor"
 
 
 async def test_temperature_source_options_and_current(hass, client):
@@ -985,9 +1066,9 @@ async def test_temperature_source_options_and_current(hass, client):
     )
     living = entity_id(hass, entry, "select", LIVING_SOURCE)
     bedroom = entity_id(hass, entry, "select", BEDROOM_SOURCE)
-    # The mapped sensor, the devices of the room, then the other sensor.
+    # The devices of the room, then the mapped sensor.
     assert hass.states.get(living).attributes["options"] == [
-        ROOM_LABEL, LIVING_DEVICE, "VA0000000002", OTHER,
+        LIVING_DEVICE, "VA0000000002", ROOM_LABEL,
     ]
     assert er.async_get(hass).async_get(living).entity_category == "config"
     # Zone 1 regulates on the mapped sensor: it is in use, the mode is setpoint.
@@ -999,17 +1080,19 @@ async def test_temperature_source_options_and_current(hass, client):
 async def test_temperature_source_without_an_area_or_a_sensor(hass, client):
     entry = await setup_entry(hass, client)
     living = entity_id(hass, entry, "select", LIVING_SOURCE)
-    assert hass.states.get(living).attributes["options"] == [LIVING_DEVICE, "VA0000000002", OTHER]
+    assert hass.states.get(living).attributes["options"] == [LIVING_DEVICE, "VA0000000002"]
     assert hass.states.get(living).state == "VA0000000002"
 
 
-async def test_temperature_source_exists_without_a_device_of_the_room(hass, client):
-    # No member of zone 2 measures in its room: the select still offers the
-    # other sensor.
-    client.install_devices_json["devices"][2]["zone"] = 3
+async def test_temperature_source_offers_the_measuring_device_of_another_room(hass, client):
+    # No member of zone 1 sits in its room, but the zone measures on bbbb: the
+    # current source is always a choice.
+    for row in client.install_devices_json["devices"][:2]:
+        row["zone"] = 3
     entry = await setup_entry(hass, client)
-    bedroom = entity_id(hass, entry, "select", BEDROOM_SOURCE)
-    assert hass.states.get(bedroom).attributes["options"] == [OTHER]
+    living = entity_id(hass, entry, "select", LIVING_SOURCE)
+    assert hass.states.get(living).attributes["options"] == ["VA0000000002"]
+    assert hass.states.get(living).state == "VA0000000002"
 
 
 async def test_temperature_source_offers_members_without_an_install_zone(hass, client):
@@ -1019,7 +1102,7 @@ async def test_temperature_source_offers_members_without_an_install_zone(hass, c
         row["zone"] = None
     entry = await setup_entry(hass, client)
     bedroom = entity_id(hass, entry, "select", BEDROOM_SOURCE)
-    assert hass.states.get(bedroom).attributes["options"] == ["Bedroom (VA0000000004)", OTHER]
+    assert hass.states.get(bedroom).attributes["options"] == ["Bedroom (VA0000000004)"]
 
 
 async def test_temperature_source_excludes_a_device_of_another_room(hass, client):
@@ -1031,7 +1114,7 @@ async def test_temperature_source_excludes_a_device_of_another_room(hass, client
     )
     entry = await setup_entry(hass, client)
     bedroom = entity_id(hass, entry, "select", BEDROOM_SOURCE)
-    assert hass.states.get(bedroom).attributes["options"] == ["Bedroom (VA0000000004)", OTHER]
+    assert hass.states.get(bedroom).attributes["options"] == ["Bedroom (VA0000000004)"]
 
 
 async def test_temperature_source_lists_the_sensors_of_the_area(hass, client):
@@ -1045,37 +1128,40 @@ async def test_temperature_source_lists_the_sensors_of_the_area(hass, client):
     hass.states.async_set("sensor.living_humidity", "48", {"device_class": "humidity"})
     await refresh(hass, entry)
     living = entity_id(hass, entry, "select", LIVING_SOURCE)
-    # The valve aaaa moved to the area with the zone, and its own temperature
-    # sensor is a device option, not a sensor option.
+    # The devices of the room, the sensors of its area, then the other sensors
+    # with their area. The valve aaaa moved to the area with the zone, and its
+    # own temperature sensor is a device option, not a sensor option.
     assert hass.states.get(living).attributes["options"] == [
-        "Aqara TH living (20.1 °C)",
-        "Soggiorno thermometer (20.4 °C)",
         LIVING_DEVICE,
         "VA0000000002",
-        OTHER,
+        "Aqara TH living (20.1 °C)",
+        "Soggiorno thermometer (20.4 °C)",
+        "Office thermometer (19.0 °C), Office",
+    ]
+    # The same sensor is a choice of the other room, with its area.
+    bedroom = entity_id(hass, entry, "select", BEDROOM_SOURCE)
+    assert hass.states.get(bedroom).attributes["options"] == [
+        "Bedroom (VA0000000004)",
+        "Aqara TH living (20.1 °C), Soggiorno",
+        "Office thermometer (19.0 °C), Office",
+        "Soggiorno thermometer (20.4 °C), Soggiorno",
     ]
 
 
-async def test_temperature_source_other_sensor_explains_where_to_map_one(hass, client):
+@pytest.mark.parametrize(
+    ("sensor_area", "suffix"), [("Camera", ""), ("Office", ", Office")]
+)
+async def test_temperature_source_choose_a_sensor(hass, client, sensor_area, suffix):
+    # A sensor of the area of the room, or of another area.
     entry = await setup_entry(hass, client)
-    living = entity_id(hass, entry, "select", LIVING_SOURCE)
-    with pytest.raises(ServiceValidationError) as err:
-        await select_option(hass, living, OTHER)
-    assert err.value.translation_key == "another_sensor"
-    assert err.value.translation_placeholders == {"room": "Living"}
-    assert client.calls == []
-    assert hass.states.get(living).state == "VA0000000002"
-
-
-async def test_temperature_source_choose_a_sensor_of_the_area(hass, client):
-    entry = await setup_entry(hass, client)
-    bedroom_area = place_zone(hass, entry, 2, "Camera")
-    add_sensor(hass, entry, "sensor.camera", "Aqara bedroom", "18.1", area=bedroom_area)
+    place_zone(hass, entry, 2, "Camera")
+    area = ar.async_get(hass).async_get_or_create(sensor_area).id
+    add_sensor(hass, entry, "sensor.camera", "Aqara bedroom", "18.1", area=area)
     await refresh(hass, entry)
     bedroom = entity_id(hass, entry, "select", BEDROOM_SOURCE)
     client.calls.clear()
 
-    await select_option(hass, bedroom, "Aqara bedroom (18.1 °C)")
+    await select_option(hass, bedroom, f"Aqara bedroom (18.1 °C){suffix}")
     # Zone 2 had no correction: the choice starts the continuous shift, maps the
     # sensor in the options and sends its reading with its name.
     assert client.calls == [("patch_zone", 2, {"offset_mode": "setpoint"})]
@@ -1083,10 +1169,10 @@ async def test_temperature_source_choose_a_sensor_of_the_area(hass, client):
     assert 2 not in entry.options[CONF_ROOM_TEMP_PAUSED]
     assert client.room_temps == [(2, 18.1)]
     assert client.room_temp_sources == [(2, "Aqara bedroom")]
-    assert hass.states.get(bedroom).state == "Aqara bedroom (18.1 °C)"
+    assert hass.states.get(bedroom).state == f"Aqara bedroom (18.1 °C){suffix}"
 
     # The new mapping follows the sensor without a reload.
-    add_sensor(hass, entry, "sensor.camera", "Aqara bedroom", "18.4", area=bedroom_area)
+    add_sensor(hass, entry, "sensor.camera", "Aqara bedroom", "18.4", area=area)
     await hass.async_block_till_done()
     assert client.room_temps == [(2, 18.1), (2, 18.4)]
 
@@ -1194,34 +1280,17 @@ async def open_branch(hass, entry, branch):
     result = await hass.config_entries.options.async_init(entry.entry_id)
     assert result["type"] is FlowResultType.MENU
     assert result["step_id"] == "init"
-    assert result["menu_options"] == ["environment", "rooms"]
+    assert result["menu_options"] == ["rooms", "outdoor"]
     return await hass.config_entries.options.async_configure(
         result["flow_id"], {"next_step_id": branch}
     )
 
 
-async def start_environment(hass, entry, user_input=None):
-    result = await open_branch(hass, entry, "environment")
-    assert result["step_id"] == "environment"
-    return await hass.config_entries.options.async_configure(result["flow_id"], user_input or {})
-
-
-async def start_rooms(hass, entry, rooms=None):
-    """Open the branch Rooms and pick the rooms by zone number; None keeps the
-    default choice."""
-    result = await open_branch(hass, entry, "rooms")
-    assert result["step_id"] == "rooms"
-    picked = {} if rooms is None else {"rooms": [str(n) for n in rooms]}
-    return await hass.config_entries.options.async_configure(result["flow_id"], picked)
-
-
-async def submit_rooms(hass, result, *pages):
-    """Submit one room page per item of pages, in order."""
-    for page in pages:
-        assert result["type"] is FlowResultType.FORM
-        assert result["step_id"] == "room"
-        result = await hass.config_entries.options.async_configure(result["flow_id"], page)
-        await hass.async_block_till_done()
+async def save_outdoor(hass, entry, user_input):
+    result = await open_branch(hass, entry, "outdoor")
+    assert result["step_id"] == "outdoor"
+    result = await hass.config_entries.options.async_configure(result["flow_id"], user_input)
+    await hass.async_block_till_done()
     return result
 
 
@@ -1233,125 +1302,415 @@ def suggested(result, name):
     return (form_fields(result)[name].description or {}).get("suggested_value")
 
 
-def sensor_choices(result):
-    key = form_fields(result)["room_temperature"]
-    return [o["value"] for o in result["data_schema"].schema[key].config["options"]]
+def choices(result, name):
+    """The options of a select field as value -> label, in their order."""
+    key = form_fields(result)[name]
+    return {o["value"]: o["label"] for o in result["data_schema"].schema[key].config["options"]}
 
 
-async def test_rooms_branch_picks_the_rooms_without_an_area(hass, client):
-    set_room_sensor(hass, "20.1", entity=HALL_SENSOR)
-    entry = await setup_entry(hass, client, options={"room_temperatures": {"2": HALL_SENSOR}})
-    place_zone(hass, entry, 2, "Camera")
-    with patch("custom_components.freedo.FreedoClient", return_value=client):
+def wire_form(result):
+    """The form as the flow view of Home Assistant sends it to the frontend,
+    by field name."""
+    wire = _BaseFlowManagerView._prepare_result_json(None, result)
+    return {field["name"]: field for field in wire["data_schema"]}
+
+
+async def open_room(hass, entry, room, result=None):
+    """Choose a room in the list of the branch Rooms. result is the list a
+    saved page returned; without it, Configure opens."""
+    if result is None:
         result = await open_branch(hass, entry, "rooms")
     assert result["step_id"] == "rooms"
-    key = form_fields(result)["rooms"]
-    config = result["data_schema"].schema[key].config
-    # Each heating room with its area and its sensor; the hot water zone is not
-    # a room. The rooms without an area are chosen.
-    assert config["multiple"] is True
-    assert [(o["value"], o["label"]) for o in config["options"]] == [
-        ("1", "Living"),
-        ("2", "Bedroom · area Camera · hall temperature"),
-    ]
-    assert key.default() == ["1"]
-    hass.config_entries.options.async_abort(result["flow_id"])
-
-
-async def test_rooms_branch_has_a_page_for_each_chosen_room(hass, client):
-    areas = ar.async_get(hass)
-    living_room = areas.async_create("living").id
-    entry = await setup_entry(hass, client, options={"room_temperatures": {"2": HALL_SENSOR}})
-    bedroom_area = place_zone(hass, entry, 2, "Camera")
-    with patch("custom_components.freedo.FreedoClient", return_value=client):
-        result = await start_rooms(hass, entry, [1, 2])
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"room": str(room)}
+    )
     assert result["step_id"] == "room"
-    assert result["description_placeholders"] == {"room": "Living", "index": "1", "count": "2"}
-    assert list(form_fields(result)) == ["area", "room_temperature", "correction"]
-    # A room with no area starts from the area of the same name, without case.
-    assert suggested(result, "area") == living_room
-    assert not suggested(result, "room_temperature")
-    assert form_fields(result)["correction"].default() == "continuous_shift"
-    result = await submit_rooms(hass, result, {"area": living_room, "correction": "continuous_shift"})
-    assert result["description_placeholders"] == {"room": "Bedroom", "index": "2", "count": "2"}
-    assert suggested(result, "area") == bedroom_area
-    assert suggested(result, "room_temperature") == HALL_SENSOR
-    assert form_fields(result)["correction"].default() == "none"
+    return result
+
+
+async def submit_room(hass, result, **page):
+    """Submit the page of a room as the frontend does: the section Advanced
+    always travels, with the correction the page shows unless page names one."""
+    advanced = form_fields(result).get("advanced")
+    if advanced is not None:
+        (key,) = result["data_schema"].schema[advanced].schema.schema
+        page["advanced"] = {"correction": page.pop("correction", key.default())}
+    result = await hass.config_entries.options.async_configure(result["flow_id"], page)
+    await hass.async_block_till_done()
+    return result
+
+
+async def close_rooms(hass, result):
+    assert result["step_id"] == "rooms"
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"room": "done"})
+    await hass.async_block_till_done()
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    return result
+
+
+def add_opening(hass, entity, name, state="off", device_class="window", area=None):
+    """A window or door sensor of another integration."""
+    registered = er.async_get(hass).async_get_or_create(
+        "binary_sensor", "test", entity, suggested_object_id=entity.split(".", 1)[1]
+    )
+    assert registered.entity_id == entity
+    er.async_get(hass).async_update_entity(entity, area_id=area)
+    attributes = {"friendly_name": name}
+    if device_class:
+        attributes["device_class"] = device_class
+    hass.states.async_set(entity, state, attributes)
+
+
+# Not binary_sensor.living_window: that is the Window sensor of the room Living.
+LIVING_WINDOW = "binary_sensor.window_contact"
+BALCONY_DOOR = "binary_sensor.balcony_door"
+
+
+# The four jobs of a user, each from Configure to the end.
+
+
+async def test_job_see_what_each_room_uses(hass, client):
+    set_room_sensor(hass, "20.1", entity=HALL_SENSOR)
+    client.zones_json["declared"][1]["measuringDevice"] = "dddd"
+    options = {
+        "room_temperatures": {"1": HALL_SENSOR},
+        "windows": {LIVING_WINDOW: 1, BALCONY_DOOR: 1},
+    }
+    entry = await setup_entry(hass, client, options=options)
+    place_zone(hass, entry, 1, "Soggiorno")
+    runtime = entry.runtime_data
+    result = await open_branch(hass, entry, "rooms")
+    assert result["step_id"] == "rooms"
+    # Each heating room with its area, its source with the reading and its
+    # window sensors; the hot water is not a room. Done is the default.
+    assert choices(result, "room") == {
+        "1": "Living · Soggiorno · hall temperature (20.1 °C) · Window sensors: 2",
+        "2": "Bedroom · No area · Bedroom (VA0000000004) · Window sensors: 0",
+        "done": "Done",
+    }
+    assert form_fields(result)["room"].default() == "done"
+    assert wire_form(result)["room"]["selector"]["select"]["mode"] == "list"
+    await close_rooms(hass, result)
+    # Nothing changed, so nothing reloaded.
+    assert entry.options == options
+    assert entry.runtime_data is runtime
+
+
+async def test_job_use_a_wall_sensor_as_the_room_temperature(hass, client):
+    client.zones_json["declared"][1]["measuringDevice"] = "dddd"
+    entry = await setup_entry(hass, client)
+    bedroom_area = place_zone(hass, entry, 2, "Camera")
+    add_sensor(hass, entry, "sensor.wall", "Wall sensor", "18.1", area=bedroom_area)
+    await refresh(hass, entry)
+    runtime = entry.runtime_data
+    client.calls.clear()
+
+    result = await open_room(hass, entry, 2)
+    assert result["description_placeholders"] == {"room": "Bedroom"}
+    assert list(form_fields(result)) == ["area", "temperature_source", "windows", "advanced"]
+    # The page shows the source in use, and it is required: no empty choice.
+    source = form_fields(result)["temperature_source"]
+    assert isinstance(source, vol.Required) and source.default() == "device:dddd"
+    assert choices(result, "temperature_source") == {
+        "device:dddd": "Bedroom (VA0000000004)",
+        "sensor:sensor.wall": "Wall sensor (18.1 °C)",
+    }
+    # The frontend gets an area picker, two dropdowns and a closed section.
+    wire = wire_form(result)
+    assert "area" in wire["area"]["selector"]
+    assert wire["temperature_source"]["required"] is True
+    assert wire["windows"]["selector"]["entity"]["multiple"] is True
+    assert wire["advanced"]["type"] == "expandable" and wire["advanced"]["expanded"] is False
+    assert [f["name"] for f in wire["advanced"]["schema"]] == ["correction"]
+    result = await submit_room(hass, result, area=bedroom_area, temperature_source="sensor:sensor.wall")
+    # The room had no correction: the sensor starts the continuous shift. The
+    # reading goes out at once, with no reload.
+    assert [c for c in client.calls if c[0] == "patch_zone"] == [
+        ("patch_zone", 2, {"offset_mode": "setpoint"})
+    ]
+    assert client.room_temps == [(2, 18.1)]
+    assert entry.options["room_temperatures"] == {"2": "sensor.wall"}
+    assert entry.runtime_data is runtime
+    # The list and the select show the sensor.
+    assert choices(result, "room")["2"] == (
+        "Bedroom · Camera · Wall sensor (18.1 °C) · Window sensors: 0"
+    )
+    bedroom = entity_id(hass, entry, "select", BEDROOM_SOURCE)
+    assert hass.states.get(bedroom).state == "Wall sensor (18.1 °C)"
+    # The page shows it too.
+    result = await open_room(hass, entry, 2, result)
+    assert form_fields(result)["temperature_source"].default() == "sensor:sensor.wall"
     hass.config_entries.options.async_abort(result["flow_id"])
 
 
-async def test_one_room_is_one_page(hass, client):
-    # Configure -> Rooms -> pick the room -> one page -> done. The options of
-    # the other rooms and of the environment stay.
-    set_room_sensor(hass, "21.4")
-    options = {"windows": {"binary_sensor.door": 1}, "outdoor_entity": "sensor.outdoor",
-               "room_temperatures": {"1": ROOM_SENSOR}}
-    entry = await setup_entry(hass, client, options=options)
-    entry_options = dict(entry.options)
-    camera = ar.async_get(hass).async_create("Camera").id
-    with patch("custom_components.freedo.FreedoClient", return_value=client):
-        result = await start_rooms(hass, entry, [2])
-        result = await submit_rooms(hass, result, {"area": camera, "correction": "none"})
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.options == entry_options
-    assert zone_device(hass, entry, 2).area_id == camera
+async def test_job_stop_the_heating_on_two_window_contacts(hass, client):
+    hold_window(client, 1, None, None)
+    entry = await setup_entry(hass, client)
+    living_room = place_zone(hass, entry, 1, "Soggiorno")
+    add_opening(hass, LIVING_WINDOW, "Living window", area=living_room)
+    add_opening(hass, BALCONY_DOOR, "Balcony door", device_class="door")
+    # A binary sensor of another kind is no choice.
+    hass.states.async_set("binary_sensor.motion", "off", {"device_class": "motion"})
+    await refresh(hass, entry)
+    runtime = entry.runtime_data
 
-
-async def test_rooms_branch_with_no_room_chosen_changes_nothing(hass, client):
-    entry = await setup_entry(hass, client, options={"room_temperatures": {"1": ROOM_SENSOR}})
-    with patch("custom_components.freedo.FreedoClient", return_value=client):
-        result = await start_rooms(hass, entry, [])
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.options == {"room_temperatures": {"1": ROOM_SENSOR}}
-
-
-async def test_environment_branch_keeps_the_room_options(hass, client):
-    rooms = {"room_temperatures": {"1": ROOM_SENSOR}, CONF_ROOM_TEMP_PAUSED: [1]}
-    entry = await setup_entry(hass, client, options={**rooms, "outdoor_entity": "sensor.old"})
-    with patch("custom_components.freedo.FreedoClient", return_value=client):
-        result = await start_environment(hass, entry, {"outdoor_entity": "sensor.outdoor"})
-        await hass.async_block_till_done()
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.options == {**rooms, "windows": {}, "outdoor_entity": "sensor.outdoor"}
-    # Leaving the outdoor sensor empty removes it.
-    with patch("custom_components.freedo.FreedoClient", return_value=client):
-        await start_environment(hass, entry, {})
-        await hass.async_block_till_done()
-    assert entry.options == {**rooms, "windows": {}}
-
-
-async def test_environment_branch_maps_the_window_sensors(hass, client):
-    entry = await setup_entry(hass, client, options={"room_temperatures": {"1": ROOM_SENSOR}})
-    with patch("custom_components.freedo.FreedoClient", return_value=client):
-        result = await start_environment(
-            hass, entry, {"window_entities": ["binary_sensor.living_window"]}
-        )
-        assert result["step_id"] == "windows"
-        result = await hass.config_entries.options.async_configure(
-            result["flow_id"], {"binary_sensor.living_window": "1"}
-        )
-        await hass.async_block_till_done()
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.options == {
-        "room_temperatures": {"1": ROOM_SENSOR},
-        "windows": {"binary_sensor.living_window": 1},
+    result = await open_room(hass, entry, 1)
+    # Names, the sensor of the area first.
+    assert choices(result, "windows") == {
+        LIVING_WINDOW: "Living window",
+        BALCONY_DOOR: "Balcony door",
     }
+    assert not suggested(result, "windows")
+    result = await submit_room(
+        hass, result, area=living_room, temperature_source="device:bbbb",
+        windows=[LIVING_WINDOW, BALCONY_DOOR],
+    )
+    assert entry.options == {"windows": {LIVING_WINDOW: 1, BALCONY_DOOR: 1}}
+    assert entry.runtime_data is runtime
+    assert choices(result, "room")["1"].endswith("Window sensors: 2")
+    await close_rooms(hass, result)
+    # The room goes to the daemon at once, and it is open while one is open.
+    assert client.windows == [(1, False)]
+    hass.states.async_set(BALCONY_DOOR, "on", {"device_class": "door"})
+    await hass.async_block_till_done()
+    hass.states.async_set(LIVING_WINDOW, "on", {"device_class": "window"})
+    await hass.async_block_till_done()
+    hass.states.async_set(BALCONY_DOOR, "off", {"device_class": "door"})
+    await hass.async_block_till_done()
+    assert client.windows == [(1, False), (1, True)]
+    hass.states.async_set(LIVING_WINDOW, "off", {"device_class": "window"})
+    await hass.async_block_till_done()
+    assert client.windows == [(1, False), (1, True), (1, False)]
 
 
-async def test_rooms_step_writes_the_areas_and_moves_the_devices(hass, client):
+async def test_job_sensor_and_windows_on_one_page(hass, client):
+    hold_window(client, 1, None, None)
+    entry = await setup_entry(hass, client)
+    add_sensor(hass, entry, "sensor.wall", "Wall sensor", "20.4")
+    add_opening(hass, LIVING_WINDOW, "Living window")
+    result = await open_room(hass, entry, 1)
+    result = await submit_room(
+        hass, result, temperature_source="sensor:sensor.wall", windows=[LIVING_WINDOW]
+    )
+    assert choices(result, "room")["1"] == (
+        "Living · No area · Wall sensor (20.4 °C) · Window sensors: 1"
+    )
+    await close_rooms(hass, result)
+    assert entry.options == {
+        "room_temperature_paused": [],
+        "room_temperatures": {"1": "sensor.wall"},
+        "windows": {LIVING_WINDOW: 1},
+    }
+    assert client.room_temps == [(1, 20.4)]
+    assert client.windows == [(1, False)]
+
+
+# An existing configuration.
+
+
+async def test_options_of_the_old_steps_carry_over(hass, client):
+    # The options as the steps Environment and Rooms saved them. Zone 1 maps a
+    # sensor without a device class and its pushes are paused; the window
+    # sensor has no device class either.
+    set_room_sensor(hass, "21.4")
+    hass.states.async_set(LIVING_WINDOW, "off", {"friendly_name": "Living window"})
+    hold_window(client, 1, None, None)
+    old = {
+        "windows": {LIVING_WINDOW: 1},
+        "outdoor_entity": "sensor.outdoor",
+        "room_temperatures": {"1": ROOM_SENSOR},
+        CONF_ROOM_TEMP_PAUSED: [1],
+    }
+    entry = await setup_entry(hass, client, options=old)
+    assert client.room_temps == []
+    assert client.windows == [(1, False)]
+    runtime = entry.runtime_data
+    client.calls.clear()
+
+    result = await open_room(hass, entry, 1)
+    # The paused sensor is not in use: the page shows the device, and the
+    # sensor stays a choice. The window sensor stays one too.
+    assert form_fields(result)["temperature_source"].default() == "device:bbbb"
+    assert choices(result, "temperature_source") == {
+        "device:aaaa": LIVING_DEVICE,
+        "device:bbbb": "VA0000000002",
+        f"sensor:{ROOM_SENSOR}": ROOM_LABEL,
+    }
+    assert suggested(result, "windows") == [LIVING_WINDOW]
+    assert choices(result, "windows") == {LIVING_WINDOW: "Living window"}
+    # A page saved as it shows changes nothing.
+    result = await submit_room(
+        hass, result, temperature_source="device:bbbb", windows=[LIVING_WINDOW]
+    )
+    await close_rooms(hass, result)
+    assert entry.options == old
+    assert entry.runtime_data is runtime
+    assert client.calls == []
+    assert client.room_temps == [] and client.room_temp_clears == []
+    assert client.windows == [(1, False)]
+    # The outdoor sensor is where the branch Outdoor shows it.
+    result = await open_branch(hass, entry, "outdoor")
+    assert suggested(result, "outdoor_entity") == "sensor.outdoor"
+    hass.config_entries.options.async_abort(result["flow_id"])
+
+
+async def test_room_page_pauses_a_sensor_that_is_not_in_use(hass, client):
+    # Zone 2 maps a sensor but has no correction: the daemon refuses its
+    # readings, and the room measures on its valve.
+    set_room_sensor(hass, "20.1", entity=HALL_SENSOR)
+    client.zones_json["declared"][1]["measuringDevice"] = "dddd"
+    entry = await setup_entry(hass, client, options={"room_temperatures": {"2": HALL_SENSOR}})
+    client.calls.clear()
+    result = await open_room(hass, entry, 2)
+    assert form_fields(result)["temperature_source"].default() == "device:dddd"
+    # A correction set with the device as the source does not bring the
+    # sensor back: the page pauses it.
+    result = await submit_room(
+        hass, result, temperature_source="device:dddd", correction="continuous_shift"
+    )
+    assert entry.options[CONF_ROOM_TEMP_PAUSED] == [2]
+    assert client.room_temp_clears == [2]
+    result = await open_room(hass, entry, 2, result)
+    assert form_fields(result)["temperature_source"].default() == "device:dddd"
+    hass.config_entries.options.async_abort(result["flow_id"])
+
+
+# The page of a room.
+
+
+async def test_room_page_chooses_a_device(hass, client):
+    set_room_sensor(hass, "21.4")
+    entry = await setup_entry(hass, client, options={"room_temperatures": {"1": ROOM_SENSOR}})
+    result = await open_room(hass, entry, 1)
+    assert form_fields(result)["temperature_source"].default() == f"sensor:{ROOM_SENSOR}"
+    result = await submit_room(hass, result, temperature_source="device:aaaa")
+    # As the select does: the measuring device changes, the pushes pause and
+    # the reading is cleared. The correction does not change.
+    assert ("measuring", 1, "aaaa") in client.calls
+    assert client.room_temp_clears == [1]
+    assert entry.options[CONF_ROOM_TEMP_PAUSED] == [1]
+    assert not any(c[0] == "patch_zone" and "offset_mode" in c[2] for c in client.calls)
+    assert choices(result, "room")["1"] == f"Living · No area · {LIVING_DEVICE} · Window sensors: 0"
+    living = entity_id(hass, entry, "select", LIVING_SOURCE)
+    assert hass.states.get(living).state == LIVING_DEVICE
+    # The select brings the sensor back, and the page follows.
+    await select_option(hass, living, ROOM_LABEL)
+    result = await open_room(hass, entry, 1, result)
+    assert form_fields(result)["temperature_source"].default() == f"sensor:{ROOM_SENSOR}"
+    hass.config_entries.options.async_abort(result["flow_id"])
+
+
+async def test_room_page_without_a_source_in_use(hass, client):
+    # Zone 2 names no measuring device: the field is optional, and a page
+    # saved without it writes no source.
+    entry = await setup_entry(hass, client)
+    client.calls.clear()
+    result = await open_room(hass, entry, 2)
+    assert isinstance(form_fields(result)["temperature_source"], vol.Optional)
+    result = await submit_room(hass, result)
+    assert result["step_id"] == "rooms"
+    assert client.calls == []
+    assert entry.options == {}
+    hass.config_entries.options.async_abort(result["flow_id"])
+
+
+async def test_room_page_lists_the_sensors_of_the_area_first(hass, client):
+    entry = await setup_entry(hass, client)
+    living_room = place_zone(hass, entry, 1, "Soggiorno")
+    # Bedroom has no area: its page starts from the area of its name.
+    bedroom_area = ar.async_get(hass).async_create("bedroom").id
+    add_sensor(hass, entry, "sensor.soggiorno", "Soggiorno thermometer", "20.4", area=living_room)
+    add_sensor(hass, entry, "sensor.camera", "Camera thermometer", "19.0", area=bedroom_area)
+    hass.states.async_set("sensor.attic", "15.0", {"device_class": "temperature", "friendly_name": "Attic"})
+    add_opening(hass, LIVING_WINDOW, "Living window", area=living_room)
+    add_opening(hass, BALCONY_DOOR, "Balcony door", device_class="door", area=bedroom_area)
+    await refresh(hass, entry)
+
+    result = await open_room(hass, entry, 1)
+    assert suggested(result, "area") == living_room
+    assert list(choices(result, "temperature_source").values()) == [
+        LIVING_DEVICE,
+        "VA0000000002",
+        "Soggiorno thermometer (20.4 °C)",
+        "Attic (15.0)",
+        "Camera thermometer (19.0 °C), bedroom",
+    ]
+    assert list(choices(result, "windows").values()) == ["Living window", "Balcony door, bedroom"]
+    result = await submit_room(hass, result, area=living_room, temperature_source="device:bbbb")
+
+    result = await open_room(hass, entry, 2, result)
+    assert suggested(result, "area") == bedroom_area
+    assert list(choices(result, "temperature_source").values()) == [
+        "Bedroom (VA0000000004)",
+        "Camera thermometer (19.0 °C)",
+        "Attic (15.0)",
+        "Soggiorno thermometer (20.4 °C), Soggiorno",
+    ]
+    assert list(choices(result, "windows").values()) == ["Balcony door", "Living window, Soggiorno"]
+    hass.config_entries.options.async_abort(result["flow_id"])
+
+
+async def test_room_page_moves_a_window_sensor_from_another_room(hass, client):
+    add_opening(hass, LIVING_WINDOW, "Living window", state="on")
+    add_opening(hass, BALCONY_DOOR, "Balcony door", device_class="door")
+    options = {"windows": {LIVING_WINDOW: 1, BALCONY_DOOR: 1}, "outdoor_entity": "sensor.outdoor"}
+    entry = await setup_entry(hass, client, options=options)
+    assert client.windows == [(1, True)]
+    runtime = entry.runtime_data
+
+    result = await open_room(hass, entry, 2)
+    # The page names the room that holds each sensor now.
+    assert choices(result, "windows") == {
+        BALCONY_DOOR: "Balcony door (used by Living)",
+        LIVING_WINDOW: "Living window (used by Living)",
+    }
+    result = await submit_room(hass, result, windows=[LIVING_WINDOW])
+    await close_rooms(hass, result)
+    # The sensor moves, and nothing else changes.
+    assert entry.options == {
+        "windows": {BALCONY_DOOR: 1, LIVING_WINDOW: 2},
+        "outdoor_entity": "sensor.outdoor",
+    }
+    assert entry.runtime_data is runtime
+    # Living closes with the sensor it keeps, Bedroom opens with the open one.
+    assert client.windows == [(1, True), (1, False), (2, True)]
+
+
+async def test_room_page_closes_a_room_that_loses_its_open_sensor(hass, client):
+    add_opening(hass, LIVING_WINDOW, "Living window", state="on")
+    entry = await setup_entry(hass, client, options={"windows": {LIVING_WINDOW: 1}})
+    result = await open_room(hass, entry, 1)
+    result = await submit_room(hass, result, temperature_source="device:bbbb", windows=[])
+    await close_rooms(hass, result)
+    assert entry.options == {"windows": {}}
+    assert client.windows == [(1, True), (1, False)]
+    # The sensor is no longer followed.
+    hass.states.async_set(LIVING_WINDOW, "off", {"device_class": "window"})
+    await hass.async_block_till_done()
+    assert client.windows == [(1, True), (1, False)]
+
+
+async def test_room_page_falls_back_to_the_entity_selector(hass, client):
+    # No binary sensor has a window or door device class and none is mapped.
+    entry = await setup_entry(hass, client)
+    result = await open_room(hass, entry, 1)
+    config = result["data_schema"].schema[form_fields(result)["windows"]].config
+    assert config["domain"] == ["binary_sensor"]
+    assert config["multiple"] is True
+    hass.config_entries.options.async_abort(result["flow_id"])
+
+
+async def test_room_page_writes_the_area_and_moves_the_devices(hass, client):
     areas = ar.async_get(hass)
     living_room = areas.async_create("Soggiorno").id
     bedroom_area = areas.async_create("Camera").id
     entry = await setup_entry(hass, client)
     client.calls.clear()
-    with patch("custom_components.freedo.FreedoClient", return_value=client):
-        result = await start_rooms(hass, entry, [1, 2])
-        result = await submit_rooms(
-            hass, result,
-            {"area": living_room, "correction": "continuous_shift"},
-            {"area": bedroom_area, "correction": "none"},
-        )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    result = await open_room(hass, entry, 1)
+    result = await submit_room(hass, result, area=living_room, temperature_source="device:bbbb")
+    result = await open_room(hass, entry, 2, result)
+    result = await submit_room(hass, result, area=bedroom_area)
+    await close_rooms(hass, result)
     assert entry.options == {}
     assert zone_device(hass, entry, 1).area_id == living_room
     assert zone_device(hass, entry, 2).area_id == bedroom_area
@@ -1367,7 +1726,7 @@ async def test_rooms_step_writes_the_areas_and_moves_the_devices(hass, client):
     assert no_area_issue(hass, entry) is None
 
 
-async def test_rooms_step_keeps_a_device_placed_elsewhere(hass, client):
+async def test_room_page_keeps_a_device_placed_elsewhere(hass, client):
     client.health_json["devices"].append(dict(client.health_json["devices"][0], device="VA0000000002", short="bbbb", label=""))
     areas = ar.async_get(hass)
     first = areas.async_create("Soggiorno").id
@@ -1380,233 +1739,108 @@ async def test_rooms_step_keeps_a_device_placed_elsewhere(hass, client):
     assert node_device(hass, entry, "bbbb").area_id == first
     dr.async_get(hass).async_update_device(node_device(hass, entry, "bbbb").id, area_id=office)
 
-    with patch("custom_components.freedo.FreedoClient", return_value=client):
-        result = await start_rooms(hass, entry, [1])
-        result = await submit_rooms(hass, result, {"area": second, "correction": "continuous_shift"})
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    result = await open_room(hass, entry, 1)
+    result = await submit_room(hass, result, area=second, temperature_source="device:bbbb")
+    await close_rooms(hass, result)
     # aaaa still had the previous area of the zone and moves; the user placed
     # bbbb in the office and it stays there.
     assert node_device(hass, entry, "aaaa").area_id == second
     assert node_device(hass, entry, "bbbb").area_id == office
 
 
-async def test_rooms_step_lists_the_sensors_of_the_area_first(hass, client):
-    set_room_sensor(hass, "21.4")
-    entry = await setup_entry(hass, client)
-    living_room = place_zone(hass, entry, 1, "Soggiorno")
-    office = ar.async_get(hass).async_create("Office").id
-    add_sensor(hass, entry, "sensor.soggiorno", "Soggiorno thermometer", "20.4", area=living_room)
-    add_sensor(hass, entry, "sensor.office", "Office thermometer", "19.0", area=office)
-    hass.states.async_set("sensor.attic", "15.0", {"device_class": "temperature", "friendly_name": "Attic"})
-    with patch("custom_components.freedo.FreedoClient", return_value=client):
-        result = await start_rooms(hass, entry, [1, 2])
-        assert sensor_choices(result) == ["sensor.soggiorno", "sensor.attic", "sensor.office"]
-        key = form_fields(result)["room_temperature"]
-        labels = [o["label"] for o in result["data_schema"].schema[key].config["options"]]
-        assert labels == ["Soggiorno thermometer (20.4 °C)", "Attic (15.0)", "Office thermometer (19.0 °C), Office"]
-        result = await submit_rooms(
-            hass, result,
-            {"area": living_room, "room_temperature": "sensor.soggiorno", "correction": "continuous_shift"},
-        )
-        # Bedroom has no area: its page lists by name.
-        assert sensor_choices(result) == ["sensor.attic", "sensor.office", "sensor.soggiorno"]
-        result = await submit_rooms(hass, result, {"correction": "none"})
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.options == {"room_temperatures": {"1": "sensor.soggiorno"}}
-    # The reload sends the reading with the sensor name.
-    assert client.room_temps == [(1, 20.4)]
-    assert client.room_temp_sources == [(1, "Soggiorno thermometer")]
-
-
-async def test_rooms_step_falls_back_to_the_entity_selector(hass, client):
-    # No sensor has the device class temperature and none is mapped.
-    entry = await setup_entry(hass, client)
-    result = await start_rooms(hass, entry, [1])
-    config = result["data_schema"].schema[form_fields(result)["room_temperature"]].config
-    assert config["domain"] == ["sensor"]
-    assert config["device_class"] == ["temperature"]
-    hass.config_entries.options.async_abort(result["flow_id"])
-
-
-async def test_rooms_step_starts_the_shift_for_a_new_sensor(hass, client):
+async def test_room_page_keeps_the_correction_the_user_sets(hass, client):
     entry = await setup_entry(hass, client)
     add_sensor(hass, entry, HALL_SENSOR, "Hall", "20.1")
     client.calls.clear()
-    with patch("custom_components.freedo.FreedoClient", return_value=client):
-        result = await start_rooms(hass, entry, [1, 2])
-        # Zone 2 has no correction. A new sensor with the correction left at
-        # none starts the continuous shift.
-        result = await submit_rooms(
-            hass, result,
-            {"correction": "continuous_shift"},
-            {"room_temperature": HALL_SENSOR, "correction": "none"},
-        )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    result = await open_room(hass, entry, 2)
+    # The section Advanced starts closed and shows the correction of the room.
+    advanced = result["data_schema"].schema[form_fields(result)["advanced"]]
+    assert advanced.options == {"collapsed": True}
+    result = await submit_room(
+        hass, result, temperature_source=f"sensor:{HALL_SENSOR}", correction="valve_calibration"
+    )
     assert [c for c in client.calls if c[0] == "patch_zone"] == [
-        ("patch_zone", 2, {"offset_mode": "setpoint"}),
+        ("patch_zone", 2, {"auto_offset": True}),
     ]
     assert entry.options["room_temperatures"] == {"2": HALL_SENSOR}
+    hass.config_entries.options.async_abort(result["flow_id"])
 
 
-async def test_rooms_step_ends_the_pause_of_a_new_sensor(hass, client):
-    set_room_sensor(hass, "21.4")
-    set_room_sensor(hass, "20.1", entity=HALL_SENSOR)
-    entry = await setup_entry(
-        hass,
-        client,
-        options={
-            "room_temperatures": {"1": ROOM_SENSOR, "2": HALL_SENSOR},
-            CONF_ROOM_TEMP_PAUSED: [1, 2],
-        },
-    )
-    add_sensor(hass, entry, "sensor.soggiorno", "Soggiorno thermometer", "20.4")
-    with patch("custom_components.freedo.FreedoClient", return_value=client):
-        result = await start_rooms(hass, entry, [1, 2])
-        # Zone 1 gets a new sensor, zone 2 keeps its sensor and its pause.
-        result = await submit_rooms(
-            hass, result,
-            {"room_temperature": "sensor.soggiorno", "correction": "continuous_shift"},
-            {"room_temperature": HALL_SENSOR, "correction": "none"},
-        )
-    assert entry.options["room_temperatures"] == {"1": "sensor.soggiorno", "2": HALL_SENSOR}
-    assert entry.options[CONF_ROOM_TEMP_PAUSED] == [2]
-    assert client.room_temps == [(1, 20.4)]
-
-
-async def test_rooms_step_writes_the_correction_in_one_request(hass, client):
+async def test_room_page_writes_the_correction_in_one_request(hass, client):
     entry = await setup_entry(hass, client)
     client.calls.clear()
-    with patch("custom_components.freedo.FreedoClient", return_value=client):
-        result = await start_rooms(hass, entry, [1, 2])
-        result = await submit_rooms(
-            hass, result,
-            {"correction": "valve_calibration"},
-            {"correction": "valve_calibration"},
-        )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    result = await open_room(hass, entry, 1)
+    result = await submit_room(
+        hass, result, temperature_source="device:bbbb", correction="valve_calibration"
+    )
     # Zone 1 leaves the shift for the calibration: the fake daemon refuses
     # auto_offset in mode setpoint, so both fields go together.
     assert [c for c in client.calls if c[0] == "patch_zone"] == [
         ("patch_zone", 1, {"offset_mode": "config", "auto_offset": True}),
-        ("patch_zone", 2, {"auto_offset": True}),
     ]
+    hass.config_entries.options.async_abort(result["flow_id"])
 
 
-async def test_rooms_step_shows_a_refused_correction(hass, client, caplog):
+async def test_room_page_shows_a_refused_change(hass, client, caplog):
+    living_room = ar.async_get(hass).async_create("Soggiorno").id
+    add_opening(hass, LIVING_WINDOW, "Living window")
     entry = await setup_entry(hass, client)
 
     async def refuse(zone, **fields):
         raise FreedoApiError(503, "no installation")
 
-    with patch("custom_components.freedo.FreedoClient", return_value=client):
-        result = await start_rooms(hass, entry, [1, 2])
-        client.patch_install_zone = refuse
-        result = await hass.config_entries.options.async_configure(
-            result["flow_id"], {"correction": "none"}
-        )
-    # The page of zone 1 comes back with the error, and the area is not written.
+    result = await open_room(hass, entry, 1)
+    client.patch_install_zone = refuse
+    result = await submit_room(
+        hass, result, area=living_room, temperature_source="device:bbbb",
+        windows=[LIVING_WINDOW], correction="none",
+    )
+    # The page comes back with the error, and nothing of it is written.
     assert result["step_id"] == "room"
-    assert result["errors"] == {"base": "correction_failed"}
+    assert result["errors"] == {"base": "write_failed"}
     assert result["description_placeholders"]["room"] == "Living"
-    assert "Correction of zone 1 refused" in caplog.text
+    assert "Change of zone 1 refused" in caplog.text
+    assert zone_device(hass, entry, 1).area_id is None
+    assert entry.options == {}
     hass.config_entries.options.async_abort(result["flow_id"])
 
 
-async def test_removing_the_sensor_clears_the_reading_and_stops_the_pushes(hass, client):
-    set_room_sensor(hass, "21.4")
-    set_room_sensor(hass, "20.1", entity=HALL_SENSOR)
-    entry = await setup_entry(
-        hass, client, options={"room_temperatures": {"1": ROOM_SENSOR, "2": HALL_SENSOR}}
-    )
-    assert sorted(client.room_temps) == [(1, 21.4), (2, 20.1)]
+# The branch Outdoor.
+
+
+async def test_outdoor_branch_keeps_the_room_options(hass, client):
+    rooms = {
+        "room_temperatures": {"1": ROOM_SENSOR},
+        CONF_ROOM_TEMP_PAUSED: [1],
+        "windows": {LIVING_WINDOW: 1},
+    }
+    entry = await setup_entry(hass, client, options={**rooms, "outdoor_entity": "sensor.old"})
     with patch("custom_components.freedo.FreedoClient", return_value=client):
-        result = await start_rooms(hass, entry, [1, 2])
-        # Zone 1 loses its sensor, zone 2 keeps it.
-        result = await submit_rooms(
-            hass, result,
-            {"correction": "continuous_shift"},
-            {"room_temperature": HALL_SENSOR, "correction": "none"},
-        )
-        assert result["type"] is FlowResultType.CREATE_ENTRY
-        assert entry.options == {"room_temperatures": {"2": HALL_SENSOR}}
-        assert client.room_temp_clears == [1]
-
-        client.room_temps.clear()
-        set_room_sensor(hass, "22.0")
-        await tick(hass, 16)
-        assert client.room_temps == [(2, 20.1)]
-
-        # No sensor left: the zone is cleared and nothing is pushed.
-        result = await start_rooms(hass, entry, [1, 2])
-        await submit_rooms(hass, result, {"correction": "continuous_shift"}, {"correction": "none"})
-    assert entry.options == {}
-    assert client.room_temp_clears == [1, 2]
-    client.room_temps.clear()
-    set_room_sensor(hass, "22.5", entity=HALL_SENSOR)
-    await tick(hass, 16)
-    assert client.room_temps == []
-
-
-async def test_a_refused_clear_does_not_block_the_options(hass, client, caplog):
-    set_room_sensor(hass, "21.4")
-    entry = await setup_entry(hass, client, options={"room_temperatures": {"1": ROOM_SENSOR}})
-    with patch("custom_components.freedo.FreedoClient", return_value=client):
-        result = await start_rooms(hass, entry, [1, 2])
-        client.room_temp_errors = [FreedoConnectionError("daemon down")]
-        result = await submit_rooms(
-            hass, result, {"correction": "continuous_shift"}, {"correction": "none"}
-        )
+        result = await save_outdoor(hass, entry, {"outdoor_entity": "sensor.outdoor"})
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.options == {}
-    assert "Room temperature release for zone 1 failed" in caplog.text
+    assert entry.options == {**rooms, "outdoor_entity": "sensor.outdoor"}
+    # Leaving the outdoor sensor empty removes it.
+    with patch("custom_components.freedo.FreedoClient", return_value=client):
+        await save_outdoor(hass, entry, {})
+    assert entry.options == rooms
 
 
 async def test_options_while_the_entry_is_not_loaded(hass, client):
     entry = await setup_entry(hass, client, options={"room_temperatures": {"1": ROOM_SENSOR}})
     await hass.config_entries.async_unload(entry.entry_id)
     with patch("custom_components.freedo.FreedoClient", return_value=client):
-        # Rooms needs the zones of the loaded integration.
+        # Rooms needs the rooms of the loaded integration.
         result = await open_branch(hass, entry, "rooms")
         assert result["type"] is FlowResultType.ABORT
         assert result["reason"] == "not_loaded"
-        # Environment saves and keeps the sensors.
-        result = await start_environment(hass, entry, {"outdoor_entity": "sensor.outdoor"})
-        await hass.async_block_till_done()
+        # Outdoor saves and keeps the sensors.
+        result = await save_outdoor(hass, entry, {"outdoor_entity": "sensor.outdoor"})
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert entry.options == {
-        "windows": {},
         "outdoor_entity": "sensor.outdoor",
         "room_temperatures": {"1": ROOM_SENSOR},
     }
     assert client.room_temp_clears == []
-
-
-async def test_options_of_the_old_temperature_step_carry_over(hass, client):
-    # The options as the step "Temperature sensor of each zone" saved them: the
-    # step Rooms keeps the same keys, so they need no migration.
-    set_room_sensor(hass, "21.4")
-    old = {
-        "windows": {},
-        "outdoor_entity": "sensor.outdoor",
-        "room_temperatures": {"1": ROOM_SENSOR},
-        CONF_ROOM_TEMP_PAUSED: [1],
-    }
-    entry = await setup_entry(hass, client, options=old)
-    # Zone 1 is paused: no push at start.
-    assert client.room_temps == []
-    with patch("custom_components.freedo.FreedoClient", return_value=client):
-        result = await start_rooms(hass, entry, [1, 2])
-        # The mapped sensor has no device class, and stays the first choice.
-        assert suggested(result, "room_temperature") == ROOM_SENSOR
-        assert sensor_choices(result)[0] == ROOM_SENSOR
-        result = await submit_rooms(
-            hass, result,
-            {"room_temperature": ROOM_SENSOR, "correction": "continuous_shift"},
-            {"correction": "none"},
-        )
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.options == old
-    assert client.room_temps == []
 
 
 # --- preset select ---

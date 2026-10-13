@@ -40,50 +40,54 @@
       "init": {
         "title": "Options de freedo",
         "menu_options": {
-          "environment": "Environnement",
-          "rooms": "Pièces"
+          "rooms": "Pièces",
+          "outdoor": "Température extérieure"
         }
-      },
-      "environment": {
-        "title": "Données d'environnement",
-        "description": "Home Assistant envoie ces états à freedo.",
-        "data": {
-          "outdoor_entity": "Capteur de température extérieure",
-          "window_entities": "Capteurs de fenêtres et de portes"
-        },
-        "data_description": {
-          "outdoor_entity": "Envoyé à freedo à chaque changement et toutes les 15 minutes. Il pilote les courbes de chauffe de la limite de départ.",
-          "window_entities": "À la page suivante, vous sélectionnez la pièce de chaque capteur."
-        }
-      },
-      "windows": {
-        "title": "Pièce de chaque capteur de fenêtre",
-        "description": "Sélectionnez la pièce de chaque capteur. Une pièce est ouverte quand l'un de ses capteurs est ouvert."
       },
       "rooms": {
         "title": "Pièces",
-        "description": "Sélectionnez les pièces à modifier. Les pièces sans pièce Home Assistant sont sélectionnées.",
+        "description": "Chaque pièce affiche sa pièce Home Assistant, sa source de température et le nombre de ses capteurs de fenêtre. Sélectionnez une pièce pour la modifier, ou Terminé pour fermer.",
         "data": {
-          "rooms": "Pièces à modifier"
+          "room": "Pièce"
         }
       },
       "room": {
         "title": "Pièce {room}",
-        "description": "Pièce {index} sur {count}. Sélectionnez la pièce Home Assistant de la pièce et, si vous le souhaitez, un capteur de température. L'appareil de la pièce y passe. Ses vannes et ses thermostats y passent aussi, sauf si vous les avez placés dans une autre pièce.",
+        "description": "Valider enregistre cette pièce et revient à la liste des pièces. Quand vous sélectionnez un capteur Home Assistant comme source de température et que la pièce n'a pas de correction, freedo règle la correction Décalage continu.",
         "data": {
           "area": "Pièce",
-          "room_temperature": "Capteur de température ambiante",
-          "correction": "Correction avec la température ambiante"
+          "temperature_source": "Source de température",
+          "windows": "Capteurs de fenêtres et de portes"
         },
         "data_description": {
-          "area": "La pièce Home Assistant de l'appareil de la pièce. Vous pouvez aussi la définir sur la page de l'appareil.",
-          "room_temperature": "Les capteurs de la pièce Home Assistant de la pièce viennent en premier. Laissez vide pour utiliser le capteur de la vanne.",
-          "correction": "Décalage continu déplace lentement les consignes selon la mesure. C'est la méthode recommandée. Calibrage de la vanne écrit le décalage de la vanne au plus une fois par intervalle, et chaque écriture déplace le moteur une fois. Un nouveau capteur règle Décalage continu quand la pièce n'a pas de correction."
+          "area": "L'appareil de la pièce passe dans cette pièce Home Assistant. Ses vannes et ses thermostats y passent aussi, sauf si vous les avez placés dans une autre pièce. Vous pouvez aussi la définir sur la page de l'appareil.",
+          "temperature_source": "Ce qui mesure la température de la pièce : un appareil de la pièce ou un capteur Home Assistant. La liste affiche d'abord les appareils de la pièce, puis les capteurs de sa pièce Home Assistant actuelle, puis les autres capteurs avec leur pièce Home Assistant. Après un changement de pièce Home Assistant, validez et rouvrez la pièce pour voir d'abord les capteurs de la nouvelle.",
+          "windows": "Le chauffage de la pièce s'arrête tant que l'un de ces capteurs est ouvert. Un capteur sert une seule pièce : un capteur utilisé par une autre pièce passe à celle-ci."
+        },
+        "sections": {
+          "advanced": {
+            "name": "Avancé",
+            "data": {
+              "correction": "Correction de la température ambiante"
+            },
+            "data_description": {
+              "correction": "Décalage continu déplace lentement les consignes selon la mesure. C'est la méthode recommandée. Calibrage de la vanne écrit le décalage de la vanne au plus une fois par intervalle, et chaque écriture déplace le moteur une fois."
+            }
+          }
+        }
+      },
+      "outdoor": {
+        "title": "Température extérieure",
+        "data": {
+          "outdoor_entity": "Capteur de température extérieure"
+        },
+        "data_description": {
+          "outdoor_entity": "Envoyé à freedo à chaque changement et toutes les 15 minutes. Il pilote les courbes de chauffe de la limite de départ."
         }
       }
     },
     "error": {
-      "correction_failed": "freedo a refusé la correction. Le journal de Home Assistant indique la raison."
+      "write_failed": "freedo a refusé la modification. Le journal de Home Assistant indique la raison."
     },
     "abort": {
       "not_loaded": "L'intégration n'est pas chargée. Chargez-la, puis rouvrez les options.",
@@ -197,7 +201,7 @@
         "name": "Demande de chauffage"
       },
       "external_room_sensor": {
-        "name": "Capteur pièce",
+        "name": "État de la source",
         "state": {
           "active": "Utilisé",
           "no_correction": "Sans correction",
@@ -285,10 +289,7 @@
         }
       },
       "temperature_source": {
-        "name": "Source de température",
-        "state": {
-          "other_sensor": "Un autre capteur…"
-        }
+        "name": "Source de température"
       },
       "preset": {
         "name": "Profil"
@@ -446,6 +447,14 @@
     }
   },
   "selector": {
+    "room_text": {
+      "options": {
+        "no_area": "Aucune pièce Home Assistant",
+        "window_sensors": "Capteurs de fenêtre",
+        "used_by": "utilisé par",
+        "done": "Terminé"
+      }
+    },
     "correction_method": {
       "options": {
         "none": "Aucune",
@@ -475,7 +484,6 @@
     }
   },
   "exceptions": {
-    "another_sensor": { "message": "Pour utiliser pour {room} un capteur d'une autre pièce Home Assistant, associez-le dans Paramètres > Appareils et services > freedo > Configurer > Pièces." },
     "overlay_temperature_required": {
       "message": "Définissez une température avec le mode Chauffage."
     },

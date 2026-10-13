@@ -40,50 +40,54 @@
       "init": {
         "title": "Opzioni di freedo",
         "menu_options": {
-          "environment": "Ambiente",
-          "rooms": "Stanze"
+          "rooms": "Stanze",
+          "outdoor": "Temperatura esterna"
         }
-      },
-      "environment": {
-        "title": "Ingressi ambientali",
-        "description": "Home Assistant invia questi stati a freedo.",
-        "data": {
-          "outdoor_entity": "Sensore di temperatura esterna",
-          "window_entities": "Sensori di finestre e porte"
-        },
-        "data_description": {
-          "outdoor_entity": "Inviato a freedo a ogni variazione e ogni 15 minuti. Guida le curve climatiche della mandata max.",
-          "window_entities": "Nella pagina successiva selezioni la stanza di ciascun sensore."
-        }
-      },
-      "windows": {
-        "title": "Stanza di ciascun sensore di finestra",
-        "description": "Seleziona la stanza di ciascun sensore. Una stanza è aperta quando uno dei suoi sensori è aperto."
       },
       "rooms": {
         "title": "Stanze",
-        "description": "Seleziona le stanze da modificare. Le stanze senza area sono già selezionate.",
+        "description": "Ogni stanza mostra la sua area, la sua sorgente della temperatura e il numero dei suoi sensori di finestra. Seleziona una stanza per modificarla, oppure Fine per chiudere.",
         "data": {
-          "rooms": "Stanze da modificare"
+          "room": "Stanza"
         }
       },
       "room": {
         "title": "Stanza {room}",
-        "description": "Stanza {index} di {count}. Seleziona l'area di Home Assistant della stanza e, se vuoi, un sensore di temperatura. Il dispositivo della stanza passa all'area. Le sue valvole e i suoi termostati passano anche loro, se non li hai messi in un'altra area.",
+        "description": "Invia salva questa stanza e torna all'elenco delle stanze. Quando selezioni un sensore di Home Assistant come sorgente della temperatura e la stanza non ha correzione, freedo imposta la correzione Spostamento continuo.",
         "data": {
           "area": "Area",
-          "room_temperature": "Sensore della temperatura ambiente",
-          "correction": "Correzione con la temperatura ambiente"
+          "temperature_source": "Sorgente della temperatura",
+          "windows": "Sensori di finestre e porte"
         },
         "data_description": {
-          "area": "L'area del dispositivo della stanza. Puoi impostarla anche nella pagina del dispositivo.",
-          "room_temperature": "I sensori dell'area della stanza sono i primi. Lascia vuoto per usare il sensore della valvola.",
-          "correction": "Spostamento continuo sposta lentamente i setpoint secondo la lettura. È il metodo consigliato. Calibrazione della valvola scrive l'offset della valvola al massimo una volta per intervallo, e ogni scrittura muove il motore una volta. Un nuovo sensore imposta Spostamento continuo quando la stanza non ha correzione."
+          "area": "Il dispositivo della stanza passa all'area. Le sue valvole e i suoi termostati passano anche loro, se non li hai messi in un'altra area. Puoi impostare l'area anche nella pagina del dispositivo.",
+          "temperature_source": "Ciò che misura la temperatura della stanza: un dispositivo della stanza oppure un sensore di Home Assistant. L'elenco mostra prima i dispositivi della stanza, poi i sensori dell'area che la stanza ha ora, poi gli altri sensori con la loro area. Dopo aver cambiato l'area, invia e riapri la stanza per vedere prima i sensori della nuova area.",
+          "windows": "Il riscaldamento della stanza si ferma finché uno di questi sensori è aperto. Un sensore serve una sola stanza: un sensore usato da un'altra stanza passa a questa."
+        },
+        "sections": {
+          "advanced": {
+            "name": "Avanzate",
+            "data": {
+              "correction": "Correzione della temperatura ambiente"
+            },
+            "data_description": {
+              "correction": "Spostamento continuo sposta lentamente i setpoint secondo la lettura. È il metodo consigliato. Calibrazione della valvola scrive l'offset della valvola al massimo una volta per intervallo, e ogni scrittura muove il motore una volta."
+            }
+          }
+        }
+      },
+      "outdoor": {
+        "title": "Temperatura esterna",
+        "data": {
+          "outdoor_entity": "Sensore di temperatura esterna"
+        },
+        "data_description": {
+          "outdoor_entity": "Inviato a freedo a ogni variazione e ogni 15 minuti. Guida le curve climatiche della mandata max."
         }
       }
     },
     "error": {
-      "correction_failed": "freedo ha rifiutato la correzione. Il log di Home Assistant mostra il motivo."
+      "write_failed": "freedo ha rifiutato la modifica. Il log di Home Assistant mostra il motivo."
     },
     "abort": {
       "not_loaded": "L'integrazione non è caricata. Caricala, poi apri di nuovo le opzioni.",
@@ -197,7 +201,7 @@
         "name": "Domanda di riscaldamento"
       },
       "external_room_sensor": {
-        "name": "Sensore stanza",
+        "name": "Stato della sorgente",
         "state": {
           "active": "In uso",
           "no_correction": "Nessuna correzione",
@@ -285,10 +289,7 @@
         }
       },
       "temperature_source": {
-        "name": "Sorgente della temperatura",
-        "state": {
-          "other_sensor": "Un altro sensore…"
-        }
+        "name": "Sorgente della temperatura"
       },
       "preset": {
         "name": "Profilo"
@@ -446,6 +447,14 @@
     }
   },
   "selector": {
+    "room_text": {
+      "options": {
+        "no_area": "Nessuna area",
+        "window_sensors": "Sensori di finestra",
+        "used_by": "usato da",
+        "done": "Fine"
+      }
+    },
     "correction_method": {
       "options": {
         "none": "Nessuna",
@@ -475,7 +484,6 @@
     }
   },
   "exceptions": {
-    "another_sensor": { "message": "Per usare per {room} un sensore di un'altra area, associalo in Impostazioni > Dispositivi e servizi > freedo > Configura > Stanze." },
     "overlay_temperature_required": {
       "message": "Imposta una temperatura con la modalità Riscaldamento."
     },

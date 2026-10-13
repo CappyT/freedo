@@ -94,11 +94,12 @@ ROOM_KEYS = [
     ("options", "step", "init"),
     ("options", "step", "rooms"),
     ("options", "step", "room"),
-    ("options", "error", "correction_failed"),
+    ("options", "step", "outdoor"),
+    ("options", "error", "write_failed"),
     ("selector", "correction_method"),
+    ("selector", "room_text"),
     ("entity", "select", "room_temperature_correction"),
-    ("entity", "select", "temperature_source", "state", "other_sensor"),
-    ("exceptions", "another_sensor"),
+    ("entity", "select", "temperature_source"),
     ("issues", "rooms_no_area"),
 ]
 ZONE_WORD = {"en": "zone", "it": "zona", "de": "Zone", "fr": "zone"}
@@ -128,12 +129,17 @@ def test_room_texts_name_rooms_and_freedo(language):
         for text in texts(node):
             assert "daemon" not in text.lower(), (path, text)
             assert ZONE_WORD[language].lower() not in text.lower(), (path, text)
-    other = tree["entity"]["select"]["temperature_source"]["state"]["other_sensor"]
-    assert other.endswith("…") and "..." not in other
-    # Both point to the branch Rooms of Configure.
-    path = ROOMS_PATH[language]
-    assert path in tree["exceptions"]["another_sensor"]["message"]
-    assert path in tree["issues"]["rooms_no_area"]["description"]
+    # The repair issue points to the branch Rooms of Configure.
+    assert ROOMS_PATH[language] in tree["issues"]["rooms_no_area"]["description"]
+    # One name for the temperature source and one for the correction, in the
+    # page of a room and on the select entities.
+    room = tree["options"]["step"]["room"]
+    select = tree["entity"]["select"]
+    assert room["data"]["temperature_source"] == select["temperature_source"]["name"]
+    assert (
+        room["sections"]["advanced"]["data"]["correction"]
+        == select["room_temperature_correction"]["name"]
+    )
 
 
 # An entity row on a device page leaves about 100 px to the name of a number,

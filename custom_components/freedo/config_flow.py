@@ -16,9 +16,11 @@ from homeassistant.config_entries import (
 )
 from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.data_entry_flow import section
 from homeassistant.helpers import area_registry as ar, selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.service_info.hassio import HassioServiceInfo
+from homeassistant.helpers.translation import async_get_translations
 
 from .api import FreedoAuthError, FreedoClient, FreedoConnectionError, FreedoError
 from .const import (
@@ -26,7 +28,6 @@ from .const import (
     CONF_ROOM_TEMP_PAUSED,
     CONF_ROOM_TEMPS,
     CONF_TOKEN,
-    CONF_WINDOW_ENTITIES,
     CONF_WINDOWS,
     DEFAULT_PORT,
     DOMAIN,
@@ -40,23 +41,31 @@ from .model import (
     correction_patch,
     room_temp_paused,
     room_temp_zones,
+    window_zones,
     zone_auto_offset,
     zone_correction,
     zone_offset_mode,
 )
-from .rooms import async_set_zone_area, sensor_label, temperature_sensors, zone_area
+from .rooms import (
+    SOURCE_SENSOR,
+    async_set_source,
+    async_set_zone_area,
+    current_source,
+    opening_sensors,
+    source_choices,
+    zone_area,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
-# The field of the step Rooms, and the fields of a page of a room.
-CONF_ROOMS = "rooms"
+# The field of the step Rooms, and the fields of the page of a room.
+CONF_ROOM = "room"
 CONF_AREA = "area"
-CONF_ROOM_SENSOR = "room_temperature"
+CONF_SOURCE = "temperature_source"
+CONF_ADVANCED = "advanced"
 CONF_CORRECTION = "correction"
-
-# The word before the area in the label of a room, by the language of Home
-# Assistant: the label is built at run time and has no translation.
-_AREA_WORD = {"en": "area", "it": "area", "de": "Bereich", "fr": "pièce"}
+# The choice of the step Rooms that ends the options.
+ROOM_DONE = "done"
 
 _TOKEN_SELECTOR = selector.TextSelector(
     selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
@@ -180,326 +189,278 @@ class FreedoConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class FreedoOptionsFlow(OptionsFlowWithReload):
-    """A menu of two branches. Environment maps Home Assistant entities to the
-    daemon's environment inputs. Rooms edits the chosen heating zones: area,
-    temperature sensor and correction. Each branch saves its own options and
-    keeps those of the other one."""
+    """A menu of two branches. Rooms lists the heating zones, each with what it
+    uses, and opens the page of one: area, temperature source, window sensors
+    and correction. A page writes its room on submit, with no reload, and
+    returns to the list. Outdoor maps the outdoor temperature sensor and
+    reloads the entry."""
 
     def __init__(self) -> None:
-        self._outdoor: str | None = None
-        self._window_entities: list[str] = []
-        self._windows: dict[str, int] = {}
-        # The rooms chosen in the step Rooms, the page shown, the sensor of
-        # each zone so far and the sensors when the step started.
-        self._room_queue: list[int] = []
-        self._room_index = 0
-        self._room_temps: dict[int, str] = {}
-        self._start_temps: dict[int, str] = {}
+        self._room = 0
+        # The words of the room labels: they are built at run time.
+        self._words: dict[str, str] = {}
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        return self.async_show_menu(step_id="init", menu_options=["environment", "rooms"])
+        return self.async_show_menu(step_id="init", menu_options=["rooms", "outdoor"])
 
-    async def async_step_environment(
+    async def async_step_outdoor(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        if user_input is not None:
-            self._outdoor = user_input.get(CONF_OUTDOOR_ENTITY) or None
-            self._window_entities = list(user_input.get(CONF_WINDOW_ENTITIES) or [])
-            if self._window_entities:
-                return await self.async_step_windows()
-            return self._save_environment()
         options = self.config_entry.options
+        if user_input is not None:
+            saved = {k: v for k, v in options.items() if k != CONF_OUTDOOR_ENTITY}
+            if user_input.get(CONF_OUTDOOR_ENTITY):
+                saved[CONF_OUTDOOR_ENTITY] = user_input[CONF_OUTDOOR_ENTITY]
+            return self.async_create_entry(data=saved)
         schema = vol.Schema(
             {
                 vol.Optional(CONF_OUTDOOR_ENTITY): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="sensor")
-                ),
-                vol.Optional(CONF_WINDOW_ENTITIES): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="binary_sensor", multiple=True)
-                ),
+                )
             }
         )
-        suggested = {
-            CONF_OUTDOOR_ENTITY: options.get(CONF_OUTDOOR_ENTITY),
-            CONF_WINDOW_ENTITIES: list((options.get(CONF_WINDOWS) or {}).keys()),
-        }
         return self.async_show_form(
-            step_id="environment",
-            data_schema=self.add_suggested_values_to_schema(schema, suggested),
+            step_id="outdoor",
+            data_schema=self.add_suggested_values_to_schema(
+                schema, {CONF_OUTDOOR_ENTITY: options.get(CONF_OUTDOOR_ENTITY)}
+            ),
         )
-
-    async def async_step_windows(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """One zone per window sensor. The field keys are the entity ids."""
-        data = self._loaded_data()
-        if data is None:
-            return self.async_abort(reason="not_loaded")
-        zones = data.heating_zones()
-        if not zones:
-            return self.async_abort(reason="no_heating_zone")
-        if user_input is not None:
-            self._windows = {e: int(user_input[e]) for e in self._window_entities}
-            return self._save_environment()
-        zone_selector = selector.SelectSelector(
-            selector.SelectSelectorConfig(
-                options=[
-                    selector.SelectOptionDict(value=str(z.number), label=f"{z.number}: {z.name}")
-                    for z in zones
-                ],
-                mode=selector.SelectSelectorMode.DROPDOWN,
-            )
-        )
-        current = self.config_entry.options.get(CONF_WINDOWS) or {}
-        valid = {str(z.number) for z in zones}
-        fields: dict[Any, Any] = {}
-        for entity_id in self._window_entities:
-            default = str(current.get(entity_id, ""))
-            key = (
-                vol.Required(entity_id, default=default)
-                if default in valid
-                else vol.Required(entity_id)
-            )
-            fields[key] = zone_selector
-        return self.async_show_form(step_id="windows", data_schema=vol.Schema(fields))
-
-    def _save_environment(self) -> ConfigFlowResult:
-        options = {
-            k: v for k, v in self.config_entry.options.items() if k != CONF_OUTDOOR_ENTITY
-        }
-        options[CONF_WINDOWS] = self._windows
-        if self._outdoor:
-            options[CONF_OUTDOOR_ENTITY] = self._outdoor
-        return self.async_create_entry(data=options)
 
     def _loaded_data(self) -> FreedoData | None:
         runtime = getattr(self.config_entry, "runtime_data", None)
         return runtime.coordinator.data if runtime is not None else None
 
+    def _word(self, key: str) -> str:
+        return self._words.get(f"component.{DOMAIN}.selector.room_text.options.{key}", key)
+
     async def async_step_rooms(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """The heating rooms to edit, the rooms without an area chosen first.
-        A page per chosen room follows."""
+        """The heating rooms, each with its area, its temperature source and
+        the number of its window sensors. The page of the chosen room follows."""
         data = self._loaded_data()
         if data is None:
             return self.async_abort(reason="not_loaded")
         zones = data.heating_zones()
         if not zones:
             return self.async_abort(reason="no_heating_zone")
-        current = room_temp_zones(self.config_entry.options.get(CONF_ROOM_TEMPS) or {})
         if user_input is not None:
-            chosen = {int(n) for n in user_input.get(CONF_ROOMS) or []}
-            self._room_queue = [z.number for z in zones if z.number in chosen]
-            self._room_index = 0
-            self._room_temps = dict(current)
-            self._start_temps = dict(current)
-            if not self._room_queue:
-                return self._save_rooms()
+            if user_input[CONF_ROOM] == ROOM_DONE:
+                # The pages saved the options already, so nothing reloads.
+                return self.async_create_entry(data=dict(self.config_entry.options))
+            self._room = int(user_input[CONF_ROOM])
             return await self.async_step_room()
-        entry_id = self.config_entry.entry_id
+        self._words = await async_get_translations(
+            self.hass, self.hass.config.language, "selector", [DOMAIN]
+        )
         options = [
-            selector.SelectOptionDict(value=str(z.number), label=self._room_label(z, current))
+            selector.SelectOptionDict(value=str(z.number), label=self._room_label(data, z))
             for z in zones
         ]
-        unmapped = [str(z.number) for z in zones if zone_area(self.hass, entry_id, z.number) is None]
+        options.append(selector.SelectOptionDict(value=ROOM_DONE, label=self._word("done")))
         schema = vol.Schema(
             {
-                vol.Required(CONF_ROOMS, default=unmapped): selector.SelectSelector(
+                vol.Required(CONF_ROOM, default=ROOM_DONE): selector.SelectSelector(
                     selector.SelectSelectorConfig(
-                        options=options,
-                        multiple=True,
-                        mode=selector.SelectSelectorMode.LIST,
+                        options=options, mode=selector.SelectSelectorMode.LIST
                     )
                 )
             }
         )
         return self.async_show_form(step_id="rooms", data_schema=schema)
 
-    def _room_label(self, zone: Zone, current: dict[int, str]) -> str:
-        """The room name, its area and its mapped sensor."""
-        parts = [zone.name]
-        area_id = zone_area(self.hass, self.config_entry.entry_id, zone.number)
+    def _room_label(self, data: FreedoData, zone: Zone) -> str:
+        """The room name, its area, its temperature source and the number of
+        its window sensors."""
+        entry = self.config_entry
+        area_id = zone_area(self.hass, entry.entry_id, zone.number)
         area = ar.async_get(self.hass).async_get_area(area_id) if area_id else None
-        if area is not None:
-            word = _AREA_WORD.get(self.hass.config.language.split("-")[0], _AREA_WORD["en"])
-            parts.append(f"{word} {area.name}")
-        sensor = current.get(zone.number)
-        if sensor is not None:
-            state = self.hass.states.get(sensor)
-            parts.append(state.name if state else sensor)
+        parts = [zone.name, area.name if area else self._word("no_area")]
+        current = current_source(entry, data, zone)
+        parts.extend(
+            label
+            for kind, target, label in source_choices(self.hass, entry, data, zone, area_id)
+            if (kind, target) == current
+        )
+        windows = window_zones(entry.options.get(CONF_WINDOWS) or {}).get(zone.number, [])
+        parts.append(f"{self._word('window_sensors')}: {len(windows)}")
         return " · ".join(parts)
 
     async def async_step_room(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """One chosen room: its area, an optional room temperature sensor and
-        the correction method. Each page writes the area and the correction on
-        submit; the last page saves the sensors."""
+        """The page of one room. It writes the room on submit and returns to
+        the list."""
         data = self._loaded_data()
-        if data is None:
-            return self.async_abort(reason="not_loaded")
-        zone = data.zones.get(self._room_queue[self._room_index])
+        zone = data.zones.get(self._room) if data is not None else None
         if zone is None:
             return self.async_abort(reason="not_loaded")
         errors: dict[str, str] = {}
         if user_input is not None:
-            if await self._apply_room(data, zone, self._start_temps, user_input):
-                self._room_index += 1
-                if self._room_index < len(self._room_queue):
-                    return await self.async_step_room()
-                await self._release(
-                    {z for z in self._start_temps if z not in self._room_temps}
-                )
-                # Options that do not change cause no reload: a poll sends the
-                # new areas to the daemon and updates the repair issue now.
-                await self.config_entry.runtime_data.coordinator.async_request_refresh()
-                return self._save_rooms()
-            errors["base"] = "correction_failed"
+            if await self._apply_room(data, zone, user_input):
+                # A poll shows the new source in the list, sends the new area
+                # to the daemon and updates the repair issue now.
+                await self.config_entry.runtime_data.coordinator.async_refresh()
+                return await self.async_step_rooms()
+            errors["base"] = "write_failed"
         return self._room_form(data, zone, errors)
 
     def _room_form(
         self, data: FreedoData, zone: Zone, errors: dict[str, str]
     ) -> ConfigFlowResult:
-        area_id = zone_area(self.hass, self.config_entry.entry_id, zone.number)
+        entry = self.config_entry
+        area_id = zone_area(self.hass, entry.entry_id, zone.number)
         if area_id is None:
             # A zone with no area starts from the area of the same name.
             match = ar.async_get(self.hass).async_get_area_by_name(zone.name)
             area_id = match.id if match else None
-        mapped = self._room_temps.get(zone.number)
-        fields: dict[Any, Any] = {
-            vol.Optional(CONF_AREA): selector.AreaSelector(),
-            vol.Optional(CONF_ROOM_SENSOR): self._sensor_selector(area_id, mapped),
-        }
-        method = zone_correction(data, zone)
-        if method is not None:
-            fields[vol.Required(CONF_CORRECTION, default=method)] = selector.SelectSelector(
+        fields: dict[Any, Any] = {vol.Optional(CONF_AREA): selector.AreaSelector()}
+        sources = [
+            selector.SelectOptionDict(value=f"{kind}:{target}", label=label)
+            for kind, target, label in source_choices(self.hass, entry, data, zone, area_id)
+        ]
+        if sources:
+            current = current_source(entry, data, zone)
+            key = (
+                vol.Required(CONF_SOURCE, default=":".join(current))
+                if current is not None
+                else vol.Optional(CONF_SOURCE)
+            )
+            fields[key] = selector.SelectSelector(
                 selector.SelectSelectorConfig(
-                    options=list(CORRECTIONS),
-                    translation_key="correction_method",
-                    mode=selector.SelectSelectorMode.DROPDOWN,
+                    options=sources, mode=selector.SelectSelectorMode.DROPDOWN
                 )
             )
+        fields[vol.Optional(CONF_WINDOWS)] = self._window_selector(data, zone, area_id)
+        method = zone_correction(data, zone)
+        if method is not None:
+            fields[vol.Required(CONF_ADVANCED)] = section(
+                vol.Schema(
+                    {
+                        vol.Required(CONF_CORRECTION, default=method): selector.SelectSelector(
+                            selector.SelectSelectorConfig(
+                                options=list(CORRECTIONS),
+                                translation_key="correction_method",
+                                mode=selector.SelectSelectorMode.DROPDOWN,
+                            )
+                        )
+                    }
+                ),
+                {"collapsed": True},
+            )
+        windows = window_zones(entry.options.get(CONF_WINDOWS) or {}).get(zone.number, [])
         return self.async_show_form(
             step_id="room",
             data_schema=self.add_suggested_values_to_schema(
-                vol.Schema(fields), {CONF_AREA: area_id, CONF_ROOM_SENSOR: mapped}
+                vol.Schema(fields), {CONF_AREA: area_id, CONF_WINDOWS: windows}
             ),
             errors=errors,
-            description_placeholders={
-                "room": zone.name,
-                "index": str(self._room_index + 1),
-                "count": str(len(self._room_queue)),
-            },
+            description_placeholders={"room": zone.name},
         )
 
-    def _sensor_selector(self, area_id: str | None, mapped: str | None) -> Any:
-        """The temperature sensors, the ones in area_id first. An entity selector
-        cannot order by area, so the list is a select of entity ids. With no
-        temperature sensor at all it is the entity selector."""
+    def _window_selector(self, data: FreedoData, zone: Zone, area_id: str | None) -> Any:
+        """The window and door sensors, the ones in area_id first. A sensor of
+        another room names that room: an entity selector cannot label an
+        option, so the list is a select of entity ids. A mapped sensor without
+        such a device class stays a choice. With no sensor at all it is the
+        entity selector."""
         areas = ar.async_get(self.hass)
-        sensors = temperature_sensors(self.hass)
-        if not sensors and mapped is None:
-            return selector.EntitySelector(
-                selector.EntitySelectorConfig(domain="sensor", device_class="temperature")
-            )
-        first: list[selector.SelectOptionDict] = []
-        rest: list[selector.SelectOptionDict] = []
-        for state, sensor_area in sensors:
-            label = sensor_label(state)
+        mapped = {
+            entity_id: number
+            for number, entities in window_zones(
+                self.config_entry.options.get(CONF_WINDOWS) or {}
+            ).items()
+            for entity_id in entities
+        }
+
+        def option(entity_id: str, label: str) -> selector.SelectOptionDict:
+            other = data.zones.get(mapped.get(entity_id, zone.number))
+            if other is not None and other.number != zone.number:
+                label = f"{label} ({self._word('used_by')} {other.name})"
+            return selector.SelectOptionDict(value=entity_id, label=label)
+
+        near: list[selector.SelectOptionDict] = []
+        far: list[selector.SelectOptionDict] = []
+        known = set()
+        for state, sensor_area in opening_sensors(self.hass):
+            known.add(state.entity_id)
+            if area_id is not None and sensor_area == area_id:
+                near.append(option(state.entity_id, state.name))
+                continue
             area = areas.async_get_area(sensor_area) if sensor_area else None
-            if sensor_area is not None and sensor_area == area_id:
-                first.append(selector.SelectOptionDict(value=state.entity_id, label=label))
-            else:
-                if area is not None:
-                    label = f"{label}, {area.name}"
-                rest.append(selector.SelectOptionDict(value=state.entity_id, label=label))
-        options = first + rest
-        if mapped is not None and all(o["value"] != mapped for o in options):
-            # A sensor mapped before the list knew it, such as one without a
-            # device class, stays a choice.
-            state = self.hass.states.get(mapped)
-            options.insert(
-                0, selector.SelectOptionDict(value=mapped, label=state.name if state else mapped)
+            far.append(
+                option(state.entity_id, f"{state.name}, {area.name}" if area else state.name)
+            )
+        for entity_id in sorted(mapped.keys() - known):
+            state = self.hass.states.get(entity_id)
+            near.append(option(entity_id, state.name if state else entity_id))
+        if not near and not far:
+            return selector.EntitySelector(
+                selector.EntitySelectorConfig(domain="binary_sensor", multiple=True)
             )
         return selector.SelectSelector(
-            selector.SelectSelectorConfig(options=options, mode=selector.SelectSelectorMode.DROPDOWN)
+            selector.SelectSelectorConfig(
+                options=near + far, multiple=True, mode=selector.SelectSelectorMode.DROPDOWN
+            )
         )
 
     async def _apply_room(
-        self,
-        data: FreedoData,
-        zone: Zone,
-        current: dict[int, str],
-        user_input: dict[str, Any],
+        self, data: FreedoData, zone: Zone, user_input: dict[str, Any]
     ) -> bool:
-        """Write the correction and the area of one zone, and keep its sensor
-        for the save. False when the daemon refuses the correction."""
-        sensor = user_input.get(CONF_ROOM_SENSOR) or None
-        method = user_input.get(CONF_CORRECTION)
-        if method is not None:
-            # A new sensor needs a correction to change the regulation, so it
-            # starts the continuous shift where none was set, as the select
-            # Temperature source does.
-            if (
-                sensor is not None
-                and sensor != current.get(zone.number)
-                and method == CORRECTION_NONE
-                and zone_correction(data, zone) == CORRECTION_NONE
-            ):
-                method = CORRECTION_SHIFT
-            fields = correction_patch(
-                zone_offset_mode(data, zone), zone_auto_offset(data, zone), method
-            )
-            if fields:
-                client = self.config_entry.runtime_data.client
-                try:
-                    result = await client.patch_install_zone(zone.number, **fields)
-                except FreedoError as err:
-                    _LOGGER.warning("Correction of zone %s refused: %s", zone.number, err)
-                    return False
-                row = result.get("zone") if isinstance(result, Mapping) else None
-                if isinstance(row, Mapping):
-                    data.zone_settings[zone.number] = dict(row)
+        """Write what the page changes in one zone: the correction, the
+        temperature source, the area and the window sensors. False when the
+        daemon refuses the correction or the source."""
+        entry = self.config_entry
+        runtime = entry.runtime_data
+        kind, _, target = (user_input.get(CONF_SOURCE) or "").partition(":")
+        if (kind, target) == current_source(entry, data, zone) and (
+            kind == SOURCE_SENSOR
+            or zone.number in room_temp_paused(entry.options.get(CONF_ROOM_TEMP_PAUSED) or [])
+            or zone.number not in room_temp_zones(entry.options.get(CONF_ROOM_TEMPS) or {})
+        ):
+            # The page shows the source in use. A mapped sensor that is not in
+            # use, because the room has no correction, still sends readings:
+            # the device choice pauses it, so a later correction does not
+            # bring it back unseen.
+            kind = ""
+        method = (user_input.get(CONF_ADVANCED) or {}).get(CONF_CORRECTION)
+        try:
+            if method is not None:
+                # A new sensor needs a correction to change the regulation, so
+                # it starts the continuous shift where none was set.
+                if (
+                    kind == SOURCE_SENSOR
+                    and method == CORRECTION_NONE
+                    and zone_correction(data, zone) == CORRECTION_NONE
+                ):
+                    method = CORRECTION_SHIFT
+                fields = correction_patch(
+                    zone_offset_mode(data, zone), zone_auto_offset(data, zone), method
+                )
+                if fields:
+                    result = await runtime.client.patch_install_zone(zone.number, **fields)
+                    row = result.get("zone") if isinstance(result, Mapping) else None
+                    if isinstance(row, Mapping):
+                        data.zone_settings[zone.number] = dict(row)
+            if kind:
+                await async_set_source(self.hass, entry, zone.number, kind, target)
+        except FreedoError as err:
+            _LOGGER.warning("Change of zone %s refused: %s", zone.number, err)
+            return False
         async_set_zone_area(
-            self.hass,
-            self.config_entry.entry_id,
-            data,
-            zone.number,
-            user_input.get(CONF_AREA) or None,
+            self.hass, entry.entry_id, data, zone.number, user_input.get(CONF_AREA) or None
         )
-        if sensor is None:
-            self._room_temps.pop(zone.number, None)
-        else:
-            self._room_temps[zone.number] = sensor
+        chosen = list(user_input.get(CONF_WINDOWS) or [])
+        windows = dict(entry.options.get(CONF_WINDOWS) or {})
+        own = window_zones(windows).get(zone.number, [])
+        if sorted(chosen) != own:
+            # A sensor of another room moves to this one.
+            kept = {e: z for e, z in windows.items() if e not in own and e not in chosen}
+            kept.update(dict.fromkeys(chosen, zone.number))
+            self.hass.config_entries.async_update_entry(
+                entry, options={**entry.options, CONF_WINDOWS: kept}
+            )
+            runtime.windows.async_remap()
         return True
-
-    async def _release(self, zones: set[int]) -> None:
-        """Clear the external temperature of the zones that lose their sensor.
-        The daemon ends the correction by itself when the reading gets too old,
-        but this call starts the release at once."""
-        client = self.config_entry.runtime_data.client
-        for zone in sorted(zones):
-            try:
-                await client.clear_room_temp(zone)
-            except FreedoError as err:
-                _LOGGER.warning("Room temperature release for zone %s failed: %s", zone, err)
-
-    def _save_rooms(self) -> ConfigFlowResult:
-        """Save the sensors and keep the other options. A zone with a new
-        sensor ends its pause."""
-        options = {
-            k: v
-            for k, v in self.config_entry.options.items()
-            if k not in (CONF_ROOM_TEMPS, CONF_ROOM_TEMP_PAUSED)
-        }
-        if self._room_temps:
-            options[CONF_ROOM_TEMPS] = {str(z): e for z, e in sorted(self._room_temps.items())}
-        changed = {z for z, e in self._room_temps.items() if self._start_temps.get(z) != e}
-        paused = room_temp_paused(self.config_entry.options.get(CONF_ROOM_TEMP_PAUSED) or [])
-        kept = sorted(z for z in paused if z in self._room_temps and z not in changed)
-        if kept:
-            options[CONF_ROOM_TEMP_PAUSED] = kept
-        return self.async_create_entry(data=options)

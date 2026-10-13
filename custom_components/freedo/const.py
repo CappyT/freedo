@@ -11,14 +11,16 @@ OUTDOOR_PUSH_INTERVAL = timedelta(minutes=15)
 # daemon drops the reading.
 ROOM_TEMP_PUSH_INTERVAL = timedelta(minutes=15)
 WINDOW_RETRY_INTERVAL = timedelta(seconds=30)
+# How long before the deadline of a window hold the integration states the open
+# room again. It is several polls, so a failed push has its retries.
+WINDOW_REFRESH_MARGIN = timedelta(minutes=5)
 
 CONF_TOKEN = "token"
 CONF_OUTDOOR_ENTITY = "outdoor_entity"
-CONF_WINDOW_ENTITIES = "window_entities"
 CONF_WINDOWS = "windows"
 CONF_ROOM_TEMPS = "room_temperatures"
 # Zones whose external room temperature pushes are paused, because the user chose
-# a measuring device of the room in the temperature source select.
+# a device of the room as the temperature source.
 CONF_ROOM_TEMP_PAUSED = "room_temperature_paused"
 
 # A write reaches a device at its next wake-up, so a reported value lags. An entity
