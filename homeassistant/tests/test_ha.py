@@ -4323,3 +4323,40 @@ async def test_the_hub_of_the_add_on_links_to_its_ingress_page(hass, client):
     await hass.async_block_till_done()
     hub = dr.async_get(hass).async_get_device_by_identifier((DOMAIN, entry.entry_id), entry.entry_id)
     assert hub.configuration_url == "homeassistant://hassio/ingress/a0d7b954_freedo_beta"
+
+
+async def test_a_daemon_that_waits_after_an_import_logs_one_error(hass, client, caplog):
+    """After an import a daemon that transmits waits before its start: GET
+    /api/health answers with importWait and every other route answers 503."""
+    await setup_entry(hass, client)
+    assert hass.states.get(LIVING).state != "unavailable"
+    reads = {name: getattr(client, name) for name in (
+        "zones", "nodes", "boiler", "home", "install_zones", "install_circuits",
+        "install_devices", "pair_window", "presets",
+    )}
+    health = client.health_json
+
+    async def refused():
+        raise FreedoApiError(503, "freedo starts in 200 s: it waits after the import of a state")
+
+    for name in reads:
+        setattr(client, name, refused)
+    client.health_json = {
+        "ok": True, "mode": "live", "tx": True, "txArmed": False,
+        "transmitAllowed": False, "importWait": {"leftSec": 200},
+    }
+    for _ in range(3):
+        await poll(hass)
+        assert hass.states.get(LIVING).state == "unavailable"
+    errors = [
+        r for r in caplog.records
+        if r.name.startswith("custom_components.freedo") and r.levelname in ("ERROR", "WARNING")
+    ]
+    assert len(errors) == 1
+    assert "it waits after the import" in errors[0].getMessage()
+
+    for name, read in reads.items():
+        setattr(client, name, read)
+    client.health_json = health
+    await poll(hass)
+    assert hass.states.get(LIVING).state != "unavailable"
