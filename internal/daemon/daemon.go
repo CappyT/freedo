@@ -100,7 +100,8 @@ type daemon struct {
 	cmds             chan func()
 	dispatch         chan struct{}
 	done             chan struct{}
-	radioLost        chan error // the error of a live radio loop that ended on its own
+	radioLost        chan error    // the error of a live radio loop that ended on its own
+	restart          chan struct{} // an import is staged: stop and start again
 	beaconEvery      time.Duration
 	retryAfter       func(time.Duration) <-chan time.Time
 	retryNow         func() time.Time
@@ -271,6 +272,7 @@ func newDaemon(in *tado.Install, emu *tado.EmuState, radio radio.Radio, dryRun b
 		dispatch:         make(chan struct{}, 1),
 		done:             make(chan struct{}),
 		radioLost:        make(chan error, 1),
+		restart:          make(chan struct{}, 1),
 		retryAfter:       time.After,
 		retryNow:         time.Now,
 		retryRand:        randomRetryUint16,
@@ -1905,6 +1907,8 @@ func (d *daemon) mux() *http.ServeMux {
 	m.HandleFunc("GET /api/nodes/{id}/dbg/mem", d.getNodeMem)
 	m.HandleFunc("GET /api/nodes/{id}/resource", d.getNodeResource)
 	m.HandleFunc("GET /api/heatsource/capabilities", d.getHeatsourceCaps)
+	m.HandleFunc("GET /api/state/export", d.getStateExport)
+	m.HandleFunc("POST /api/state/import", d.postStateImport)
 	d.installRoutes(m)
 	return m
 }
@@ -4300,8 +4304,19 @@ flags:
 		*port = ""
 	}
 
+	imported, err := applyStagedImport(dbPath, time.Now())
+	if err != nil {
+		die("import into %s: %v", dbPath, err)
+	}
 	store, err := openStateStore(dbPath)
 	check(err)
+	if imported {
+		fmt.Printf("import: the daemon starts on the imported state in %s\n", dbPath)
+		if err := store.SetCounterResume(context.Background(), map[string]uint64{metaImportedAt: uint64(time.Now().Unix())}); err != nil {
+			closeStore(store)
+			die("state database %s: %v", dbPath, err)
+		}
+	}
 	// A database with no identity gets one here, before anything reads it.
 	commissioned, err := store.EnsureIdentity(context.Background())
 	if err != nil {
@@ -4360,6 +4375,18 @@ flags:
 
 	var link radio.Radio
 	mode := "mock"
+	if *port != "" && *doTx {
+		at, _, err := install.ReadMetaUint(context.Background(), store.db, metaImportedAt)
+		if err != nil {
+			closeStore(store)
+			die("state database %s: %v", dbPath, err)
+		}
+		if left := importWaitLeft(at, time.Now()); left > 0 {
+			fmt.Printf("import: the state was imported less than %s ago: waiting %s before the start, so that no device still holds a Message ID of the replaced state\n",
+				midWait, left.Round(time.Second))
+			time.Sleep(left)
+		}
+	}
 	switch {
 	case *port != "":
 		r, err := newLiveRadio(store, *port, in.CoordinatorEUI(), cfg.CSLPhase, *doTx, *tuneDebug)
@@ -4453,7 +4480,11 @@ flags:
 		timeout = t.C
 	}
 	var httpErr, radioErr error
+	restart := false
 	select {
+	case <-d.restart:
+		restart = true
+		fmt.Println("import: a state is staged, restarting")
 	case s := <-sig:
 		fmt.Printf("interrupted by %s\n", s)
 		// A second signal leaves at once, whatever the shutdown is waiting for.
@@ -4497,6 +4528,11 @@ flags:
 	}
 	if radioErr != nil {
 		die("radio: %v", radioErr)
+	}
+	if restart {
+		// A service manager or a restart policy starts the process when this fails,
+		// and that start applies the staged file too.
+		die("restart after the import: %v", reexec())
 	}
 }
 

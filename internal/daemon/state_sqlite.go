@@ -35,7 +35,8 @@ var stateTables = []string{
 // the same database, and db is the store's single connection.
 type stateStore struct {
 	*install.Store
-	db *sql.DB
+	db   *sql.DB
+	path string
 }
 
 func openStateStore(path string) (*stateStore, error) {
@@ -43,7 +44,7 @@ func openStateStore(path string) (*stateStore, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &stateStore{Store: store, db: store.DB()}, nil
+	return &stateStore{Store: store, db: store.DB(), path: path}, nil
 }
 
 // Save replaces the stored state with state in one transaction. seq orders the

@@ -150,6 +150,8 @@ func TestIngressRefusesEveryOtherRoute(t *testing.T) {
 		{"GET", "/api/stats"},
 		{"GET", "/api/unhandled"},
 		{"GET", "/api/heatsource/capabilities"},
+		{"GET", "/api/state/export"},
+		{"POST", "/api/state/import"},
 	} {
 		if got := send(h, gatewayPeer, tc.method, tc.path); got != http.StatusUnauthorized {
 			t.Errorf("%s %s from the gateway: %d, want 401", tc.method, tc.path, got)
