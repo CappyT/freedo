@@ -139,6 +139,11 @@ class FreedoClient:
         window view of the read."""
         return await self._request("POST", "/api/pair/window", {"seconds": int(seconds)})
 
+    async def pair_device(self, ref: str) -> dict[str, Any]:
+        """Send the pair command to a declared device, under the network key
+        of the installation. ref is its EUI or its short address."""
+        return await self._request("POST", f"/api/pair/devices/{ref}")
+
     async def activate_preset(self, preset_id: int) -> dict[str, Any]:
         """Make a preset the active one and serve its home programs."""
         return await self._request("POST", f"/api/presets/{int(preset_id)}/activate")
@@ -258,10 +263,11 @@ class FreedoClient:
     async def clear_room_temp(self, zone: int) -> dict[str, Any]:
         return await self._request("DELETE", f"/api/zones/{int(zone)}/temperature")
 
-    async def push_window(self, zone: int, is_open: bool) -> dict[str, Any]:
-        return await self._request(
-            "POST", f"/api/zones/{int(zone)}/window", {"open": is_open}
-        )
+    async def push_window(self, zone: int, is_open: bool, reset: bool = False) -> dict[str, Any]:
+        """reset closes every source of the window, also the valve detector.
+        Only a person resets: a sensor that closes ends its own hold."""
+        payload = {"open": is_open, "reset": True} if reset else {"open": is_open}
+        return await self._request("POST", f"/api/zones/{int(zone)}/window", payload)
 
     # --- zone commands ---
     # The daemon picks the member a zone command goes to.

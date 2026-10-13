@@ -193,7 +193,12 @@ class PairingModeSwitch(FreedoEntity, SwitchEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         window = self.coordinator.data.pair_window or {}
-        return {"until": window.get("until") if window.get("open") else None}
+        return {
+            "until": window.get("until") if window.get("open") else None,
+            "responder": window.get("responder"),
+            # The EUI of each device that waits for the pair command.
+            "joiners": [j.get("eui") for j in window.get("joiners") or []],
+        }
 
     async def _set(self, seconds: int) -> None:
         view = await call_api(self.coordinator.client.set_pair_window(seconds))

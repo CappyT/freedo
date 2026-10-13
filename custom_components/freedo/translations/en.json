@@ -100,6 +100,22 @@
     }
   },
   "entity": {
+    "event": {
+      "alert": {
+        "name": "Alert",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "low_battery": "Low battery",
+              "device_fault": "Device fault",
+              "valve_warning": "Valve warning",
+              "device_offline": "Device offline",
+              "boiler_fault": "Boiler fault"
+            }
+          }
+        }
+      }
+    },
     "binary_sensor": {
       "zone_window": { "name": "Window" },
       "zone_heating": { "name": "Heating" },
@@ -107,7 +123,8 @@
       "low_battery": { "name": "Low battery" },
       "fault": { "name": "Fault" },
       "comms_warning": { "name": "Communication warning" },
-      "valve_warning": { "name": "Valve warning" }
+      "valve_warning": { "name": "Valve warning" },
+      "boiler_fault": { "name": "Boiler fault" }
     },
     "sensor": {
       "flow_temperature": { "name": "Flow temperature" },
@@ -237,6 +254,20 @@
     }
   },
   "services": {
+    "pair": {
+      "name": "Pair a device",
+      "description": "Sends the pair command to a device that waits in the pair window. freedo must hold the device first: the freedo dashboard adds a device and pairs it on one page. A device can miss the command: send it again while the pair window is open.",
+      "fields": {
+        "device": {
+          "name": "Device",
+          "description": "The EUI of the device, as the attribute joiners of the switch Pairing mode shows it. Leave it empty to pair the one device that waits in the pair window."
+        },
+        "config_entry_id": {
+          "name": "Hub",
+          "description": "The freedo hub that pairs the device. Needed only when several hubs are loaded."
+        }
+      }
+    },
     "boost": {
       "name": "Boost",
       "description": "Starts or stops the boost of a room.",
@@ -271,7 +302,7 @@
     },
     "set_window": {
       "name": "Set open window",
-      "description": "Activates or resets the open window state of a room. A reset ends the state set from Home Assistant. It does not end a state the valves detected.",
+      "description": "Activates or resets the open window state of a room. A reset ends the state, also one the valves detected.",
       "fields": {
         "open": {
           "name": "Open",
@@ -389,6 +420,7 @@
     }
   },
   "exceptions": {
+    "pair_needs_one_device": { "message": "The pair window holds {count} waiting devices. The field device is needed unless one device waits." },
     "overlay_temperature_required": { "message": "Set a temperature with mode heat." },
     "overlay_temperature_not_allowed": { "message": "A temperature is not allowed with mode off." },
     "overlay_duration_required": { "message": "Set a duration with end rule timer." },

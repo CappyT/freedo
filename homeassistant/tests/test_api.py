@@ -118,11 +118,13 @@ def test_write_payloads():
     client = FreedoClient(session, "h", 8080)
     run(client.push_outdoor(4.5))
     run(client.push_window(3, True))
+    run(client.push_window(3, False, reset=True))
     run(client.set_away(True))
     assert run(client.set_offline_schedule(False)) == {"rev": 8, "offline_schedule": False}
     assert [(c["method"], c["url"].split(":8080", 1)[-1], c["json"]) for c in session.calls] == [
         ("POST", "/api/outdoor", {"tempC": 4.5}),
         ("POST", "/api/zones/3/window", {"open": True}),
+        ("POST", "/api/zones/3/window", {"open": False, "reset": True}),
         ("PATCH", "/api/home", {"away": True}),
         ("PATCH", "/api/install", {"offline_schedule": False}),
     ]

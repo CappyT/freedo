@@ -166,6 +166,10 @@ class FakeClient:
         name = next((p["name"] for p in presets if p["id"] == preset_id), "")
         return {"id": preset_id, "name": name, "active": True, "queued": 1}
 
+    async def pair_device(self, ref):
+        self.calls.append(("pair", ref))
+        return {"queued": True}
+
     async def set_pair_window(self, seconds):
         self.calls.append(("pair_window", seconds))
         self.pair_window_json = {
@@ -276,7 +280,9 @@ class FakeClient:
         self.calls.append(("flow", circuit, temp_c, target))
         return {"queued": True}
 
-    async def push_window(self, zone, is_open):
+    async def push_window(self, zone, is_open, reset=False):
+        # Only the service resets: a sensor that closes ends its own hold.
+        assert not reset
         if self.window_errors:
             raise self.window_errors.pop(0)
         # An open push that waits on the gate reaches the daemon late.
@@ -348,8 +354,12 @@ def auto_enable_custom_integrations(enable_custom_integrations):
 
 
 @pytest.fixture
-def client() -> FakeClient:
-    return FakeClient()
+def client():
+    """The fake daemon. Every setup of the entry in the test gets it, also the
+    reload that follows a change of the installation."""
+    fake = FakeClient()
+    with patch("custom_components.freedo.FreedoClient", return_value=fake):
+        yield fake
 
 
 async def setup_entry(hass, client, options=None, enabled=()) -> MockConfigEntry:
@@ -3076,8 +3086,10 @@ async def test_set_window_activates_and_resets(hass, client):
     zone_window = entity_id(hass, entry, "binary_sensor", "zone2_window")
     assert hass.states.get(zone_window).state == "off"
 
-    async def daemon_window(zone, is_open):
+    async def daemon_window(zone, is_open, reset=False):
         # The daemon answers with the window view of the zone and reports it.
+        # A reset by hand ends every source, so the close carries reset.
+        assert reset is not is_open
         client.windows.append((zone, is_open))
         view = {"open": is_open, "source": "external" if is_open else None, "since": None,
                 "deadline": None, "undelivered": []}
@@ -3145,7 +3157,7 @@ async def test_pairing_mode_follows_the_daemon(hass, client):
     entry = await setup_entry(hass, client)
     pairing = entity_id(hass, entry, "switch", "pairing_mode")
     # A window opened outside Home Assistant shows at the next poll, and so does
-    # its end. The joiners the window learned are not exposed.
+    # its end. The attribute joiners lists the EUI of each waiting device.
     client.pair_window_json = {
         "open": True, "opened": "2026-01-01T00:00:00Z", "until": "2026-01-01T00:02:00Z",
         "responder": True,
@@ -3154,7 +3166,8 @@ async def test_pairing_mode_follows_the_daemon(hass, client):
     await refresh(hass, entry)
     state = hass.states.get(pairing)
     assert state.state == "on"
-    assert set(state.attributes) - {"friendly_name"} == {"until"}
+    assert set(state.attributes) - {"friendly_name"} == {"until", "responder", "joiners"}
+    assert state.attributes["joiners"] == ["0000000000000001"]
     client.pair_window_json = {"open": False, "responder": False, "joiners": []}
     await refresh(hass, entry)
     assert hass.states.get(pairing).state == "off"
@@ -4049,7 +4062,8 @@ def test_service_selectors_are_valid():
     )
     assert set(services) == {
         "boost", "boost_all", "calibrate_gas_meter", "copy_schedule", "get_schedule",
-        "resume_all", "set_overlay", "set_schedule", "set_window", "undo_gas_meter_reading",
+        "pair", "resume_all", "set_overlay", "set_schedule", "set_window",
+        "undo_gas_meter_reading",
     }
     for spec in services.values():
         for field in ((spec or {}).get("fields") or {}).values():
@@ -4072,3 +4086,240 @@ def test_translations_match_strings():
     assert json.loads((folder / "translations" / "en.json").read_text()) == strings
     assert set(strings["selector"]["overlay_end_rule"]["options"]) == set(ZONE_OVERLAY_RULES)
     assert set(strings["entity"]["select"]["offset_mode"]["state"]) == set(OFFSET_MODES)
+
+
+# --- boiler fault ---
+
+
+async def test_boiler_fault_follows_the_codes(hass, client):
+    entry = await setup_entry(hass, client)
+    fault = entity_id(hass, entry, "binary_sensor", "boiler_fault")
+    assert er.async_get(hass).async_get(fault).entity_category == "diagnostic"
+    # No report of the boiler yet.
+    assert hass.states.get(fault).state == "unknown"
+    client.boiler_json["FaultCodes"] = []
+    await refresh(hass, entry)
+    assert hass.states.get(fault).state == "off"
+    assert hass.states.get(fault).attributes["codes"] == []
+    client.boiler_json.update(FaultCodes=[291, 1110], FaultCode=291)
+    await refresh(hass, entry)
+    state = hass.states.get(fault)
+    assert state.state == "on"
+    assert state.attributes["device_class"] == "problem"
+    assert state.attributes["codes"] == [291, 1110]
+
+
+# --- alert event ---
+
+
+def health_device(client, short):
+    return next(d for d in client.health_json["devices"] if d["short"] == short)
+
+
+async def test_alert_event_announces_each_new_alert_once(hass, client):
+    entry = await setup_entry(hass, client)
+    alert = entity_id(hass, entry, "event", "alert")
+    assert hass.states.get(alert).attributes["event_types"] == [
+        "low_battery", "device_fault", "valve_warning", "device_offline", "boiler_fault",
+    ]
+    # The low battery of aaaa and the fault of cccc hold at the start: no event.
+    assert hass.states.get(alert).state == "unknown"
+    seen = []
+    hass.bus.async_listen(
+        "state_changed",
+        lambda e: seen.append(e.data["new_state"].attributes)
+        if e.data["entity_id"] == alert else None,
+    )
+    await refresh(hass, entry)
+    assert seen == []
+
+    health_device(client, "aaaa").update(deviceWarnings=["notMounted"], offline=True)
+    client.boiler_json["FaultCodes"] = [291]
+    await refresh(hass, entry)
+    # The alerts of one poll go out one second apart, so the state of the
+    # entity, the time of its last event, changes at each one.
+    assert len(seen) == 1
+    for seconds in (2, 4):
+        async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=seconds))
+        await hass.async_block_till_done()
+    events = [(a["event_type"], a["room"], a["device"], a["details"]) for a in seen]
+    assert events == [
+        ("boiler_fault", None, None, ["291"]),
+        ("device_offline", "Living", "Living (VA0000000001)", []),
+        ("valve_warning", "Living", "Living (VA0000000001)", ["notMounted"]),
+    ]
+    # An alert that holds raises nothing more.
+    await refresh(hass, entry)
+    await refresh(hass, entry)
+    assert len(seen) == 3
+    # It raises a new event when it comes back.
+    health_device(client, "aaaa")["offline"] = False
+    await refresh(hass, entry)
+    health_device(client, "aaaa")["offline"] = True
+    await refresh(hass, entry)
+    assert [a["event_type"] for a in seen[3:]] == ["device_offline"]
+
+
+# --- changes of the installation ---
+
+
+async def poll(hass):
+    """Let the time of one poll pass, and the reload it may start."""
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=31))
+    # The poll is a background task.
+    await hass.async_block_till_done(wait_background_tasks=True)
+
+
+def pair_valve(client, short, serial, label, zone):
+    """Add a valve to the installation of the fake daemon, in a room."""
+    client.health_json["devices"].append(
+        dict(client.health_json["devices"][0], device=serial, short=short, label=label)
+    )
+    client.install_devices_json["devices"].append(
+        {"eui": "00000000000000" + short[:2], "short": short, "kind": "valve",
+         "serial": serial, "label": label, "notes": "", "zone": zone}
+    )
+    members = client.zones_json["declared"][zone - 1]["members"]
+    if short not in members:
+        members.append(short)
+
+
+async def test_a_new_device_appears_without_a_reload_by_hand(hass, client):
+    entry = await setup_entry(hass, client)
+    living_room = place_zone(hass, entry, 1, "Soggiorno")
+    await refresh(hass, entry)
+    runtime = entry.runtime_data
+    # Polls of an installation that does not change reload nothing.
+    await poll(hass)
+    await poll(hass)
+    assert entry.runtime_data is runtime
+    assert node_device(hass, entry, "ffff") is None
+
+    pair_valve(client, "ffff", "VA0000000009", "Window side", 1)
+    await poll(hass)
+    # The poll saw the device and reloaded the entry: the device has its
+    # entities and the area of its room.
+    assert entry.runtime_data is not runtime
+    device = node_device(hass, entry, "ffff")
+    assert device.name == "Window side (VA0000000009)"
+    assert device.area_id == living_room
+    assert has_entity(hass, entry, "binary_sensor", "ffff_lowBattery")
+    # One reload, not one per poll.
+    runtime = entry.runtime_data
+    await poll(hass)
+    assert entry.runtime_data is runtime
+
+
+async def test_a_removed_device_and_room_leave_home_assistant(hass, client):
+    pair_valve(client, "ffff", "VA0000000009", "Window side", 1)
+    entry = await setup_entry(hass, client)
+    living_room = place_zone(hass, entry, 1, "Soggiorno")
+    await refresh(hass, entry)
+    office = ar.async_get(hass).async_create("Office").id
+    dr.async_get(hass).async_update_device(node_device(hass, entry, "aaaa").id, area_id=office)
+    battery = entity_id(hass, entry, "binary_sensor", "ffff_lowBattery")
+    bedroom = entity_id(hass, entry, "climate", "zone2_climate")
+
+    # The device ffff and the room Bedroom leave the installation.
+    client.health_json["devices"].pop()
+    client.install_devices_json["devices"].pop()
+    client.zones_json["declared"][0]["members"].remove("ffff")
+    del client.zones_json["declared"][1]
+    client.zones_json["demand"] = [v for v in client.zones_json["demand"] if v["Number"] != 2]
+    client.install_json["zones"] = [r for r in client.install_json["zones"] if r["number"] != 2]
+    await poll(hass)
+
+    assert node_device(hass, entry, "ffff") is None
+    assert zone_device(hass, entry, 2) is None
+    entities = er.async_get(hass)
+    assert entities.async_get(battery) is None
+    assert entities.async_get(bedroom) is None
+    assert hass.states.get(bedroom) is None
+    # What stays keeps its area, also the one the user chose.
+    assert zone_device(hass, entry, 1).area_id == living_room
+    assert node_device(hass, entry, "aaaa").area_id == office
+    assert hass.states.get(LIVING).state != "unavailable"
+
+
+async def test_a_renamed_or_moved_device_follows(hass, client):
+    entry = await setup_entry(hass, client)
+    assert node_device(hass, entry, "aaaa").name == "Living (VA0000000001)"
+    runtime = entry.runtime_data
+    health_device(client, "aaaa")["label"] = "Sofa"
+    await poll(hass)
+    assert entry.runtime_data is not runtime
+    assert node_device(hass, entry, "aaaa").name == "Sofa (VA0000000001)"
+    # The valve moves to the other room.
+    runtime = entry.runtime_data
+    client.zones_json["declared"][0]["members"].remove("aaaa")
+    client.zones_json["declared"][1]["members"].append("aaaa")
+    await poll(hass)
+    assert entry.runtime_data is not runtime
+
+
+async def test_a_poll_without_an_installation_removes_nothing(hass, client):
+    entry = await setup_entry(hass, client)
+    place_zone(hass, entry, 1, "Soggiorno")
+    await refresh(hass, entry)
+    area = zone_device(hass, entry, 1).area_id
+    # The daemon answers, but it holds no installation for a while.
+    saved = copy.deepcopy((client.zones_json, client.health_json, client.install_devices_json))
+    client.zones_json = {"declared": [], "demand": []}
+    client.health_json = {"ok": True, "devices": [], "zoneFallback": []}
+    client.install_devices_json = {"devices": []}
+    await poll(hass)
+    assert zone_device(hass, entry, 1) is not None
+    assert node_device(hass, entry, "aaaa") is not None
+    client.zones_json, client.health_json, client.install_devices_json = saved
+    await poll(hass)
+    assert zone_device(hass, entry, 1).area_id == area
+    assert hass.states.get(LIVING).state != "unavailable"
+
+
+# --- pairing ---
+
+
+async def test_pair_sends_the_command_to_the_waiting_device(hass, client):
+    await setup_entry(hass, client)
+    client.pair_window_json = {
+        "open": True, "responder": True,
+        "joiners": [{"eui": "0000000000000001", "short": "ffff"}],
+    }
+    client.calls.clear()
+    await call_freedo(hass, "pair", {})
+    assert client.calls == [("pair", "0000000000000001")]
+    # A named device needs no window view.
+    await call_freedo(hass, "pair", {"device": "0000000000000002"})
+    assert client.calls[-1] == ("pair", "0000000000000002")
+
+
+@pytest.mark.parametrize("count", [0, 2])
+async def test_pair_without_a_name_needs_one_waiting_device(hass, client, count):
+    await setup_entry(hass, client)
+    client.pair_window_json = {
+        "open": True, "responder": True,
+        "joiners": [{"eui": f"000000000000000{n}", "short": "ffff"} for n in range(count)],
+    }
+    client.calls.clear()
+    with pytest.raises(ServiceValidationError) as err:
+        await call_freedo(hass, "pair", {})
+    assert err.value.translation_key == "pair_needs_one_device"
+    assert err.value.translation_placeholders == {"count": str(count)}
+    assert client.calls == []
+
+
+async def test_the_hub_links_to_the_dashboard(hass, client):
+    entry = await setup_entry(hass, client)
+    hub = dr.async_get(hass).async_get_device_by_identifier((DOMAIN, entry.entry_id), entry.entry_id)
+    assert hub.configuration_url == "http://127.0.0.1:8080/"
+
+
+async def test_the_hub_of_the_add_on_links_to_its_ingress_page(hass, client):
+    entry = MockConfigEntry(
+        domain=DOMAIN, source="hassio", data={CONF_HOST: "a0d7b954-freedo-beta", CONF_PORT: 8080}
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    hub = dr.async_get(hass).async_get_device_by_identifier((DOMAIN, entry.entry_id), entry.entry_id)
+    assert hub.configuration_url == "homeassistant://hassio/ingress/a0d7b954_freedo_beta"

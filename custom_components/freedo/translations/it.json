@@ -100,6 +100,22 @@
     }
   },
   "entity": {
+    "event": {
+      "alert": {
+        "name": "Avviso",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "low_battery": "Batteria scarica",
+              "device_fault": "Guasto di un dispositivo",
+              "valve_warning": "Avviso valvola",
+              "device_offline": "Dispositivo non raggiungibile",
+              "boiler_fault": "Guasto caldaia"
+            }
+          }
+        }
+      }
+    },
     "binary_sensor": {
       "zone_window": {
         "name": "Finestra"
@@ -121,7 +137,8 @@
       },
       "valve_warning": {
         "name": "Avviso valvola"
-      }
+      },
+      "boiler_fault": { "name": "Guasto caldaia" }
     },
     "sensor": {
       "flow_temperature": {
@@ -329,6 +346,20 @@
     }
   },
   "services": {
+    "pair": {
+      "name": "Abbina un dispositivo",
+      "description": "Invia il comando di abbinamento a un dispositivo in attesa nella finestra di abbinamento. freedo deve già contenere il dispositivo: la dashboard di freedo aggiunge un dispositivo e lo abbina in una sola pagina. Un dispositivo può perdere il comando: invialo di nuovo mentre la finestra di abbinamento è aperta.",
+      "fields": {
+        "device": {
+          "name": "Dispositivo",
+          "description": "L'EUI del dispositivo, come lo mostra l'attributo joiners dell'interruttore Modalità di abbinamento. Lascia vuoto per abbinare l'unico dispositivo in attesa nella finestra di abbinamento."
+        },
+        "config_entry_id": {
+          "name": "Hub",
+          "description": "L'hub freedo che abbina il dispositivo. Necessario solo quando sono caricati più hub."
+        }
+      }
+    },
     "boost": {
       "name": "Boost",
       "description": "Avvia o ferma il boost di una stanza.",
@@ -363,7 +394,7 @@
     },
     "set_window": {
       "name": "Imposta finestra aperta",
-      "description": "Attiva o reimposta lo stato di finestra aperta di una stanza. Un reset termina lo stato impostato da Home Assistant. Non termina uno stato rilevato dalle valvole.",
+      "description": "Attiva o reimposta lo stato di finestra aperta di una stanza. Un reset termina lo stato, anche quello rilevato dalle valvole.",
       "fields": {
         "open": {
           "name": "Aperta",
@@ -481,6 +512,7 @@
     }
   },
   "exceptions": {
+    "pair_needs_one_device": { "message": "La finestra di abbinamento contiene {count} dispositivi in attesa. Il campo dispositivo serve, a meno che un solo dispositivo sia in attesa." },
     "overlay_temperature_required": {
       "message": "Imposta una temperatura con la modalità Riscaldamento."
     },

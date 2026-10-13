@@ -34,6 +34,7 @@ NOTE_NO_TARGET = "No target is set. The temperature control shows the lowest tem
 NOTE_REPORTED_TARGET = "The temperature control shows the setpoint that the boiler reports. The daemon sets no target."
 
 SERVICE_BOOST = "boost"
+SERVICE_PAIR = "pair"
 SERVICE_BOOST_ALL = "boost_all"
 SERVICE_RESUME_ALL = "resume_all"
 SERVICE_SET_OVERLAY = "set_overlay"

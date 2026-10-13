@@ -145,3 +145,13 @@ undo_gas_meter_reading:
       selector:
         config_entry:
           integration: freedo
+
+pair:
+  fields:
+    device:
+      selector:
+        text:
+    config_entry_id:
+      selector:
+        config_entry:
+          integration: freedo

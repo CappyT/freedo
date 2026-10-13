@@ -100,6 +100,22 @@
     }
   },
   "entity": {
+    "event": {
+      "alert": {
+        "name": "Meldung",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "low_battery": "Niedriger Batteriestand",
+              "device_fault": "Gerätestörung",
+              "valve_warning": "Ventilwarnung",
+              "device_offline": "Gerät nicht erreichbar",
+              "boiler_fault": "Kesselstörung"
+            }
+          }
+        }
+      }
+    },
     "binary_sensor": {
       "zone_window": {
         "name": "Fenster"
@@ -121,7 +137,8 @@
       },
       "valve_warning": {
         "name": "Ventilwarnung"
-      }
+      },
+      "boiler_fault": { "name": "Kesselstörung" }
     },
     "sensor": {
       "flow_temperature": {
@@ -329,6 +346,20 @@
     }
   },
   "services": {
+    "pair": {
+      "name": "Gerät koppeln",
+      "description": "Sendet den Kopplungsbefehl an ein Gerät, das im Kopplungsfenster wartet. freedo muss das Gerät schon enthalten: Das freedo-Dashboard fügt ein Gerät hinzu und koppelt es auf einer Seite. Ein Gerät kann den Befehl verpassen: Sende ihn erneut, solange das Kopplungsfenster offen ist.",
+      "fields": {
+        "device": {
+          "name": "Gerät",
+          "description": "Die EUI des Geräts, wie sie das Attribut joiners des Schalters Kopplungsmodus zeigt. Leer lassen, um das eine Gerät zu koppeln, das im Kopplungsfenster wartet."
+        },
+        "config_entry_id": {
+          "name": "Hub",
+          "description": "Der freedo-Hub, der das Gerät koppelt. Nur nötig, wenn mehrere Hubs geladen sind."
+        }
+      }
+    },
     "boost": {
       "name": "Boost",
       "description": "Startet oder stoppt den Boost eines Raums.",
@@ -363,7 +394,7 @@
     },
     "set_window": {
       "name": "Offenes Fenster setzen",
-      "description": "Aktiviert den Zustand für ein offenes Fenster eines Raums oder setzt ihn zurück. Ein Zurücksetzen beendet den von Home Assistant gesetzten Zustand. Ein von den Ventilen erkannter Zustand wird nicht beendet.",
+      "description": "Aktiviert den Zustand für ein offenes Fenster eines Raums oder setzt ihn zurück. Ein Zurücksetzen beendet den Zustand, auch einen von den Ventilen erkannten.",
       "fields": {
         "open": {
           "name": "Offen",
@@ -481,6 +512,7 @@
     }
   },
   "exceptions": {
+    "pair_needs_one_device": { "message": "Im Kopplungsfenster warten {count} Geräte. Das Feld Gerät ist nötig, außer es wartet genau ein Gerät." },
     "overlay_temperature_required": {
       "message": "Lege im Modus Heizen eine Temperatur fest."
     },

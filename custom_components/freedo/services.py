@@ -23,6 +23,7 @@ from .const import (
     SERVICE_CALIBRATE_GAS_METER,
     SERVICE_COPY_SCHEDULE,
     SERVICE_GET_SCHEDULE,
+    SERVICE_PAIR,
     SERVICE_RESUME_ALL,
     SERVICE_SET_SCHEDULE,
     SERVICE_UNDO_GAS_METER_READING,
@@ -128,6 +129,31 @@ def async_setup_services(hass: HomeAssistant) -> None:
             await call_api(runtime.client.undo_gas_meter_reading())
             await runtime.coordinator.async_request_refresh()
 
+    async def pair(call: ServiceCall) -> None:
+        """Send the pair command to a declared device: the named one, or the
+        single device that waits in the pair window."""
+        for runtime in _runtimes(hass, call.data.get("config_entry_id")):
+            ref = call.data.get("device")
+            if not ref:
+                window = await call_api(runtime.client.pair_window()) or {}
+                joiners = [j.get("eui") for j in window.get("joiners") or [] if j.get("eui")]
+                if len(joiners) != 1:
+                    raise ServiceValidationError(
+                        translation_domain=DOMAIN,
+                        translation_key="pair_needs_one_device",
+                        translation_placeholders={"count": str(len(joiners))},
+                    )
+                ref = joiners[0]
+            await call_api(runtime.client.pair_device(ref))
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_PAIR,
+        pair,
+        vol.Schema(
+            {vol.Optional("device"): cv.string, vol.Optional("config_entry_id"): cv.string}
+        ),
+    )
     hass.services.async_register(
         DOMAIN,
         SERVICE_GET_SCHEDULE,

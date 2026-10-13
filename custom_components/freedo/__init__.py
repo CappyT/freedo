@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import asyncio
 
+from homeassistant.config_entries import SOURCE_HASSIO
 from homeassistant.const import CONF_HOST, CONF_PORT, Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import config_validation as cv, device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.typing import ConfigType
@@ -15,13 +16,15 @@ from .const import CONF_TOKEN, DOMAIN
 from .coordinator import FreedoConfigEntry, FreedoCoordinator, FreedoRuntime
 from .entity import async_track_firmware, hub_device_info
 from .environment import async_setup_environment
-from .rooms import async_remove_issues, async_track_rooms
+from .model import FreedoData, installation_structure
+from .rooms import async_remove_issues, async_track_rooms, node_identifier, zone_identifier
 from .services import async_setup_services
 
 PLATFORMS = [
     Platform.BINARY_SENSOR,
     Platform.BUTTON,
     Platform.CLIMATE,
+    Platform.EVENT,
     Platform.NUMBER,
     Platform.SELECT,
     Platform.SENSOR,
@@ -48,7 +51,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: FreedoConfigEntry) -> bo
     coordinator = FreedoCoordinator(hass, entry, client)
     await coordinator.async_config_entry_first_refresh()
     hub = dr.async_get(hass).async_get_or_create(
-        config_entry_id=entry.entry_id, **hub_device_info(entry.entry_id)
+        config_entry_id=entry.entry_id,
+        configuration_url=_dashboard_url(entry),
+        **hub_device_info(entry.entry_id),
     )
     entry.runtime_data = FreedoRuntime(
         client=client,
@@ -57,12 +62,64 @@ async def async_setup_entry(hass: HomeAssistant, entry: FreedoConfigEntry) -> bo
         room_temp_lock=asyncio.Lock(),
     )
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    _remove_departed(hass, entry, coordinator.data)
+    _follow_installation(hass, entry, coordinator)
     entry.async_on_unload(async_track_firmware(hass, coordinator))
     entry.async_on_unload(async_track_rooms(hass, coordinator))
     entry.runtime_data.room_temps, entry.runtime_data.windows = async_setup_environment(
         hass, entry, client
     )
     return True
+
+
+def _dashboard_url(entry: FreedoConfigEntry) -> str:
+    """The freedo dashboard, which manages the rooms and pairs a device. The
+    add-on serves it through ingress: its host name is its slug with a hyphen
+    for each underscore."""
+    host = entry.data[CONF_HOST]
+    if entry.source == SOURCE_HASSIO:
+        return f"homeassistant://hassio/ingress/{host.replace('-', '_')}"
+    return f"http://{host}:{entry.data[CONF_PORT]}/"
+
+
+@callback
+def _remove_departed(hass: HomeAssistant, entry: FreedoConfigEntry, data: FreedoData) -> None:
+    """Remove the devices, with their entities, of the rooms and the devices
+    that left the installation. A device that stays keeps its area and its
+    names. A poll that shows no installation removes nothing."""
+    if not data.zones or not data.install_devices:
+        return
+    keep = {(DOMAIN, entry.entry_id)}
+    keep.update(zone_identifier(entry.entry_id, number) for number in data.zones)
+    keep.update(
+        node_identifier(entry.entry_id, short)
+        for short in data.devices.keys() | data.install_devices.keys()
+    )
+    registry = dr.async_get(hass)
+    for device in dr.async_entries_for_config_entry(registry, entry.entry_id):
+        if not device.identifiers & keep:
+            registry.async_remove_device(device.id)
+
+
+@callback
+def _follow_installation(
+    hass: HomeAssistant, entry: FreedoConfigEntry, coordinator: FreedoCoordinator
+) -> None:
+    """Reload the entry when a poll shows other rooms or devices than the ones
+    the entities were built from: a room or a device added, removed, renamed or
+    moved. The revision of the installation does not fit: it also moves at each
+    option write, such as the area the integration itself sends."""
+    built = installation_structure(coordinator.data)
+    reloading = False
+
+    @callback
+    def check() -> None:
+        nonlocal reloading
+        if not reloading and installation_structure(coordinator.data) != built:
+            reloading = True
+            hass.config_entries.async_schedule_reload(entry.entry_id)
+
+    entry.async_on_unload(coordinator.async_add_listener(check))
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: FreedoConfigEntry) -> bool:

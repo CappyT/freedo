@@ -1,0 +1,212 @@
+blueprint:
+  name: freedo alert notification
+  description: >-
+    Sends a notification when a freedo device or the boiler starts to report a
+    problem.
+
+
+    - The freedo event entity Alert raises one event when an alert starts: a
+    low battery, a device fault, a valve warning, a device that is offline or a
+    boiler fault. The notification names the room and the device.
+
+    - An alert sends one notification. It sends no other one while it holds,
+    and none after a restart of Home Assistant.
+
+    - Optional: a notification when a window of a room stays open longer than
+    a time.
+
+    - During the quiet time the notification waits, and goes out when the quiet
+    time ends.
+
+    - The text is English.
+  domain: automation
+  author: CappyT
+  homeassistant:
+    min_version: "2026.8.0"
+  input:
+    alert_event:
+      name: Alert event
+      description: The freedo event entity Alert.
+      selector:
+        entity:
+          filter:
+            - domain: event
+              integration: freedo
+    notify_targets:
+      name: Send to
+      description: >-
+        The notify entities that get the notification, for example the one of
+        a phone with the Home Assistant app.
+      default: []
+      selector:
+        entity:
+          multiple: true
+          filter:
+            - domain: notify
+    alerts:
+      name: Alerts
+      description: The alerts to send. Keep at least one.
+      default:
+        - low_battery
+        - device_fault
+        - valve_warning
+        - device_offline
+        - boiler_fault
+      selector:
+        select:
+          multiple: true
+          options:
+            - label: Low battery
+              value: low_battery
+            - label: Device fault
+              value: device_fault
+            - label: Valve warning
+              value: valve_warning
+            - label: Device offline
+              value: device_offline
+            - label: Boiler fault
+              value: boiler_fault
+    window:
+      name: Open window
+      description: Optional. A notification for a window that stays open.
+      collapsed: true
+      input:
+        window_sensors:
+          name: Window sensors
+          description: The freedo Window sensors of the rooms to watch. Empty sends none.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: binary_sensor
+                  integration: freedo
+                  device_class: window
+        window_delay:
+          name: Open for
+          description: The window stays open for this time before the notification.
+          default:
+            hours: 0
+            minutes: 30
+            seconds: 0
+          selector:
+            duration:
+    quiet:
+      name: Quiet time
+      description: >-
+        A notification that is due between the two times waits for the end.
+        Equal times mean no quiet time.
+      collapsed: true
+      input:
+        quiet_start:
+          name: Quiet time start
+          default: "00:00:00"
+          selector:
+            time:
+        quiet_end:
+          name: Quiet time end
+          default: "00:00:00"
+          selector:
+            time:
+    more:
+      name: More actions
+      collapsed: true
+      input:
+        extra_actions:
+          name: Actions
+          description: >-
+            Actions that run for each notification, after the quiet time. They
+            can use the variables title and message.
+          default: []
+          selector:
+            action:
+
+mode: queued
+max: 20
+max_exceeded: silent
+
+variables:
+  notify_targets: !input notify_targets
+  quiet_start: !input quiet_start
+  quiet_end: !input quiet_end
+  window_delay: !input window_delay
+  # The names freedo gives to a valve warning and to a device fault.
+  detail_texts:
+    notMounted: not mounted on a radiator
+    calibrationNoPinContact: calibration found no valve pin
+    shortTravel: short valve travel
+    lowVoltage: battery too weak for the motor
+    recalibrating: calibrating again
+    calibrationNoEndStop: calibration found no end stop
+    calibrationTravel: "calibration failed: valve travel"
+    calibrationPower: "calibration failed: motor supply"
+    stall: motor blocked
+    earlyStall: motor blocked before the closed position
+    unknownResult: unknown motor result
+    storeWrite: internal memory write refused
+    configWrite: configuration not saved
+    stackLow: low internal memory
+  alert_texts:
+    low_battery: Low battery
+    device_fault: Device fault
+    valve_warning: Valve warning
+    device_offline: Device offline
+    boiler_fault: Boiler fault
+
+triggers:
+  - trigger: event.received
+    target:
+      entity_id: !input alert_event
+    options:
+      event_type: !input alerts
+    id: alert
+  - trigger: state
+    entity_id: !input window_sensors
+    to: "on"
+    for: !input window_delay
+    id: window
+
+actions:
+  - variables:
+      title: freedo
+      message: >-
+        {% if trigger.id == 'window' %}
+          {% set minutes = (window_delay.hours | default(0) | int) * 60
+             + (window_delay.minutes | default(0) | int) %}
+          {% set room = device_attr(trigger.entity_id, 'name_by_user')
+             or device_attr(trigger.entity_id, 'name')
+             or trigger.to_state.name %}
+          Window open for more than {{ minutes }} minutes: {{ room }}.
+        {% else %}
+          {% set event = trigger.to_state.attributes %}
+          {% set ns = namespace(details=[]) %}
+          {% for detail in event.details or [] %}
+            {% set ns.details = ns.details + [detail_texts.get(detail, detail)] %}
+          {% endfor %}
+          {{ alert_texts.get(event.event_type, event.event_type) }}
+          {%- if event.device %}: {{ event.device }}{% endif %}
+          {%- if event.room %} in {{ event.room }}{% endif %}
+          {%- if ns.details %}{{ ': codes ' if event.event_type == 'boiler_fault' else ' (' }}
+          {{- ns.details | join(', ') }}{{ '' if event.event_type == 'boiler_fault' else ')' }}{% endif %}.
+        {% endif %}
+  - if:
+      - condition: template
+        value_template: "{{ quiet_start != quiet_end }}"
+      - condition: time
+        after: !input quiet_start
+        before: !input quiet_end
+    then:
+      - wait_for_trigger:
+          - trigger: time
+            at: !input quiet_end
+  - if:
+      - condition: template
+        value_template: "{{ notify_targets | length > 0 }}"
+    then:
+      - action: notify.send_message
+        target:
+          entity_id: !input notify_targets
+        data:
+          title: "{{ title }}"
+          message: "{{ message }}"
+  - sequence: !input extra_actions

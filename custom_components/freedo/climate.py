@@ -312,12 +312,12 @@ class FreedoZoneClimate(FreedoScheduleEntity, ClimateEntity):
         await self.coordinator.async_request_refresh()
 
     async def async_set_window(self, open: bool = True) -> None:
-        """Open the window state of the zone, or reset it. The daemon ends only
-        the hold of this source: a hold from a valve detector runs on."""
+        """Open the window state of the zone, or reset it. A reset ends every
+        hold of the zone, also the one of a valve detector."""
         zone = self._zone
         if zone is None:
             return
-        view = await call_api(self.coordinator.client.push_window(zone.number, open))
+        view = await call_api(self.coordinator.client.push_window(zone.number, open, reset=not open))
         if isinstance(view, Mapping):
             self.coordinator.data.windows[zone.number] = dict(view)
             self.coordinator.async_update_listeners()

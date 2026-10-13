@@ -481,6 +481,75 @@ def node_calibration(data: FreedoData, short: str) -> tuple[str | None, int | No
     return state, int(error) if error.isdigit() else None
 
 
+def boiler_fault_codes(data: FreedoData) -> list[int] | None:
+    """GET /api/boiler FaultCodes: the fault codes of the last report of the
+    boiler, None before one. The codes are those of the boiler maker."""
+    codes = data.boiler.get("FaultCodes")
+    return [int(code) for code in codes] if isinstance(codes, list) else None
+
+
+# The alerts the integration announces, in the order of ALERTS.
+ALERT_LOW_BATTERY = "low_battery"
+ALERT_DEVICE_FAULT = "device_fault"
+ALERT_VALVE_WARNING = "valve_warning"
+ALERT_DEVICE_OFFLINE = "device_offline"
+ALERT_BOILER_FAULT = "boiler_fault"
+ALERTS = (
+    ALERT_LOW_BATTERY,
+    ALERT_DEVICE_FAULT,
+    ALERT_VALVE_WARNING,
+    ALERT_DEVICE_OFFLINE,
+    ALERT_BOILER_FAULT,
+)
+
+
+def active_alerts(data: FreedoData) -> dict[tuple[str, str], dict[str, Any]]:
+    """The alerts that hold now, by (alert, short address); the boiler fault
+    has no address. Each value names the room and the device, and lists the
+    details: the fault names, the warning names or the boiler codes."""
+    out: dict[tuple[str, str], dict[str, Any]] = {}
+    rooms = device_zones(data)
+    for short, dev in data.devices.items():
+        if dev.get("kind") == KIND_BRIDGE:
+            continue
+        zone = data.zones.get(rooms.get(short, -1))
+        serial = dev.get("device") or short
+        label = dev.get("label")
+        where = {
+            "room": zone.name if zone else None,
+            "device": f"{label} ({serial})" if label else serial,
+        }
+        for alert, field, details in (
+            (ALERT_LOW_BATTERY, "lowBattery", None),
+            (ALERT_DEVICE_FAULT, "fault", "faults"),
+            (ALERT_VALVE_WARNING, "deviceWarnings", "deviceWarnings"),
+            (ALERT_DEVICE_OFFLINE, "offline", None),
+        ):
+            if dev.get(field):
+                out[(alert, short)] = {**where, "details": list(dev.get(details) or []) if details else []}
+    codes = boiler_fault_codes(data)
+    if codes:
+        out[(ALERT_BOILER_FAULT, "")] = {
+            "room": None, "device": None, "details": [str(code) for code in codes],
+        }
+    return out
+
+
+def installation_structure(data: FreedoData) -> tuple:
+    """What the entities and the devices of the integration are built from: the
+    rooms with their members, and the devices with their names. A change of it
+    needs the entities built again."""
+    return (
+        tuple(sorted((z.number, z.kind, z.members) for z in data.zones.values())),
+        tuple(
+            sorted(
+                (short, str(dev.get("kind")), str(dev.get("label")), str(dev.get("device")))
+                for short, dev in data.devices.items()
+            )
+        ),
+    )
+
+
 def zone_setting(data: FreedoData, zone: Zone, key: str) -> Any:
     """A field of the zone row of GET /api/install/zones, None without one."""
     return (data.zone_settings.get(zone.number) or {}).get(key)

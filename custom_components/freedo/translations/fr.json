@@ -100,6 +100,22 @@
     }
   },
   "entity": {
+    "event": {
+      "alert": {
+        "name": "Alerte",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "low_battery": "Batterie faible",
+              "device_fault": "Défaut d'un appareil",
+              "valve_warning": "Alerte de la vanne",
+              "device_offline": "Appareil injoignable",
+              "boiler_fault": "Défaut chaudière"
+            }
+          }
+        }
+      }
+    },
     "binary_sensor": {
       "zone_window": {
         "name": "Fenêtre"
@@ -121,7 +137,8 @@
       },
       "valve_warning": {
         "name": "Alerte de la vanne"
-      }
+      },
+      "boiler_fault": { "name": "Défaut chaudière" }
     },
     "sensor": {
       "flow_temperature": {
@@ -329,6 +346,20 @@
     }
   },
   "services": {
+    "pair": {
+      "name": "Associer un appareil",
+      "description": "Envoie la commande d'association à un appareil qui attend dans la fenêtre d'association. freedo doit déjà contenir l'appareil : le tableau de bord de freedo ajoute un appareil et l'associe sur une seule page. Un appareil peut manquer la commande : envoyez-la de nouveau tant que la fenêtre d'association est ouverte.",
+      "fields": {
+        "device": {
+          "name": "Appareil",
+          "description": "L'EUI de l'appareil, tel que l'affiche l'attribut joiners de l'interrupteur Mode d'association. Laissez vide pour associer le seul appareil qui attend dans la fenêtre d'association."
+        },
+        "config_entry_id": {
+          "name": "Hub",
+          "description": "Le hub freedo qui associe l'appareil. Nécessaire seulement lorsque plusieurs hubs sont chargés."
+        }
+      }
+    },
     "boost": {
       "name": "Boost",
       "description": "Démarre ou arrête le boost d'une pièce.",
@@ -363,7 +394,7 @@
     },
     "set_window": {
       "name": "Définir une fenêtre ouverte",
-      "description": "Active ou réinitialise l'état de fenêtre ouverte d'une pièce. Une réinitialisation met fin à l'état défini depuis Home Assistant. Elle ne met pas fin à un état détecté par les vannes.",
+      "description": "Active ou réinitialise l'état de fenêtre ouverte d'une pièce. Une réinitialisation met fin à l'état, y compris à un état détecté par les vannes.",
       "fields": {
         "open": {
           "name": "Ouverte",
@@ -481,6 +512,7 @@
     }
   },
   "exceptions": {
+    "pair_needs_one_device": { "message": "La fenêtre d'association contient {count} appareils en attente. Le champ appareil est nécessaire, sauf si un seul appareil attend." },
     "overlay_temperature_required": {
       "message": "Définissez une température avec le mode Chauffage."
     },

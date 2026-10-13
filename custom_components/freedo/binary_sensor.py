@@ -1,4 +1,5 @@
-"""Binary sensors: zone window, heating and fallback, device alerts."""
+"""Binary sensors: boiler fault, zone window, heating and fallback, device
+alerts."""
 
 from __future__ import annotations
 
@@ -14,7 +15,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import FreedoConfigEntry, FreedoCoordinator
 from .entity import FreedoEntity
-from .model import KIND_BRIDGE, KIND_VALVE, Zone, zone_heating
+from .model import KIND_BRIDGE, KIND_VALVE, Zone, boiler_fault_codes, zone_heating
 
 
 async def async_setup_entry(
@@ -24,7 +25,7 @@ async def async_setup_entry(
 ) -> None:
     coordinator = entry.runtime_data.coordinator
     data = coordinator.data
-    entities: list[BinarySensorEntity] = []
+    entities: list[BinarySensorEntity] = [BoilerFault(coordinator)]
     for zone in data.heating_zones():
         entities.append(ZoneWindow(coordinator, zone))
         entities.append(ZoneHeating(coordinator, zone))
@@ -44,6 +45,30 @@ async def async_setup_entry(
             entities.append(DeviceAlert(coordinator, short, "deviceWarnings"))
         entities.append(DeviceConnectivity(coordinator, short))
     async_add_entities(entities)
+
+
+class BoilerFault(FreedoEntity, BinarySensorEntity):
+    """GET /api/boiler FaultCodes: on while the last report of the boiler holds
+    a fault code, unknown before a report. The attribute codes lists them. The
+    codes are those of the boiler maker: the manual of the boiler gives their
+    meaning."""
+
+    _attr_device_class = BinarySensorDeviceClass.PROBLEM
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_translation_key = "boiler_fault"
+
+    def __init__(self, coordinator: FreedoCoordinator) -> None:
+        super().__init__(coordinator, "boiler_fault")
+        self._attr_device_info = self.hub_device()
+
+    @property
+    def is_on(self) -> bool | None:
+        codes = boiler_fault_codes(self.coordinator.data)
+        return bool(codes) if codes is not None else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {"codes": boiler_fault_codes(self.coordinator.data) or []}
 
 
 class ZoneWindow(FreedoEntity, BinarySensorEntity):
