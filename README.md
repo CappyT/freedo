@@ -291,6 +291,7 @@ what is not verified on air. The routes are in [`docs/API.md`](docs/API.md). The
 | Duration of a change made on a valve | equal | The rule is applied by the daemon. No capture holds the thermostat buttons. |
 | Offline schedule on the devices | extra | Devices run the program alone after 25 minutes without a coordinator. The 25 minute test on a real plant is open. |
 | Auxiliary heat for a room | extra | A blueprint runs another climate entity of the room, for example an air conditioner, while the room is far below its target. It reads the freedo climate entity and never writes to freedo. It needs Home Assistant. Not run on a real plant. |
+| Valve exercise | extra | A blueprint moves each valve once a month with the motor calibration, one valve at a time, so that the pin does not stick after the summer. It skips a valve with a low battery, a fault, a warning or no link, and waits while a room heats. Each run costs one full motor stroke per valve, on battery. Not run on a real plant. |
 | Controller gains for each zone | extra | The suggestion writes nothing. The check on real episodes is open. |
 
 ## Safety

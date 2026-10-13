@@ -1048,8 +1048,9 @@ Overlapping zones:
 ## Notification blueprint
 
 The automation blueprint `homeassistant/blueprints/automation/freedo/alert_notification.yaml`
-sends a notification for each event of the event entity Alert, and optionally
-for a window that stays open.
+sends a notification for each event of the event entity Alert. It has two
+optional reminders: a window that stays open, and a room that heats while it is
+warmer outside.
 
 ### Import
 
@@ -1067,6 +1068,10 @@ select Create automation and fill the inputs. The blueprint needs Home Assistant
 | Alerts | all | Low battery, Device fault, Valve warning, Device offline, Boiler fault. Keep at least one: with none the automation does not load. |
 | Window sensors | none | Optional. The freedo Window sensors of the rooms to watch. |
 | Open for | 30 minutes | A window stays open for this time before its notification. |
+| Rooms | none | Optional, for the reminder Warmer outside. The freedo climate entities of the rooms to watch. |
+| Outdoor temperature sensor | `sensor.freedo_outdoor_unset` | For example the freedo sensor Outdoor temperature. The default names a sensor that does not exist. |
+| Warmer by | 1 °C | The outdoor temperature is above the room temperature by this much. |
+| For | 30 minutes | This holds for this time before the reminder. |
 | Quiet time start, end | 00:00, 00:00 | A notification that is due between the two times waits for the end. Equal times mean no quiet time. |
 | Actions | none | Optional. Actions that run for each notification, with the variables `title` and `message`. |
 
@@ -1081,8 +1086,17 @@ select Create automation and fill the inputs. The blueprint needs Home Assistant
 - An alert sends no other notification while it holds, and none after a restart
   of Home Assistant or a reload of the integration.
 - A window notification goes out once when the sensor has been on for the time.
-  The sensor is on for a window that a valve detected and for one that Home
-  Assistant set.
+  The sensor is the binary sensor Window of the room. It is on for a window
+  that a valve detected and for one that a window or door sensor of the room
+  reports. A window that only a valve detected ends after the Window time of
+  the room, 15 minutes by default: a longer time in the blueprint never fires
+  for it.
+- The reminder Warmer outside goes out when a watched room heats (its
+  `hvac_action` is `heating`) while the outdoor temperature is above the room
+  temperature by the margin, for the time. The text names the rooms and says
+  that the heating is not needed. It goes out once: again only after no watched
+  room is in that state. A room without a temperature, or an outdoor sensor
+  without a reading, sends nothing.
 - During the quiet time a notification waits, and the waiting ones go out in
   their order when the quiet time ends. At most 20 wait: the automation drops
   the others.
@@ -1260,6 +1274,59 @@ Assistant 2026.8 or later.
 - The appliance heats to its own target temperature with its own sensor. Set
   the appliance temperature above the target of the room, or the appliance
   stops by itself before the room is near its target.
+
+## Valve exercise blueprint
+
+The automation blueprint `homeassistant/blueprints/automation/freedo/valve_exercise.yaml`
+moves each radiator valve once a month, so that the valve pin does not stick
+after a season without heating. A valve never moves by itself on a schedule.
+
+The automation presses button Calibrate motor of each valve
+(`POST /api/nodes/{id}/calibrate`): the motor runs to the open end stop, finds
+the pin and runs to the closed end stop. The cost is one full motor stroke for
+each valve at each run, on the batteries of the valve.
+
+### Import
+
+Copy the file to `<config>/blueprints/automation/freedo/valve_exercise.yaml` and
+reload the automations. Then open the blueprint "freedo valve exercise", select
+Create automation and fill the inputs. The blueprint needs Home Assistant 2026.8
+or later.
+
+### Inputs
+
+| Input | Default | Meaning |
+|---|---|---|
+| Valves | none | The buttons Calibrate motor of the valves to move. Empty moves every valve of freedo: the automation finds the buttons itself. |
+| Day of the month | 1 | The first day of the month on which the automation runs, 1 to 28. |
+| Time | 11:00 | The time of the run. |
+| Pause between valves | 5 minutes | One valve moves at a time. |
+| Profile select | `select.freedo_profile_unset` | Optional. The freedo select Profile. The default names a select that does not exist. |
+| Profile names | none | Run only while one of these profiles is active, for example Summer. Empty runs in every profile. |
+| Run while a room heats | off | Off: a run starts only when no freedo room heats. |
+
+### Behavior
+
+- From the chosen day, the automation runs every day at the chosen time until
+  each valve had its stroke in that month. The state of a button is the time of
+  its last press: a valve whose button was pressed from that day on is done,
+  also when you pressed it by hand. So each valve moves at most once a month.
+- The valves move in the order of their button entity ids, one at a time, with
+  the pause between them.
+- A valve is skipped when its button is unavailable, when its sensor
+  Connectivity is off, or when one of its sensors Low battery, Fault, Valve
+  warning or Communication warning is on. The automation tries it again the
+  next day.
+- While a freedo room heats (`hvac_action` is `heating`), the run stops before
+  the next valve, unless the input allows it. The valves that are left move on
+  a later day.
+- Outside the chosen profiles nothing moves. The month is not caught up later:
+  a month spent in another profile has no run.
+- A restart of Home Assistant ends a run in progress. The automation does not
+  start at a restart: the next day at the chosen time it goes on with the
+  valves that are left.
+- The automation does not check the result. Sensor Calibration of each valve
+  shows it.
 
 ## Season profile blueprint
 
