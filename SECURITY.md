@@ -33,7 +33,7 @@ and `{ref}` stand for a zone number, a device and a device reference:
 
 - Read: `GET /api/health`, `/api/zones`, `/api/nodes`, `/api/home`, `/api/boiler`, `/api/circuits`,
   `/api/zones/{n}/schedule`, `/api/presets` and `/api/presets/{id}/schedules`.
-- Zone: `POST /api/zones/{n}/setpoint`, `/off`, `/auto`, `/boost` and `/window`, and
+- Zone: `POST /api/zones/{n}/setpoint`, `/off`, `/auto`, `/boost`, `/window` and `/offset`, and
   `PUT` and `DELETE /api/zones/{n}/schedule`.
 - Preset: `POST /api/presets`, `PATCH` and `DELETE /api/presets/{id}`, and
   `POST /api/presets/{id}/activate`.
@@ -54,7 +54,8 @@ and `{ref}` stand for a zone number, a device and a device reference:
 
 So a Home Assistant user, without the token, can read the state of the plant, set temperatures, read,
 write and remove the home and the away program of a zone, create, rename, delete and switch the program
-presets, switch zones off, switch the home between home and away, set the flow limit, rename a device,
+presets, switch zones off, switch the home between home and away, set the flow limit, set the temperature
+offset of a room, rename a device,
 and lock or identify a valve. A preset holds the weekly programs of the zones, so managing the presets is
 managing the weekly schedules: it gives no control over the plant that a schedule write does not already
 give. Only a preset that is active reaches the devices.

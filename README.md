@@ -69,7 +69,7 @@ Tested only with automated tests and synthetic fixtures:
 
 - Away temperatures, away programs and the end rule `until_auto_change`.
 - A network that starts with no paired device, and the pairing of a wall thermostat.
-- A window that a valve detects.
+- A window that a valve detects, and the reset that ends it.
 - The Router Advertisement gateway and DNS addresses (`router_gateway`, `router_dns`) and the zone
   configuration of a heating zone with no circuit.
 - A schedule document with several day programs, the program profiles and the offline schedule
@@ -82,9 +82,12 @@ Tested only with automated tests and synthetic fixtures:
   and `npm run ui-check` start the daemon with no radio and a seeded synthetic installation. They open each
   page in headless Chrome under a path prefix, and drive the schedule editor, the presence switch, the
   child lock, Turn off, the profiles, the rename of a device, the page Rooms and devices (a room, a
-  pairing, a move, a removal, a circuit) and the first setup on an empty database. The pages Rooms and
-  devices and First setup did not run on the plant.
-- The presence blueprint and the season profile blueprint.
+  pairing, a move, a removal, a circuit), the options of a room, the boiler fault codes and the first
+  setup on an empty database. The pages Rooms and devices and First setup did not run on the plant.
+- The boiler fault codes in the dashboard and in Home Assistant. No real boiler fault was seen.
+- In the integration: the reload after a change of the installation, the service `freedo.pair` and the
+  event entity Alert.
+- The five blueprints: presence, season profile, alert notification, distance setback and auxiliary heat.
 
 No record covers a long run or a long outage of the coordinator.
 
@@ -180,7 +183,7 @@ The add-on and the integration follow two channels:
 
 The add-on starts in dry-run. See [`addon/DOCS.md`](addon/DOCS.md) for the options, the data and the
 backups. See [`custom_components/freedo/README.md`](custom_components/freedo/README.md) for the
-entities, the services and the presence blueprint.
+entities, the services and the blueprints.
 
 ### Container
 
@@ -221,7 +224,8 @@ The daemon serves a web interface at its HTTP address. It shows the zones, the h
 the devices. It sets temperatures with the four end rules, boosts a zone and switches it off. It switches
 the home between home and away. It edits the home and away schedules, and it creates, renames, deletes and
 activates the program profiles. It sets the flow limit, renames a device, locks a valve and identifies a
-device. It has English, Italian, German and French texts and a light and a dark theme.
+device. It resets an open window of a room, also one that a valve detected. It shows the fault codes of
+the boiler on the page Boiler and in a banner on every page. It has English, Italian, German and French texts and a light and a dark theme.
 
 - Container: open `http://<host>:8080/` and enter the API token once.
 - Home Assistant add-on: select Open Web UI, or the entry freedo in the sidebar. The page needs no token.
@@ -233,8 +237,9 @@ room form the group No room, with the same settings. It adds a device: it opens 
 the device that the window hears and sends the pair command. A removal shows the effects before you confirm. Under Home Assistant ingress this
 page and the page First setup need no token, so every Home Assistant user who can open the dashboard can
 change the installation and pair a device. The network key, the identity of the network,
-the kind and the serial of a device, the zone options and the name of a circuit stay in
-the API. See
+the kind and the serial of a device, the controller gains of a room and the name of a circuit stay in
+the API. The settings of a heated room hold its options: window detection, away temperature, the end
+rule of a change made on a device, early start, offset mode, offset and valve calibration. See
 [`docs/OPERATION.md`](docs/OPERATION.md#dashboard) for the access rules and
 [`dashboard/README.md`](dashboard/README.md) to build it.
 
@@ -257,10 +262,10 @@ what is not verified on air. The routes are in [`docs/API.md`](docs/API.md). The
 | Away temperature for each zone | equal | 5 C means off in away, as in the cloud. Hot water takes no away temperature: it is off in away unless it has an away schedule. Not verified on air. |
 | Away schedule for each zone | extra | A zone with an away schedule follows it while the home is away, hot water included. No capture holds this write shape. Not verified on air. |
 | Program profiles | extra | A profile holds the home and away schedules of every zone. One profile is active. The dashboard and Home Assistant switch it, and a blueprint switches it by season. Not verified on air. |
-| Preheat before arrival | partial | A blueprint ends away when a person enters an approach zone. One distance for the whole home. No travel time. |
+| Preheat before arrival | partial | Two blueprints. One ends away when a person enters an approach zone. One sets the away temperature of each room in steps with the distance of the nearest person. Both read a distance and no travel time, and every room gets the same steps. They need Home Assistant. |
 | Early start | equal | The daemon learns the heating rate of each zone. No firmware does this. Not verified on air. |
-| Geofencing | partial | A blueprint uses the presence of Home Assistant for the whole home. The daemon has no geofencing code. |
-| Open window detection | partial | A reset ends only a window that Home Assistant set. A window that a valve detected lasts until its time ends. No valve detection was observed on a plant. |
+| Geofencing | partial | A blueprint uses the presence of Home Assistant for the whole home, and a second one uses the distance of the nearest person. The daemon has no geofencing code, so a plant without Home Assistant has none. |
+| Open window detection | equal | The valves detect the window. The detection and its time are room options. A reset from the dashboard or from Home Assistant ends a window of any source. A contact sensor that closes ends only its own hold. No valve detection was observed on a plant. |
 | Hot water: on, temperature, program | equal | The daemon keeps the program and writes the thermostat at each block change. |
 | Child lock | equal | Valves only. The wall thermostat firmware has no child lock. In use on one plant. |
 | Identify a device | equal | Valves and the wall thermostat in a zone. The thermostat shows "Hi!" on its display. |
@@ -269,22 +274,23 @@ what is not verified on air. The routes are in [`docs/API.md`](docs/API.md). The
 | Temperature correction | equal | Three modes. `config` homes the motor. `dbg2` ran on one valve and is in no capture. |
 | Automatic correction from an outside sensor | extra | In modes `config` and `dbg2`, at most once per settable interval, with a deadband. Each write in mode `config` homes the motor. Not verified on air. |
 | Room temperature from an outside sensor | extra | Mode `setpoint` shifts the setpoints. With the automatic correction the learners read the sensor. Home Assistant chooses for each room a device of the room or the sensor. Filter and limits are design estimates. Not verified on air. |
-| Manage rooms and devices | partial | The dashboard creates, renames and deletes rooms, creates and deletes circuits, moves and renames devices, and sets the measuring device and the demand reporter. The zone options (window, correction, away temperature) are in the API and in Home Assistant, the controller gains in the API only. Home Assistant maps each room to an area. A device declared without a serial takes it from its first request. Home Assistant creates entities at integration start, so reload it after a change. |
-| Interface | partial | A web dashboard on the daemon monitors and controls the zones, the hot water, the boiler and the devices, and manages the schedules, the profiles and the installation. The network key and the zone options are not in the dashboard. The control pages are in use on one plant. The installation pages did not run on a real plant. |
-| Pair a device | partial | The dashboard and the API pair a device. The API flow ran on air on one valve. A network with no paired device, a wall thermostat and the dashboard flow are not verified on air. A device can miss the first pair command: send it again. The integration opens the window and does not send the pair command. |
+| Manage rooms and devices | equal | The dashboard creates, renames and deletes rooms, creates and deletes circuits, moves and renames devices, and sets the measuring device, the demand reporter and the room options. Home Assistant has the same room options and maps each room to an area. The controller gains, the network key and the identity of the network are in the API only. No device reports the offset that it holds, so the dashboard shows the offset only in the mode `setpoint`. A device declared without a serial takes it from its first request. Home Assistant follows a change within one poll. The installation pages did not run on a real plant. |
+| Interface | partial | A web dashboard on the daemon monitors and controls the zones, the hot water, the boiler and the devices, and manages the schedules, the profiles and the installation. The control pages are in use on one plant. Missing: a run of the pages Rooms and devices and First setup on a real plant. |
+| Pair a device | partial | The dashboard and the API pair a device. The API flow ran on air on one valve. A device can miss the first pair command: send it again. The integration opens the window, lists the waiting devices and sends the pair command to a device that freedo holds (service `freedo.pair`). Missing: the integration cannot add a new device, and its hub device links to the dashboard for that. Not verified on air: the dashboard flow, a wall thermostat and a network with no paired device. |
 | Remove a device | partial | The dashboard and the API report the effects first. The delete sends no frame. freedo has no remote detach: a device leaves its network only when you hold its button. |
 | Firmware version and update | partial | The daemon keeps the version of each device across restarts and reads it once after start from a device that never reported it. A transfer route exists. No block was sent on air. freedo distributes no image. |
 | Flow limit | equal | The fixed limit is verified on air through the OpenTherm reading. |
 | Weather curve and automatic flow adaptation | partial | The curve has two points. The adaptation is a local controller and not the cloud algorithm. It is off by default. Not verified on air. |
 | Default weather curve for the flow limit | partial | A built-in curve under `flow_limit_c`, fitted on one plant and one season of monthly means. It is not the cloud algorithm. Home Assistant must feed the outdoor temperature. It is off by default. Not verified on air. |
-| Boiler telemetry and faults | partial | Boiler fault codes are in the API only. |
+| Boiler telemetry and faults | equal | The dashboard shows the boiler fault codes on the page Boiler and in a banner on every page. Home Assistant has the binary sensor Boiler fault with the codes. A code is a number of the boiler maker, and freedo gives it no meaning. Not seen on a real boiler fault. |
 | Energy and gas estimate | partial | Estimated from modulation and name-plate data. Not a measurement. Gas meter readings give an estimated meter value and, after two readings, a correction factor. Price and cost stay in the Home Assistant Energy panel. |
 | History and reports | partial | Home Assistant records the history. The daemon keeps no time series. |
-| Notifications | partial | Binary sensors raise the alerts. Push notifications are Home Assistant automations. |
+| Notifications | partial | The daemon sends no notification. In Home Assistant, the event entity Alert raises one event when an alert starts, and the blueprint `alert_notification.yaml` sends a notification for a low battery, a device fault, a valve warning, an offline device, a boiler fault and a window that stays open. The texts are English. A plant without Home Assistant has no notification. Not run on a real plant. |
 | Several users | not implemented | One bearer token. Under Home Assistant ingress every Home Assistant user can use the dashboard. |
 | HomeKit | not implemented | |
 | Duration of a change made on a valve | equal | The rule is applied by the daemon. No capture holds the thermostat buttons. |
 | Offline schedule on the devices | extra | Devices run the program alone after 25 minutes without a coordinator. The 25 minute test on a real plant is open. |
+| Auxiliary heat for a room | extra | A blueprint runs another climate entity of the room, for example an air conditioner, while the room is far below its target. It reads the freedo climate entity and never writes to freedo. It needs Home Assistant. Not run on a real plant. |
 | Controller gains for each zone | extra | The suggestion writes nothing. The check on real episodes is open. |
 
 ## Safety

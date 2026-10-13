@@ -21,7 +21,7 @@ the routes. For the radio facts behind a rule, see [PROTOCOL.md](PROTOCOL.md).
 - `--health-public` makes `GET /api/health` readable without a token, for a container
   health check. The default is off.
 - `--ingress` makes the daemon accept the calls of the dashboard from the connection address
-  `172.30.32.2`, the Home Assistant ingress gateway, without a token. It covers 49 method and path
+  `172.30.32.2`, the Home Assistant ingress gateway, without a token. It covers 50 method and path
   pairs only. Only the add-on start script sets it, and it has no effect unless `SUPERVISOR_TOKEN` is
   set. Every other request needs the token. See [Access](OPERATION.md#access).
 - With no token, the daemon accepts a loopback address only and warns at start. An address
@@ -138,7 +138,7 @@ banner.
 | `POST /api/zones/{n}/auto` | Return the zone to its program. |
 | `POST /api/zones/{n}/boost` | Start or stop the boost of a room. |
 | `POST /api/zones/{n}/offset` | Set the temperature correction. |
-| `POST /api/zones/{n}/window` | Open or close the window state from an outside source. |
+| `POST /api/zones/{n}/window` | Open or close the window state from an outside source, or reset it. |
 | `POST /api/zones/{n}/temperature`, `DELETE ...` | Give or remove an external room temperature. |
 | `GET`, `PUT`, `DELETE /api/zones/{n}/schedule` | Read, write or remove the weekly program of one mode of one preset. |
 | `GET`, `POST /api/presets` | List the program presets, create one. |
@@ -538,6 +538,12 @@ state from an outside source, for example a Home Assistant sensor.
   `open_window_detection`. The window closes after `open_window_duration_sec`.
 - A member that clears its own `62e0` sends `DELETE h/<home>/z/N/ow`. The daemon answers
   `2.05`, drops that source and, when the zone closes, writes `62e0=0` to the zone writers.
+- `{"open": false, "reset": true}` is the reset a person asks for. It drops every source, also
+  the valve detector before `open_window_duration_sec`, and the daemon writes `62e0=0` at once.
+  The valve does not report again for the same detection, and a new detection opens a new
+  window. A sensor that closes sends `{"open": false}` without `reset`: it ends the outside
+  source only, so it does not cancel what a valve detected. `reset` with `"open": true` is
+  refused with 400.
 - The zone stays open while one source keeps it open. An outside window without a close ends
   after `external_window_max_sec`. An open on a zone that the outside source already holds
   restarts that time, keeps `since` and writes nothing to the devices. So a source that
@@ -1018,7 +1024,9 @@ is higher than the heating maximum, a hot water draw can read up to about 15 % l
 
 `energy.gas` has `running`, `reason` (`noGasFlow` replaces `noMaxPower`), `flowM3H`,
 `totalM3`, `maxFlowM3H`, `minFlowM3H` and `unit`. `GET /api/boiler` also shows the boiler counters
-`BurnerStarts`, `BurnerHoursMin` and the group `Maintenance`. A value that the boiler
+`BurnerStarts`, `BurnerHoursMin` and the group `Maintenance`. `FaultCodes` lists the fault codes of
+the last `hvac/codes` report of the boiler, `null` before a report, and `FaultCode` is the first of
+them, 0 with none. A code is a number of the boiler maker. A value that the boiler
 declares unsupported (tag `0481`) is `null` and listed in `Unsupported`.
 
 ### Gas meter

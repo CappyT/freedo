@@ -997,6 +997,85 @@ the document. `tado.ResourceOf` reads the resource from the request URI. For a
 response, which repeats no Uri-Path, it reads the resource from the marker tags
 `63a0`, `63e0`, `6040` and `6380`.
 
+### Open window detection in the device
+
+The valve runs its own detector, `open-window-detector`@0x38a54. It watches two
+attributes, the raw sensor temperature `012e` (centi-degrees) and the humidity `0135`
+(deci-percent), through a report subscriber (`config_evt_apply`@0x2a738, attr list
+`012e 0135`@0x38a6a, disassembly). It keeps a short ring of recent samples, 3 deep for
+temperature and 2 deep for humidity, and pushes a new sample each time the device
+reports one. A 900 s timer (`0x1c200` ticks at 1/128 s) re-arms the node and samples
+again, so the ring advances at the report cadence and at least every 900 s.
+
+The decision runs on each new sample (the state machine at 0x2a5f0, disassembly). It
+compares the newest raw temperature to the previous sample and to the one before, and
+the humidity the same way:
+
+- temperature fall to the previous sample of more than `0x14` = 20 centi-degrees
+  (0.20 C);
+- temperature fall to the sample before that of more than `0x1e` = 30 centi-degrees
+  (0.30 C);
+- a humidity step of `0x13` = 19 deci-percent (1.9%).
+
+Any one of these sets attribute `021c` = 1 (`open_window_detected`, write @0x2a6fe).
+The decision reads no setpoint and no heat-demand flag, so detection does not need the
+valve to be heating at that moment (disassembly).
+
+The enable is zone tag `60e0` (`h/<home>/z/N/config`, 1 on, 0 off). The duration is
+zone tag `62c0`, 900 s by default (`docs` above, and `tado.ZoneOpenWindowDurationSec`).
+freedo serves `60e0` = 1 by default. A change of either tag rewrites `d/config` under
+a new ETag, which costs one homing stroke per valve, so the setting must not be toggled
+right before a test.
+
+Reproduction on a plant: with detection enabled, drop the valve's own sensor by about
+0.3 C across a few consecutive reports. Cold air or an open window aimed at the valve
+head, enough to move its reading 0.3 C within a few minutes, is the reliable trigger. A
+slow whole-room cooling where each sample step stays under 0.20 C may never trigger,
+because the test is sample to sample, not cumulative.
+
+On a trigger the valve sends a CON PUT `h/<home>/z/N/ow` with no body (valve 0x11bb8
+builder, disassembly). The coordinator answers `2.05` and, as the app capture shows,
+writes `z/s?id=N` with `62e0=1` to the one member that reports the zone, with no
+`6440`. `62e0=1` makes the zone target publish its enable as 0 (`zone_state_timer_cb`,
+"a set `62e0` forces the enable to 0" above), so the valve stops calling for heat and
+closes. The other members of the zone do not follow by themselves: they get `62e0`
+only from the coordinator, or from the relayed `z/s?lid=N` echo of the member that
+took the write. freedo drives this in `internal/daemon/window.go`
+(`takeWindowReports`): a device report opens a `windowDevice` hold for the `62c0`
+seconds of the zone and owes the reporter a `62e0=1` write.
+
+Ending the window early from the coordinator:
+
+- The frame that ends it is the same `z/s?id=N` zone write with `62e0=0` and no
+  `6440`, sent to the member that holds the zone. It re-enables the zone target, so
+  the valve calls for heat again at once. freedo already builds this frame
+  (`tado/build_coap.go:347`, the `62e0` byte; the engine writes it on a close).
+- The valve does not fight a coordinator `62e0=0`: `app_node_apply_write`
+  (valve 0x11fc0) sets the report flag only on a write that does not come from the
+  `z/s` tag handler, so a coordinator `z/s` write makes the valve neither re-report nor
+  reopen (disassembly). It reopens only if a fresh temperature fall fires the detector
+  again, so the early close holds once the temperature has recovered.
+- The `windowDevice` hold ends at the `62c0` deadline (`tickWindows`,
+  `internal/daemon/window.go`), on a device close report (`takeWindowReports`), or on a
+  reset. `POST /api/zones/{n}/window` with `{"open": false, "reset": true}` drops every
+  source of the zone, the `windowDevice` hold included, and writes `62e0=0`
+  (`TestWindowResetEndsDeviceHold`). Without `reset`, a close ends the `windowExternal`
+  source only and leaves a device-detected window open. See [API.md](API.md#window). No
+  reset of a detected window ran on a plant.
+
+Test risk: a `z/s` write that carries `62e0` carries no `6440` and does not restate the
+program, so it takes no new ETag and rewrites no `d/config`: it costs no homing stroke.
+The only motor movement is the valve closing when `62e0=1` suppresses heat and opening
+again on `62e0=0`, which is ordinary setpoint following, not a calibration. The test
+needs no `d/reboot`. The one expensive step to avoid is toggling the `60e0` or `62c0`
+setting, which rewrites `d/config` and homes the valve.
+
+The wall thermostat carries the same detector (`open-window-detector`@0x5affc) and
+reports the window the same way. The app capture shows the thermostat reporting zone 1
+open and the coordinator writing `z/s?id=1` with `62e0=1`; the valve of that zone gets
+it only from the relayed `z/s?lid=1` echo of the thermostat. The thermostat detector
+internals are not traced separately.
+
 ### Offset and telemetry
 
 - Offset: `PUT d/config` tag `0140`, signed centi-degrees. `0140 = 012d -

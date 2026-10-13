@@ -182,11 +182,23 @@ there is one. The page and the settings of a room do these tasks:
 - In the settings of a room: choose the circuit, the measuring device and the demand reporter, and add a
   device that the installation already holds. A room takes a device that is in no room. The wall
   thermostat is the exception: it can be in the hot water room and in one heated room.
+- In the settings of a heated room, under Room options: the open window detection and its time, the
+  away temperature, the end rule of a change made on a device, the early start, the offset mode, the
+  offset and the valve calibration. One save sends the changed options in one
+  `PATCH /api/install/zones/{n}`, and a typed offset in one `POST /api/zones/{n}/offset`. The page keeps
+  the ranges of the daemon. In the offset mode Valve configuration each offset write, by hand or by the
+  valve calibration, makes the valve do one full motor stroke; the page says so at that field. The
+  valve holds the offset in the modes Valve configuration and Valve debug record and does not report
+  it, so the page shows the offset only in the mode Setpoint shift. The hot water room has none of
+  these options.
+
+The page Boiler shows the fault codes that the boiler reports, as numbers, and every page shows them in
+a banner while there is one. A code is a number of the boiler maker: freedo gives it no meaning.
 
 The dashboard chooses the number of a new room: 0 for hot water, else the lowest free number from 1. It
 declares a device without a serial number, and the daemon takes the serial from the first request of the
-device. Every other installation option stays in the API: see
-[Installation options](API.md#installation-options) and [Zone options](API.md#zone-options).
+device. The controller gains of a room and every installation option other than the time zone stay in
+the API: see [Installation options](API.md#installation-options) and [Zone options](API.md#zone-options).
 
 The page First setup takes a new daemon to a working plant. Rooms and devices and Settings link to it, and the home
 page does while the installation has no room. It shows six steps with their live state:
@@ -226,7 +238,7 @@ fixed address `172.30.32.2`. The developer documentation for apps tells an app t
 connections from that address only and to treat the user as authenticated. The daemon follows it:
 
 - The flag `--ingress` makes the daemon accept the calls of the dashboard from the connection address
-  `172.30.32.2` without a token. Only the 49 method and path pairs of
+  `172.30.32.2` without a token. Only the 50 method and path pairs of
   [`internal/daemon/ingress_routes.json`](../internal/daemon/ingress_routes.json) qualify. They include
   the installation and pairing calls of the pages Rooms and devices and First setup, so those pages need no token
   under the add-on. Every other request from that address needs the token. [SECURITY.md](../SECURITY.md#home-assistant-ingress) lists

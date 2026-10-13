@@ -46,8 +46,8 @@ The integration polls the daemon every 30 seconds. One poll reads
 `/api/health`, `/api/zones`, `/api/nodes`, `/api/boiler`, `/api/home`,
 `/api/install`, `/api/install/zones`, `/api/install/circuits`, `/api/pair/window`
 and `/api/presets`.
-Entities are created from the zones and devices present at setup: reload the
-integration after you add a zone or a device.
+Entities are created from the zones and devices present at setup. The
+integration follows the installation: see Changes of the installation.
 
 The integration and the options of the add-on have English, Italian, German and French translations.
 
@@ -62,6 +62,8 @@ The integration and the options of the add-on have English, Italian, German and 
 | binary_sensor Fallback | zone | `/api/health` `zoneFallback` |
 | binary_sensor Low battery, Fault, Communication warning, Connectivity | device | `/api/health` `devices[]` (`commsWarnings`) |
 | binary_sensor Valve warning | valve | `/api/health` `devices[]` `deviceWarnings` |
+| binary_sensor Boiler fault | hub | `/api/boiler` `FaultCodes` |
+| event Alert | hub | `/api/health` `devices[]` `lowBattery`, `fault`, `deviceWarnings`, `offline`, `/api/boiler` `FaultCodes` |
 | sensor Battery, Battery voltage | device | `/api/nodes` `BatteryPct`, `/api/health` `batteryMV` |
 | sensor Firmware version, Temperature, Humidity | device | `/api/nodes` `Telemetry` `fw_run_version`, `TempC`, `HumidityPct` |
 | sensor Heating demand | heating zone | `/api/zones` `demand` `DemandPct` |
@@ -79,7 +81,7 @@ The integration and the options of the add-on have English, Italian, German and 
 | switch Default weather curve, switch Flow limit adaptation | hub | `GET /api/install` `flow_default_curve`, `flow_auto_adapt`; writes `PATCH /api/install` |
 | switch Away | hub | `GET` and `PATCH /api/home` |
 | switch Offline schedule | hub | `GET /api/install` `offline_schedule`; writes `PATCH /api/install` |
-| switch Pairing mode | hub | `GET /api/pair/window` `open`, `until`; writes `POST /api/pair/window` |
+| switch Pairing mode | hub | `GET /api/pair/window` `open`, `until`, `responder`, `joiners`; writes `POST /api/pair/window` |
 | select Display orientation, switch Change notification | valve in a zone | `/api/nodes` `Display`; writes `PUT /api/nodes/{id}/display` |
 | switch Child lock | valve in a zone | `/api/nodes` `ChildLock`; writes `POST /api/nodes/{id}/childlock` |
 | button Identify | valve or wall thermostat in a zone | `POST /api/nodes/{id}/identify` |
@@ -494,9 +496,59 @@ current source, and both write the same state: see Rooms.
   a window opened or closed outside Home Assistant shows within 30 seconds, and
   so does the end of a window. The attribute `until` is the end time of an open
   window.
-- The switch is a config entity of the hub device. It does not show the devices
-  the window heard, and the integration does not send the pair command
-  (`POST /api/pair`). A daemon without `GET /api/pair/window` gets no switch.
+- The attribute `joiners` lists the EUI of each device that waits for the pair
+  command, and `responder` says that the bridge answers the beacon requests by
+  itself.
+- The switch is a config entity of the hub device. A daemon without
+  `GET /api/pair/window` gets no switch.
+- Service `freedo.pair` sends the pair command to a device that freedo holds
+  (`POST /api/pair/devices/{ref}`, under the network key of the installation).
+  The field `device` takes the EUI or the short address. Without it, the
+  service pairs the one device that waits in the pair window, and it refuses
+  when none or several wait. A device can miss the command: call the service
+  again while the window is open. With several hubs, the field
+  `config_entry_id` names the hub.
+- The integration does not add a device to the installation. The freedo
+  dashboard does the whole pairing on one page: it opens the window, lists the
+  waiting devices, adds the device with its room, sends the command and
+  reports when the device joined. The hub device links to the dashboard
+  (Visit, on the device page): the ingress page of the add-on, or
+  `http://<host>:<port>/` for a daemon that runs elsewhere.
+
+### Changes of the installation
+
+The integration builds its entities from the rooms and the devices of the
+installation. It compares them at each poll: the rooms with their members, and
+the devices with their kind, label and serial.
+
+- When they change, the integration reloads itself. So a room or a device that
+  you add, remove, rename or move in the dashboard shows in Home Assistant
+  within one poll, 30 seconds, with no reload by hand.
+- The revision of the installation (`rev`) does not decide: it also moves at
+  each option write, such as the area the integration sends.
+- After the reload, the integration removes the Home Assistant devices, with
+  their entities, of the rooms and devices that left. A device that stays keeps
+  its area, its names and its entity ids. A poll that shows no room or no
+  declared device removes nothing.
+- An entity of a device that stays, but that the installation no longer gives,
+  stays in Home Assistant as unavailable. Delete it on its page.
+
+### Boiler fault and alerts
+
+- Binary sensor Boiler fault is on while the last report of the boiler holds a
+  fault code (`FaultCodes` of `GET /api/boiler`), and unknown before a report.
+  The attribute `codes` lists the codes. They are the codes of the boiler
+  maker: the manual of the boiler gives their meaning, and freedo gives none.
+- Event Alert, on the hub device, raises one event when an alert starts:
+  `low_battery`, `device_fault`, `valve_warning`, `device_offline` or
+  `boiler_fault`. The event attributes are `room`, `device` and `details` (the
+  fault names, the warning names or the boiler codes).
+- The alerts that hold when the integration starts raise no event, and an alert
+  raises no second event while it holds. So a restart or a reload repeats
+  nothing. The alerts of one poll go out one second apart, because a trigger on
+  an event entity fires when the time of its last event changes.
+- The binary sensors show the same alerts as states. The notification blueprint
+  sends the events on: see Notification blueprint.
 
 ### Offline schedule
 
@@ -569,17 +621,18 @@ current source, and both write the same state: see Rooms.
   `durationSec`.
 - Service `freedo.set_window` (field `open`, default true) activates or resets
   the open window state of the zone by hand, as the tado app does
-  (`POST /api/zones/{n}/window` with `{"open": bool}`).
-  - It is the same hold as the one the window sensors of a room set: the
+  (`POST /api/zones/{n}/window` with `{"open": true}`, or
+  `{"open": false, "reset": true}` for a reset).
+  - An activation is the same hold as the one the window sensors of a room set: the
     daemon keeps one hold from Home Assistant for each zone, and the last write
     wins. See Window and door sensors of a room.
   - An activated state ends at the reset, or when the daemon ends it after
     `external_window_max_sec` (2 hours by default, an option of the
     installation). An activation of an active state restarts that time.
-  - A reset ends the hold from Home Assistant only. A state the valves detected
-    (`window_source` `device`) runs until its time ends (number Window time),
-    and the daemon has no route to reset it. When both hold the zone,
-    `window_source` is `both` and the zone stays open after the reset.
+  - A reset ends every hold of the zone: the one from Home Assistant and a
+    state the valves detected (`window_source` `device` or `both`), before its
+    time ends (number Window time). The room heats again at once. A new
+    detection by a valve opens the state again.
 - Attributes: the window state (`window_open`, `window_source`,
   `window_since`, `window_deadline`), demand, fallback, overlay, its end rule
   (`overlay_rule`) and its end (`overlay_ends_at`), `target_source`,
@@ -797,7 +850,8 @@ while one of them is open.
 - A sensor serves one room. A sensor of another room shows that room in square
   brackets, and it moves to the room that chooses it.
 - On each change of the state of a room, the integration sends
-  `POST /api/zones/{n}/window` with `{"open": bool}`. A room is open when one
+  `POST /api/zones/{n}/window` with `{"open": bool}`, without `reset`: a sensor
+  that closes does not end a state the valves detected. A room is open when one
   of its sensors is on. The pushes of one room go one at a time, and each
   sends the sensor states of its send time, so the daemon ends on the last
   state. The integration also sends the state of a room when it starts and when
@@ -988,6 +1042,224 @@ Overlapping zones:
 - Pair the approach zone with switch Early start of each zone. The approach zone
   covers an unplanned return. Early start covers the program: it starts a warmer
   block early, from the heat-up time the daemon learns for the zone.
+- The approach zone is one step. The Distance setback blueprint lowers the
+  rooms in several steps with the distance and raises them on the way home.
+
+## Notification blueprint
+
+The automation blueprint `homeassistant/blueprints/automation/freedo/alert_notification.yaml`
+sends a notification for each event of the event entity Alert, and optionally
+for a window that stays open.
+
+### Import
+
+Copy the file to `<config>/blueprints/automation/freedo/alert_notification.yaml`
+and reload the automations. Then open the blueprint "freedo alert notification",
+select Create automation and fill the inputs. The blueprint needs Home Assistant
+2026.8 or later.
+
+### Inputs
+
+| Input | Default | Meaning |
+|---|---|---|
+| Alert event | none | The freedo event entity Alert. |
+| Send to | none | The `notify` entities that get the notification, for example the one of a phone with the Home Assistant app. |
+| Alerts | all | Low battery, Device fault, Valve warning, Device offline, Boiler fault. Keep at least one: with none the automation does not load. |
+| Window sensors | none | Optional. The freedo Window sensors of the rooms to watch. |
+| Open for | 30 minutes | A window stays open for this time before its notification. |
+| Quiet time start, end | 00:00, 00:00 | A notification that is due between the two times waits for the end. Equal times mean no quiet time. |
+| Actions | none | Optional. Actions that run for each notification, with the variables `title` and `message`. |
+
+### Behavior
+
+- An alert sends one notification, with the title "freedo" and an English
+  text: the alert, the device, the room and the details. For example "Valve
+  warning: Sofa (VA0000000001) in Living (not mounted on a radiator)." and
+  "Boiler fault: codes 291, 1110.". A blueprint has no translations.
+- The text names a valve warning and a device fault as the dashboard does. A
+  name the blueprint does not know goes out as freedo gives it.
+- An alert sends no other notification while it holds, and none after a restart
+  of Home Assistant or a reload of the integration.
+- A window notification goes out once when the sensor has been on for the time.
+  The sensor is on for a window that a valve detected and for one that Home
+  Assistant set.
+- During the quiet time a notification waits, and the waiting ones go out in
+  their order when the quiet time ends. At most 20 wait: the automation drops
+  the others.
+
+## Distance setback blueprint
+
+The automation blueprint `homeassistant/blueprints/automation/freedo/distance_setback.yaml`
+lowers the rooms in steps with the distance of the nearest person, and raises
+them as that person approaches. It is the equivalent of the tado preheat before
+arrival. It sets number Away of each room, the temperature the room keeps while
+switch Away is on. It never sets switch Away: use it with the Presence
+blueprint, or switch Away by hand.
+
+### Import
+
+Open Settings -> Automations & scenes -> Blueprints, select Import blueprint
+and enter
+`https://github.com/CappyT/freedo/blob/main/homeassistant/blueprints/automation/freedo/distance_setback.yaml`.
+Or copy the file to `<config>/blueprints/automation/freedo/distance_setback.yaml`
+and reload the automations.
+
+The distance comes from the Proximity integration of Home Assistant:
+
+1. Open Settings -> Devices & services, add the integration Proximity and
+   select the zone Home.
+2. Select the people or device trackers to track.
+3. The integration creates the sensor Nearest distance. It is the distance of
+   the nearest tracked person from the edge of the home zone, and 0 inside the
+   zone.
+
+Then open the blueprint "freedo distance setback", select Create automation and
+fill the inputs. The blueprint needs Home Assistant 2026.8 or later.
+
+### Inputs
+
+| Input | Default | Meaning |
+|---|---|---|
+| Rooms | none | The freedo climate entities of the rooms. The automation finds number Away of each room by itself. |
+| Distance of the nearest person | none | The sensor Nearest distance of Proximity. Any length unit works. |
+| People | none | Optional. The people that Proximity tracks. See Behavior. |
+| Lowest temperature | 16 C | No room goes below it. 5 C means off. |
+| Comfort distance | 2 km | Inside it the rooms keep their program temperature. |
+| Distance step | 10 km | Each full step beyond the comfort distance lowers the rooms by one more temperature step. |
+| Temperature step | 1 C | The size of one step. |
+| Hysteresis | 2 km | A person comes this much closer than a step boundary before the rooms rise. |
+| Minimum interval | 5 minutes | The shortest time between two changes of the rooms. |
+| Blocking entities | none | Optional. The rooms keep their program temperature while one of them is on. |
+
+### Behavior
+
+- Number Away of a room is its program temperature (attribute
+  `program_temperature` of the climate entity) minus the steps of the distance,
+  and not below the lowest temperature. With the defaults and a program at
+  21 C: 21 C up to 2 km, 20 C beyond 2 km, 19 C from 12 km, 18 C from 22 km,
+  17 C from 32 km and 16 C from 42 km.
+- A room never goes above its program temperature. A program block below the
+  lowest temperature gives the program temperature.
+- Inside the comfort distance a room keeps its program temperature also while
+  switch Away is on. The room is warm before the Presence blueprint turns Away
+  off.
+- A new block of the weekly program moves number Away of the room with it.
+- The rooms rise when the person is closer than a step boundary by the
+  hysteresis. At the comfort distance the hysteresis is at most half of that
+  distance. A position that moves around a boundary changes nothing.
+- The rooms keep their program temperature while the distance is unknown or
+  unavailable, while one of the people is `unavailable` or `unknown`, and while
+  a blocking entity is on. Proximity leaves out a person with no position, so
+  the sensor alone then shows the distance of another person: select the people
+  in the input People to cover that case.
+- The automation applies the distance again when Home Assistant has started.
+- The automation owns number Away of the selected rooms: it replaces a value
+  set by hand at its next run. Set the lowest temperature in the automation.
+- A room with an away schedule follows that schedule and ignores number Away:
+  leave it out. A room with no program temperature is left alone.
+- A blocking entity can be a schedule helper, for example to keep the rooms on
+  their program at night.
+
+### Radio writes
+
+- At home a change of number Away puts nothing on the air. The daemon stores
+  it, and the switch to away carries it.
+- While switch Away is on, a change writes that room once: one zone write to
+  the device that takes the commands of the room. It is the write of an away
+  temperature change in the tado app. It is not a configuration write, so no
+  valve homes its motor.
+- A room changes at most once in the minimum interval. A change that comes
+  earlier waits, and only the last one applies.
+- A room changes only when the distance crosses a step boundary, or when its
+  program block changes. A trip out and back over 3 steps writes each room 6
+  times at most.
+
+### Choose the steps
+
+The distance step is the distance a person travels in the time a room needs to
+gain one temperature step. A room that gains 1 C in one hour, and a person who
+drives at 50 km/h, give 50 km for each step of 1 C. A shorter step saves more
+and can leave the room below its program on arrival.
+
+### Difference from tado
+
+- tado estimates the travel time and holds a preheating level for each room.
+  The blueprint reads the distance only: a person who drives and a person who
+  walks get the same steps, and every room gets the same steps.
+- The lowest temperature is one value for all rooms of the automation. Create
+  a second automation for rooms that need another one.
+- The steps need Home Assistant. When Home Assistant stops while the home is
+  away, the rooms keep the last value until it runs again.
+
+## Auxiliary heat blueprint
+
+The automation blueprint `homeassistant/blueprints/automation/freedo/auxiliary_heat.yaml`
+runs another heat source of a room while the room is far below its target, for
+example an air conditioner or a heat pump that Home Assistant controls as a
+`climate` entity. The radiators keep heating. The automation reads the freedo
+climate entity of the room and never writes to freedo. The tado app has no such
+function.
+
+### Import
+
+Open Settings -> Automations & scenes -> Blueprints, select Import blueprint
+and enter
+`https://github.com/CappyT/freedo/blob/main/homeassistant/blueprints/automation/freedo/auxiliary_heat.yaml`.
+Or copy the file to `<config>/blueprints/automation/freedo/auxiliary_heat.yaml`
+and reload the automations.
+
+Then open the blueprint "freedo auxiliary heat", select Create automation and
+fill the inputs. Create one automation for each room. The blueprint needs Home
+Assistant 2026.8 or later.
+
+### Inputs
+
+| Input | Default | Meaning |
+|---|---|---|
+| Room | none | The freedo climate entity of the room. |
+| Appliance | none | The `climate` entity of the other heat source. |
+| Start gap | 1.5 C | The appliance starts when the room is at least this much below its target. |
+| Stop gap | 0.3 C | The appliance stops when the room is at most this much below its target. |
+| Appliance mode | Heat | The HVAC mode of a run: `heat`, `heat_cool` or `auto`. |
+| Appliance temperature | 22 C | The target temperature of a run. |
+| State after the run | The state before the run | Or Off. |
+| Maximum run time | 2 hours | The appliance stops after this time. |
+| Minimum off time | 10 minutes | The appliance does not start again for this time after a run. |
+| Start and end of the time window | 00:00 | The appliance starts only between the two times. Equal times mean the whole day. |
+
+### Behavior
+
+- The gap is the target of the room minus its temperature. The appliance starts
+  when the gap is at least the start gap, inside the time window. A room that
+  goes from 18 C to a target of 20.5 C in the morning has a gap of 2.5 C.
+- The appliance does not start while the room is off, in away (attribute
+  `target_source` is `away`), has an open window, or has no target or no
+  temperature. A run stops when one of these begins.
+- A run stops when the gap is at most the stop gap, or after the maximum run
+  time. After the maximum run time the appliance starts again only after the
+  gap has been at most the stop gap.
+- At the stop the appliance returns to the state it had before the run: its
+  mode, its target temperature and its other settings. The automation keeps
+  that state in a scene, which a restart of Home Assistant drops. Without the
+  scene, and with State after the run at Off, the appliance turns off.
+- A person who changes the mode or the target temperature of the appliance
+  during a run keeps it. The automation restores nothing and leaves the
+  appliance alone until the gap is at most the stop gap. A new run can start
+  after that.
+- The appliance rests for the minimum off time after each run, also after a
+  run that a person ended.
+- A run that started inside the time window can end after it.
+- An appliance that is unavailable does not start. An appliance that becomes
+  unavailable during a run, as a cloud device can, keeps the run: the
+  automation decides again when it is back.
+- An appliance that does not take the mode within 2 minutes returns to its
+  state, and the automation tries again after the minimum off time.
+- A restart of Home Assistant ends a run and leaves the appliance on. At the
+  start the automation takes back an appliance that it finds in the mode and at
+  the temperature of a run, and turns it off at the stop.
+- The appliance heats to its own target temperature with its own sensor. Set
+  the appliance temperature above the target of the room, or the appliance
+  stops by itself before the room is near its target.
 
 ## Season profile blueprint
 
