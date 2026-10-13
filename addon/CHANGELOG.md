@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.7.1
+
+- Breaking: the add-ons copy no state by themselves. The add-on freedo writes no copy to
+  `/share/freedo/stable` at start and stop, and freedo beta imports none at its first start.
+- Breaking: the option `import_stable_state` of freedo beta is gone. Home Assistant shows a warning
+  for a saved value until you save the configuration once.
+- Daemon: `GET /api/state/export` downloads the whole state as one SQLite file.
+  `POST /api/state/import?confirm=true` checks such a file, keeps the replaced database in
+  `backup/before-import-<time>/` (the three newest stay) and restarts the daemon by itself. A file
+  of a newer schema is refused. The log names each export and each import.
+- Daemon: with Transmit on, a start less than 250 seconds after an import waits for the rest of
+  that time. The web interface does not answer during the wait, and the devices keep their last
+  target.
+- Dashboard: Settings has the section Backup, with Download backup and Restore backup. The backup
+  holds the network key: keep the file private.
+- In the web interface of the add-on, the backup is for Home Assistant administrators only and
+  needs no token. The add-on asks Home Assistant about the user at every request and refuses when
+  it gets no answer. Another client needs the API token.
+- The add-ons have the permission `homeassistant_api`, to ask Home Assistant whether a user is an
+  administrator. With it an add-on can call the whole API of Home Assistant. freedo uses the list
+  of the users only.
+- The move to freedo beta and the return are now: download a backup in one add-on, stop it, start
+  the other one, restore the backup there.
+- The folder `/share/freedo/stable` of older releases holds the network key and nothing reads it.
+  The add-on does not delete it: delete it by hand. The log names it at each start.
+- Run on one plant with freedo beta: a download and a restore in the same add-on. A restore in the
+  other add-on did not run.
+
 ## 0.7.0
 
 - Daemon: a user reset ends an open window of any source, also one that a device detected. A window

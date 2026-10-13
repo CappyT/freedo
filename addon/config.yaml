@@ -1,5 +1,5 @@
 name: freedo
-version: "0.7.0"
+version: "0.7.1"
 slug: freedo
 description: Local coordinator for tado 868 MHz heating devices
 url: https://github.com/CappyT/freedo
@@ -12,6 +12,7 @@ startup: services
 backup: cold
 ingress: true
 ingress_port: 18080
+homeassistant_api: true
 panel_icon: mdi:radiator
 panel_title: freedo
 discovery:
