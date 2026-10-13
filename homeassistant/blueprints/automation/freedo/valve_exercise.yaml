@@ -1,0 +1,184 @@
+blueprint:
+  name: freedo valve exercise
+  description: >-
+    Moves each radiator valve once a month, so that the valve pin does not
+    stick after a season without heating.
+
+
+    - A valve never moves by itself on a schedule. The automation presses the
+    freedo button Calibrate motor of each valve: the motor runs to the open end
+    stop, finds the pin and runs to the closed end stop.
+
+    - The cost is one full motor stroke for each valve at each run, on the
+    batteries of the valve.
+
+    - From the chosen day of the month, the automation runs every day at the
+    chosen time until each valve had its stroke in that month. A valve whose
+    button was pressed in the month, by this automation or by hand, is done.
+
+    - The valves move one at a time, with a pause between them.
+
+    - It skips a valve that is unavailable or offline, or that reports a low
+    battery, a fault or a warning. It tries that valve again the next day.
+
+    - It does nothing while a freedo room heats, unless you allow it, and
+    nothing outside the chosen profiles.
+
+    - A restart of Home Assistant ends a run. The next day the automation
+    goes on with the valves that are left.
+  domain: automation
+  author: CappyT
+  homeassistant:
+    min_version: "2026.8.0"
+  input:
+    buttons:
+      name: Valves
+      description: >-
+        The freedo buttons Calibrate motor of the valves to move. Empty moves
+        every valve of freedo.
+      default: []
+      selector:
+        entity:
+          multiple: true
+          filter:
+            - domain: button
+              integration: freedo
+    day:
+      name: Day of the month
+      description: The first day of the month on which the automation runs.
+      default: 1
+      selector:
+        number:
+          min: 1
+          max: 28
+          step: 1
+          mode: box
+    time:
+      name: Time
+      default: "11:00:00"
+      selector:
+        time:
+    pause:
+      name: Pause between valves
+      description: >-
+        One valve moves at a time, so that the radio and the boiler are not hit
+        at once.
+      default:
+        hours: 0
+        minutes: 5
+        seconds: 0
+      selector:
+        duration:
+    profile:
+      name: Profiles
+      description: Optional. Run only while one of these profiles is active, for example Summer.
+      collapsed: true
+      input:
+        profile_select:
+          name: Profile select
+          description: >-
+            The freedo select of the active profile. The default names a
+            select that does not exist.
+          default: select.freedo_profile_unset
+          selector:
+            entity:
+              filter:
+                - domain: select
+                  integration: freedo
+        profiles:
+          name: Profile names
+          description: The names of the profiles, as the select lists them. Empty runs in every profile.
+          default: []
+          selector:
+            text:
+              multiple: true
+    heating:
+      name: Heating
+      collapsed: true
+      input:
+        while_heating:
+          name: Run while a room heats
+          description: >-
+            Off: the automation waits for a day on which no freedo room heats
+            at the chosen time. A stroke closes the valve for a moment.
+          default: false
+          selector:
+            boolean:
+
+mode: single
+max_exceeded: silent
+
+variables:
+  chosen: !input buttons
+  day: !input day
+  profile_select: !input profile_select
+  profiles: !input profiles
+  while_heating: !input while_heating
+  # The button Identify is the other button of a freedo device.
+  valves: >-
+    {% set ns = namespace(valves=chosen) %}
+    {% if chosen | length == 0 %}
+      {% for entity in integration_entities('freedo') | sort %}
+        {% if entity.startswith('button.') and state_attr(entity, 'device_class') != 'identify' %}
+          {% set ns.valves = ns.valves + [entity] %}
+        {% endif %}
+      {% endfor %}
+    {% endif %}
+    {{ ns.valves }}
+  # The state of a button is the time of its last press.
+  due: >-
+    {% set start = today_at('00:00').replace(day=day | int) %}
+    {% set ns = namespace(due=[]) %}
+    {% for valve in valves %}
+      {% set last = as_datetime(states(valve), none) %}
+      {% if last is none or last < start %}
+        {% set ns.due = ns.due + [valve] %}
+      {% endif %}
+    {% endfor %}
+    {{ ns.due }}
+
+triggers:
+  - trigger: time
+    at: !input time
+
+conditions:
+  - condition: template
+    value_template: >-
+      {{ now().day >= day | int and due | length > 0
+         and (profiles | length == 0 or states(profile_select) in profiles) }}
+
+actions:
+  - repeat:
+      for_each: "{{ due }}"
+      sequence:
+        - condition: template
+          value_template: >-
+            {% set ns = namespace(heating=false) %}
+            {% for entity in integration_entities('freedo') %}
+              {% if entity.startswith('climate.') and is_state_attr(entity, 'hvac_action', 'heating') %}
+                {% set ns.heating = true %}
+              {% endif %}
+            {% endfor %}
+            {{ while_heating or not ns.heating }}
+        - if:
+            - condition: template
+              value_template: >-
+                {% set ns = namespace(skip=states(repeat.item) == 'unavailable') %}
+                {% for entity in device_entities(device_id(repeat.item) or '') %}
+                  {% set kind = state_attr(entity, 'device_class') %}
+                  {% if entity.startswith('binary_sensor.') and (
+                       (kind in ['battery', 'problem'] and is_state(entity, 'on'))
+                       or (kind == 'connectivity' and is_state(entity, 'off'))) %}
+                    {% set ns.skip = true %}
+                  {% endif %}
+                {% endfor %}
+                {{ not ns.skip }}
+          then:
+            - action: button.press
+              target:
+                entity_id: "{{ repeat.item }}"
+            - if:
+                - condition: template
+                  value_template: "{{ not repeat.last }}"
+              then:
+                - delay: !input pause
