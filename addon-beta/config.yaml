@@ -1,0 +1,36 @@
+name: freedo beta
+version: "0.5.2"
+slug: freedo_beta
+description: Pre-releases of the local coordinator for tado 868 MHz heating devices
+url: https://github.com/CappyT/freedo
+image: ghcr.io/cappyt/freedo-addon
+arch:
+  - aarch64
+  - amd64
+stage: experimental
+startup: services
+backup: cold
+ingress: true
+ingress_port: 18080
+panel_icon: mdi:radiator
+panel_title: freedo beta
+discovery:
+  - freedo
+map:
+  - type: share
+    read_only: false
+timeout: 30
+environment:
+  FREEDO_BETA: "1"
+ports:
+  18080/tcp: null
+ports_description:
+  18080/tcp: HTTP API
+options:
+  transmit: false
+  import_stable_state: false
+schema:
+  serial_port: device(subsystem=tty)?
+  api_token: password?
+  transmit: bool
+  import_stable_state: bool

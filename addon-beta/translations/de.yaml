@@ -1,0 +1,22 @@
+configuration:
+  serial_port:
+    name: Serieller Port
+    description: >-
+      Der serielle USB-Port der ESP32-Funkbrücke. Leer lassen, um den Daemon
+      ohne Funk zu starten.
+  api_token:
+    name: API-Token
+    description: >-
+      Der Bearer-Token der HTTP-API. Bleibt er leer, erstellt die App einen
+      Token und speichert ihn in ihrem Datenordner.
+  transmit:
+    name: Senden
+    description: >-
+      Sendet Frames per Funk. Aus bedeutet dry-run. Schalte die kommerzielle
+      Bridge aus, bevor du dies einschaltest.
+  import_stable_state:
+    name: Stabilen Zustand erneut importieren
+    description: >-
+      Ersetzt beim nächsten Start den Zustand dieses Add-ons durch den letzten
+      Export des stabilen freedo-Add-ons. Das Add-on behält eine Kopie des
+      ersetzten Zustands. Nach dem Import wieder ausschalten.

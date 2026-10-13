@@ -1,0 +1,22 @@
+configuration:
+  serial_port:
+    name: Porta seriale
+    description: >-
+      La porta seriale USB del bridge radio ESP32. Lasciala vuota per eseguire
+      il daemon senza radio.
+  api_token:
+    name: Token API
+    description: >-
+      Il token bearer dell'API HTTP. Se lo lasci vuoto, il componente aggiuntivo
+      crea un token e lo conserva nella propria cartella dati.
+  transmit:
+    name: Trasmissione
+    description: >-
+      Invia frame via radio. Disattivato significa dry-run. Spegni il bridge
+      commerciale prima di attivarlo.
+  import_stable_state:
+    name: Importa di nuovo lo stato stabile
+    description: >-
+      Al prossimo avvio, sostituisce lo stato di questo componente aggiuntivo
+      con l'ultima esportazione del componente freedo stabile. Il componente
+      conserva una copia dello stato sostituito. Disattivalo dopo l'importazione.

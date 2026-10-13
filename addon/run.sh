@@ -1,4 +1,6 @@
 #!/bin/sh
+# One script serves both add-ons. The beta add-on sets FREEDO_BETA in its
+# config.yaml.
 set -eu
 umask 077
 
@@ -6,11 +8,18 @@ options=/data/options.json
 api=http://supervisor
 data=/data
 state="$data/freedo-state.db"
-channel_dir="$data/channel"
 backup_dir="$data/backup"
-bundled=/usr/local/bin/freedo
-# The releases API the beta channel reads. A test points this at a stub.
-releases_url=${FREEDO_RELEASES_URL:-https://api.github.com/repos/CappyT/freedo/releases?per_page=20}
+bin=/usr/local/bin/freedo
+# The folder both add-ons reach. The stable add-on exports its state there and
+# the beta add-on imports it.
+shared=/share/freedo
+export_dir="$shared/stable"
+owner="$shared/owner.json"
+me=$(hostname)
+# A device keeps the CoAP Message IDs it saw for EXCHANGE_LIFETIME (247 s). The
+# two add-ons resume the Message ID from their own databases, so the second one
+# could repeat a Message ID of the first inside that time. A test shortens this.
+mid_wait=${FREEDO_MID_WAIT:-250}
 
 token=$(jq -r '.api_token // empty' "$options")
 if [ -z "$token" ]; then
@@ -30,276 +39,184 @@ else
   echo "no serial port selected: the daemon runs without a radio"
 fi
 
-if [ "$(jq -r '.transmit' "$options")" = true ]; then
+transmit=$(jq -r '.transmit' "$options")
+if [ "$transmit" = true ]; then
   set -- "$@" --tx
 fi
 
 # Tell Home Assistant where the API is, so the integration needs no address.
+# The Supervisor pushes a message only when its config changed, and the stable
+# and the beta add-on take turns: the start time makes every start a change, so
+# the integration follows the add-on that started last.
 announce() {
   host=$(curl -fsS -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" "$api/addons/self/info" | jq -er '.data.hostname') &&
-    jq -n --arg host "$host" --arg token "$token" \
-      '{service: "freedo", config: {host: $host, port: 18080, token: $token}}' |
+    jq -n --arg host "$host" --arg token "$token" --arg started "$(date +%s)" \
+      '{service: "freedo", config: {host: $host, port: 18080, token: $token, started: $started}}' |
     curl -fsS -X POST -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" -H "Content-Type: application/json" \
       -d @- "$api/discovery" > /dev/null
 }
+
+# refuse_running stops the start when the add-on $other answers on its API port.
+refuse_running() {
+  if curl -s -o /dev/null --max-time 3 "http://$other:18080/"; then
+    echo "ERROR: the add-on $other is running: stop it before you start this one. One coordinator serves a radio network"
+    exit 1
+  fi
+}
+
+# guard_owner stops the start while the other add-on answers on its API port:
+# one coordinator per radio network. It then waits until the Message IDs of the
+# other add-on left the devices.
+guard_owner() {
+  other=$(jq -r '.host // empty' "$owner" 2> /dev/null) || other=
+  if [ -z "$other" ] || [ "$other" = "$me" ]; then
+    return 0
+  fi
+  refuse_running
+  [ "$transmit" = true ] || return 0
+  # No stop time means the other add-on did not stop in order: wait the full time.
+  stopped=$(jq -r '.stopped_at | numbers' "$owner" 2> /dev/null) || stopped=
+  left=$mid_wait
+  if [ -n "$stopped" ]; then
+    left=$((stopped + mid_wait - $(date +%s)))
+    if [ "$left" -gt "$mid_wait" ]; then left=$mid_wait; fi
+  fi
+  if [ "$left" -gt 0 ]; then
+    echo "freedo: the add-on $other stopped less than $mid_wait s ago: waiting $left s before the start, so that no device still holds one of its Message IDs"
+    sleep "$left"
+    # The other add-on can start inside the wait, for example when both start at boot.
+    refuse_running
+  fi
+}
+
+# set_owner records which add-on runs, or when it stopped ($1, unix seconds).
+set_owner() {
+  jq -n --arg host "$me" --arg at "${1:-}" \
+    '{host: $host, stopped_at: (if $at == "" then null else ($at | tonumber) end)}' > "$owner"
+}
+
+# export_state copies the database of the stable add-on to $export_dir. No
+# process has the database open, so the file and its -wal file are a
+# consistent copy. The copy replaces the last one in one rename.
+export_state() {
+  [ -f "$state" ] || return 0
+  line=$("$bin" --check-state "$state") || return 1
+  schema=$(printf '%s\n' "$line" | sed -n 's/.*schema version \([0-9][0-9]*\) is readable.*/\1/p')
+  new="$shared/.stable.new" old="$shared/.stable.old"
+  rm -rf "$new" "$old" || return 1
+  mkdir "$new" || return 1
+  for f in "$state" "$state-wal"; do
+    [ -f "$f" ] || continue
+    cp "$f" "$new/" || return 1
+  done
+  jq -n --arg version "$version" --arg schema "$schema" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    '{version: $version, schema: $schema, exported_at: $at}' > "$new/export.json" || return 1
+  if [ -d "$export_dir" ]; then
+    mv "$export_dir" "$old" || return 1
+  fi
+  mv "$new" "$export_dir" || return 1
+  rm -rf "$old"
+}
+
+# keep_backups keeps the three newest before-import-* copies. Each removal
+# names one directory.
+keep_backups() {
+  ls -1d "$backup_dir"/before-import-*/ 2> /dev/null | sort -r | tail -n +4 | while read -r d; do
+    rm -rf "$d"
+  done
+}
+
+# import_state replaces the state of the beta add-on with the export of the
+# stable add-on. $1 is "first" when the beta add-on has no database and "again"
+# when the option import_stable_state asks for it.
+import_state() {
+  if [ ! -f "$export_dir/freedo-state.db" ] || [ ! -f "$export_dir/export.json" ]; then
+    if [ "$1" = first ]; then
+      echo "freedo: no export of the stable add-on in $export_dir: starting with an empty installation"
+    else
+      echo "WARNING: import_stable_state is on and $export_dir holds no export of the stable add-on: nothing imported"
+    fi
+    return 0
+  fi
+  stamp=$(jq -r '.exported_at' "$export_dir/export.json")
+  if [ "$1" = again ] && [ "$stamp" = "$(cat "$data/imported" 2> /dev/null)" ]; then
+    echo "freedo: the export of $stamp is already imported: turn import_stable_state off"
+    return 0
+  fi
+  staging="$data/.import"
+  rm -rf "$staging"
+  mkdir "$staging"
+  for f in freedo-state.db freedo-state.db-wal; do
+    [ -f "$export_dir/$f" ] || continue
+    cp "$export_dir/$f" "$staging/"
+  done
+  status=0
+  "$bin" --check-state "$staging/freedo-state.db" > /dev/null || status=$?
+  if [ "$status" != 0 ]; then
+    rm -rf "$staging"
+    echo "ERROR: this daemon does not read the export in $export_dir (status $status, 3 means a newer schema): nothing imported"
+    # A beta add-on with no state must not start as a new, empty installation
+    # when the user expects the plant of the stable add-on.
+    if [ "$1" = first ]; then exit 1; fi
+    return 0
+  fi
+  rm -f "$staging/freedo-state.db-shm"
+  if [ -f "$state" ]; then
+    keep="$backup_dir/before-import-$(date -u +%Y%m%dT%H%M%SZ)"
+    mkdir -p "$keep"
+    for f in "$state" "$state-wal" "$state-shm"; do
+      [ -f "$f" ] || continue
+      mv "$f" "$keep/"
+    done
+    keep_backups
+    echo "freedo: the state of the beta add-on before this import is in $keep"
+  fi
+  for f in freedo-state.db freedo-state.db-wal; do
+    [ -f "$staging/$f" ] || continue
+    mv "$staging/$f" "$data/$f"
+  done
+  rmdir "$staging"
+  printf '%s' "$stamp" > "$data/imported"
+  echo "freedo: imported the state of the stable add-on: freedo $(jq -r '.version' "$export_dir/export.json"), schema $(jq -r '.schema' "$export_dir/export.json"), exported at $stamp"
+}
+
+version=$("$bin" --version | awk '{print $2}')
+# A fault of the shared folder must not keep the heating off: the start goes on.
+mkdir -p "$shared" && chmod 700 "$shared" || echo "warning: the folder $shared is not usable"
+
+guard_owner
+set_owner || echo "warning: $owner was not written"
+
+if [ -n "${FREEDO_BETA:-}" ]; then
+  name="beta add-on"
+  if [ ! -f "$state" ]; then
+    import_state first
+  elif [ "$(jq -r '.import_stable_state // false' "$options")" = true ]; then
+    import_state again
+  fi
+else
+  name="stable add-on"
+  # Releases that had a beta channel inside this add-on cached daemon binaries here.
+  rm -rf "$data/channel"
+  # A start after a power loss has no export of the last stop: export now.
+  export_state || echo "warning: the state was not exported to $export_dir"
+fi
+
 announce || echo "warning: the discovery message was not sent: add the integration by hand"
 
-# The channel: stable runs the daemon of the image, beta runs the newest
-# pre-release from the GitHub releases of the repository, with a fallback to the
-# cache and then to the image.
-
-# version_cmp prints -1, 0 or 1 when $1 is older, equal or newer than $2. The
-# project uses X.Y.Z and X.Y.Z-beta.N, so a stable release is newer than its own
-# pre-releases.
-version_cmp() {
-  awk -v a="$1" -v b="$2" '
-  BEGIN {
-    na = split(a, am, "-"); nb = split(b, bm, "-")
-    ca = split(am[1], av, "."); cb = split(bm[1], bv, ".")
-    for (i = 1; i <= 3; i++) {
-      x = (i <= ca) ? av[i] + 0 : 0
-      y = (i <= cb) ? bv[i] + 0 : 0
-      if (x > y) { print 1; exit }
-      if (x < y) { print -1; exit }
-    }
-    if (na == 1 && nb == 1) { print 0; exit }
-    if (na == 1) { print 1; exit }
-    if (nb == 1) { print -1; exit }
-    pa = split(am[2], ap, "."); pb = split(bm[2], bp, ".")
-    for (i = 1; i <= (pa > pb ? pa : pb); i++) {
-      x = (i <= pa) ? ap[i] + 0 : 0
-      y = (i <= pb) ? bp[i] + 0 : 0
-      if (x > y) { print 1; exit }
-      if (x < y) { print -1; exit }
-    }
-    print 0
-  }'
-}
-
-version_gt() { [ "$(version_cmp "$1" "$2")" = 1 ]; }
-
-# arch is the release asset suffix of this platform. Empty means no release
-# binary runs here.
-case "$(uname -m)" in
-  aarch64|arm64) arch=arm64 ;;
-  x86_64|amd64) arch=amd64 ;;
-  *) arch= ;;
-esac
-
-# keep_channel removes every cached version but the two newest. Each removal
-# names one directory.
-keep_channel() {
-  while :; do
-    count=0
-    for d in "$channel_dir"/*/; do
-      [ -e "$d" ] || continue
-      count=$((count + 1))
-    done
-    [ "$count" -le 2 ] && return 0
-    oldest="" oldest_v=""
-    for d in "$channel_dir"/*/; do
-      [ -e "$d" ] || continue
-      v=${d#"$channel_dir"/}; v=${v%/}
-      if [ -z "$oldest" ] || version_gt "$oldest_v" "$v"; then
-        oldest=$d oldest_v=$v
-      fi
-    done
-    rm -rf "$oldest"
-  done
-}
-
-# keep_backups keeps the three newest before-* copies and removes the rest.
-keep_backups() {
-  while :; do
-    count=0
-    for d in "$backup_dir"/before-*/; do
-      [ -e "$d" ] || continue
-      count=$((count + 1))
-    done
-    [ "$count" -le 3 ] && return 0
-    oldest="" oldest_v=""
-    for d in "$backup_dir"/before-*/; do
-      [ -e "$d" ] || continue
-      v=${d#"$backup_dir/before-"}; v=${v%/}
-      if [ -z "$oldest" ] || version_gt "$oldest_v" "$v"; then
-        oldest=$d oldest_v=$v
-      fi
-    done
-    rm -rf "$oldest"
-  done
-}
-
-# download_beta installs version from the two asset URLs under
-# $channel_dir/<version>/ and returns non-zero when the download, the checksum
-# or the binary check fails.
-download_beta() {
-  version=$1 binurl=$2 sumsurl=$3
-  staging="$channel_dir/.staging.$$"
-  rm -rf "$staging"
-  mkdir -p "$staging"
-  if ! curl -fsSL --max-time 60 -o "$staging/freedo-linux-$arch" "$binurl"; then
-    rm -rf "$staging"; return 1
-  fi
-  if ! curl -fsSL --max-time 60 -o "$staging/SHA256SUMS" "$sumsurl"; then
-    rm -rf "$staging"; return 1
-  fi
-  want=$(grep " freedo-linux-$arch\$" "$staging/SHA256SUMS" | awk '{print $1}')
-  if [ -z "$want" ]; then
-    rm -rf "$staging"; return 1
-  fi
-  got=$(sha256sum "$staging/freedo-linux-$arch" | awk '{print $1}')
-  if [ "$want" != "$got" ]; then
-    rm -rf "$staging"; return 1
-  fi
-  chmod +x "$staging/freedo-linux-$arch"
-  if ! "$staging/freedo-linux-$arch" --version > /dev/null 2>&1; then
-    rm -rf "$staging"; return 1
-  fi
-  rm -rf "$channel_dir/$version"
-  mv "$staging" "$channel_dir/$version"
-}
-
-# newest_cached prints the newest cached beta version newer than $1, or nothing.
-newest_cached() {
-  best=""
-  for d in "$channel_dir"/*/; do
-    [ -e "$d" ] || continue
-    v=${d#"$channel_dir"/}; v=${v%/}
-    [ -e "$d/freedo-linux-$arch" ] || continue
-    version_gt "$v" "$1" || continue
-    if [ -z "$best" ] || version_gt "$v" "$best"; then best=$v; fi
-  done
-  [ -n "$best" ] && printf '%s' "$best"
-}
-
-# backup_before copies the state database into /data/backup/before-<version>/
-# before the first start of a beta version. The daemon is not running yet.
-backup_before() {
-  dest="$backup_dir/before-$1"
-  [ -d "$dest" ] && return 0
-  mkdir -p "$dest"
-  for f in "$state" "$state-wal" "$state-shm"; do
-    [ -f "$f" ] || continue
-    cp "$f" "$dest/"
-  done
-  keep_backups
-}
-
-# restore_backup moves the beta-written database aside and puts the newest
-# before-* copy back. It stops the start when no copy exists.
-restore_backup() {
-  best="" best_v=""
-  for d in "$backup_dir"/before-*/; do
-    [ -e "$d" ] || continue
-    v=${d#"$backup_dir/before-"}; v=${v%/}
-    if [ -z "$best" ] || version_gt "$v" "$best_v"; then
-      best=$d best_v=$v
-    fi
-  done
-  if [ -z "$best" ]; then
-    echo "ERROR: the state database is newer than the daemon and no /data/backup/before-* copy exists: stopping"
-    exit 1
-  fi
-  aside="$backup_dir/beta-$(date -u +%Y%m%dT%H%M%SZ)"
-  mkdir -p "$aside"
-  for f in "$state" "$state-wal" "$state-shm"; do
-    [ -f "$f" ] || continue
-    mv "$f" "$aside/"
-  done
-  echo "WARNING: the data written under the beta is set aside in $aside: restore it only with the same or a newer daemon"
-  for f in freedo-state.db freedo-state.db-wal freedo-state.db-shm; do
-    [ -f "$best/$f" ] || continue
-    cp "$best/$f" "$data/$f"
-  done
-}
-
-# ensure_state_readable runs the chosen binary against the state database and
-# restores a backup when the database holds a newer schema. It stops the start
-# when the database stays unreadable.
-ensure_state_readable() {
+echo "freedo: running freedo $version ($name)"
+"$bin" "$@" &
+pid=$!
+trap 'kill -TERM "$pid" 2> /dev/null' TERM INT
+status=0
+# wait returns when the trap runs: wait again until the daemon is gone.
+while kill -0 "$pid" 2> /dev/null; do
   status=0
-  "$bin" --check-state "$state" || status=$?
-  if [ "$status" = 0 ]; then
-    return 0
-  fi
-  # Only a newer schema needs a restore. Any other failure is left to the
-  # daemon, which reports it at start as it did before this check existed.
-  if [ "$status" != 3 ]; then
-    echo "warning: $bin could not check the state database $state (status $status): starting anyway"
-    return 0
-  fi
-  echo "WARNING: the state database holds a schema newer than $bin reads: restoring a backup"
-  restore_backup
-  status=0
-  "$bin" --check-state "$state" || status=$?
-  if [ "$status" != 0 ]; then
-    echo "ERROR: the state database is still unreadable after the restore (status $status): stopping"
-    exit 1
-  fi
-}
+  wait "$pid" || status=$?
+done
 
-bin=$bundled
-run_msg="the bundled daemon (channel stable)"
-
-if [ "$(jq -r '.channel // "stable"' "$options")" = beta ]; then
-  if [ -z "$arch" ]; then
-    run_msg="the bundled daemon (channel beta, no release binary for $(uname -m))"
-  else
-    bundled_version=$("$bundled" --version | awk '{print $2}')
-    json=$(curl -fsS --max-time 15 "$releases_url" 2> /dev/null) || json=
-    best="" best_bin="" best_sums=""
-    if [ -n "$json" ]; then
-      candidates=$(printf '%s' "$json" | jq -r --arg arch "$arch" '
-        .[] | select(.prerelease)
-        | select(.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+-beta\\.[0-9]+$"))
-        | .tag_name as $tag
-        | [ $tag[1:],
-            ([.assets[]? | select(.name == ("freedo-linux-" + $arch)) | .browser_download_url][0] // ""),
-            ([.assets[]? | select(.name == "SHA256SUMS") | .browser_download_url][0] // "")
-          ] | @tsv') || candidates=
-      tab=$(printf '\t')
-      while IFS="$tab" read -r v binurl sumsurl; do
-        [ -n "$v" ] || continue
-        [ -n "$binurl" ] || continue
-        [ -n "$sumsurl" ] || continue
-        version_gt "$v" "$bundled_version" || continue
-        if [ -z "$best" ] || version_gt "$v" "$best"; then
-          best=$v best_bin=$binurl best_sums=$sumsurl
-        fi
-      done <<EOF
-$candidates
-EOF
-    fi
-    if [ -n "$best" ]; then
-      if [ -x "$channel_dir/$best/freedo-linux-$arch" ]; then
-        bin="$channel_dir/$best/freedo-linux-$arch"
-        beta_version=$best
-        run_msg="beta $best from the channel cache"
-      elif download_beta "$best" "$best_bin" "$best_sums"; then
-        keep_channel
-        bin="$channel_dir/$best/freedo-linux-$arch"
-        beta_version=$best
-        run_msg="beta $best downloaded from the GitHub releases of the repository"
-      fi
-    fi
-    if [ "$bin" = "$bundled" ]; then
-      cached=$(newest_cached "$bundled_version") || cached=
-      if [ -n "$cached" ]; then
-        bin="$channel_dir/$cached/freedo-linux-$arch"
-        beta_version=$cached
-        run_msg="beta $cached from the channel cache"
-      else
-        run_msg="the bundled daemon (channel beta, no pre-release newer than $bundled_version)"
-      fi
-    fi
-  fi
+if [ -z "${FREEDO_BETA:-}" ]; then
+  export_state || echo "warning: the state was not exported to $export_dir"
 fi
-
-if [ "$bin" != "$bundled" ]; then
-  backup_before "$beta_version"
-else
-  ensure_state_readable
-fi
-
-echo "freedo: running $run_msg"
-exec "$bin" "$@"
+set_owner "$(date +%s)" || echo "warning: $owner was not written"
+exit "$status"

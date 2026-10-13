@@ -16,15 +16,17 @@ panel_icon: mdi:radiator
 panel_title: freedo
 discovery:
   - freedo
+map:
+  - type: share
+    read_only: false
+timeout: 30
 ports:
   18080/tcp: 18080
 ports_description:
   18080/tcp: HTTP API
 options:
   transmit: false
-  channel: stable
 schema:
   serial_port: device(subsystem=tty)?
   api_token: password?
   transmit: bool
-  channel: list(stable|beta)

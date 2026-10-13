@@ -40,7 +40,8 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldfl
 
 # The Home Assistant add-on image: build it with --target addon. The Supervisor
 # starts the CMD as root and reads io.hass.version to match the image to the
-# version in addon/config.yaml. No io.hass.arch: one manifest serves both
+# version in the config.yaml of the add-on. The stable and the beta add-on run
+# this image. No io.hass.arch: one manifest serves both
 # platforms and the Supervisor takes the platform from the image itself.
 FROM alpine:3.24 AS addon
 RUN apk add --no-cache jq curl

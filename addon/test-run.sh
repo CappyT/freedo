@@ -1,7 +1,7 @@
 #!/bin/sh
-# Exercises addon/run.sh in an alpine:3.24 container with a stub releases API
-# and stub daemon binaries. The stub API is a file:// URL in FREEDO_RELEASES_URL
-# and the assets are file:// URLs in the release JSON, so no network is needed.
+# Exercises addon/run.sh in an alpine:3.24 container with stub daemon binaries,
+# as the stable and as the beta add-on. The Supervisor is absent, so the
+# discovery call fails with a warning. No network is needed.
 # Requires docker. Run it from the repository root:
 #   addon/test-run.sh
 set -eu
@@ -9,12 +9,6 @@ set -eu
 repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
-
-case "$(uname -m)" in
-  aarch64|arm64) arch=arm64 ;;
-  x86_64|amd64) arch=amd64 ;;
-  *) echo "unsupported architecture $(uname -m)"; exit 1 ;;
-esac
 
 image=freedo-runsh-test
 if ! docker image inspect "$image" > /dev/null 2>&1; then
@@ -30,154 +24,188 @@ fails=0
 ok() { echo "ok - $1"; }
 no() { echo "FAIL - $1"; fails=$((fails + 1)); }
 
-# write_stub writes a stub daemon that answers --version with $2 and
-# --check-state with 3 when the database mentions "newer", 1 when it mentions
-# "broken", else 0.
+# write_stub writes a stub daemon of version $2 to $1. --check-state reads the
+# schema from the database text: "schema N", status 3 when N is above $3, status
+# 1 when the text says "broken". A run appends "ran <version>" to the database.
+# With $4 = slow, the run waits for SIGTERM and then appends "stopped".
 write_stub() {
-  out=$1 ver=$2
+  out=$1 ver=$2 reads=$3 mode=${4:-}
   {
     echo '#!/bin/sh'
     echo 'case "$1" in'
     echo "  --version) echo \"freedo $ver (stub stub)\"; exit 0 ;;"
     echo '  --check-state)'
-    echo '    if [ -f "$2" ] && grep -q newer "$2" 2>/dev/null; then exit 3; fi'
-    echo '    if [ -f "$2" ] && grep -q broken "$2" 2>/dev/null; then exit 1; fi'
-    echo '    exit 0 ;;'
+    echo '    [ -f "$2" ] || { echo "check-state: $2: no state database"; exit 0; }'
+    echo '    if grep -q broken "$2"; then exit 1; fi'
+    echo '    n=$(sed -n "s/^schema \([0-9]*\)$/\1/p" "$2" | tail -1)'
+    echo "    if [ \"\$n\" -gt $reads ]; then echo \"check-state: \$2: schema version \$n is newer than this binary reads ($reads)\"; exit 3; fi"
+    echo '    echo "check-state: $2: schema version $n is readable"; exit 0 ;;'
     echo 'esac'
     echo "echo \"RAN $ver \$*\""
+    echo "echo \"ran $ver\" >> /data/freedo-state.db"
+    if [ "$mode" = slow ]; then
+      echo 'trap "echo stopped >> /data/freedo-state.db; exit 0" TERM'
+      echo 'sleep 30 & wait'
+    fi
     echo 'exit 0'
   } > "$out"
   chmod +x "$out"
 }
 
-# run_case runs run.sh for $1 with /data at $2 and the releases URL $3, prints
-# the combined output and returns the container status.
+# run_case runs run.sh with /data at $1, /share at $2, the daemon $3 and the
+# container host name $4. Every further argument is a docker run option. It
+# prints the combined output and returns the container status.
 run_case() {
-  data=$1 releases=$2 bundled=$3
-  docker run --rm --user "$(id -u):$(id -g)" \
+  data=$1 share=$2 bundled=$3 host=$4
+  shift 4
+  docker run --rm --user "$(id -u):$(id -g)" --hostname "$host" \
     -v "$data:/data:Z" \
+    -v "$share:/share:Z" \
     -v "$work/run.sh:/run.sh:ro,Z" \
     -v "$bundled:/usr/local/bin/freedo:ro,Z" \
-    -e "FREEDO_RELEASES_URL=$releases" \
     -e "SUPERVISOR_TOKEN=stub" \
-    "$image" /run.sh 2>&1
+    "$@" "$image" /run.sh 2>&1
 }
 
 contains() { echo "$2" | grep -qF "$1"; }
 
-# --- stable: the bundled daemon, no download ---------------------------------
-d="$work/stable/data"; mkdir -p "$d"
-write_stub "$work/stable/bundled" 0.3.2
-printf '{"api_token":"tok","transmit":false,"channel":"stable"}\n' > "$d/options.json"
-out=$(run_case "$d" "file:///data/none.json" "$work/stable/bundled") || true
-if contains "running the bundled daemon (channel stable)" "$out" && contains "RAN 0.3.2" "$out"; then
-  ok "stable runs the bundled daemon"
-else no "stable runs the bundled daemon: $out"; fi
-if [ ! -d "$d/channel" ]; then ok "stable created no channel cache"; else no "stable created a channel cache"; fi
+stable=abc-freedo
+beta=abc-freedo-beta
+write_stub "$work/stable-bin" 0.6.0 8
+write_stub "$work/beta-bin" 0.7.0-beta.1 9
+write_stub "$work/slow-bin" 0.6.0 8 slow
+share="$work/share"; mkdir -p "$share"
 
-# --- beta: a newer pre-release is downloaded, verified and run, cache pruned --
-d="$work/beta/data"; mkdir -p "$d/assets" "$d/channel/0.1.0-beta.1" "$d/channel/0.2.0-beta.1"
-write_stub "$work/beta/bundled" 0.3.2
-write_stub "$d/assets/freedo-linux-$arch" 0.9.0-beta.1
-(cd "$d/assets" && sha256sum "freedo-linux-$arch" > SHA256SUMS)
-write_stub "$d/channel/0.1.0-beta.1/freedo-linux-$arch" 0.1.0-beta.1
-write_stub "$d/channel/0.2.0-beta.1/freedo-linux-$arch" 0.2.0-beta.1
-for v in 0.1.0-beta.1 0.2.0-beta.1 0.3.0-beta.1; do
-  mkdir -p "$d/backup/before-$v"; printf 'db %s\n' "$v" > "$d/backup/before-$v/freedo-state.db"
-done
-printf '[{"tag_name":"v0.9.0-beta.1","prerelease":true,"assets":[{"name":"freedo-linux-%s","browser_download_url":"file:///data/assets/freedo-linux-%s"},{"name":"SHA256SUMS","browser_download_url":"file:///data/assets/SHA256SUMS"}]}]\n' "$arch" "$arch" > "$d/releases.json"
-printf '{"api_token":"tok","channel":"beta"}\n' > "$d/options.json"
-out=$(run_case "$d" "file:///data/releases.json" "$work/beta/bundled") || true
-if contains "beta 0.9.0-beta.1 downloaded" "$out" && contains "RAN 0.9.0-beta.1" "$out"; then
-  ok "beta downloads and runs the newer pre-release"
-else no "beta downloads and runs the newer pre-release: $out"; fi
-cache=$(ls "$d/channel" 2>/dev/null | sort | tr '\n' ' ')
-if [ "$cache" = "0.2.0-beta.1 0.9.0-beta.1 " ]; then
-  ok "beta keeps the two newest cached versions"
-else no "beta keeps the two newest cached versions: got '$cache'"; fi
-if [ -d "$d/backup/before-0.9.0-beta.1" ]; then ok "beta backs up before the first start"; else no "beta backs up before the first start"; fi
-backups=$(ls "$d/backup" 2>/dev/null | sort | tr '\n' ' ')
-if [ "$backups" = "before-0.2.0-beta.1 before-0.3.0-beta.1 before-0.9.0-beta.1 " ]; then
-  ok "beta keeps the three newest backups"
-else no "beta keeps the three newest backups: got '$backups'"; fi
+# --- stable: a leftover channel option starts, the old cache goes -------------
+sd="$work/stable-data"; mkdir -p "$sd/channel/0.5.0-beta.1"
+printf 'schema 8\n' > "$sd/freedo-state.db"
+printf 'wal\n' > "$sd/freedo-state.db-wal"
+printf '{"api_token":"tok","transmit":false,"channel":"beta"}\n' > "$sd/options.json"
+out=$(run_case "$sd" "$share" "$work/stable-bin" "$stable") || true
+if contains "running freedo 0.6.0 (stable add-on)" "$out" && contains "RAN 0.6.0" "$out"; then
+  ok "stable starts with a leftover channel option"
+else no "stable starts with a leftover channel option: $out"; fi
+if [ ! -d "$sd/channel" ]; then ok "stable removes the old channel cache"; else no "stable removes the old channel cache"; fi
 
-# --- beta: the network is down, the cache holds a newer beta -----------------
-d="$work/down/data"; mkdir -p "$d/channel/0.5.0-beta.1"
-write_stub "$work/down/bundled" 0.3.2
-write_stub "$d/channel/0.5.0-beta.1/freedo-linux-$arch" 0.5.0-beta.1
-printf '{"api_token":"tok","channel":"beta"}\n' > "$d/options.json"
-out=$(run_case "$d" "file:///data/absent.json" "$work/down/bundled") || true
-if contains "beta 0.5.0-beta.1 from the channel cache" "$out" && contains "RAN 0.5.0-beta.1" "$out"; then
-  ok "beta falls back to the cache when the network is down"
-else no "beta falls back to the cache when the network is down: $out"; fi
+# --- stable: the export holds the database, the -wal file and the manifest ---
+if grep -q "ran 0.6.0" "$share/freedo/stable/freedo-state.db" && [ -f "$share/freedo/stable/freedo-state.db-wal" ] \
+   && [ "$(jq -r '.version + " " + .schema' "$share/freedo/stable/export.json")" = "0.6.0 8" ]; then
+  ok "stable exports the state after the daemon stops"
+else no "stable exports the state after the daemon stops: $(ls -la "$share/freedo/stable" 2>&1)"; fi
+modes=$(stat -c '%a' "$share/freedo" "$share/freedo/stable/freedo-state.db" | tr '\n' ' ')
+if [ "$modes" = "700 600 " ]; then ok "the export is private"; else no "the export is private: got '$modes'"; fi
+if [ "$(jq -r '.host + " " + (.stopped_at | type)' "$share/freedo/owner.json")" = "$stable number" ]; then
+  ok "stable records its stop"
+else no "stable records its stop: $(cat "$share/freedo/owner.json" 2>&1)"; fi
 
-# --- beta: no newer pre-release, the bundled daemon runs ---------------------
-d="$work/old/data"; mkdir -p "$d/assets"
-write_stub "$work/old/bundled" 0.3.2
-printf '[{"tag_name":"v0.2.0-beta.1","prerelease":true,"assets":[{"name":"freedo-linux-%s","browser_download_url":"file:///data/assets/x"},{"name":"SHA256SUMS","browser_download_url":"file:///data/assets/x"}]}]\n' "$arch" > "$d/releases.json"
-printf '{"api_token":"tok","channel":"beta"}\n' > "$d/options.json"
-out=$(run_case "$d" "file:///data/releases.json" "$work/old/bundled") || true
-if contains "no pre-release newer than 0.3.2" "$out" && contains "RAN 0.3.2" "$out"; then
-  ok "beta with no newer pre-release runs the bundled daemon"
-else no "beta with no newer pre-release runs the bundled daemon: $out"; fi
+# --- stable: SIGTERM reaches the daemon and the export follows its exit ------
+printf '{"api_token":"tok","transmit":false}\n' > "$sd/options.json"
+cid=$(run_case "$sd" "$share" "$work/slow-bin" "$stable" -d --init | tail -1)
+sleep 2
+before=$(grep -c stopped "$share/freedo/stable/freedo-state.db" || true)
+docker stop -t 20 "$cid" > /dev/null 2>&1 || true
+if [ "$before" = 0 ] && grep -q stopped "$share/freedo/stable/freedo-state.db"; then
+  ok "stable exports at start and again after SIGTERM"
+else no "stable exports at start and again after SIGTERM: before=$before"; fi
 
-# --- beta: a checksum mismatch is refused, the bundled daemon runs -----------
-d="$work/sum/data"; mkdir -p "$d/assets"
-write_stub "$work/sum/bundled" 0.3.2
-write_stub "$d/assets/freedo-linux-$arch" 0.9.0-beta.1
-printf '%s  freedo-linux-%s\n' "0000000000000000000000000000000000000000000000000000000000000000" "$arch" > "$d/assets/SHA256SUMS"
-printf '[{"tag_name":"v0.9.0-beta.1","prerelease":true,"assets":[{"name":"freedo-linux-%s","browser_download_url":"file:///data/assets/freedo-linux-%s"},{"name":"SHA256SUMS","browser_download_url":"file:///data/assets/SHA256SUMS"}]}]\n' "$arch" "$arch" > "$d/releases.json"
-printf '{"api_token":"tok","channel":"beta"}\n' > "$d/options.json"
-out=$(run_case "$d" "file:///data/releases.json" "$work/sum/bundled") || true
-if contains "RAN 0.3.2" "$out" && [ ! -d "$d/channel/0.9.0-beta.1" ]; then
-  ok "beta refuses a checksum mismatch and runs the bundled daemon"
-else no "beta refuses a checksum mismatch and runs the bundled daemon: $out"; fi
+# --- beta: the first start imports the export ---------------------------------
+bd="$work/beta-data"; mkdir -p "$bd"
+printf '{"api_token":"tok","transmit":false,"import_stable_state":false}\n' > "$bd/options.json"
+out=$(run_case "$bd" "$share" "$work/beta-bin" "$beta" -e FREEDO_BETA=1) || true
+if contains "imported the state of the stable add-on: freedo 0.6.0, schema 8" "$out" \
+   && contains "running freedo 0.7.0-beta.1 (beta add-on)" "$out" && grep -q stopped "$bd/freedo-state.db"; then
+  ok "beta imports the export at its first start"
+else no "beta imports the export at its first start: $out"; fi
+if ! grep -q "ran 0.7.0-beta.1" "$share/freedo/stable/freedo-state.db"; then
+  ok "beta leaves the export alone"
+else no "beta leaves the export alone"; fi
 
-# --- stable restore: a newer database is set aside, a backup is restored -----
-d="$work/restore/data"; mkdir -p "$d/backup/before-0.9.0-beta.1"
-write_stub "$work/restore/bundled" 0.3.2
-printf 'beta wrote this: newer\n' > "$d/freedo-state.db"
-printf 'stable database\n' > "$d/backup/before-0.9.0-beta.1/freedo-state.db"
-printf '{"api_token":"tok","channel":"stable"}\n' > "$d/options.json"
-out=$(run_case "$d" "file:///data/none.json" "$work/restore/bundled") || true
-aside=$(ls -d "$d"/backup/beta-* 2>/dev/null | head -1)
-if contains "set aside" "$out" && contains "RAN 0.3.2" "$out" \
-   && [ -n "$aside" ] && grep -q newer "$aside/freedo-state.db" \
-   && ! grep -q newer "$d/freedo-state.db"; then
-  ok "stable restores the backup and sets the beta database aside"
-else no "stable restores the backup and sets the beta database aside: $out"; fi
+# --- beta: the second start keeps its own state --------------------------------
+out=$(run_case "$bd" "$share" "$work/beta-bin" "$beta" -e FREEDO_BETA=1) || true
+if ! contains "imported" "$out" && [ "$(grep -c "ran 0.7.0-beta.1" "$bd/freedo-state.db")" = 2 ]; then
+  ok "beta does not import at the second start"
+else no "beta does not import at the second start: $out"; fi
 
-# --- stable: a newer database with no backup stops the start -----------------
-d="$work/nobkp/data"; mkdir -p "$d"
-write_stub "$work/nobkp/bundled" 0.3.2
-printf 'beta wrote this: newer\n' > "$d/freedo-state.db"
-printf '{"api_token":"tok","channel":"stable"}\n' > "$d/options.json"
-if out=$(run_case "$d" "file:///data/none.json" "$work/nobkp/bundled") && contains "RAN" "$out"; then
-  no "stable stops when a newer database has no backup: $out"
-elif contains "ERROR" "$out"; then
-  ok "stable stops when a newer database has no backup"
-else no "stable stops when a newer database has no backup: $out"; fi
+# --- beta: the option does not import the same export twice --------------------
+printf '{"api_token":"tok","transmit":false,"import_stable_state":true}\n' > "$bd/options.json"
+out=$(run_case "$bd" "$share" "$work/beta-bin" "$beta" -e FREEDO_BETA=1) || true
+if contains "is already imported" "$out" && [ "$(grep -c "ran 0.7.0-beta.1" "$bd/freedo-state.db")" = 3 ] \
+   && [ ! -d "$bd/backup" ]; then
+  ok "beta with the option on skips an export it already imported"
+else no "beta with the option on skips an export it already imported: $out"; fi
 
-# --- beta: the newest pre-release is cached, no download --------------------
-d="$work/cached/data"; mkdir -p "$d/channel/0.9.0-beta.1"
-write_stub "$work/cached/bundled" 0.3.2
-write_stub "$d/channel/0.9.0-beta.1/freedo-linux-$arch" 0.9.0-beta.1
-printf '[{"tag_name":"v0.9.0-beta.1","prerelease":true,"assets":[{"name":"freedo-linux-%s","browser_download_url":"file:///data/absent"},{"name":"SHA256SUMS","browser_download_url":"file:///data/absent"}]}]\n' "$arch" > "$d/releases.json"
-printf '{"api_token":"tok","channel":"beta"}\n' > "$d/options.json"
-out=$(run_case "$d" "file:///data/releases.json" "$work/cached/bundled") || true
-if contains "beta 0.9.0-beta.1 from the channel cache" "$out" && contains "RAN 0.9.0-beta.1" "$out"; then
-  ok "beta runs a cached pre-release without a download"
-else no "beta runs a cached pre-release without a download: $out"; fi
+# --- beta: the option imports a new export and keeps the replaced state ------
+out=$(run_case "$sd" "$share" "$work/stable-bin" "$stable") || true
+sleep 1
+out=$(run_case "$bd" "$share" "$work/beta-bin" "$beta" -e FREEDO_BETA=1) || true
+kept=$(ls -d "$bd"/backup/before-import-* 2>/dev/null | head -1)
+if contains "imported the state of the stable add-on" "$out" && contains "before this import is in" "$out" \
+   && [ -n "$kept" ] && [ "$(grep -c "ran 0.7.0-beta.1" "$kept/freedo-state.db")" = 3 ] \
+   && [ "$(grep -c "ran 0.7.0-beta.1" "$bd/freedo-state.db")" = 1 ]; then
+  ok "beta with the option on imports a new export and keeps a copy"
+else no "beta with the option on imports a new export and keeps a copy: $out"; fi
 
-# --- stable: a failed check other than a newer schema still starts -----------
-d="$work/broken/data"; mkdir -p "$d"
-write_stub "$work/broken/bundled" 0.3.2
+# --- beta: no export, an empty installation starts ----------------------------
+d="$work/empty/data"; mkdir -p "$d" "$work/empty/share"
+printf '{"api_token":"tok","transmit":false,"import_stable_state":false}\n' > "$d/options.json"
+out=$(run_case "$d" "$work/empty/share" "$work/beta-bin" "$beta" -e FREEDO_BETA=1) || true
+if contains "starting with an empty installation" "$out" && contains "RAN 0.7.0-beta.1" "$out"; then
+  ok "beta with no export starts empty"
+else no "beta with no export starts empty: $out"; fi
+
+# --- beta: an export of a newer schema stops the first start -----------------
+d="$work/newer/data"; s="$work/newer/share"; mkdir -p "$d" "$s/freedo/stable"
+printf 'schema 12\n' > "$s/freedo/stable/freedo-state.db"
+printf '{"version":"0.9.0","schema":"12","exported_at":"2026-01-01T00:00:00Z"}\n' > "$s/freedo/stable/export.json"
+printf '{"api_token":"tok","transmit":false,"import_stable_state":false}\n' > "$d/options.json"
+if out=$(run_case "$d" "$s" "$work/beta-bin" "$beta" -e FREEDO_BETA=1) && contains "RAN" "$out"; then
+  no "beta stops when it cannot read the export: $out"
+elif contains "ERROR" "$out" && [ ! -f "$d/freedo-state.db" ]; then
+  ok "beta stops when it cannot read the export"
+else no "beta stops when it cannot read the export: $out"; fi
+
+# --- guard: the other add-on answers, the start stops -------------------------
+d="$work/guard/data"; s="$work/guard/share"; mkdir -p "$d" "$s/freedo"
+printf '{"host":"127.0.0.1","stopped_at":null}\n' > "$s/freedo/owner.json"
+printf '{"api_token":"tok","transmit":true}\n' > "$d/options.json"
+if out=$(docker run --rm --user "$(id -u):$(id -g)" --hostname "$stable" \
+    -v "$d:/data:Z" -v "$s:/share:Z" -v "$work/run.sh:/run.sh:ro,Z" \
+    -v "$work/stable-bin:/usr/local/bin/freedo:ro,Z" -e SUPERVISOR_TOKEN=stub "$image" \
+    sh -c 'while :; do printf "HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\n\r\n" | nc -l -p 18080 > /dev/null; done & sleep 1; exec /run.sh' 2>&1) \
+   && contains "RAN" "$out"; then
+  no "the start stops while the other add-on runs: $out"
+elif contains "is running: stop it" "$out" \
+   && [ "$(jq -r '.host' "$s/freedo/owner.json")" = "127.0.0.1" ]; then
+  ok "the start stops while the other add-on runs"
+else no "the start stops while the other add-on runs: $out"; fi
+
+# --- guard: the other add-on stopped a moment ago, a transmitting start waits -
+printf '{"host":"127.0.0.1","stopped_at":%s}\n' "$(date +%s)" > "$s/freedo/owner.json"
+t0=$(date +%s)
+out=$(run_case "$d" "$s" "$work/stable-bin" "$stable" -e FREEDO_MID_WAIT=4) || true
+t1=$(date +%s)
+if contains "waiting" "$out" && contains "RAN 0.6.0" "$out" && [ $((t1 - t0)) -ge 3 ]; then
+  ok "a transmitting start waits after the other add-on stopped"
+else no "a transmitting start waits after the other add-on stopped ($((t1 - t0)) s): $out"; fi
+
+# --- guard: a dry-run start and a restart of the same add-on do not wait -----
+printf '{"host":"127.0.0.1","stopped_at":%s}\n' "$(date +%s)" > "$s/freedo/owner.json"
+printf '{"api_token":"tok","transmit":false}\n' > "$d/options.json"
+out=$(run_case "$d" "$s" "$work/stable-bin" "$stable") || true
+printf '{"api_token":"tok","transmit":true}\n' > "$d/options.json"
+out2=$(run_case "$d" "$s" "$work/stable-bin" "$stable") || true
+if ! contains "waiting" "$out" && contains "RAN 0.6.0" "$out" && ! contains "waiting" "$out2" && contains "RAN 0.6.0" "$out2"; then
+  ok "a dry-run start and a restart of the same add-on do not wait"
+else no "a dry-run start and a restart of the same add-on do not wait: $out $out2"; fi
+
+# --- stable: a database the daemon cannot check still starts ------------------
+d="$work/broken/data"; mkdir -p "$d" "$work/broken/share"
 printf 'broken\n' > "$d/freedo-state.db"
-printf '{"api_token":"tok","channel":"stable"}\n' > "$d/options.json"
-out=$(run_case "$d" "file:///data/none.json" "$work/broken/bundled") || true
-if contains "starting anyway" "$out" && contains "RAN 0.3.2" "$out"; then
-  ok "stable starts the daemon when the check fails for another reason"
-else no "stable starts the daemon when the check fails for another reason: $out"; fi
+printf '{"api_token":"tok","transmit":false}\n' > "$d/options.json"
+out=$(run_case "$d" "$work/broken/share" "$work/stable-bin" "$stable") || true
+if contains "was not exported" "$out" && contains "RAN 0.6.0" "$out" && [ ! -d "$work/broken/share/freedo/stable" ]; then
+  ok "stable starts and exports nothing when the check fails"
+else no "stable starts and exports nothing when the check fails: $out"; fi
 
 echo
 if [ "$fails" = 0 ]; then echo "all run.sh tests passed"; else echo "$fails run.sh test(s) failed"; exit 1; fi

@@ -14,11 +14,14 @@ permissions:
 jobs:
   addon:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        path: [addon, addon-beta]
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: frenck/action-app-linter@v2
         with:
-          path: ./addon
+          path: ./${{ matrix.path }}
 
   hassfest:
     runs-on: ubuntu-latest
@@ -37,17 +40,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
-      - name: The add-on and the integration share one version
-        run: |
-          addon=$(sed -n 's/^version: *"\{0,1\}\([^"]*\)"\{0,1\} *$/\1/p' addon/config.yaml)
-          integration=$(jq -r .version custom_components/freedo/manifest.json)
-          # A pre-release of the integration runs ahead of the add-on, which follows
-          # the stable releases only.
-          case "$integration" in
-            *-*) ok=$([ -n "$addon" ] && [ "${addon#*-}" = "$addon" ] && echo y) ;;
-            *) ok=$([ -n "$addon" ] && [ "$addon" = "$integration" ] && echo y) ;;
-          esac
-          if [ "$ok" != y ]; then
-            echo "::error::addon/config.yaml says '$addon', manifest.json says '$integration'"
-            exit 1
-          fi
+      - name: The add-ons and the integration follow the version rules
+        run: .github/scripts/check-versions.sh

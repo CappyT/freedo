@@ -22,33 +22,10 @@ jobs:
             target: addon
     steps:
       - uses: actions/checkout@v7.0.1
-      - name: The tag, the add-on and the integration share one version
+      - name: The tag, the add-ons and the integration follow the version rules
         env:
           TAG: ${{ github.ref_name }}
-        run: |
-          addon=$(sed -n 's/^version: *"\{0,1\}\([^"]*\)"\{0,1\} *$/\1/p' addon/config.yaml)
-          integration=$(jq -r .version custom_components/freedo/manifest.json)
-          if [ "v$integration" != "$TAG" ]; then
-            echo "::error::tag '$TAG', manifest.json '$integration'"
-            exit 1
-          fi
-          # A pre-release (vX.Y.Z-beta.N) leaves the add-on on the last stable version.
-          case "$TAG" in
-            *-*)
-              case "$addon" in
-                *-*)
-                  echo "::error::tag '$TAG', addon/config.yaml '$addon' must stay on a stable version"
-                  exit 1
-                  ;;
-              esac
-              ;;
-            *)
-              if [ "v$addon" != "$TAG" ]; then
-                echo "::error::tag '$TAG', addon/config.yaml '$addon'"
-                exit 1
-              fi
-              ;;
-          esac
+        run: .github/scripts/check-versions.sh "$TAG"
       - name: Name the image and the tags
         id: meta
         env:
@@ -153,8 +130,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
-          # One SHA256SUMS covers every released file. run.sh checks the line of
-          # the daemon binary it downloads.
+          # One SHA256SUMS covers every released file.
           mkdir dist
           cp firmware/*.bin binaries/freedo-linux-* dist/
           cat firmware/SHA256SUMS binaries/SHA256SUMS > dist/SHA256SUMS

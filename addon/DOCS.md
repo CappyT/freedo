@@ -31,37 +31,40 @@ before you use it.
 | `serial_port` | empty | The serial port of the radio bridge. Empty means no radio: the daemon only serves its API. |
 | `api_token` | empty | The bearer token of the API. Empty means the add-on creates one on the first start. |
 | `transmit` | off | Send frames on air. Off is dry-run: the daemon listens and decides, and sends nothing. |
-| `channel` | stable | The daemon channel. Stable runs the daemon of the image. Beta runs the newest pre-release from the GitHub releases of the repository. |
 
 The add-on starts in dry-run. Turn Transmit on only after the
 [first radio session](https://github.com/CappyT/freedo/blob/main/docs/OPERATION.md#first-radio-session)
 checks.
 
-## Channel
+## Pre-releases and the beta add-on
 
-One add-on and one data folder serve both channels. The channel only changes which daemon runs, so a
-paired installation stays.
+This add-on runs stable releases only. Pre-releases run in a second add-on of the same repository,
+freedo beta, which has its own data folder. Its documentation describes the import and the return to
+this add-on.
 
-- `stable`: the daemon inside the add-on image.
-- `beta`: the newest pre-release of the daemon, with less testing on a real plant. The add-on
-  downloads `freedo-linux-<arch>` and `SHA256SUMS` from the GitHub releases of
-  `https://github.com/CappyT/freedo` into its data folder, checks the checksum, and runs the binary.
-  The checksum guards against a broken download. The trust is in the GitHub releases of the
-  repository. When the download fails, the add-on runs the newest beta it cached, and then the
-  daemon of the image. The add-on keeps the two newest cached versions under `/data/channel/`.
+The two add-ons must not run at the same time: one coordinator serves a radio network. Each add-on
+writes its host name to `/share/freedo/owner.json` at start and the time of its stop when it stops. An
+add-on that finds the other one in that file asks its API port. When the other add-on answers, the
+start stops with an error in the log. When Transmit is on and the other add-on stopped less than 250
+seconds before, the start waits for the rest of that time. A device keeps the message identifiers it
+saw for 247 seconds, and each add-on continues its own sequence of identifiers. Turn on Start on boot
+for one of the two add-ons only.
 
-Before the first start of a beta version, the add-on copies the database to
-`/data/backup/before-<version>/`, with the `-wal` and `-shm` files when they exist, and keeps the
-three newest copies.
+The daemon also opens the serial port for itself alone. A second daemon on the same port stops at
+start with `Serial port busy`.
 
-To return to stable, set `channel` to `stable`. On every start, the add-on asks the chosen daemon to
-check the schema version of the database. When the database is newer than the daemon reads, the
-add-on restores the newest copy from `/data/backup/`, moves the database written under the beta to
-`/data/backup/beta-<timestamp>/`, and starts. The data written under the beta stays in that folder:
-move it back only with the same or a newer daemon. When no copy exists, the add-on stops instead of
-starting the daemon on a database it cannot read. When the check fails for another reason, the add-on
-starts the daemon, which reports the problem in its log. Keep these folders: the database holds the network
-key.
+## State export
+
+The add-on copies its database to `/share/freedo/stable/` at every start, before the daemon opens
+it, and after every stop of the daemon. The folder holds `freedo-state.db`, its `-wal` file when one
+exists, and `export.json` with the daemon version, the schema version and the time of the export. The
+beta add-on reads this copy. Nothing reads it back: this add-on never imports.
+
+The copy holds the network key. The folder `/share/freedo` has mode `0700` and the files have mode
+`0600`, but every add-on that maps the `share` folder runs as root and can read them, and so can a
+user of a file sharing add-on. Home Assistant backups that include the share folder hold the copy.
+Delete `/share/freedo/stable` when you do not use the beta add-on and do not want this copy. The add-on
+writes it again at the next start.
 
 ## Web interface
 
@@ -107,9 +110,10 @@ manage the installation through the API under `/api/install`. The
 
 ## Data and backups
 
-The add-on keeps everything under its data folder: the database `freedo-state.db`, the generated
+The add-on keeps its state under its data folder: the database `freedo-state.db`, the generated
 `api_token` and the log `freedo-unhandled.log`. Home Assistant backups include this folder. The
-database holds the network key, so protect the backups.
+database holds the network key, so protect the backups. The only data outside this folder is the
+[state export](#state-export).
 
 The backup is cold: Home Assistant stops the add-on, copies the folder and starts the add-on again.
 A cold backup keeps the SQLite files consistent.
@@ -120,7 +124,8 @@ device labels and serial numbers: remove them before you share it.
 ## Behavior
 
 - The add-on logs to the add-on log.
-- Stop and restart send SIGTERM. The daemon saves its state and exits in less than 10 seconds.
+- Stop and restart send SIGTERM. The daemon saves its state and exits in less than 10 seconds. The
+  add-on then writes the state export. The Supervisor waits 30 seconds for both.
 - After a radio error the daemon exits. Turn on the Watchdog switch of the add-on so that Home
   Assistant starts it again.
 - The daemon follows the time zone of its container (variable `TZ`) for the device clock and the

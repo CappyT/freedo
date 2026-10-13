@@ -14,9 +14,3 @@ configuration:
     description: >-
       Envoie des trames par radio. Désactivé signifie dry-run. Éteignez la
       passerelle commerciale avant d'activer cette option.
-  channel:
-    name: Canal
-    description: >-
-      Le canal du démon. Stable exécute le démon de cette image. Beta télécharge
-      la dernière pré-version du démon depuis les releases GitHub de ce dépôt et
-      l'exécute, avec moins de tests sur une installation réelle.
