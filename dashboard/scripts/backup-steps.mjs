@@ -57,8 +57,13 @@ export async function cancelRestore(tab, check, where, file, sent) {
 	check(!sent() && !(await tab.evaluate(`Boolean(document.querySelector('dialog[open]'))`)), `${where}: Cancel sends nothing`);
 }
 
-/** Picks the file, confirms, and follows the restart of the daemon to the end. */
-export async function confirmRestore(tab, check, where, file) {
+const waitText = /starts again in \d+ s after the restore of the backup\. The devices keep their last target/;
+
+/**
+ * Picks the file, confirms, and follows the restart of the daemon to the end. waitUntil() is the time
+ * until which the check answers as a daemon that waits after the import: 0 is a daemon that does not wait.
+ */
+export async function confirmRestore(tab, check, where, file, waitUntil = () => 0) {
 	await pick(tab, file);
 	await tab.evaluate(`${dialogButton('ok')}.click()`);
 	const restarting = await tab.waitFor(`document.querySelector('[data-testid=backup-restarting]')`, 8000).then(() => true, () => false);
@@ -66,17 +71,31 @@ export async function confirmRestore(tab, check, where, file) {
 	// The page must take the missing daemon as expected for the whole restart.
 	let scary = false;
 	let restored = false;
+	let counted = false;
+	let early = false;
 	for (let i = 0; i < 300 && !restored; i++) {
 		const state = await tab.evaluate(`({
 			restored: Boolean(document.querySelector('[data-testid=backup-restored]')),
+			wait: document.querySelector('main [data-testid=import-wait]')?.innerText ?? '',
+			section: document.querySelector('[data-testid=backup-restarting]')?.innerText ?? '',
 			failed: Boolean(document.querySelector('[data-testid=backup-error], [data-testid=backup-timeout]')),
 			banner: [...document.querySelectorAll('main .notice, .toasts *')].some((n) => /No answer from freedo/.test(n.textContent)),
 			gate: Boolean(document.querySelector('[data-testid="token-gate"]'))
 		})`);
 		if (state.banner || state.gate || state.failed) scary = true;
 		restored = state.restored;
+		if (waitText.test(state.wait) && state.section.trim() === state.wait.trim()) counted = true;
+		if (restored && Date.now() < waitUntil()) early = true;
 		if (!restored) await sleep(100);
 	}
 	check(restored, `${where}: the section says that the backup is restored`);
+	if (waitUntil() > 0) {
+		check(counted, `${where}: the banner and the section count the seconds of the wait after the restore`);
+		check(!early, `${where}: the section says restored only after the wait`);
+		check(
+			await tab.waitFor(`!document.querySelector('[data-testid=import-wait]') && !document.querySelector('.content[inert], nav[inert]')`, 8000).then(() => true, () => false),
+			`${where}: the page returns to normal by itself after the wait`
+		);
+	}
 	check(!scary, `${where}: the restart shows no error, no "No answer" banner and no token form`);
 }

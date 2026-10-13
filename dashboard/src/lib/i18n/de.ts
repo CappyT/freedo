@@ -50,6 +50,7 @@ export const de: Record<Key, string> = {
 
 	'banner.unreachable': 'Keine Antwort von freedo. Die Seite zeigt die letzten empfangenen Daten.',
 	'banner.restarting': 'freedo startet neu. Die Seite verbindet sich selbst wieder.',
+	'banner.importWait': 'freedo startet in {seconds} s nach der Wiederherstellung der Sicherung wieder. Die Geräte behalten ihren letzten Sollwert. Die Seite verbindet sich selbst wieder.',
 	'banner.radioError': 'Das Funkmodul ist ausgefallen: {error}',
 	'banner.bridge': 'Ein anderer Koordinator sendet, deshalb hat freedo das Senden eingestellt.',
 	'banner.dryRun': 'Probelauf: freedo entscheidet, sendet aber nichts an die Geräte.',

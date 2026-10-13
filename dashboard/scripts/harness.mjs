@@ -17,6 +17,23 @@ export function freePort() {
 	});
 }
 
+/**
+ * The answer of a daemon that waits after an import, as internal/daemon/state_transfer.go gives it.
+ * The daemon of the checks has no radio, so it never waits: the checks put this answer in its place.
+ */
+export function waitingAnswer(path, leftSec) {
+	const health = path.endsWith('/api/health');
+	return {
+		status: health ? 200 : 503,
+		headers: health ? { 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json', 'Retry-After': String(leftSec) },
+		body: JSON.stringify(
+			health
+				? { ok: true, mode: 'live', tx: true, txArmed: false, transmitAllowed: false, importWait: { leftSec } }
+				: { error: `freedo starts in ${leftSec} s: it waits after the import of a state` }
+		)
+	};
+}
+
 /** Starts the daemon binary. token sets FREEDO_API_TOKEN, and none leaves the API open on loopback. */
 export async function startDaemon(bin, { token } = {}) {
 	const work = mkdtempSync(join(tmpdir(), 'freedo-check-'));

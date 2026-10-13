@@ -9,14 +9,15 @@
 // 2. A nested unknown path redirects to the root of the app, relative to the prefix.
 // 3. With Chrome (CHROME, or on PATH), the app runs under the prefix: it asks for the
 //    token, accepts one, shows the seeded zones and opens each page. The Backup section of Settings
-//    downloads a backup and restores it through the prefix.
+//    downloads a backup and restores it through the prefix. After the import the proxy answers for some
+//    seconds as a daemon that waits before its start: the page counts the seconds and then returns to normal.
 //
 // Usage: FREEDO_BIN=./freedo node scripts/prefix-check.mjs
 import { randomBytes } from 'node:crypto';
 import http from 'node:http';
 import { cancelRestore, confirmRestore, downloadBackup } from './backup-steps.mjs';
 import { findChrome, launch } from './browser.mjs';
-import { freePort, startDaemon } from './harness.mjs';
+import { freePort, startDaemon, waitingAnswer } from './harness.mjs';
 import { seed } from './seed.mjs';
 
 const TOKEN = 'check-token-' + randomBytes(8).toString('hex');
@@ -36,6 +37,9 @@ const prefix = '/api/hassio_ingress/' + randomBytes(24).toString('base64url');
 const escaped = [];
 // The method and the path, without the prefix, of each request the proxy passed on.
 const proxied = [];
+// The proxy answers as a daemon that waits after an import until this time, from the import on.
+const WAIT_MS = 8000;
+let waitUntil = 0;
 
 function startProxy(port, target) {
 	const server = http.createServer((req, res) => {
@@ -46,6 +50,15 @@ function startProxy(port, target) {
 			return;
 		}
 		proxied.push(req.method + ' ' + (req.url.slice(prefix.length) || '/'));
+		const path = new URL(req.url.slice(prefix.length) || '/', 'http://daemon').pathname;
+		const left = Math.ceil((waitUntil - Date.now()) / 1000);
+		if (left > 0 && path.startsWith('/api/')) {
+			const answer = waitingAnswer(path, left);
+			res.writeHead(answer.status, answer.headers);
+			res.end(answer.body);
+			return;
+		}
+		if (req.method === 'POST' && path === '/api/state/import') res.on('finish', () => (waitUntil = Date.now() + WAIT_MS));
 		const headers = { ...req.headers, host: `127.0.0.1:${target}`, 'x-ingress-path': prefix };
 		const upstream = http.request(
 			{ host: '127.0.0.1', port: target, method: req.method, path: req.url.slice(prefix.length) || '/', headers },
@@ -190,7 +203,7 @@ try {
 		const backup = await downloadBackup(tab, check, 'under the prefix');
 		const imports = () => proxied.filter((r) => r.startsWith('POST /api/state/import')).length;
 		await cancelRestore(tab, check, 'under the prefix', backup, () => imports() > 0);
-		await confirmRestore(tab, check, 'under the prefix', backup);
+		await confirmRestore(tab, check, 'under the prefix', backup, () => waitUntil);
 		check(imports() === 1 && proxied.includes('GET /api/state/export'), 'the backup calls go through the prefix');
 		const after = await install();
 		check(after.home_id === before.home_id && after.rev === before.rev, 'the daemon runs on the restored installation');

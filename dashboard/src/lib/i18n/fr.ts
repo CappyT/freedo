@@ -50,6 +50,7 @@ export const fr: Record<Key, string> = {
 
 	'banner.unreachable': 'Pas de réponse de freedo. La page affiche les dernières données reçues.',
 	'banner.restarting': 'freedo redémarre. La page se reconnecte seule.',
+	'banner.importWait': 'freedo redémarre dans {seconds} s après la restauration de la sauvegarde. Les appareils gardent leur dernière consigne. La page se reconnecte seule.',
 	'banner.radioError': 'La radio s’est arrêtée : {error}',
 	'banner.bridge': 'Un autre coordinateur émet, donc freedo a cessé d’émettre.',
 	'banner.dryRun': 'Essai à blanc : freedo décide mais n’envoie rien aux appareils.',

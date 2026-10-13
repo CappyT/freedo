@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { auth } from '#lib/auth.svelte.ts';
-	import { exportState, importState, refusal, waitForRestart } from '#lib/backup.ts';
+	import { exportState, importState, refusal, uptimeOf, waitForRestart } from '#lib/backup.ts';
 	import ConfirmDialog from '#lib/ConfirmDialog.svelte';
 	import { data } from '#lib/data.svelte.ts';
 	import { serialLink } from '#lib/health.ts';
@@ -99,7 +99,7 @@
 			backupWaitSec = result.waitSec;
 			backupState = 'restarting';
 			data.restarting = true;
-			const back = await waitForRestart(async () => (await api.health()).uptimeSec, {
+			const back = await waitForRestart(async () => uptimeOf(await api.health()), {
 				before,
 				limitMs: result.waitSec * 1000 + RESTART_MARGIN_MS
 			});
@@ -171,7 +171,15 @@
 		{#if backupState === 'restarting'}
 			<p class="notice tone-warning" role="status" data-testid="backup-restarting">
 				<Icon name="refresh" />
-				<span>{backupWaitSec > 0 ? t('settings.backup.waiting', { seconds: backupWaitSec }) : t('settings.backup.restarting')}</span>
+				<span>
+					{data.waitSec !== null
+						? data.waitSec > 0
+							? t('banner.importWait', { seconds: data.waitSec })
+							: t('banner.restarting')
+						: backupWaitSec > 0
+							? t('settings.backup.waiting', { seconds: backupWaitSec })
+							: t('settings.backup.restarting')}
+				</span>
 			</p>
 		{:else if backupState === 'restored'}
 			<p class="notice tone-idle" role="status" data-testid="backup-restored"><Icon name="check" /><span>{t('settings.backup.restored')}</span></p>

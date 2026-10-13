@@ -66,6 +66,8 @@ export interface Health {
 	zoneFallback: ZoneFallback[];
 	timezone?: TimeZoneInfo;
 	interfaceModuleUnknown?: string[];
+	/** Present while a daemon that transmits waits after an import. Such an answer carries no state. */
+	importWait?: { leftSec: number };
 }
 
 export interface WindowView {

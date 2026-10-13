@@ -50,6 +50,7 @@ export const en = {
 
 	'banner.unreachable': 'No answer from freedo. The page shows the last data it received.',
 	'banner.restarting': 'freedo restarts. The page reconnects by itself.',
+	'banner.importWait': 'freedo starts again in {seconds} s after the restore of the backup. The devices keep their last target. The page reconnects by itself.',
 	'banner.radioError': 'The radio stopped: {error}',
 	'banner.bridge': 'Another coordinator is on air, so freedo has stopped transmitting.',
 	'banner.dryRun': 'Dry run: freedo decides but sends nothing to the devices.',

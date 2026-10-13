@@ -28,12 +28,15 @@
 // - The Backup section of Settings tells a user who is not an administrator why the daemon refuses, and
 //   downloads a database file. A restore asks first, sends nothing on
 //   Cancel, and on a confirm follows the restart of the daemon without an error, to the installation
-//   of the backup.
+//   of the backup. After the import the check answers for some seconds as a daemon that waits before
+//   its start: the banner and the section count the same seconds, and the section says restored after them.
+// - A daemon that waits after an import: every page shows one banner that counts down, keeps its last
+//   data, sends no command, and returns to normal by itself. A page that opens in the wait shows the banner alone.
 //
 // Usage: FREEDO_BIN=./freedo node scripts/ui-check.mjs
 import { cancelRestore, confirmRestore, downloadBackup } from './backup-steps.mjs';
 import { findChrome, launch } from './browser.mjs';
-import { startDaemon } from './harness.mjs';
+import { startDaemon, waitingAnswer } from './harness.mjs';
 import { seed } from './seed.mjs';
 
 const bin = process.env.FREEDO_BIN;
@@ -86,6 +89,10 @@ try {
 	const sessionBefore = Math.floor(Date.now() / 1000) - 3600;
 	// Fields put into the answer of GET /api/boiler, as if the boiler reported them. Null changes nothing.
 	let boilerPatch = null;
+	// Until waitUntil every answer is the one of a daemon that waits after an import. An import that
+	// passes starts such a wait of waitAfterImport milliseconds.
+	let waitUntil = 0;
+	let waitAfterImport = 0;
 	const fulfill = (p, json) =>
 		tab.call('Fetch.fulfillRequest', {
 			requestId: p.requestId,
@@ -115,6 +122,17 @@ try {
 				requests.push(`${method} ${path}`);
 				if (p.request.postData !== undefined) bodies.set(`${method} ${path}`, p.request.postData);
 				const apiPath = path.slice(path.indexOf('/api/')).replace(/^\/api\/nodes\/[^/]+\//, '/api/nodes/*/');
+				const left = Math.ceil((waitUntil - Date.now()) / 1000);
+				if (left > 0) {
+					const answer = waitingAnswer(path, left);
+					await tab.call('Fetch.fulfillRequest', {
+						requestId: p.requestId,
+						responseCode: answer.status,
+						responseHeaders: Object.entries(answer.headers).map(([name, value]) => ({ name, value })),
+						body: Buffer.from(answer.body).toString('base64')
+					});
+					return;
+				}
 				if (forbidden.has(`${method} ${apiPath}`)) {
 					await tab.call('Fetch.fulfillRequest', {
 						requestId: p.requestId,
@@ -134,6 +152,7 @@ try {
 					return;
 				}
 				await tab.call('Fetch.continueRequest', { requestId: p.requestId });
+				if (waitAfterImport > 0 && method === 'POST' && path.endsWith('/api/state/import')) waitUntil = Date.now() + waitAfterImport;
 				return;
 			}
 			if (path.endsWith('/api/health')) {
@@ -909,7 +928,9 @@ try {
 	const importSent = () => requests.includes('POST /api/state/import');
 	await cancelRestore(tab, check, 'backup', backup, importSent);
 	check((await api(fresh.base, 'install')).home_id === own.home_id && own.home_id !== source.home_id, 'a cancelled restore leaves the installation');
-	await confirmRestore(tab, check, 'backup', backup);
+	waitAfterImport = 8000;
+	await confirmRestore(tab, check, 'backup', backup, () => waitUntil);
+	waitAfterImport = 0;
 	check(importSent(), 'the restore sends the file to the daemon');
 	const restored = await api(fresh.base, 'install');
 	check(
@@ -920,6 +941,59 @@ try {
 		(await api(fresh.base, 'install/zones')).zones.length === (await api(daemon.base, 'install/zones')).zones.length,
 		'the daemon holds the rooms of the backup'
 	);
+
+	// 15. A daemon that waits after an import: every page counts the seconds, sends no command and comes back by itself.
+	const waitBanner = `document.querySelector('main [data-testid=import-wait]')`;
+	const waitSeconds = () => tab.evaluate(`Number(/in (\\d+) s/.exec(${waitBanner}?.innerText ?? '')?.[1] ?? NaN)`);
+	// A click of the mouse, which an inert element does not take. A click from a script would reach it.
+	const mouseClick = async (text) => {
+		const at = await tab.evaluate(`(() => {
+			const b = [...document.querySelectorAll('main button')].find((x) => x.textContent.trim().startsWith(${JSON.stringify(text)}));
+			b.scrollIntoView({ block: 'center' });
+			const r = b.getBoundingClientRect();
+			return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+		})()`);
+		for (const type of ['mousePressed', 'mouseReleased']) {
+			await tab.call('Input.dispatchMouseEvent', { type, x: at.x, y: at.y, button: 'left', clickCount: 1 });
+		}
+	};
+	await open('#/', `document.body.innerText.includes('Living room')`);
+	waitUntil = Date.now() + 12_000;
+	check(
+		await tab.waitFor(`/starts again in \\d+ s after the restore of the backup\\. The devices keep their last target/.test(${waitBanner}?.innerText ?? '')`, 8000).then(() => true, () => false),
+		'a daemon that waits after an import shows one banner with the seconds left'
+	);
+	check(
+		await tab.evaluate(`document.querySelectorAll('main > .notice').length === 1 && !/No answer from freedo/.test(document.body.innerText) && !document.querySelector('[data-testid="token-gate"]')`),
+		'the wait shows no other banner, no "No answer" and no token form'
+	);
+	const firstLeft = await waitSeconds();
+	await sleep(2100);
+	const laterLeft = await waitSeconds();
+	check(laterLeft < firstLeft && laterLeft > 0, `the banner counts down (${firstLeft} s, then ${laterLeft} s)`);
+	check(
+		await tab.evaluate(`Boolean(document.querySelector('.content[inert]')) && Boolean(document.querySelector('nav[inert]')) && document.body.innerText.includes('Living room')`),
+		'the page keeps its last data and takes no input in the wait'
+	);
+	requests.length = 0;
+	await mouseClick('Resume all');
+	await sleep(600);
+	check(requests.every((r) => r.startsWith('GET ') && r.endsWith('/api/health')), `the wait sends no command and reads the health alone (${[...new Set(requests)].join(', ') || 'no request'})`);
+	await tab.evaluate(`location.hash = '#/devices'; location.reload()`);
+	check(
+		await tab.waitFor(`${waitBanner} && !document.querySelector('main h1') && !document.body.innerText.includes('Loading')`, 8000).then(() => true, () => false),
+		'a page that opens in the wait shows the banner, and no page that loads for ever'
+	);
+	check(
+		await tab.waitFor(`!document.querySelector('[data-testid=import-wait]') && document.querySelector('main h1') && !document.querySelector('.content[inert], nav[inert]')`, 20_000).then(() => true, () => false),
+		'the page returns to normal by itself at the end of the wait'
+	);
+	check(Date.now() >= waitUntil, 'the page returns to normal only after the wait');
+	await open('#/', `document.body.innerText.includes('Living room')`);
+	requests.length = 0;
+	await mouseClick('Resume all');
+	check(await toast('Sent to'), 'after the wait the same click sends its command');
+	check(requests.some((r) => /^POST .*\/api\/zones\/\d+\/auto$/.test(r)), 'the command reaches the daemon after the wait');
 } catch (error) {
 	check(false, String(error?.stack ?? error));
 } finally {

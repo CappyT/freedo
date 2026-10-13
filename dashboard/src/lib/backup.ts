@@ -1,4 +1,5 @@
 import { ApiError } from './api.ts';
+import type { Health } from './types.ts';
 
 /**
  * The export and the import of the whole state of the daemon. The two calls are not in the client of
@@ -95,6 +96,12 @@ export interface RestartWait {
 	stepMs?: number;
 	sleep?: (ms: number) => Promise<void>;
 	now?: () => number;
+}
+
+/** The uptime of a daemon that runs. A daemon that waits after the import has not started yet. */
+export function uptimeOf(health: Health): number {
+	if (health.importWait) throw new Error('freedo waits after the import');
+	return health.uptimeSec;
 }
 
 /**

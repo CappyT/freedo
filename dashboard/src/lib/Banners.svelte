@@ -14,6 +14,8 @@
 	// Safety first: say when the daemon cannot reach the devices.
 	const banners = $derived.by(() => {
 		const list: Banner[] = [];
+		// The wait is the one thing to say: the data of the page is from before the restore.
+		if (data.waitSec !== null) return list;
 		const h = data.health;
 		if (data.restarting) list.push({ tone: 'warning', icon: 'refresh', text: t('banner.restarting') });
 		else if (!data.reachable) list.push({ tone: 'fault', icon: 'offline', text: t('banner.unreachable') });
@@ -27,6 +29,12 @@
 	});
 </script>
 
+{#if data.waitSec !== null}
+	<p class="notice tone-warning" role="timer" data-testid="import-wait">
+		<Icon name="refresh" />
+		<span>{data.waitSec > 0 ? t('banner.importWait', { seconds: data.waitSec }) : t('banner.restarting')}</span>
+	</p>
+{/if}
 {#each banners as banner (banner.text)}
 	<p class="notice tone-{banner.tone}" role={banner.tone === 'fault' ? 'alert' : 'status'}>
 		<Icon name={banner.icon} />

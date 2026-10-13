@@ -36,6 +36,8 @@
 		];
 	});
 
+	const waiting = $derived(data.waitSec !== null);
+
 	onMount(() => {
 		data.start();
 		return () => data.stop();
@@ -61,7 +63,7 @@
 			<img class="logo reversed" src={logoReversed} alt="" width="120" height="28" />
 		</a>
 	</div>
-	<nav aria-label={t('nav.label')}>
+	<nav aria-label={t('nav.label')} inert={waiting}>
 		<ul>
 			{#each items as item (item.href)}
 				<li>
@@ -78,7 +80,10 @@
 			<TokenGate />
 		{:else}
 			<Banners />
-			{@render children()}
+			<!-- A daemon that waits after an import refuses every command, and a page that opens in the wait reads nothing. -->
+			{#if !waiting || data.loaded}
+				<div class="content" inert={waiting}>{@render children()}</div>
+			{/if}
 		{/if}
 	</main>
 </div>
@@ -183,6 +188,16 @@
 		align-content: start;
 		min-width: 0;
 		outline: none;
+	}
+
+	.content {
+		display: grid;
+		min-width: 0;
+	}
+
+	.content[inert],
+	nav[inert] {
+		opacity: 0.5;
 	}
 
 	/* Phone and tablet: the logo sits on top and the navigation moves to the bottom edge. */
