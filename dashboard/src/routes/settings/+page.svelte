@@ -1,10 +1,14 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
+	import { ApiError } from '#lib/api.ts';
 	import { auth } from '#lib/auth.svelte.ts';
+	import { exportState, importState, waitForRestart } from '#lib/backup.ts';
+	import ConfirmDialog from '#lib/ConfirmDialog.svelte';
 	import { data } from '#lib/data.svelte.ts';
 	import { serialLink } from '#lib/health.ts';
 	import { fmt, t } from '#lib/i18n.svelte.ts';
 	import Icon from '#lib/Icon.svelte';
+	import { api } from '#lib/session.ts';
 	import { LOCALES, prefs, type LocalePref, type Theme } from '#lib/prefs.svelte.ts';
 	import { toasts } from '#lib/toast.svelte.ts';
 
@@ -37,6 +41,75 @@
 	function removeToken() {
 		auth.clear();
 		toasts.push('ok', t('settings.token.removed'));
+	}
+
+	const backupOptions = { token: () => auth.token };
+	// After the wait of a transmitting daemon, the start itself takes a few seconds more.
+	const RESTART_MARGIN_MS = 60_000;
+	let backupFiles = $state<FileList | undefined>();
+	const backupFile = $derived(backupFiles?.[0]);
+	let backupBusy = $state(false);
+	let backupState = $state<'idle' | 'restarting' | 'restored' | 'timeout'>('idle');
+	let backupWaitSec = $state(0);
+	let backupError = $state<string | null>(null);
+	let restoreDialog: ConfirmDialog | undefined = $state();
+
+	/** A refused token is a state of this section, not of the page: the other calls keep working. */
+	function backupFailed(error: unknown) {
+		backupError =
+			error instanceof ApiError && error.status === 401
+				? t('settings.backup.needsToken')
+				: error instanceof Error
+					? error.message
+					: String(error);
+	}
+
+	async function downloadBackup() {
+		backupBusy = true;
+		backupError = null;
+		try {
+			const { name, blob } = await exportState(backupOptions);
+			const href = URL.createObjectURL(blob);
+			const link = document.createElement('a');
+			link.href = href;
+			link.download = name;
+			document.body.append(link);
+			link.click();
+			link.remove();
+			setTimeout(() => URL.revokeObjectURL(href), 10_000);
+			toasts.push('ok', t('settings.backup.downloaded', { name }));
+		} catch (error) {
+			backupFailed(error);
+		} finally {
+			backupBusy = false;
+		}
+	}
+
+	async function restoreBackup() {
+		const file = backupFile;
+		if (!file) return;
+		backupBusy = true;
+		backupError = null;
+		backupState = 'idle';
+		const before = data.health?.uptimeSec ?? 0;
+		try {
+			const result = await importState(file, backupOptions);
+			backupWaitSec = result.waitSec;
+			backupState = 'restarting';
+			data.restarting = true;
+			const back = await waitForRestart(async () => (await api.health()).uptimeSec, {
+				before,
+				limitMs: result.waitSec * 1000 + RESTART_MARGIN_MS
+			});
+			backupState = back ? 'restored' : 'timeout';
+			backupFiles = undefined;
+		} catch (error) {
+			backupFailed(error);
+		} finally {
+			data.restarting = false;
+			backupBusy = false;
+			void data.refresh();
+		}
 	}
 
 </script>
@@ -84,6 +157,37 @@
 			<button class="btn primary" type="submit" disabled={token.trim() === ''}><Icon name="key" size={18} />{t('token.save')}</button>
 			<button class="btn danger" type="button" onclick={removeToken} disabled={!auth.token}><Icon name="trash" size={18} />{t('settings.token.remove')}</button>
 		</form>
+	</section>
+
+	<section class="panel" aria-labelledby="backup-title" data-testid="backup">
+		<header><h2 id="backup-title">{t('settings.backup')}</h2></header>
+		<p class="note">{t('settings.backup.note')}</p>
+		<p class="notice tone-warning" role="note"><Icon name="key" /><span>{t('settings.backup.secret')}</span></p>
+		{#if backupError}
+			<p class="notice tone-fault" role="alert" data-testid="backup-error"><Icon name="fault" /><span>{backupError}</span></p>
+		{/if}
+		{#if backupState === 'restarting'}
+			<p class="notice tone-warning" role="status" data-testid="backup-restarting">
+				<Icon name="refresh" />
+				<span>{backupWaitSec > 0 ? t('settings.backup.waiting', { seconds: backupWaitSec }) : t('settings.backup.restarting')}</span>
+			</p>
+		{:else if backupState === 'restored'}
+			<p class="notice tone-idle" role="status" data-testid="backup-restored"><Icon name="check" /><span>{t('settings.backup.restored')}</span></p>
+		{:else if backupState === 'timeout'}
+			<p class="notice tone-fault" role="alert" data-testid="backup-timeout"><Icon name="fault" /><span>{t('settings.backup.timeout')}</span></p>
+		{/if}
+		<div class="row fill">
+			<button class="btn" type="button" onclick={downloadBackup} disabled={backupBusy}><Icon name="key" size={18} />{t('settings.backup.download')}</button>
+		</div>
+		<div class="row fill">
+			<label class="field grow">
+				<span>{t('settings.backup.file')}</span>
+				<input class="input" type="file" accept=".db,application/vnd.sqlite3,application/octet-stream" bind:files={backupFiles} disabled={backupBusy} />
+			</label>
+			<button class="btn danger" type="button" onclick={() => restoreDialog?.show()} disabled={backupBusy || !backupFile}>
+				<Icon name="refresh" size={18} />{t('settings.backup.restore')}
+			</button>
+		</div>
 	</section>
 
 	<section class="panel" aria-labelledby="install-title">
@@ -145,6 +249,20 @@
 	</section>
 </section>
 
+<ConfirmDialog
+	bind:this={restoreDialog}
+	title={t('settings.backup.confirm.title')}
+	body={t('settings.backup.confirm.body', { name: backupFile?.name ?? '' })}
+	items={[
+		t('settings.backup.replaces.install'),
+		t('settings.backup.replaces.programs'),
+		t('settings.backup.replaces.keys'),
+		t('settings.backup.replaces.counters'),
+		t('settings.backup.replaces.learned')
+	]}
+	confirm={t('settings.backup.restore')}
+	onconfirm={() => void restoreBackup()}
+/>
 
 <style>
 	.group {

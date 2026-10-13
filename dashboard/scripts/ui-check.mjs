@@ -25,8 +25,12 @@
 //   The device that the pair window hears and the frames of the joined device are put into the
 //   answers here: the daemon has no radio. As the daemon does, the answers keep the device in the
 //   list after the window closes.
+// - The Backup section of Settings downloads a database file. A restore asks first, sends nothing on
+//   Cancel, and on a confirm follows the restart of the daemon without an error, to the installation
+//   of the backup.
 //
 // Usage: FREEDO_BIN=./freedo node scripts/ui-check.mjs
+import { cancelRestore, confirmRestore, downloadBackup } from './backup-steps.mjs';
 import { findChrome, launch } from './browser.mjs';
 import { startDaemon } from './harness.mjs';
 import { seed } from './seed.mjs';
@@ -871,6 +875,28 @@ try {
 		`the daemon holds the room, its thermostat and its circuit (${JSON.stringify([built.zone.name, built.zone.circuit, built.zone.members])})`
 	);
 	check((await api(fresh.base, 'install/circuits')).circuits[0]?.heat_source === wall.eui, 'the thermostat is the heat source of the circuit');
+
+	// 14. The backup: a download from the seeded daemon, then a restore into the daemon of the first setup.
+	await open('#/settings', `document.querySelector('[data-testid=backup]')`);
+	const backup = await downloadBackup(tab, check, 'backup');
+	const source = await api(daemon.base, 'install');
+	const own = await api(fresh.base, 'install');
+	await tab.navigate(fresh.base + '/#/settings');
+	await tab.waitFor(`document.querySelector('[data-testid=backup]')`);
+	const importSent = () => requests.includes('POST /api/state/import');
+	await cancelRestore(tab, check, 'backup', backup, importSent);
+	check((await api(fresh.base, 'install')).home_id === own.home_id && own.home_id !== source.home_id, 'a cancelled restore leaves the installation');
+	await confirmRestore(tab, check, 'backup', backup);
+	check(importSent(), 'the restore sends the file to the daemon');
+	const restored = await api(fresh.base, 'install');
+	check(
+		restored.home_id === source.home_id && restored.coordinator?.eui === source.coordinator?.eui,
+		`the daemon runs on the installation of the backup (home ${restored.home_id}, want ${source.home_id})`
+	);
+	check(
+		(await api(fresh.base, 'install/zones')).zones.length === (await api(daemon.base, 'install/zones')).zones.length,
+		'the daemon holds the rooms of the backup'
+	);
 } catch (error) {
 	check(false, String(error?.stack ?? error));
 } finally {

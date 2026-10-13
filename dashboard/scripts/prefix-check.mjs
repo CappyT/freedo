@@ -8,11 +8,13 @@
 // 1. Every file that the page and its modules reference loads under the prefix.
 // 2. A nested unknown path redirects to the root of the app, relative to the prefix.
 // 3. With Chrome (CHROME, or on PATH), the app runs under the prefix: it asks for the
-//    token, accepts one, shows the seeded zones and opens each page.
+//    token, accepts one, shows the seeded zones and opens each page. The Backup section of Settings
+//    downloads a backup and restores it through the prefix.
 //
 // Usage: FREEDO_BIN=./freedo node scripts/prefix-check.mjs
 import { randomBytes } from 'node:crypto';
 import http from 'node:http';
+import { cancelRestore, confirmRestore, downloadBackup } from './backup-steps.mjs';
 import { findChrome, launch } from './browser.mjs';
 import { freePort, startDaemon } from './harness.mjs';
 import { seed } from './seed.mjs';
@@ -32,6 +34,8 @@ const check = (ok, message) => {
 
 const prefix = '/api/hassio_ingress/' + randomBytes(24).toString('base64url');
 const escaped = [];
+// The method and the path, without the prefix, of each request the proxy passed on.
+const proxied = [];
 
 function startProxy(port, target) {
 	const server = http.createServer((req, res) => {
@@ -41,6 +45,7 @@ function startProxy(port, target) {
 			res.end('outside the prefix: ' + req.url);
 			return;
 		}
+		proxied.push(req.method + ' ' + (req.url.slice(prefix.length) || '/'));
 		const headers = { ...req.headers, host: `127.0.0.1:${target}`, 'x-ingress-path': prefix };
 		const upstream = http.request(
 			{ host: '127.0.0.1', port: target, method: req.method, path: req.url.slice(prefix.length) || '/', headers },
@@ -176,6 +181,19 @@ try {
 			'a reload on a zone page keeps the route and the token'
 		);
 		check(errors.length === 0, `the browser logged no error${errors.length ? ': ' + errors.join(' | ') : ''}`);
+
+		// 4. The backup under the prefix: the download and the upload are relative to the page too.
+		// The daemon restarts, so the proxy answers 502 for a moment and the browser logs it.
+		const install = () => fetch(daemon.base + '/api/install', { headers: { Authorization: 'Bearer ' + TOKEN } }).then((r) => r.json());
+		const before = await install();
+		await tab.navigate(root + '#/settings');
+		const backup = await downloadBackup(tab, check, 'under the prefix');
+		const imports = () => proxied.filter((r) => r.startsWith('POST /api/state/import')).length;
+		await cancelRestore(tab, check, 'under the prefix', backup, () => imports() > 0);
+		await confirmRestore(tab, check, 'under the prefix', backup);
+		check(imports() === 1 && proxied.includes('GET /api/state/export'), 'the backup calls go through the prefix');
+		const after = await install();
+		check(after.home_id === before.home_id && after.rev === before.rev, 'the daemon runs on the restored installation');
 	}
 
 	check(escaped.length === 0, `no request left the prefix${escaped.length ? ': ' + escaped.join(', ') : ''}`);

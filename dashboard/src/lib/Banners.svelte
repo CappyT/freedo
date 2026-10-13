@@ -15,7 +15,8 @@
 	const banners = $derived.by(() => {
 		const list: Banner[] = [];
 		const h = data.health;
-		if (!data.reachable) list.push({ tone: 'fault', icon: 'offline', text: t('banner.unreachable') });
+		if (data.restarting) list.push({ tone: 'warning', icon: 'refresh', text: t('banner.restarting') });
+		else if (!data.reachable) list.push({ tone: 'fault', icon: 'offline', text: t('banner.unreachable') });
 		if (h?.radioError) list.push({ tone: 'fault', icon: 'fault', text: t('banner.radioError', { error: h.radioError }) });
 		if (h?.bridgePresent) list.push({ tone: 'fault', icon: 'warning', text: t('banner.bridge') });
 		if (h && h.mode === 'live' && !h.tx) list.push({ tone: 'warning', icon: 'warning', text: t('banner.dryRun') });

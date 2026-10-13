@@ -122,7 +122,8 @@ const ALLOWED = [
 ];
 
 // What stays behind the token under ingress, whatever the client does: the identity of the network,
-// the network key, a pairing with a key of the caller, calibration, firmware and the debug routes.
+// the network key, a pairing with a key of the caller, calibration, firmware, the debug routes, and
+// the export and the import of the state: the file holds the network key.
 const TOKEN_ONLY = [
 	'PATCH /api/install',
 	'PUT /api/install/network_key',
@@ -133,7 +134,9 @@ const TOKEN_ONLY = [
 	'POST /api/nodes/0201/fw',
 	'POST /api/nodes/0201/config',
 	'GET /api/debug/rx',
-	'POST /api/debug/decrypt'
+	'POST /api/debug/decrypt',
+	'GET /api/state/export',
+	'POST /api/state/import'
 ];
 
 /** The daemon matches a segment in braces against one non-empty segment. */

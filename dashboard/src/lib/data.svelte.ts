@@ -18,6 +18,8 @@ class Data {
 	presets = $state<Preset[]>([]);
 	/** False while no request reaches the daemon. */
 	reachable = $state(true);
+	/** True while the daemon restarts on purpose: no answer is expected, not a fault. */
+	restarting = $state(false);
 	loaded = $state(false);
 	/** The message of the last failed request, shown when nothing loaded. */
 	problem = $state<string | null>(null);
