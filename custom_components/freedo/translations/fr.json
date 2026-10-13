@@ -284,9 +284,9 @@
       "device_overlay_end": {
         "name": "Règle de fin d'une modification sur l'appareil",
         "state": {
-          "manual": "Manuel",
-          "until_next": "Jusqu'au prochain bloc horaire",
-          "timer": "Minuteur"
+          "manual": "Jusqu'à ce que je le termine",
+          "until_next": "Jusqu'au bloc suivant",
+          "timer": "Pour une durée fixe"
         }
       },
       "offset_mode": {
@@ -326,7 +326,7 @@
         "name": "Adaptation départ"
       },
       "pairing_mode": {
-        "name": "Mode d'association"
+        "name": "Mode d'appairage"
       },
       "notification": {
         "name": "Notification de modification"
@@ -347,16 +347,16 @@
   },
   "services": {
     "pair": {
-      "name": "Associer un appareil",
-      "description": "Envoie la commande d'association à un appareil qui attend dans la fenêtre d'association. freedo doit déjà contenir l'appareil : le tableau de bord de freedo ajoute un appareil et l'associe sur une seule page. Un appareil peut manquer la commande : envoyez-la de nouveau tant que la fenêtre d'association est ouverte.",
+      "name": "Appairer un appareil",
+      "description": "Envoie la commande d'appairage à un appareil qui attend dans la fenêtre d'appairage. freedo doit déjà contenir l'appareil : le tableau de bord de freedo ajoute un appareil et l'appaire sur une seule page. Un appareil peut manquer la commande : envoyez-la de nouveau tant que la fenêtre d'appairage est ouverte.",
       "fields": {
         "device": {
           "name": "Appareil",
-          "description": "L'EUI de l'appareil, tel que l'affiche l'attribut joiners de l'interrupteur Mode d'association. Laissez vide pour associer le seul appareil qui attend dans la fenêtre d'association."
+          "description": "L'EUI de l'appareil, tel que l'affiche l'attribut joiners de l'interrupteur Mode d'appairage. Laissez vide pour appairer le seul appareil qui attend dans la fenêtre d'appairage."
         },
         "config_entry_id": {
           "name": "Hub",
-          "description": "Le hub freedo qui associe l'appareil. Nécessaire seulement lorsque plusieurs hubs sont chargés."
+          "description": "Le hub freedo qui appaire l'appareil. Nécessaire seulement lorsque plusieurs hubs sont chargés."
         }
       }
     },
@@ -498,9 +498,9 @@
     },
     "overlay_end_rule": {
       "options": {
-        "manual": "Manuel",
-        "timer": "Minuteur",
-        "until_next": "Jusqu'au prochain bloc horaire",
+        "manual": "Jusqu'à ce que je le termine",
+        "timer": "Pour une durée fixe",
+        "until_next": "Jusqu'au bloc suivant",
         "until_auto_change": "Jusqu'au prochain changement automatique"
       }
     }
@@ -512,7 +512,7 @@
     }
   },
   "exceptions": {
-    "pair_needs_one_device": { "message": "La fenêtre d'association contient {count} appareils en attente. Le champ appareil est nécessaire, sauf si un seul appareil attend." },
+    "pair_needs_one_device": { "message": "La fenêtre d'appairage contient {count} appareils en attente. Le champ appareil est nécessaire, sauf si un seul appareil attend." },
     "overlay_temperature_required": {
       "message": "Définissez une température avec le mode Chauffage."
     },

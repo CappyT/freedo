@@ -284,9 +284,9 @@
       "device_overlay_end": {
         "name": "Endregel für Änderung am Gerät",
         "state": {
-          "manual": "Manuell",
-          "until_next": "Bis zum nächsten Zeitblock",
-          "timer": "Timer"
+          "manual": "Bis ich sie beende",
+          "until_next": "Bis zum nächsten Block",
+          "timer": "Für eine feste Zeit"
         }
       },
       "offset_mode": {
@@ -498,9 +498,9 @@
     },
     "overlay_end_rule": {
       "options": {
-        "manual": "Manuell",
-        "timer": "Timer",
-        "until_next": "Bis zum nächsten Zeitblock",
+        "manual": "Bis ich sie beende",
+        "timer": "Für eine feste Zeit",
+        "until_next": "Bis zum nächsten Block",
         "until_auto_change": "Bis zur nächsten automatischen Änderung"
       }
     }

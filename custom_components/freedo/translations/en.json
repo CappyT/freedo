@@ -212,9 +212,9 @@
       "device_overlay_end": {
         "name": "Device change end rule",
         "state": {
-          "manual": "Manual",
-          "until_next": "Until next time block",
-          "timer": "Timer"
+          "manual": "Until I end it",
+          "until_next": "Until the next block",
+          "timer": "For a set time"
         }
       },
       "offset_mode": {
@@ -406,10 +406,10 @@
     },
     "overlay_end_rule": {
       "options": {
-        "manual": "Manual",
-        "timer": "Timer",
-        "until_next": "Until next time block",
-        "until_auto_change": "Until next automatic change"
+        "manual": "Until I end it",
+        "timer": "For a set time",
+        "until_next": "Until the next block",
+        "until_auto_change": "Until the next automatic change"
       }
     }
   },

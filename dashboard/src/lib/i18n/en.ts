@@ -25,11 +25,11 @@ export const en = {
 	'state.fault': 'Fault',
 
 	'alert.lowBattery': 'Low battery',
-	'alert.commsWarning': 'Weak radio link',
+	'alert.commsWarning': 'Communication warning',
 	'alert.fallback': 'Thermostat fallback',
-	'alert.deviceOffline': 'A device is offline',
+	'alert.deviceOffline': 'Device offline',
 	'alert.deviceFault': 'Device fault',
-	'alert.deviceWarning': 'Device warning',
+	'alert.deviceWarning': 'Valve warning',
 	'alert.windowUndelivered': 'Window state not delivered',
 
 	'condition.notMounted': 'Not mounted on a radiator',
@@ -157,7 +157,7 @@ export const en = {
 	'zone.boostStart': 'Start boost',
 	'zone.boostStop': 'Stop boost',
 	'zone.state': 'State',
-	'zone.demand': 'Heat demand',
+	'zone.demand': 'Heating demand',
 	'zone.scheduled': 'Scheduled now',
 	'zone.devices': 'Devices of this room',
 	'zone.hotWaterName': 'Hot water',

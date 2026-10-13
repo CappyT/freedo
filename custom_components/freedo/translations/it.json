@@ -284,9 +284,9 @@
       "device_overlay_end": {
         "name": "Regola di fine della modifica sul dispositivo",
         "state": {
-          "manual": "Manuale",
-          "until_next": "Fino al blocco orario successivo",
-          "timer": "Timer"
+          "manual": "Fino a quando la termino io",
+          "until_next": "Fino al prossimo blocco",
+          "timer": "Per un tempo stabilito"
         }
       },
       "offset_mode": {
@@ -498,10 +498,10 @@
     },
     "overlay_end_rule": {
       "options": {
-        "manual": "Manuale",
-        "timer": "Timer",
-        "until_next": "Fino al blocco orario successivo",
-        "until_auto_change": "Fino al prossimo cambio automatico"
+        "manual": "Fino a quando la termino io",
+        "timer": "Per un tempo stabilito",
+        "until_next": "Fino al prossimo blocco",
+        "until_auto_change": "Fino alla prossima modifica automatica"
       }
     }
   },
