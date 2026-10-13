@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError } from '../src/lib/api.ts';
-import { exportState, fileName, importState, waitForRestart } from '../src/lib/backup.ts';
+import { exportState, fileName, importState, refusal, waitForRestart } from '../src/lib/backup.ts';
+import adminRoutes from '../../internal/daemon/ingress_admin_routes.json';
 import routes from '../../internal/daemon/ingress_routes.json';
 
 interface Seen {
@@ -72,8 +73,24 @@ describe('the backup calls', () => {
 		});
 	});
 
-	it('are not in the list that ingress serves without the token', () => {
-		expect(routes.filter((r) => r.includes('/api/state'))).toEqual([]);
+	it('are the routes that ingress serves to an administrator, and not to every user', async () => {
+		const seen: string[] = [];
+		const fetchStub = (async (url: string | URL | Request, init?: RequestInit) => {
+			seen.push(`${init?.method ?? 'GET'} ${new URL(String(url)).pathname}`);
+			return Response.json({});
+		}) as unknown as typeof fetch;
+		await exportState({ base: 'http://daemon/', fetch: fetchStub });
+		await importState(new Blob(['x']), { base: 'http://daemon/', fetch: fetchStub });
+		expect(seen.sort()).toEqual([...adminRoutes].sort());
+		expect(adminRoutes).toEqual(['GET /api/state/export', 'POST /api/state/import']);
+		expect(routes.filter((r) => adminRoutes.includes(r) || r.includes('/api/state'))).toEqual([]);
+	});
+
+	it('tell a user who is not an administrator from a missing token', () => {
+		expect(refusal(new ApiError(403, 'only a Home Assistant administrator can export or import the state'))).toBe('admin');
+		expect(refusal(new ApiError(401, 'missing bearer token'))).toBe('token');
+		expect(refusal(new ApiError(503, 'Home Assistant did not say whether the user is an administrator'))).toBeNull();
+		expect(refusal(new Error('network'))).toBeNull();
 	});
 });
 

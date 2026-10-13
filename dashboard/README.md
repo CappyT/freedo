@@ -91,9 +91,11 @@ pairing calls, so the pages Rooms and devices and First setup work under the add
 writes a field that ingress must not reach, the client calls a route that carries one field:
 `PUT /api/install/timezone`, `PUT /api/install/devices/{ref}/zone` and `POST /api/pair/devices/{ref}`.
 
-The backup is the exception. `src/lib/backup.ts` calls `GET /api/state/export` and
-`POST /api/state/import`, which are not in the list and are not methods of the client in `api.ts`. The
-file holds the network key and every Home Assistant user can reach ingress, so both calls need the API
-token under the add-on too. The section Backup of Settings says so when the daemon refuses the call, and
-does not open the token form of the whole page.
+The backup is a class of its own. `src/lib/backup.ts` calls `GET /api/state/export` and
+`POST /api/state/import`, which are not in that list and are not methods of the client in `api.ts`. They
+are the two pairs of `../internal/daemon/ingress_admin_routes.json`: the file holds the network key, so
+under the add-on the daemon serves them to a Home Assistant administrator only, and elsewhere they need
+the token. `tests/backup.test.ts` pins the two pairs and checks that they are in no other list. The
+section Backup of Settings shows a `403` as "only a Home Assistant administrator" and a `401` as a
+missing token, and does not open the token form of the whole page.
 See [`docs/OPERATION.md`](../docs/OPERATION.md#dashboard).

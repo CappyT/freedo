@@ -25,7 +25,8 @@
 //   The device that the pair window hears and the frames of the joined device are put into the
 //   answers here: the daemon has no radio. As the daemon does, the answers keep the device in the
 //   list after the window closes.
-// - The Backup section of Settings downloads a database file. A restore asks first, sends nothing on
+// - The Backup section of Settings tells a user who is not an administrator why the daemon refuses, and
+//   downloads a database file. A restore asks first, sends nothing on
 //   Cancel, and on a confirm follows the restart of the daemon without an error, to the installation
 //   of the backup.
 //
@@ -67,6 +68,8 @@ try {
 	// The body of each request that carried one, by method and path.
 	const bodies = new Map();
 	const failing = new Set();
+	// The calls that the daemon refuses with 403, as it does under Home Assistant for a user who is no administrator.
+	const forbidden = new Set();
 	let zonesPatch = null;
 	// While holdHealth is set, the answers of GET /api/health wait in held: a poll stays in flight.
 	let holdHealth = false;
@@ -112,6 +115,15 @@ try {
 				requests.push(`${method} ${path}`);
 				if (p.request.postData !== undefined) bodies.set(`${method} ${path}`, p.request.postData);
 				const apiPath = path.slice(path.indexOf('/api/')).replace(/^\/api\/nodes\/[^/]+\//, '/api/nodes/*/');
+				if (forbidden.has(`${method} ${apiPath}`)) {
+					await tab.call('Fetch.fulfillRequest', {
+						requestId: p.requestId,
+						responseCode: 403,
+						responseHeaders: [{ name: 'Content-Type', value: 'application/json' }],
+						body: Buffer.from('{"error":"only a Home Assistant administrator can export or import the state"}').toString('base64')
+					});
+					return;
+				}
 				if (failing.has(`${method} ${apiPath}`)) {
 					await tab.call('Fetch.fulfillRequest', {
 						requestId: p.requestId,
@@ -878,6 +890,17 @@ try {
 
 	// 14. The backup: a download from the seeded daemon, then a restore into the daemon of the first setup.
 	await open('#/settings', `document.querySelector('[data-testid=backup]')`);
+	forbidden.add('GET /api/state/export');
+	await clickIn('[data-testid=backup]', 'Download backup');
+	check(
+		await tab.waitFor(`/Only a Home Assistant administrator can download or restore a backup/.test(document.querySelector('[data-testid=backup-error]')?.innerText ?? '')`, 6000).then(() => true, () => false),
+		'a user who is not an administrator reads why the backup is refused'
+	);
+	check(
+		await tab.evaluate(`!document.querySelector('[data-testid="token-gate"]') && Boolean(document.querySelector('#daemon-title'))`),
+		'the refusal stays in the section: the page asks for no token'
+	);
+	forbidden.clear();
 	const backup = await downloadBackup(tab, check, 'backup');
 	const source = await api(daemon.base, 'install');
 	const own = await api(fresh.base, 'install');

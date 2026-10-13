@@ -1,8 +1,7 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { ApiError } from '#lib/api.ts';
 	import { auth } from '#lib/auth.svelte.ts';
-	import { exportState, importState, waitForRestart } from '#lib/backup.ts';
+	import { exportState, importState, refusal, waitForRestart } from '#lib/backup.ts';
 	import ConfirmDialog from '#lib/ConfirmDialog.svelte';
 	import { data } from '#lib/data.svelte.ts';
 	import { serialLink } from '#lib/health.ts';
@@ -54,14 +53,17 @@
 	let backupError = $state<string | null>(null);
 	let restoreDialog: ConfirmDialog | undefined = $state();
 
-	/** A refused token is a state of this section, not of the page: the other calls keep working. */
+	/** A refusal is a state of this section, not of the page: the other calls keep working. */
 	function backupFailed(error: unknown) {
+		const why = refusal(error);
 		backupError =
-			error instanceof ApiError && error.status === 401
-				? t('settings.backup.needsToken')
-				: error instanceof Error
-					? error.message
-					: String(error);
+			why === 'admin'
+				? t('settings.backup.adminOnly')
+				: why === 'token'
+					? t('settings.backup.needsToken')
+					: error instanceof Error
+						? error.message
+						: String(error);
 	}
 
 	async function downloadBackup() {

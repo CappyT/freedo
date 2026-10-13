@@ -123,7 +123,9 @@ const ALLOWED = [
 
 // What stays behind the token under ingress, whatever the client does: the identity of the network,
 // the network key, a pairing with a key of the caller, calibration, firmware, the debug routes, and
-// the export and the import of the state: the file holds the network key.
+// the export and the import of the state: the file holds the network key. The daemon serves those two
+// to a Home Assistant administrator through ingress (internal/daemon/ingress_admin_routes.json), and
+// never as plain ingress pairs.
 const TOKEN_ONLY = [
 	'PATCH /api/install',
 	'PUT /api/install/network_key',

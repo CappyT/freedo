@@ -2,8 +2,8 @@ import { ApiError } from './api.ts';
 
 /**
  * The export and the import of the whole state of the daemon. The two calls are not in the client of
- * api.ts: they need the API token also under Home Assistant ingress, because the file holds the
- * network key and an import replaces the installation.
+ * api.ts: the file holds the network key and an import replaces the installation, so under Home
+ * Assistant ingress the daemon serves them to an administrator only, and elsewhere they need the token.
  */
 export interface BackupOptions {
 	/** Document the API paths are relative to. The default is the base of the page. */
@@ -77,6 +77,15 @@ export async function importState(file: Blob, options: BackupOptions = {}): Prom
 		options
 	);
 	return (await response.json()) as ImportResult;
+}
+
+/**
+ * Why the daemon refused a backup call: 403 is a Home Assistant user who is not an administrator,
+ * 401 is a missing or wrong API token. Null is any other failure.
+ */
+export function refusal(error: unknown): 'admin' | 'token' | null {
+	if (!(error instanceof ApiError)) return null;
+	return error.status === 403 ? 'admin' : error.status === 401 ? 'token' : null;
 }
 
 export interface RestartWait {
