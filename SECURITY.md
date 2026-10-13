@@ -17,7 +17,7 @@ The API token protects the plant. Anyone who has the token can:
 - set temperatures and switch zones, hot water and the whole home;
 - change the installation, including devices, zones, circuits and (while no device is
   declared) the network key;
-- pair devices, make a device leave the network and start a firmware transfer;
+- pair devices and start a firmware transfer;
 - read device identifiers from the installation routes.
 
 ## Home Assistant ingress
@@ -71,7 +71,7 @@ calls. Give the right to open the page with care.
 These stay behind the token, also from that address: the identity of the network (`home_id`,
 `coordinator`) and every other field of `PATCH /api/install`, the network key
 (`PUT /api/install/network_key`, and `POST /api/pair` with its `networkKeyHex` field), the kind and the
-serial of a device (`PATCH /api/install/devices/{ref}`), factory reset, reboot, calibration and firmware,
+serial of a device (`PATCH /api/install/devices/{ref}`), reboot, calibration and firmware,
 the low-level device writes, the raw device reads and the debug routes. `GET /api/install` shows the
 home id and the coordinator EUI. They are identifiers, and no route returns the network key. The daemon compares the method and the exact path. It reads the address of the TCP
 connection and no header. It ignores `--ingress`, and logs a warning, unless the process runs under the

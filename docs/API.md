@@ -165,10 +165,8 @@ banner.
 | `POST /api/nodes/{id}/calibrate` | Start the motor calibration of a valve. |
 | `POST /api/nodes/{id}/reboot` | Restart a device. |
 | `POST /api/nodes/{id}/extui` | Write the external interface endpoints. |
-| `POST /api/nodes/{id}/netcmd` | Send a non-destructive network command. |
 | `POST /api/nodes/{id}/config` | Write chosen `d/config` tags. |
 | `DELETE /api/nodes/{id}/config/offlineScheduleEnabled` | Remove the per-device offline schedule value. |
-| `POST /api/nodes/{id}/factoryreset` | Send the network command that makes a device leave the network. |
 | `PUT /api/nodes/{id}/schedule` | Write the home program of the heating zone of a device, or the document of a device in no heating zone. |
 | `GET`, `POST`, `DELETE /api/nodes/{id}/fw` | Read the firmware state, start or cancel a transfer. |
 | `GET /api/nodes/{id}/currentlog` | Read the device log. |
@@ -766,12 +764,9 @@ at least one alarm. `/api/nodes` shows the same data as `LowBattery`, `Fault`, `
   because the valve drops the request in silence in some states. The result arrives in the
   `d/<serial>/mnt` report: `Telemetry` shows `calib_state` (1 started, 2 done, 3 failed),
   `calib_error`, `ctrl_1b5` and `ctrl_1b6`.
-- `POST /api/nodes/{id}/factoryreset` with `{"confirm": true}` queues the network command 1007.
-  The command alone does not detach the device at once: one valve sent a report under the network
-  key 17 seconds after it acknowledged the command, and the daemon accepted it. The valve left the
-  network when its button was held. It is not measured whether the command erases the stored key.
-  The device keeps its token. The physical button wipes its storage. The call changes nothing in
-  the installation.
+- No route detaches a device. A device leaves its network only when its button is held, which also
+  wipes its storage. The reason is in
+  [PROTOCOL.md](PROTOCOL.md#network-commands-and-leaving-the-network).
 
 ### Display
 

@@ -40,10 +40,10 @@ Tested on a real plant (one plant, one ESP32 development board with one CC1101 m
 - The motor calibration, on one valve.
 - The temperature correction in the modes `config` and `dbg2`, on one valve.
 - A window state that the coordinator sets, on one valve.
-- Pairing one valve through the API: the factory reset command, the removal from the installation, the
-  pair window of the bridge firmware, the declaration of a device that the installation did not hold, the
-  `d/pair` command and the serial that the daemon learns from the device. The valve works in its zone
-  again.
+- Pairing one valve through the API: the button press that makes the valve leave, the removal from the
+  installation, the pair window of the bridge firmware, the declaration of a device that the installation
+  did not hold, the `d/pair` command and the serial that the daemon learns from the device. The valve
+  works in its zone again. A remote leave command was tried on that valve and had no effect.
 - The read of the firmware version of each device.
 - freedo runs as the only coordinator of that plant, as a Home Assistant add-on with the integration.
   The devices of that plant were not paired from scratch, apart from one valve.
@@ -87,8 +87,8 @@ No record covers a long run or a long outage of the coordinator.
   rooms and schedules that you set in the tado app do not move to freedo. You describe the rooms again
   in the dashboard or through the API, and the schedules in the dashboard, Home Assistant or the API. To go back,
   pair the devices to the tado bridge again. That procedure belongs to the tado bridge and is not
-  documented or tested here. freedo sends a device the command to leave its network
-  (`POST /api/nodes/{id}/factoryreset`). The device leaves when you then hold its button.
+  documented or tested here. freedo has no leave command and no remote detach. A device leaves its
+  network only when you hold its button.
 - A setup import from the tado cloud is planned: rooms, schedules and settings. The devices still pair from
   scratch. It is not available.
 - Supported hardware: the valves and the wall thermostats of the V3+ line. Other device types
@@ -214,7 +214,7 @@ measuring device and the demand reporter of a room. It adds a device: it opens t
 the device that the window hears and sends the pair command. It removes a device and shows the effects before you confirm. Under Home Assistant ingress this
 page and the page First setup need no token, so every Home Assistant user who can open the dashboard can
 change the installation and pair a device. The network key, the identity of the network,
-the kind and the serial of a device, the zone options, the name of a circuit and the factory reset stay in
+the kind and the serial of a device, the zone options and the name of a circuit stay in
 the API. See
 [`docs/OPERATION.md`](docs/OPERATION.md#dashboard) for the access rules and
 [`dashboard/README.md`](dashboard/README.md) to build it.
@@ -251,9 +251,9 @@ what is not verified on air. The routes are in [`docs/API.md`](docs/API.md). The
 | Automatic correction from an outside sensor | extra | In modes `config` and `dbg2`, at most once per settable interval, with a deadband. Each write in mode `config` homes the motor. Not verified on air. |
 | Room temperature from an outside sensor | extra | Mode `setpoint` shifts the setpoints. With the automatic correction the learners read the sensor. Home Assistant chooses for each room a device of the room or the sensor. Filter and limits are design estimates. Not verified on air. |
 | Manage rooms and devices | partial | The dashboard creates, renames and deletes rooms, creates and deletes circuits, moves and renames devices, and sets the measuring device and the demand reporter. The zone options (window, correction, away temperature) are in the API and in Home Assistant, the controller gains in the API only. Home Assistant maps each room to an area. A device declared without a serial takes it from its first request. Home Assistant creates entities at integration start, so reload it after a change. |
-| Interface | partial | A web dashboard on the daemon monitors and controls the zones, the hot water, the boiler and the devices, and manages the schedules, the profiles and the installation. The network key, the zone options and the factory reset are not in the dashboard. The control pages are in use on one plant. The installation pages did not run on a real plant. |
+| Interface | partial | A web dashboard on the daemon monitors and controls the zones, the hot water, the boiler and the devices, and manages the schedules, the profiles and the installation. The network key and the zone options are not in the dashboard. The control pages are in use on one plant. The installation pages did not run on a real plant. |
 | Pair a device | partial | The dashboard and the API pair a device. The API flow ran on air on one valve. A network with no paired device, a wall thermostat and the dashboard flow are not verified on air. A device can miss the first pair command: send it again. The integration opens the window and does not send the pair command. |
-| Remove a device | partial | The dashboard and the API report the effects first. The delete sends no frame. `factoryreset` alone does not detach the device at once: it leaves the network when you then hold its button. Verified on one valve. Factory reset is in the API only. |
+| Remove a device | partial | The dashboard and the API report the effects first. The delete sends no frame. freedo has no remote detach: a device leaves its network only when you hold its button. |
 | Firmware version and update | partial | The daemon keeps the version of each device across restarts and reads it once after start from a device that never reported it. A transfer route exists. No block was sent on air. freedo distributes no image. |
 | Flow limit | equal | The fixed limit is verified on air through the OpenTherm reading. |
 | Weather curve and automatic flow adaptation | partial | The curve has two points. The adaptation is a local controller and not the cloud algorithm. It is off by default. Not verified on air. |

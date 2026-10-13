@@ -80,7 +80,7 @@ the gateway for the calls that `src/lib/api.ts` makes, so the page asks for noth
 `../internal/daemon/ingress_routes.json`, and `tests/ingress.test.ts` fails when the client calls a
 pair that is not in the list. The test also holds the exact allowed set, and a list of pairs that must
 stay behind the token: the identity of the network, the network key, `POST /api/pair` with its key field,
-reset, firmware and debug. A new client call needs a line in the JSON file and in the test, and every
+reboot, firmware and debug. A new client call needs a line in the JSON file and in the test, and every
 line widens what a Home Assistant user can do without the token. The list holds the installation and
 pairing calls, so the pages Devices and First setup work under the add-on. Where the wider route also
 writes a field that ingress must not reach, the client calls a route that carries one field:

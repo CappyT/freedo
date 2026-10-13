@@ -344,33 +344,30 @@ The steps below ran on air once, on one valve, through the API. The valve was in
 before: it was removed, then paired as a device that the installation did not hold. Not verified on air:
 a network with no paired device, a wall thermostat, and the same flow from the dashboard.
 
-The page Devices of the [dashboard](#dashboard) does steps 5 and 7 to 9. The steps below do the same
+The page Devices of the [dashboard](#dashboard) does steps 4 and 6 to 8. The steps below do the same
 through the API.
 
 1. Switch the commercial bridge off.
 2. Start freedo with `--tx` and the beacon on (`--beacon 10m`, the default), on bridge firmware
    v2.9 or later.
-3. Make the device leave its previous network: `POST /api/nodes/{id}/factoryreset` with
-   `{"confirm": true}`. The command sends network command 1007. The device keeps its token. The
-   command alone does not detach the device at once: in the test, the valve sent a report under the
-   network key 17 seconds after it acknowledged the command. It left the network at the button press
-   of step 6. It is not measured whether the command erases the stored key.
-4. A device that moves out of an installation of freedo: remove it from its zone and delete it from the
+3. A device that moves out of an installation of freedo: remove it from its zone and delete it from the
    installation. See [Installation writes](API.md#installation-writes).
-5. Open the pair window: `POST /api/pair/window` with `{"seconds": 600}`, the maximum. Check that
+4. Open the pair window: `POST /api/pair/window` with `{"seconds": 600}`, the maximum. Check that
    the answer has `"responder": true`. The bridge then answers the
    Enhanced Beacon Requests by itself, and each Router Advertisement goes out twice. With
    `false` the firmware is older than v2.9. At the close, the log reports how many Enhanced
    Beacons the bridge sent.
-6. Hold the button of the device to open its commissioning window. It lasts two minutes.
-7. Check with `GET /api/pair/window` that the device appears in `joiners`. freedo registers a
+5. Hold the button of the device. The device leaves its previous network and opens its
+   commissioning window, which lasts two minutes. freedo has no command that does this: see
+   [Network commands and leaving the network](PROTOCOL.md#network-commands-and-leaving-the-network).
+6. Check with `GET /api/pair/window` that the device appears in `joiners`. freedo registers a
    device when it receives an encrypted frame under the pairing key from it: an Enhanced
    Beacon Request or a Router Solicitation. In the test the valve appeared about one minute after the
    window opened.
-8. Declare the device: `POST /api/install/devices` with the `eui` from `joiners`, the `kind`, a
-   `label` and no `serial`. A body without `eui` gets `400`, so the declaration comes after step 7.
+7. Declare the device: `POST /api/install/devices` with the `eui` from `joiners`, the `kind`, a
+   `label` and no `serial`. A body without `eui` gets `400`, so the declaration comes after step 6.
    Then add the device to its zone: `POST /api/install/zones/{number}/members`.
-9. Call `POST /api/pair` with `{}` inside both windows. freedo picks the single device in
+8. Call `POST /api/pair` with `{}` inside both windows. freedo picks the single device in
    `joiners`. With several devices, or without an open window, pass `{"target": "<short>"}`. When no
    `2.04` arrives, call it again while both windows are open. In the test the first call got no answer
    in four attempts, and a second call about 90 seconds later got `2.04` at the first attempt. The

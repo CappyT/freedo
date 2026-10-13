@@ -77,8 +77,8 @@ between home and away, set the flow limit, rename a device, lock a valve, and id
 thermostat. The same user can change the installation and pair a device: add, change and delete rooms and
 heating circuits, add, move and remove devices, set the time zone, open the pair window and send the pair
 command. The page needs this for the first setup, because the add-on keeps a token that it creates in its
-data folder. The identity of the network, the network key, a pairing with another key, factory reset,
-reboot, calibration, firmware, raw device reads and the debug routes need the token, also from the page.
+data folder. The identity of the network, the network key, a pairing with another key, reboot,
+calibration, firmware, raw device reads and the debug routes need the token, also from the page.
 Give the right to open the page with care.
 
 The port 18080 does not share this rule: a client of that port needs the token for every API route. The
