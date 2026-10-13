@@ -41,7 +41,7 @@ and `{ref}` stand for a zone number, a device and a device reference:
 - Boiler: `POST /api/boiler/flow` (the flow limit).
 - Device: `POST /api/nodes/{id}/childlock` and `/identify`, and
   `PUT /api/install/devices/{ref}/label` (the label alone, no other field).
-- Installation, read: `GET /api/install`, `/api/install/devices`, `/api/install/devices/{ref}`,
+- Installation, read: `GET /api/install`, `/api/install/devices`,
   `/api/install/devices/{ref}/removal`, `/api/install/zones` and `/api/install/circuits`.
 - Installation, write: `PUT /api/install/timezone` (the time zone alone), `POST /api/install/devices`,
   `PUT /api/install/devices/{ref}/zone` (the zone claim alone), `DELETE /api/install/devices/{ref}`,

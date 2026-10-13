@@ -159,30 +159,34 @@ calls the routes of [API.md](API.md) and no other.
 Settings shows the health summary of the daemon. It marks `serialErrors` above zero with a warning:
 see [Serial link faults](#serial-link-faults).
 
-The page Devices manages the installation. It lists the devices room by room and does these tasks:
+The page Rooms and devices manages the installation. It lists the devices room by room, with the state
+of each device, identify and the child lock. The devices in no room form a last group, No room, while
+there is one. The page and the settings of a room do these tasks:
 
-- Add a room, rename it, delete it. A delete leaves the devices of the room in the installation, in no
+- Add a room, rename it, delete it. A delete leaves the devices of the room in the installation, in No
   room.
 - Add a device: it opens the pair window for 600 seconds and shows the time left, lists the devices the
   window hears, declares the chosen one with a type, a name and a room, and sends the pair command. It then
   shows the pairing as in progress, and as done only when the daemon served the device a session or learned
   its serial number. Send again repeats the pair command while the window is open: a device can miss the
   first one. The page closes the window when the device joined. See [Pairing a device](#pairing-a-device).
-- Move a device to another room, or to no room.
-- Remove a device. The page shows the effects that the daemon reports and asks before the delete. A
-  device that is the heat source of a circuit cannot be removed. The delete sends no frame, and the
-  device keeps talking on the network.
 - Add a heating circuit, change its heat source, delete it.
+- In the settings of a room, for each device of the room: rename it, move it to another room or to No
+  room, and remove it from the installation. The settings of No room do the same for the devices in no
+  room.
+- A removal shows the effects that the daemon reports and asks before the delete. A device that is the
+  heat source of a circuit cannot be removed. The delete sends no frame, and the device keeps talking on
+  the network.
 - In the settings of a room: choose the circuit, the measuring device and the demand reporter, and add a
-  device that the installation already holds. This is how the wall thermostat joins the hot water room
-  and a heated room.
+  device that the installation already holds. A room takes a device that is in no room. The wall
+  thermostat is the exception: it can be in the hot water room and in one heated room.
 
 The dashboard chooses the number of a new room: 0 for hot water, else the lowest free number from 1. It
 declares a device without a serial number, and the daemon takes the serial from the first request of the
 device. Every other installation option stays in the API: see
 [Installation options](API.md#installation-options) and [Zone options](API.md#zone-options).
 
-The page First setup takes a new daemon to a working plant. Devices and Settings link to it, and the home
+The page First setup takes a new daemon to a working plant. Rooms and devices and Settings link to it, and the home
 page does while the installation has no room. It shows six steps with their live state:
 
 | Step | Where | Done when |
@@ -220,9 +224,9 @@ fixed address `172.30.32.2`. The developer documentation for apps tells an app t
 connections from that address only and to treat the user as authenticated. The daemon follows it:
 
 - The flag `--ingress` makes the daemon accept the calls of the dashboard from the connection address
-  `172.30.32.2` without a token. Only the 50 method and path pairs of
+  `172.30.32.2` without a token. Only the 49 method and path pairs of
   [`internal/daemon/ingress_routes.json`](../internal/daemon/ingress_routes.json) qualify. They include
-  the installation and pairing calls of the pages Devices and First setup, so those pages need no token
+  the installation and pairing calls of the pages Rooms and devices and First setup, so those pages need no token
   under the add-on. Every other request from that address needs the token. [SECURITY.md](../SECURITY.md#home-assistant-ingress) lists
   the pairs and what a user can do with them.
 - Only `addon/run.sh` sets the flag. The bootstrap file and the environment have no such setting, and
@@ -344,7 +348,7 @@ The steps below ran on air once, on one valve, through the API. The valve was in
 before: it was removed, then paired as a device that the installation did not hold. Not verified on air:
 a network with no paired device, a wall thermostat, and the same flow from the dashboard.
 
-The page Devices of the [dashboard](#dashboard) does steps 4 and 6 to 8. The steps below do the same
+The page Rooms and devices of the [dashboard](#dashboard) does steps 4 and 6 to 8. The steps below do the same
 through the API.
 
 1. Switch the commercial bridge off.
