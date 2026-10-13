@@ -22,6 +22,8 @@
 	// The zone in the field. It starts on the zone of the installation, else on the zone of the browser.
 	let zoneDraft = $state<string | null>(null);
 	const timezone = $derived(zoneDraft ?? (install.info?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone));
+	// The daemon names a set utc_offset_min "fixed offset", in English.
+	const zoneLabel = $derived(health?.timezone?.name === 'fixed offset' ? t('settings.timezone.fixed') : (health?.timezone?.name ?? ''));
 	let busy = $state(false);
 
 	onMount(() => void install.load());
@@ -68,7 +70,7 @@
 
 			<li class="panel" data-step="timezone" data-state={steps.timezone}>
 				<header><h2>{t('settings.timezone')}</h2><div class="row">{@render badge(steps.timezone)}</div></header>
-				<p>{steps.timezone === 'done' ? t('setup.timezone.ok', { name: health?.timezone?.name ?? '' }) : t('setup.timezone.body')}</p>
+				<p>{steps.timezone === 'done' ? t('setup.timezone.ok', { name: zoneLabel }) : t('setup.timezone.body')}</p>
 				<form class="row fill" onsubmit={saveTimezone}>
 					<label class="field grow">
 						<span>{t('setup.timezone.name')}</span>

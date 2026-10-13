@@ -1,122 +1,13 @@
 <script lang="ts">
-	import { tick } from 'svelte';
-	import { act, errorText } from './actions.ts';
-	import ConfirmDialog from './ConfirmDialog.svelte';
-	import { data } from './data.svelte.ts';
+	import { act } from './actions.ts';
 	import { alertKeys, conditionText } from './describe.ts';
 	import type { DeviceRow } from './devices.ts';
 	import { fmt, t } from './i18n.svelte.ts';
 	import Icon from './Icon.svelte';
-	import { manage } from './install.svelte.ts';
-	import { describeEffect, movePlan } from './install.ts';
 	import { api } from './session.ts';
-	import { toasts } from './toast.svelte.ts';
-	import type { Removal } from './types.ts';
 	import { zoneName } from './zones.ts';
 
-	interface Props {
-		devices: DeviceRow[];
-		detailed?: boolean;
-		/**
-		 * Set on a list that manages the installation: the number of the room the rows belong to,
-		 * or null for the devices in no room. Each row then offers a move and the removal.
-		 */
-		room?: number | null;
-	}
-
-	let { devices, detailed = false, room }: Props = $props();
-
-	const rooms = $derived(data.zones?.declared ?? []);
-	const nameOf = (n: number) => {
-		const zone = rooms.find((z) => z.number === n);
-		return zone ? zoneName(zone, t('zone.hotWaterName')) : String(n);
-	};
-	const circuitName = (id: number) => data.circuits.find((c) => c.ID === id)?.Name || t('boiler.circuit', { id });
-
-	/** The rooms a device can move to: the heating rooms it is not in. */
-	const targets = (device: DeviceRow) =>
-		rooms.filter((z) => z.kind === 'heating' && !device.zones.some((own) => own.number === z.number));
-
-	async function move(device: DeviceRow, select: HTMLSelectElement) {
-		const to = select.value === '' ? null : Number(select.value);
-		const from = room ?? null;
-		const done = await manage(async () => {
-			const { zone: claim } = await api.installDevice(device.short);
-			for (const step of movePlan(claim, from, to)) {
-				if (step.op === 'claim') await api.claimZone(device.short, step.zone);
-				else if (step.op === 'leave') await api.removeMember(step.zone, device.short);
-				else await api.addMember(step.zone, device.short);
-			}
-			return true;
-		}, t('devices.moved'));
-		// A select keeps the choice when the request fails: show the room the daemon reports.
-		if (!done) select.value = from === null ? '' : String(from);
-	}
-
-	let removal = $state<Removal | null>(null);
-	let removing = $state<DeviceRow | null>(null);
-	let confirmRemove: ConfirmDialog | undefined = $state();
-
-	const effects = $derived(
-		(removal?.effects ?? []).map((effect) => {
-			const { key, name } = describeEffect(effect, nameOf, circuitName);
-			return t(key, { name });
-		})
-	);
-
-	/** Asks the daemon what the removal changes, and shows it before the person confirms. */
-	async function askRemove(device: DeviceRow) {
-		let answer: Removal;
-		try {
-			answer = await api.removal(device.short);
-		} catch (error) {
-			toasts.push('error', errorText(error));
-			return;
-		}
-		removing = device;
-		removal = answer;
-		await tick();
-		confirmRemove?.show();
-	}
-
-	function remove() {
-		const device = removing;
-		if (!device) return;
-		// The person saw the effects, so the delete releases the zone memberships. It never releases a heat source.
-		void manage(() => api.deleteDevice(device.short, true), t('devices.removed'));
-	}
-
-	// The shared address of the row whose label is being changed, null when no row is.
-	let editing = $state<string | null>(null);
-	let draft = $state('');
-	let busy = $state(false);
-
-	function start(device: DeviceRow) {
-		editing = device.short;
-		draft = device.label;
-	}
-
-	function cancel() {
-		editing = null;
-	}
-
-	// A field that opens on a click gets no focus by itself, and the browser ignores autofocus.
-	function focus(node: HTMLInputElement) {
-		node.focus();
-		node.select();
-	}
-
-	async function save(device: DeviceRow) {
-		const label = draft.trim();
-		if (label === '' || label === device.label) {
-			editing = null;
-			return;
-		}
-		busy = true;
-		const done = await act(() => api.renameDevice(device.short, label), t('devices.renamed'));
-		busy = false;
-		if (done) editing = null;
-	}
+	let { devices, detailed = false }: { devices: DeviceRow[]; detailed?: boolean } = $props();
 </script>
 
 {#if devices.length === 0}
@@ -126,33 +17,7 @@
 		{#each devices as device (device.short)}
 			<li class="device">
 				<div class="id">
-					{#if editing === device.short}
-						<form
-							class="rename row"
-							onsubmit={(e) => {
-								e.preventDefault();
-								void save(device);
-							}}
-						>
-							<input
-								class="input"
-								bind:value={draft}
-								aria-label={t('devices.name')}
-								use:focus
-								onkeydown={(e) => {
-									if (e.key === 'Escape') cancel();
-								}}
-							/>
-							<button class="btn icon" type="submit" disabled={busy} aria-label={t('devices.save')}>
-								<Icon name="check" size={18} />
-							</button>
-							<button class="btn icon" type="button" onclick={cancel} aria-label={t('action.cancel')}>
-								<Icon name="close" size={18} />
-							</button>
-						</form>
-					{:else}
-						<strong>{device.label}</strong>
-					{/if}
+					<strong>{device.label}</strong>
 					<span class="small muted">
 						{t(`kind.${device.kind}` as 'kind.valve')}
 						<span class="mono">{device.serial}</span>
@@ -200,11 +65,8 @@
 					{/each}
 				</div>
 
-				{#if detailed}
+				{#if detailed && (device.canIdentify || device.childLock !== null)}
 					<div class="actions row fill">
-						<button class="btn" onclick={() => start(device)}>
-							<Icon name="edit" size={18} />{t('devices.rename')}
-						</button>
 						{#if device.canIdentify}
 							<button class="btn" onclick={() => act(() => api.identify(device.short))}>
 								<Icon name="bell" size={18} />{t('devices.identify')}
@@ -225,35 +87,11 @@
 								<Icon name="lock" size={18} />{t('devices.childLock')}
 							</label>
 						{/if}
-						{#if room !== undefined}
-							<label class="field inline">
-								<span>{t('devices.zone')}</span>
-								<select class="input" value={room === null ? '' : String(room)} onchange={(e) => move(device, e.currentTarget)}>
-									<option value="">{t('devices.noRoom')}</option>
-									{#if room !== null}<option value={String(room)}>{nameOf(room)}</option>{/if}
-									{#each targets(device) as z (z.number)}<option value={String(z.number)}>{z.name}</option>{/each}
-								</select>
-							</label>
-							<button class="btn danger" onclick={() => askRemove(device)}>
-								<Icon name="trash" size={18} />{t('devices.remove')}
-							</button>
-						{/if}
 					</div>
 				{/if}
 			</li>
 		{/each}
 	</ul>
-{/if}
-
-{#if room !== undefined}
-	<ConfirmDialog
-		bind:this={confirmRemove}
-		title={t('remove.title', { name: removing?.label ?? '' })}
-		body={removal?.forceable === false ? t('remove.blocked') : effects.length > 0 ? t('remove.body.effects') : t('remove.body')}
-		items={effects}
-		confirm={removal?.forceable === false ? undefined : t('devices.remove')}
-		onconfirm={remove}
-	/>
 {/if}
 
 <style>
@@ -359,14 +197,6 @@
 	.switch input:checked::before {
 		translate: 1.25rem 0;
 		background: var(--action-text);
-	}
-
-	.rename {
-		width: 100%;
-	}
-
-	.rename .input {
-		flex: 1 1 6rem;
 	}
 
 	@media (max-width: 640px) {

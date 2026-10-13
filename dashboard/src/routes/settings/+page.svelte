@@ -90,7 +90,7 @@
 		<header><h2 id="install-title">{t('settings.install')}</h2></header>
 		<p class="note">{t('settings.install.note')}</p>
 		<div class="row fill">
-			<a class="btn" href={resolve('/setup')}><Icon name="check" size={18} />{t('setup.link')}</a>
+			<a class="btn" href={resolve('/setup')}><Icon name="check" size={18} />{t('setup.title')}</a>
 			<a class="btn" href={resolve('/devices')}><Icon name="devices" size={18} />{t('devices.title')}</a>
 		</div>
 	</section>

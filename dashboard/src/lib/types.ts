@@ -212,8 +212,12 @@ export interface Boiler {
 	/** The hot water setpoint that the thermostat reports. The daemon does not set it. */
 	DHWSetpointC?: number | null;
 	ModulationPct: number | null;
+	/** The burner flag of the boiler. It is false also while the boiler reports no flag: see Mon. */
 	Active: boolean;
+	/** The heating circuit calls for heat (tag 2090). It does not say that the burner runs. */
 	HeatActive: boolean;
+	/** The monitor values of the boiler by name. boiler_flag is absent while the boiler reports no burner state. */
+	Mon?: Record<string, number | null> | null;
 	CircuitDemandPct: number;
 	ReturnC: number | null;
 	OutsideC: number | null;

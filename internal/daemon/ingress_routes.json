@@ -28,7 +28,6 @@
 	"PUT /api/install/timezone",
 	"GET /api/install/devices",
 	"POST /api/install/devices",
-	"GET /api/install/devices/{ref}",
 	"PUT /api/install/devices/{ref}/zone",
 	"GET /api/install/devices/{ref}/removal",
 	"DELETE /api/install/devices/{ref}",

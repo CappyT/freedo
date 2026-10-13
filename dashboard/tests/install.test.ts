@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { createClient } from '../src/lib/api.ts';
 import {
+	canJoin,
 	countdown,
 	describeEffect,
 	joinedSince,
 	movePlan,
+	moveTargets,
 	nextCircuitId,
 	nextZoneNumber,
 	setupState,
@@ -221,5 +223,43 @@ describe('the installation calls of the client', () => {
 		expect(await record((c) => c.setTimezone('Europe/Rome'))).toEqual([
 			{ method: 'PUT', path: '/api/install/timezone', body: { timezone: 'Europe/Rome' } }
 		]);
+	});
+});
+
+describe('the devices a room can take', () => {
+	const hall = { number: 1, kind: 'heating' as const };
+	const bath = { number: 2, kind: 'heating' as const };
+	const hotWater = { number: 0, kind: 'hotwater' as const };
+
+	it('are the devices in no room', () => {
+		expect(canJoin('valve', [], bath)).toBe(true);
+		expect(canJoin('thermostat', [], bath)).toBe(true);
+	});
+
+	it('leave out a device that another room holds', () => {
+		expect(canJoin('valve', [hall], bath)).toBe(false);
+		expect(canJoin('thermostat', [hall], bath)).toBe(false);
+		expect(canJoin('valve', [bath], bath)).toBe(false);
+	});
+
+	it('keep the wall thermostat of the hot water room for one heated room', () => {
+		expect(canJoin('thermostat', [hotWater], hall)).toBe(true);
+		expect(canJoin('thermostat', [hotWater, hall], bath)).toBe(false);
+		expect(canJoin('thermostat', [hall], hotWater)).toBe(true);
+	});
+
+	it('give the hot water room a wall thermostat only, and no room a bridge', () => {
+		expect(canJoin('valve', [], hotWater)).toBe(false);
+		expect(canJoin('thermostat', [hotWater], hotWater)).toBe(false);
+		expect(canJoin('bridge', [], bath)).toBe(false);
+	});
+
+	it('offer the other heated rooms as the targets of a move', () => {
+		const rooms = [hotWater, hall, bath];
+		expect(moveTargets('valve', [hall], 1, rooms)).toEqual([bath]);
+		expect(moveTargets('thermostat', [hotWater, hall], 1, rooms)).toEqual([bath]);
+		expect(moveTargets('thermostat', [hotWater, hall], 0, rooms)).toEqual([]);
+		expect(moveTargets('valve', [], null, rooms)).toEqual([hall, bath]);
+		expect(moveTargets('thermostat', [], null, rooms)).toEqual([hotWater, hall, bath]);
 	});
 });

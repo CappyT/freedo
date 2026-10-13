@@ -2,18 +2,22 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
+	import { tick } from 'svelte';
 	import { errorText } from '#lib/actions.ts';
 	import ConfirmDialog from '#lib/ConfirmDialog.svelte';
 	import { t } from '#lib/i18n.svelte.ts';
 	import Icon from '#lib/Icon.svelte';
 	import { manage } from '#lib/install.svelte.ts';
+	import { canJoin, describeEffect, movePlan, moveTargets } from '#lib/install.ts';
 	import { api } from '#lib/session.ts';
-	import type { InstallCircuit, InstallDevice, InstallZone } from '#lib/types.ts';
+	import { toasts } from '#lib/toast.svelte.ts';
+	import type { InstallCircuit, InstallDevice, InstallZone, Removal } from '#lib/types.ts';
 	import { zoneName } from '#lib/zones.ts';
 
-	const number = $derived(Number(page.params.n));
+	// The route "none" is the group of the devices in no room. It has members and no settings of a zone.
+	const number = $derived(page.params.n === 'none' ? null : Number(page.params.n));
 
-	let zone = $state<InstallZone | null>(null);
+	let zones = $state<InstallZone[]>([]);
 	let devices = $state<InstallDevice[]>([]);
 	let circuits = $state<InstallCircuit[]>([]);
 	let loaded = $state(false);
@@ -23,24 +27,43 @@
 	let typed = $state(false);
 	let joining = $state('');
 	let busy = $state(false);
+	// The EUI of the member whose name is being changed, null when none is.
+	let editing = $state<string | null>(null);
+	let draft = $state('');
+	let removal = $state<Removal | null>(null);
+	let removing = $state<InstallDevice | null>(null);
 	let confirmDelete: ConfirmDialog | undefined = $state();
+	let confirmRemove: ConfirmDialog | undefined = $state();
 
-	const title = $derived(zone ? zoneName(zone, t('zone.hotWaterName')) : '');
+	const zone = $derived(zones.find((z) => z.number === number) ?? null);
+	const hotWater = $derived(t('zone.hotWaterName'));
+	const title = $derived(number === null ? t('devices.noRoom') : zone ? zoneName(zone, hotWater) : '');
 	const labelOf = (device: InstallDevice) => device.label || device.serial || device.eui;
+	const roomsOf = (device: InstallDevice) => zones.filter((z) => z.members.includes(device.eui));
 	const members = $derived(
-		(zone?.members ?? []).map((eui) => devices.find((d) => d.eui === eui)).filter((d): d is InstallDevice => d !== undefined)
+		number === null
+			? devices.filter((d) => roomsOf(d).length === 0)
+			: (zone?.members ?? []).map((eui) => devices.find((d) => d.eui === eui)).filter((d): d is InstallDevice => d !== undefined)
 	);
-	// Hot water takes the wall thermostat only.
-	const candidates = $derived(
-		devices.filter((d) => !zone?.members.includes(d.eui) && (zone?.kind === 'heating' ? d.kind !== 'bridge' : d.kind === 'thermostat'))
+	const candidates = $derived(zone ? devices.filter((d) => canJoin(d.kind, roomsOf(d), zone)) : []);
+	const targets = (device: InstallDevice) => moveTargets(device.kind, roomsOf(device), number, zones);
+	const effects = $derived(
+		(removal?.effects ?? []).map((effect) => {
+			const { key, name: on } = describeEffect(
+				effect,
+				(n) => {
+					const z = zones.find((x) => x.number === n);
+					return z ? zoneName(z, hotWater) : String(n);
+				},
+				(id) => circuits.find((c) => c.id === id)?.name || t('boiler.circuit', { id })
+			);
+			return t(key, { name: on });
+		})
 	);
 
 	async function load() {
 		try {
-			const [zones, allDevices, allCircuits] = await Promise.all([api.installZones(), api.installDevices(), api.installCircuits()]);
-			zone = zones.find((z) => z.number === number) ?? null;
-			devices = allDevices;
-			circuits = allCircuits;
+			[zones, devices, circuits] = await Promise.all([api.installZones(), api.installDevices(), api.installCircuits()]);
 			problem = null;
 			if (!typed) name = zone?.name ?? '';
 		} catch (error) {
@@ -63,10 +86,10 @@
 		return ok;
 	}
 
-	async function rename(event: SubmitEvent) {
+	async function renameRoom(event: SubmitEvent) {
 		event.preventDefault();
 		const next = name.trim();
-		if (next === '' || next === zone?.name) return;
+		if (number === null || next === '' || next === zone?.name) return;
 		if (await run(() => api.patchZone(number, { name: next }), t('rooms.renamed'))) typed = false;
 	}
 
@@ -76,11 +99,66 @@
 	}
 
 	async function join() {
-		if (joining === '') return;
+		if (number === null || joining === '') return;
 		if (await run(() => api.addMember(number, joining), t('devices.moved'))) joining = '';
 	}
 
-	async function remove() {
+	function startRename(device: InstallDevice) {
+		editing = device.eui;
+		draft = labelOf(device);
+	}
+
+	// A field that opens on a click gets no focus by itself, and the browser ignores autofocus.
+	function focus(node: HTMLInputElement) {
+		node.focus();
+		node.select();
+	}
+
+	async function renameDevice(device: InstallDevice) {
+		const label = draft.trim();
+		if (label === '' || label === device.label) {
+			editing = null;
+			return;
+		}
+		if (await run(() => api.renameDevice(device.eui, label), t('devices.renamed'))) editing = null;
+	}
+
+	async function move(device: InstallDevice, select: HTMLSelectElement) {
+		const to = select.value === '' ? null : Number(select.value);
+		const done = await run(async () => {
+			for (const step of movePlan(device.zone, number, to)) {
+				if (step.op === 'claim') await api.claimZone(device.eui, step.zone);
+				else if (step.op === 'leave') await api.removeMember(step.zone, device.eui);
+				else await api.addMember(step.zone, device.eui);
+			}
+		}, t('devices.moved'));
+		if (!done) select.value = number === null ? '' : String(number);
+	}
+
+	/** Asks the daemon what the removal changes, and shows it before the person confirms. */
+	async function askRemove(device: InstallDevice) {
+		let answer: Removal;
+		try {
+			answer = await api.removal(device.eui);
+		} catch (error) {
+			toasts.push('error', errorText(error));
+			return;
+		}
+		removing = device;
+		removal = answer;
+		await tick();
+		confirmRemove?.show();
+	}
+
+	function removeDevice() {
+		const device = removing;
+		if (!device) return;
+		// The person saw the effects, so the delete releases the zone memberships. It never releases a heat source.
+		void run(() => api.deleteDevice(device.eui, true), t('devices.removed'));
+	}
+
+	async function deleteRoom() {
+		if (number === null) return;
 		if ((await manage(() => api.deleteZone(number), t('rooms.deleted'))) !== undefined) await goto(resolve('/devices'));
 	}
 </script>
@@ -92,7 +170,7 @@
 		<p class="muted">{t('state.loading')}</p>
 	{:else if problem}
 		<p class="notice tone-fault" role="alert"><Icon name="fault" /><span>{problem}</span></p>
-	{:else if !zone}
+	{:else if number !== null && !zone}
 		<div class="panel">
 			<h1>{t('rooms.missing.title')}</h1>
 			<p>{t('rooms.missing.body')}</p>
@@ -100,53 +178,100 @@
 	{:else}
 		<div class="page-head titled">
 			<h1>{title}</h1>
-			<span class="small muted">{t(`rooms.kind.${zone.kind}`)}</span>
+			{#if zone}<span class="small muted">{t(`rooms.kind.${zone.kind}`)}</span>{/if}
 		</div>
 
-		{#if zone.kind === 'heating'}
-		<section class="panel" aria-label={t('rooms.name')}>
-			<form class="row fill" onsubmit={rename}>
-				<label class="field grow">
-					<span>{t('rooms.name')}</span>
-					<input class="input" bind:value={name} oninput={() => (typed = true)} autocomplete="off" />
-				</label>
-				<button class="btn primary" type="submit" disabled={busy || name.trim() === '' || name.trim() === zone.name}>
-					<Icon name="check" size={18} />{t('rooms.save')}
-				</button>
-			</form>
-		</section>
+		{#if zone?.kind === 'heating'}
+			<section class="panel" aria-label={t('rooms.name')}>
+				<form class="row fill" onsubmit={renameRoom}>
+					<label class="field grow">
+						<span>{t('rooms.name')}</span>
+						<input class="input" bind:value={name} oninput={() => (typed = true)} autocomplete="off" />
+					</label>
+					<button class="btn primary" type="submit" disabled={busy || name.trim() === '' || name.trim() === zone.name}>
+						<Icon name="check" size={18} />{t('rooms.save')}
+					</button>
+				</form>
+			</section>
 		{/if}
 
 		<section class="panel" aria-labelledby="members-title">
-			<header><h2 id="members-title">{t('zone.devices')}</h2></header>
+			<header><h2 id="members-title">{zone ? t('zone.devices') : t('setup.devices')}</h2></header>
+			{#if number === null}<p class="note">{t('rooms.none.note')}</p>{/if}
 			{#if members.length === 0}
-				<p class="muted">{t('rooms.empty')}</p>
+				<p class="muted">{zone ? t('rooms.empty') : t('rooms.none.empty')}</p>
 			{:else}
 				<ul class="members">
 					{#each members as device (device.eui)}
-						<li>
-							<strong>{labelOf(device)}</strong>
-							<span class="small muted">{t(`kind.${device.kind}`)} <span class="mono">{device.serial || device.eui}</span></span>
+						<li class="member" data-member={labelOf(device)}>
+							<div class="id">
+								{#if editing === device.eui}
+									<form
+										class="rename row"
+										onsubmit={(e) => {
+											e.preventDefault();
+											void renameDevice(device);
+										}}
+									>
+										<input
+											class="input"
+											bind:value={draft}
+											aria-label={t('devices.name')}
+											use:focus
+											onkeydown={(e) => {
+												if (e.key === 'Escape') editing = null;
+											}}
+										/>
+										<button class="btn icon" type="submit" disabled={busy} aria-label={t('devices.save')}>
+											<Icon name="check" size={18} />
+										</button>
+										<button class="btn icon" type="button" onclick={() => (editing = null)} aria-label={t('action.cancel')}>
+											<Icon name="close" size={18} />
+										</button>
+									</form>
+								{:else}
+									<strong>{labelOf(device)}</strong>
+								{/if}
+								<span class="small muted">{t(`kind.${device.kind}`)} <span class="mono">{device.serial || device.eui}</span></span>
+							</div>
+							<div class="actions row fill">
+								<button class="btn" disabled={busy} onclick={() => startRename(device)}>
+									<Icon name="edit" size={18} />{t('devices.rename')}
+								</button>
+								<label class="field inline">
+									<span>{t('devices.zone')}</span>
+									<select class="input" value={number === null ? '' : String(number)} disabled={busy} onchange={(e) => move(device, e.currentTarget)}>
+										<option value="">{t('devices.noRoom')}</option>
+										{#if zone}<option value={String(zone.number)}>{title}</option>{/if}
+										{#each targets(device) as z (z.number)}<option value={String(z.number)}>{zoneName(z, hotWater)}</option>{/each}
+									</select>
+								</label>
+								<button class="btn danger" disabled={busy} onclick={() => askRemove(device)}>
+									<Icon name="trash" size={18} />{t('devices.remove')}
+								</button>
+							</div>
 						</li>
 					{/each}
 				</ul>
 			{/if}
-			{#if candidates.length > 0}
-				<div class="row fill">
-					<label class="field grow">
-						<span>{t('rooms.join')}</span>
-						<select class="input" bind:value={joining}>
-							<option value="">{t('rooms.join.pick')}</option>
-							{#each candidates as device (device.eui)}<option value={device.eui}>{labelOf(device)}</option>{/each}
-						</select>
-					</label>
-					<button class="btn" disabled={busy || joining === ''} onclick={join}><Icon name="plus" size={18} />{t('rooms.join.add')}</button>
-				</div>
+			{#if zone}
+				{#if candidates.length > 0}
+					<div class="row fill" data-testid="join">
+						<label class="field grow">
+							<span>{t('rooms.join')}</span>
+							<select class="input" bind:value={joining}>
+								<option value="">{t('rooms.join.pick')}</option>
+								{#each candidates as device (device.eui)}<option value={device.eui}>{labelOf(device)}</option>{/each}
+							</select>
+						</label>
+						<button class="btn" disabled={busy || joining === ''} onclick={join}><Icon name="plus" size={18} />{t('rooms.join.add')}</button>
+					</div>
+				{/if}
+				<p class="note">{t('rooms.members.note')}</p>
 			{/if}
-			<p class="note">{t('rooms.members.note')}</p>
 		</section>
 
-		{#if zone.kind === 'heating'}
+		{#if zone?.kind === 'heating'}
 			<section class="panel" aria-labelledby="heating-title">
 				<header><h2 id="heating-title">{t('rooms.heating')}</h2></header>
 				<div class="choices">
@@ -158,7 +283,7 @@
 							disabled={busy}
 							onchange={(e) =>
 								choose(e.currentTarget, zone?.circuit == null ? '' : String(zone.circuit), (v) =>
-									api.patchZone(number, { circuit: v === '' ? null : Number(v) })
+									api.patchZone(zone.number, { circuit: v === '' ? null : Number(v) })
 								)}
 						>
 							<option value="">{t('rooms.circuit.none')}</option>
@@ -173,7 +298,7 @@
 							value={zone.measuring_device ?? ''}
 							disabled={busy}
 							onchange={(e) =>
-								choose(e.currentTarget, zone?.measuring_device ?? '', (v) => api.setRole(number, 'measuring', v === '' ? null : v))}
+								choose(e.currentTarget, zone?.measuring_device ?? '', (v) => api.setRole(zone.number, 'measuring', v === '' ? null : v))}
 						>
 							<option value="">{t('rooms.role.auto')}</option>
 							{#each members as device (device.eui)}<option value={device.eui}>{labelOf(device)}</option>{/each}
@@ -187,7 +312,7 @@
 							value={zone.reporter ?? ''}
 							disabled={busy}
 							onchange={(e) =>
-								choose(e.currentTarget, zone?.reporter ?? '', (v) => api.setRole(number, 'reporter', v === '' ? null : v))}
+								choose(e.currentTarget, zone?.reporter ?? '', (v) => api.setRole(zone.number, 'reporter', v === '' ? null : v))}
 						>
 							<option value="">{t('rooms.role.none')}</option>
 							{#each members as device (device.eui)}<option value={device.eui}>{labelOf(device)}</option>{/each}
@@ -198,13 +323,15 @@
 			</section>
 		{/if}
 
-		<section class="panel" aria-labelledby="delete-title">
-			<header><h2 id="delete-title">{t('rooms.delete')}</h2></header>
-			<p class="note">{t('rooms.delete.note')}</p>
-			<div class="row">
-				<button class="btn danger" disabled={busy} onclick={() => confirmDelete?.show()}><Icon name="trash" size={18} />{t('rooms.delete')}</button>
-			</div>
-		</section>
+		{#if zone}
+			<section class="panel" aria-labelledby="delete-title">
+				<header><h2 id="delete-title">{t('rooms.delete')}</h2></header>
+				<p class="note">{t('rooms.delete.note')}</p>
+				<div class="row">
+					<button class="btn danger" disabled={busy} onclick={() => confirmDelete?.show()}><Icon name="trash" size={18} />{t('rooms.delete')}</button>
+				</div>
+			</section>
+		{/if}
 	{/if}
 </section>
 
@@ -214,7 +341,16 @@
 	body={members.length > 0 ? t('rooms.delete.body.members') : t('rooms.delete.body')}
 	items={members.map(labelOf)}
 	confirm={t('rooms.delete')}
-	onconfirm={remove}
+	onconfirm={deleteRoom}
+/>
+
+<ConfirmDialog
+	bind:this={confirmRemove}
+	title={t('remove.title', { name: removing ? labelOf(removing) : '' })}
+	body={removal?.forceable === false ? t('remove.blocked') : effects.length > 0 ? t('remove.body.effects') : t('remove.body')}
+	items={effects}
+	confirm={removal?.forceable === false ? undefined : t('devices.remove')}
+	onconfirm={removeDevice}
 />
 
 <style>
@@ -233,16 +369,31 @@
 		display: grid;
 	}
 
-	.members li {
+	.member {
 		display: grid;
-		gap: 0.15rem;
-		padding: 0.7rem 0;
+		gap: 0.6rem;
+		padding: 0.9rem 0;
 		border-top: 1px solid var(--border);
 	}
 
-	.members li:first-child {
+	.member:first-child {
 		border-top: 0;
 		padding-top: 0;
+	}
+
+	.id {
+		display: grid;
+		gap: 0.15rem;
+		justify-items: start;
+	}
+
+	.rename {
+		width: 100%;
+		max-width: 28rem;
+	}
+
+	.rename .input {
+		flex: 1 1 6rem;
 	}
 
 	.choices {

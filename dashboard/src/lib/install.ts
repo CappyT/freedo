@@ -1,4 +1,4 @@
-import type { Health, RemovalEffect, ZoneKind } from './types.ts';
+import type { DeviceKind, Health, RemovalEffect, ZoneKind } from './types.ts';
 
 // The daemon refuses a zone number or a circuit id above 31. Hot water is zone 0 on the radio.
 const MAX_ID = 31;
@@ -126,4 +126,35 @@ export function joinedSince(
 export function countdown(seconds: number): string {
 	const left = Math.max(0, Math.round(seconds));
 	return `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+}
+
+export interface RoomRef {
+	number: number;
+	kind: ZoneKind;
+}
+
+/**
+ * Whether a device can join a room, given the rooms it is in now. A device belongs to one heated
+ * room. The wall thermostat is the exception the plant needs: it can be in the hot water room and
+ * in one heated room at once. So a heated room takes a device in no room, or a wall thermostat that
+ * is in the hot water room only. The hot water room takes a wall thermostat only.
+ */
+export function canJoin(kind: DeviceKind, memberOf: RoomRef[], room: RoomRef): boolean {
+	if (memberOf.some((z) => z.number === room.number)) return false;
+	if (room.kind === 'hotwater') return kind === 'thermostat';
+	if (kind === 'bridge') return false;
+	if (memberOf.length === 0) return true;
+	return kind === 'thermostat' && memberOf.every((z) => z.kind === 'hotwater');
+}
+
+/**
+ * The rooms a device can move to from the room `from`, or from no room when `from` is null. The
+ * device leaves `from`, so that room does not count against it. A device of the hot water room has
+ * no target: taking the thermostat out of hot water is the only move there.
+ */
+export function moveTargets<R extends RoomRef>(kind: DeviceKind, memberOf: RoomRef[], from: number | null, rooms: R[]): R[] {
+	const current = memberOf.find((z) => z.number === from);
+	if (current?.kind === 'hotwater') return [];
+	const rest = memberOf.filter((z) => z.number !== from);
+	return rooms.filter((room) => room.number !== from && (from === null || room.kind === 'heating') && canJoin(kind, rest, room));
 }

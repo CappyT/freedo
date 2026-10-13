@@ -44,7 +44,7 @@
 	<div class="page-head">
 		<h1>{t('devices.title')}</h1>
 		<div class="row fill">
-			<a class="btn" href={resolve('/setup')}><Icon name="check" size={18} />{t('setup.link')}</a>
+			<a class="btn" href={resolve('/setup')}><Icon name="check" size={18} />{t('setup.title')}</a>
 			<button class="btn" aria-expanded={adding === 'room'} onclick={() => (adding = adding === 'room' ? null : 'room')}>
 				<Icon name="plus" size={18} />{t('rooms.add')}
 			</button>
@@ -80,7 +80,7 @@
 			<div class="panel">
 				<h2>{t('home.empty.title')}</h2>
 				<p>{t('home.empty.body')}</p>
-				<div class="row"><a class="btn primary" href={resolve('/setup')}>{t('setup.start')}</a></div>
+				<div class="row"><a class="btn primary" href={resolve('/setup')}>{t('setup.title')}</a></div>
 			</div>
 		{/if}
 
@@ -99,15 +99,21 @@
 				{#if zone.members.length === 0}
 					<p class="muted">{t('rooms.empty')}</p>
 				{:else}
-					<DeviceList devices={devices.filter((d) => zone.members.includes(d.short))} detailed room={zone.number} />
+					<DeviceList devices={devices.filter((d) => zone.members.includes(d.short))} detailed />
 				{/if}
 			</section>
 		{/each}
 
 		{#if loose.length > 0}
+			<!-- The devices in no room, shown as the last room. The group has no panel while every device has a room. -->
 			<section class="panel room" aria-labelledby="loose-title" data-room="none">
-				<header><h2 id="loose-title">{t('devices.loose')}</h2></header>
-				<DeviceList devices={loose} detailed room={null} />
+				<header>
+					<h2 id="loose-title">{t('devices.noRoom')}</h2>
+					<a class="btn" href={resolve('/rooms/[n]', { n: 'none' })}>
+						<Icon name="sliders" size={18} />{t('rooms.settings')}
+					</a>
+				</header>
+				<DeviceList devices={loose} detailed />
 			</section>
 		{/if}
 

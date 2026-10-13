@@ -181,7 +181,6 @@ export function createClient(options: ClientOptions = {}) {
 		/** An IANA name such as Europe/Rome. */
 		setTimezone: (timezone: string) => request<{ rev: number }>('PUT', 'install/timezone', { timezone }),
 		installDevices: async () => (await request<{ devices: InstallDevice[] }>('GET', 'install/devices')).devices,
-		installDevice: async (ref: string) => (await request<{ device: InstallDevice }>('GET', device(ref))).device,
 		createDevice: (body: { eui: string; kind: 'valve' | 'thermostat'; label: string }) =>
 			request<{ device: InstallDevice }>('POST', 'install/devices', body),
 		/** The one zone number a device answers to. Null removes the claim. */

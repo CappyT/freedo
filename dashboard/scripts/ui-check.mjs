@@ -9,11 +9,14 @@
 // - A failed command puts the presence switch and the child lock back to what the daemon says.
 // - A zone with no program starts on "until I end it" and shows a hint. Turn off asks first.
 // - The schedule panel keeps the away program and an open editor across a data poll.
-// - A renamed device shows its new name right after the save, also when a poll was in flight.
+// - A device renamed in the settings of its room shows its new name right after the save, also when
+//   a poll was in flight.
 // - The buttons of a form row sit on the line of the controls, not of the labels.
 // - The Programs screen creates a profile, edits one that is not active and activates it.
-// - Rooms and devices adds a room, pairs a device that the pair window heard, moves a device,
-//   shows the effects of a removal before it deletes, and renames and deletes a room.
+// - Rooms and devices adds a room and pairs a device that the pair window heard. The settings of a
+//   room move a device, show the effects of a removal before the delete, offer only free devices,
+//   and rename and delete the room. No room is the group of the devices in no room.
+// - The burner badge of the boiler page follows the burner flag, also while no room asks for heat.
 // - The first setup takes a daemon with an empty database to a room, a paired thermostat and a circuit.
 //   The device that the pair window hears and the session of the joined device are put into the
 //   answers here: the daemon has no radio.
@@ -61,6 +64,8 @@ try {
 	let joiner = null;
 	// The short address of a device that the node view reports as joined: the daemon served it a session.
 	let joinedShort = null;
+	// Fields put into the answer of GET /api/boiler, as if the boiler reported them. Null changes nothing.
+	let boilerPatch = null;
 	const fulfill = (p, json) =>
 		tab.call('Fetch.fulfillRequest', {
 			requestId: p.requestId,
@@ -78,7 +83,8 @@ try {
 			{ urlPattern: '*/api/zones', requestStage: 'Response' },
 			{ urlPattern: '*/api/health', requestStage: 'Response' },
 			{ urlPattern: '*/api/pair/window', requestStage: 'Response' },
-			{ urlPattern: '*/api/nodes', requestStage: 'Response' }
+			{ urlPattern: '*/api/nodes', requestStage: 'Response' },
+			{ urlPattern: '*/api/boiler', requestStage: 'Response' }
 		]
 	});
 	tab.on('Fetch.requestPaused', async (p) => {
@@ -103,6 +109,11 @@ try {
 			if (path.endsWith('/api/health')) {
 				if (holdHealth) held.push(p.requestId);
 				else await tab.call('Fetch.continueResponse', { requestId: p.requestId });
+				return;
+			}
+			if (path.endsWith('/api/boiler')) {
+				if (boilerPatch === null) return void (await tab.call('Fetch.continueResponse', { requestId: p.requestId }));
+				await fulfill(p, { ...(await bodyOf(p)), ...boilerPatch });
 				return;
 			}
 			if (path.endsWith('/api/nodes')) {
@@ -296,27 +307,42 @@ try {
 		'an edit in progress survives a data poll'
 	);
 
-	// 9. A renamed device shows its new name right after the save. A poll in flight when the daemon
-	// takes the new label answers with the old one, so the page must read the state once more after it.
-	await open('#/devices', `document.querySelector('.device strong')?.textContent === 'hall thermostat'`);
-	await clickText('Rename');
+	// 9. A device is renamed in the settings of its room. The form keeps its text across a data poll,
+	// and the new name shows right after the save, also when a poll is in flight.
+	await open('#/rooms/1', `document.querySelector('[data-member="hall thermostat"]')`);
+	await tab.evaluate(`[...document.querySelector('[data-member="hall thermostat"]').querySelectorAll('button')].find((b) => b.textContent.trim() === 'Rename').click()`);
 	await tab.waitFor(`document.querySelector('.rename input')`);
 	await tab.evaluate(`document.querySelector('.rename input').select()`);
 	await type('Hall wall unit');
+	await sleep(6500);
+	check(
+		(await tab.evaluate(`document.querySelector('.rename input')?.value`)) === 'Hall wall unit',
+		'the rename form of a device keeps its text across a data poll'
+	);
+	const renameTopsDevice = await tab.evaluate(`[...document.querySelectorAll('.rename .input, .rename .btn')].map((el) => Math.round(el.getBoundingClientRect().top))`);
+	check(new Set(renameTopsDevice).size === 1, `the device rename keeps the field, Save and Cancel on one line (${renameTopsDevice})`);
 	holdHealth = true;
 	for (let i = 0; held.length === 0; i++) {
 		if (i > 120) throw new Error('no poll of /api/health while held');
 		await sleep(50);
 	}
+	requests.length = 0;
 	await click('.rename button[type=submit]');
 	check(await toast('Device renamed'), 'the rename is accepted');
+	check(requests.some((r) => /^PUT \/api\/install\/devices\/[^/]+\/label$/.test(r)), 'the rename uses the route that carries the label alone');
 	holdHealth = false;
 	for (const requestId of held.splice(0)) await tab.call('Fetch.continueResponse', { requestId });
 	check(
 		await tab
-			.waitFor(`!document.querySelector('.rename') && document.querySelector('.device strong')?.textContent === 'Hall wall unit'`, 1500)
+			.waitFor(`!document.querySelector('.rename') && document.querySelector('[data-member="Hall wall unit"] strong')?.textContent === 'Hall wall unit'`, 1500)
 			.then(() => true, () => false),
 		'the new name shows right after the save, with a poll in flight'
+	);
+	await open('#/devices', `[...document.querySelectorAll('.device strong')].some((s) => s.textContent === 'Hall wall unit')`);
+	check(true, 'the page Rooms and devices shows the new name');
+	check(
+		await tab.evaluate(`document.querySelectorAll('.device select, .device .btn.danger').length === 0 && ![...document.querySelectorAll('.device button')].some((b) => /Rename|Remove/.test(b.textContent))`),
+		'a device row holds no rename, no room selector and no removal'
 	);
 
 	// 10. In a row with a labelled field, the buttons sit on the line of the controls, and an inline
@@ -397,7 +423,6 @@ try {
 	const choose = (selector, value) =>
 		tab.evaluate(`(() => { const s = document.querySelector(${JSON.stringify(selector)}); s.value = ${JSON.stringify(value)}; s.dispatchEvent(new Event('change', { bubbles: true })); })()`);
 	const valueOf = (selector) => tab.evaluate(`document.querySelector(${JSON.stringify(selector)})?.value`);
-	const rowSelect = (room, label) => `[...document.querySelectorAll('[data-room="${room}"] .device')].find((d) => d.querySelector('strong')?.textContent === ${JSON.stringify(label)})`;
 	const dialogText = () => tab.evaluate(`document.querySelector('dialog[open]')?.innerText ?? ''`);
 	const closeDialog = () => tab.evaluate(`[...document.querySelectorAll('dialog[open] button')].find((b) => b.textContent.trim() === 'Cancel').click()`);
 
@@ -470,43 +495,64 @@ try {
 	joinedShort = null;
 	await clickIn('#add-device-title ~', 'Close');
 
+	// The actions on a device live in the settings of its room.
+	const member = (label) => `document.querySelector('[data-member=${JSON.stringify(label)}]')`;
+	const memberSelect = (label, value) =>
+		tab.evaluate(`(() => { const s = ${member(label)}.querySelector('select'); s.value = ${JSON.stringify(value)}; s.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+	const memberButton = (label, text) =>
+		tab.evaluate(`[...${member(label)}.querySelectorAll('button')].find((b) => b.textContent.trim() === ${JSON.stringify(text)}).click()`);
+	const joinOptions = () => tab.evaluate(`[...document.querySelectorAll('[data-testid=join] option')].map((o) => o.textContent).filter((text) => text !== 'Choose a device').sort().join()`);
+
 	// Move a device, and a refused move.
-	await tab.waitFor(`${rowSelect(3, 'office')}`);
-	await tab.evaluate(`(() => { const s = ${rowSelect(3, 'office')}.querySelector('select'); s.value = '4'; s.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+	await open('#/rooms/3', member('office'));
+	check(
+		!(await tab.evaluate(`!!document.querySelector('[data-testid=join]')`)),
+		'a room offers no device to add while another room holds every device'
+	);
+	const offMember = await tab.evaluate(misaligned);
+	check(offMember.length === 0, `the controls of a member row sit on one line (${offMember})`);
+	await memberSelect('office', '4');
 	check(await toast('Device moved'), 'the move is accepted');
 	const afterMove = (await api(daemon.base, 'install/zones')).zones;
 	check(
 		afterMove.find((z) => z.number === 3).members.length === 0 && afterMove.find((z) => z.number === 4).members.includes('08a4defa07c51b00'),
 		'the daemon moved the device to the other room'
 	);
-	await tab.waitFor(`${rowSelect(4, 'office')}`);
-	failing.add('DELETE /api/install/zones/2/members/a304');
-	await tab.evaluate(`(() => { const s = ${rowSelect(2, 'bath')}.querySelector('select'); s.value = '3'; s.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+	await open('#/rooms/2', member('bath'));
+	failing.add('DELETE /api/install/zones/2/members/04a3defa07c51b00');
+	await memberSelect('bath', '3');
 	check(await toast('refused for the check'), 'the refusal of a move is shown');
 	await sleep(400);
-	check((await tab.evaluate(`${rowSelect(2, 'bath')}.querySelector('select').value`)) === '2', 'the room of the device returns to what the daemon says after a refused move');
+	check((await tab.evaluate(`${member('bath')}.querySelector('select').value`)) === '2', 'the room of the device returns to what the daemon says after a refused move');
 	failing.clear();
 
 	// Remove a device: the effects first.
+	await open('#/rooms/1', member('Hall wall unit'));
 	requests.length = 0;
-	await tab.evaluate(`[...${rowSelect(1, 'Hall wall unit')}.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Remove').click()`);
+	await memberButton('Hall wall unit', 'Remove from the installation');
 	await tab.waitFor(`document.querySelector('dialog[open]')`);
 	check(/heat source/.test(await dialogText()) && !(await tab.evaluate(`!!document.querySelector('dialog[open] button.primary')`)), 'a heat source cannot be removed, and the dialog says why');
 	await closeDialog();
-	await tab.evaluate(`[...${rowSelect(5, 'kitchen valve left')}.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Remove').click()`);
+	await open('#/rooms/5', member('kitchen valve left'));
+	await memberButton('kitchen valve left', 'Remove from the installation');
 	await tab.waitFor(`document.querySelector('dialog[open]')`);
 	const effects = await tab.evaluate(`[...document.querySelectorAll('dialog[open] li')].map((li) => li.textContent)`);
 	check(effects.some((e) => e === 'Kitchen loses its demand reporter.'), `the removal lists its effects before the confirm (${effects.join(' | ')})`);
 	await closeDialog();
 	await sleep(300);
 	check(!requests.some((r) => r.startsWith('DELETE ')), 'Cancel removes nothing');
-	await tab.evaluate(`[...${rowSelect(5, 'kitchen valve left')}.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Remove').click()`);
+	await memberButton('kitchen valve left', 'Remove from the installation');
 	await tab.waitFor(`document.querySelector('dialog[open]')`);
 	await tab.evaluate(`document.querySelector('dialog[open] button.primary').click()`);
 	check(await toast('Device removed'), 'the removal is accepted after the confirm');
 	check(!(await api(daemon.base, 'install/devices')).devices.some((d) => d.serial === 'VA1000000006'), 'the daemon removed the device');
+	check(
+		await tab.waitFor(`!${member('kitchen valve left')} && !!${member('kitchen valve right')}`, 3000).then(() => true, () => false),
+		'the removed device leaves the list of its room'
+	);
 
 	// Room settings: the name, the measuring device and the delete.
+	await open('#/devices', `document.querySelector('[data-room="4"] header a')`);
 	await click('[data-room="4"] header a');
 	await tab.waitFor(`document.querySelector('main h1')?.textContent === 'Attic'`);
 	await tab.evaluate(`document.querySelector('main form input').focus(); document.querySelector('main form input').select()`);
@@ -532,10 +578,56 @@ try {
 	check(await toast('Room deleted'), 'the room is deleted');
 	await tab.waitFor(`location.hash === '#/devices' && document.querySelector('[data-room="none"]')`);
 	check(!(await api(daemon.base, 'install/zones')).zones.some((z) => z.number === 4), 'the daemon deleted the room');
+
+	// No room: the last group of the list, with settings of its own.
+	const groups = await tab.evaluate(`[...document.querySelectorAll('[data-room] > header h2')].map((h) => h.textContent)`);
+	check(groups.at(-1) === 'No room', `the devices in no room form the last group, named No room (${groups.join()})`);
 	check(
 		(await tab.evaluate(`[...document.querySelectorAll('[data-room="none"] .device strong')].map((s) => s.textContent).sort().join()`)) === 'Attic valve,office',
-		'its devices show under the devices in no room'
+		'the devices of the deleted room show under No room'
 	);
+	await open('#/rooms/2', member('bath'));
+	check((await joinOptions()) === 'Attic valve,office', `a room offers the devices in no room, and no device of another room (${await joinOptions()})`);
+	await open('#/rooms/0', member('Hall wall unit'));
+	check((await joinOptions()) === '', `the hot water room offers no valve (${await joinOptions()})`);
+	await open('#/devices', `document.querySelector('[data-room="none"] header a')`);
+	await click('[data-room="none"] header a');
+	await tab.waitFor(`location.hash === '#/rooms/none' && document.querySelector('main h1')?.textContent === 'No room' && ${member('office')}`);
+	check(
+		await tab.evaluate(`[...${member('office')}.querySelectorAll('button')].map((b) => b.textContent.trim()).join() === 'Rename,Remove from the installation'`),
+		'the settings of No room offer rename and removal for a free device'
+	);
+	const roomOptions = await tab.evaluate(`[...${member('office')}.querySelectorAll('option')].map((o) => o.textContent).join()`);
+	check(roomOptions === 'No room,Hall,Bath,Office,Kitchen,Living room,Bedroom', `a free valve can go to every heated room (${roomOptions})`);
+	await memberSelect('office', '3');
+	check(await toast('Device moved'), 'a free device is put in a room');
+	check((await api(daemon.base, 'install/zones/3')).zone.members.includes('08a4defa07c51b00'), 'the daemon added the device to the room');
+	await tab.waitFor(`!${member('office')}`, 3000);
+	await memberButton('Attic valve', 'Remove from the installation');
+	await tab.waitFor(`document.querySelector('dialog[open]')`);
+	check((await tab.evaluate(`document.querySelectorAll('dialog[open] li').length`)) === 0, 'the removal of a device in no room lists no effect');
+	await tab.evaluate(`document.querySelector('dialog[open] button.primary').click()`);
+	check(await toast('Device removed'), 'a free device is removed from the installation');
+	check(!(await api(daemon.base, 'install/devices')).devices.some((d) => d.eui === valve.eui), 'the daemon removed the free device');
+	await open('#/devices', `document.querySelector('[data-room="3"] .device')`);
+	check(!(await tab.evaluate(`!!document.querySelector('[data-room="none"]')`)), 'the group No room is gone while every device has a room');
+
+	// The burner badge follows the burner flag of the boiler, not the call of the heating circuit.
+	const burner = async (patch) => {
+		boilerPatch = patch;
+		await open('#/boiler', `document.querySelector('[data-testid=burner]')`);
+		await sleep(300);
+		return tab.evaluate(`[document.querySelector('[data-testid=burner]').textContent.trim(), document.querySelector('[data-testid=heat-call]')?.textContent.trim() ?? null]`);
+	};
+	const hotWaterRun = await burner({ Present: true, Active: true, HeatActive: false, Mon: { boiler_flag: 1 } });
+	check(hotWaterRun.join() === 'Burner on,', `a burner that runs while no room asks for heat shows as on (${hotWaterRun})`);
+	const heatingRun = await burner({ Present: true, Active: true, HeatActive: true, Mon: { boiler_flag: 1 } });
+	check(heatingRun.join() === 'Burner on,Heating requested', `a burner that runs for the heating circuit shows both (${heatingRun})`);
+	const waiting = await burner({ Present: true, Active: false, HeatActive: true, Mon: { boiler_flag: 0 } });
+	check(waiting.join() === 'Burner off,Heating requested', `a call for heat with the burner off does not show the burner as on (${waiting})`);
+	const noFlag = await burner({ Present: true, Active: false, HeatActive: false, Mon: {} });
+	check(noFlag.join() === 'Burner state not reported,', `a boiler with no burner flag shows no burner state (${noFlag})`);
+	boilerPatch = null;
 
 	// 13. The first setup on a daemon with an empty database.
 	fresh = await startDaemon(bin);
@@ -543,8 +635,8 @@ try {
 	const step = (name) => tab.evaluate(`document.querySelector('[data-step="${name}"]')?.dataset.state`);
 	const stepDone = (name) => tab.waitFor(`document.querySelector('[data-step="${name}"]')?.dataset.state === 'done'`, 8000).then(() => true, () => false);
 	await tab.navigate(setupRoot);
-	await tab.waitFor(`[...document.querySelectorAll('main a')].some((a) => a.textContent.includes('Start the setup'))`);
-	await tab.evaluate(`[...document.querySelectorAll('main a')].find((a) => a.textContent.includes('Start the setup')).click()`);
+	await tab.waitFor(`[...document.querySelectorAll('main a')].some((a) => a.textContent.includes('First setup'))`);
+	await tab.evaluate(`[...document.querySelectorAll('main a')].find((a) => a.textContent.includes('First setup')).click()`);
 	await tab.waitFor(`document.querySelector('[data-step="radio"]')`);
 	check(true, 'the empty home page leads to the first setup');
 	const states = [];

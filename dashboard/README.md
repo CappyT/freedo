@@ -35,10 +35,11 @@ and every page request gets `404`. The API works as before.
   `devices`, `rooms/[n]`, `setup` and `settings`. `programs` holds the profiles and the home and away
   schedule of every zone in each profile. The hot water page has no navigation item: its card on the home
   page leads there.
-- `devices` lists the devices room by room. It adds a room, pairs a device, moves a device between rooms,
-  removes a device and manages the heating circuits. `rooms/[n]` holds the settings of one room: the name,
-  the members, the circuit, the measuring device, the demand reporter and the delete. `setup` is the first
-  setup: one card for each step, with the state that `GET /api/health` reports. Devices and Settings link to it,
+- `devices` lists the devices room by room, with No room as the last group. It adds a room, pairs a device
+  and manages the heating circuits. `rooms/[n]` holds the settings of one room: the name, the members
+  with rename, move and removal, the circuit, the measuring device, the demand reporter and the delete.
+  `rooms/none` is the same page for the devices in no room. `setup` is the first
+  setup: one card for each step, with the state that `GET /api/health` reports. Rooms and devices and Settings link to it,
   and so does the home page while the installation has no room.
 - `src/lib/api.ts`: the client of the HTTP API. `data.svelte.ts` polls the views every 5 seconds.
 - `src/lib/install.ts`: the rules of the installation pages: the number of a new zone, the writes of a move,
@@ -82,7 +83,7 @@ pair that is not in the list. The test also holds the exact allowed set, and a l
 stay behind the token: the identity of the network, the network key, `POST /api/pair` with its key field,
 reboot, firmware and debug. A new client call needs a line in the JSON file and in the test, and every
 line widens what a Home Assistant user can do without the token. The list holds the installation and
-pairing calls, so the pages Devices and First setup work under the add-on. Where the wider route also
+pairing calls, so the pages Rooms and devices and First setup work under the add-on. Where the wider route also
 writes a field that ingress must not reach, the client calls a route that carries one field:
 `PUT /api/install/timezone`, `PUT /api/install/devices/{ref}/zone` and `POST /api/pair/devices/{ref}`.
 See [`docs/OPERATION.md`](../docs/OPERATION.md#dashboard).

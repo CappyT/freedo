@@ -25,13 +25,14 @@
 
 	const route = $derived(page.route.id ?? '/');
 	const items = $derived.by<Item[]>(() => {
-		// Hot water has no item: its card on the home page leads to its page.
+		// Hot water has no item: its card on the home page leads to its page. First setup has none
+		// either: the home page, Rooms and devices and Settings lead to it, so no item is active there.
 		return [
 			{ href: resolve('/'), label: 'nav.home', icon: 'home', active: route === '/' || route.startsWith('/zones') || route === '/hot-water' },
 			{ href: resolve('/programs'), label: 'nav.programs', icon: 'calendar', active: route === '/programs' },
 			{ href: resolve('/boiler'), label: 'nav.boiler', icon: 'flame', active: route === '/boiler' },
-			{ href: resolve('/devices'), label: 'nav.devices', icon: 'devices', active: route === '/devices' || route.startsWith('/rooms') },
-			{ href: resolve('/settings'), label: 'nav.settings', icon: 'sliders', active: route === '/settings' || route === '/setup' }
+			{ href: resolve('/devices'), label: 'devices.title', icon: 'devices', active: route === '/devices' || route.startsWith('/rooms') },
+			{ href: resolve('/settings'), label: 'nav.settings', icon: 'sliders', active: route === '/settings' }
 		];
 	});
 
@@ -188,8 +189,7 @@
 	@media (max-width: 899px) {
 		.shell {
 			grid-template-columns: minmax(0, 1fr);
-			grid-template-rows: auto 1fr;
-			padding-bottom: 4.5rem;
+			grid-template-rows: auto 1fr auto;
 		}
 
 		.brand {
@@ -202,10 +202,15 @@
 			padding: 1rem 1rem 2rem;
 		}
 
+		/* The bar is a row of the page that sticks to the bottom edge, so a label on two lines makes the bar higher and hides no content. */
 		nav {
-			position: fixed;
+			grid-column: 1;
+			grid-row: 3;
+			position: sticky;
 			z-index: 20;
-			inset: auto 0 0 0;
+			top: auto;
+			bottom: 0;
+			align-self: end;
 			padding: 0;
 			background: var(--surface);
 			border-top: 1px solid var(--border);
@@ -213,8 +218,13 @@
 
 		nav ul {
 			grid-auto-flow: column;
-			grid-auto-columns: 1fr;
+			grid-auto-columns: minmax(0, 1fr);
 			gap: 0;
+		}
+
+		/* Every item takes the height of the highest one. */
+		nav li {
+			display: grid;
 		}
 
 		nav a {
@@ -222,9 +232,10 @@
 			justify-content: center;
 			gap: 0.15rem;
 			min-height: 3.75rem;
-			padding: 0.4rem 0.25rem;
+			padding: 0.4rem 0.15rem;
 			border-radius: 0;
 			font-size: 0.75rem;
+			line-height: 1.2;
 			text-align: center;
 		}
 

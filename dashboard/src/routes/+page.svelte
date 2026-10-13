@@ -105,7 +105,7 @@
 		<div class="panel">
 			<h2>{t('home.empty.title')}</h2>
 			<p>{t('home.empty.body')}</p>
-			<div class="row"><a class="btn primary" href={resolve('/setup')}>{t('setup.start')}</a></div>
+			<div class="row"><a class="btn primary" href={resolve('/setup')}>{t('setup.title')}</a></div>
 			{#if data.problem}<p class="note mono">{data.problem}</p>{/if}
 		</div>
 	{:else}
