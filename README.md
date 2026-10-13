@@ -246,7 +246,8 @@ rule of a change made on a device, early start, offset mode, offset and valve ca
 ## Features
 
 The table compares the functions of the tado app with freedo. "equal" means the function exists in the
-daemon and has automated tests. "partial" means a part is missing in the daemon or in Home Assistant.
+daemon, or in the integration and the blueprints that freedo ships, and has automated tests. The note
+says when a function needs Home Assistant. "partial" means a part of the function is missing.
 "extra" means the tado app has no such function. "not implemented" means freedo has none. The notes name
 what is not verified on air. The routes are in [`docs/API.md`](docs/API.md). The entities are in
 [`custom_components/freedo/README.md`](custom_components/freedo/README.md).
@@ -264,7 +265,7 @@ what is not verified on air. The routes are in [`docs/API.md`](docs/API.md). The
 | Program profiles | extra | A profile holds the home and away schedules of every zone. One profile is active. The dashboard and Home Assistant switch it, and a blueprint switches it by season. Not verified on air. |
 | Preheat before arrival | partial | Two blueprints. One ends away when a person enters an approach zone. One sets the away temperature of each room in steps with the distance of the nearest person. Both read a distance and no travel time, and every room gets the same steps. They need Home Assistant. |
 | Early start | equal | The daemon learns the heating rate of each zone. No firmware does this. Not verified on air. |
-| Geofencing | partial | A blueprint uses the presence of Home Assistant for the whole home, and a second one uses the distance of the nearest person. The daemon has no geofencing code, so a plant without Home Assistant has none. |
+| Geofencing | equal | A blueprint uses the presence of Home Assistant for the whole home, and a second one uses the distance of the nearest person. Needs Home Assistant: the daemon has no geofencing code. |
 | Open window detection | equal | The valves detect the window. The detection and its time are room options. A reset from the dashboard or from Home Assistant ends a window of any source. A contact sensor that closes ends only its own hold. No valve detection was observed on a plant. |
 | Hot water: on, temperature, program | equal | The daemon keeps the program and writes the thermostat at each block change. |
 | Child lock | equal | Valves only. The wall thermostat firmware has no child lock. In use on one plant. |
@@ -284,8 +285,8 @@ what is not verified on air. The routes are in [`docs/API.md`](docs/API.md). The
 | Default weather curve for the flow limit | partial | A built-in curve under `flow_limit_c`, fitted on one plant and one season of monthly means. It is not the cloud algorithm. Home Assistant must feed the outdoor temperature. It is off by default. Not verified on air. |
 | Boiler telemetry and faults | equal | The dashboard shows the boiler fault codes on the page Boiler and in a banner on every page. Home Assistant has the binary sensor Boiler fault with the codes. A code is a number of the boiler maker, and freedo gives it no meaning. Not seen on a real boiler fault. |
 | Energy and gas estimate | partial | Estimated from modulation and name-plate data. Not a measurement. Gas meter readings give an estimated meter value and, after two readings, a correction factor. Price and cost stay in the Home Assistant Energy panel. |
-| History and reports | partial | Home Assistant records the history. The daemon keeps no time series. |
-| Notifications | partial | The daemon sends no notification. In Home Assistant, the event entity Alert raises one event when an alert starts, and the blueprint `alert_notification.yaml` sends a notification for a low battery, a device fault, a valve warning, an offline device, a boiler fault and a window that stays open. The texts are English. A plant without Home Assistant has no notification. Not run on a real plant. |
+| History and reports | equal | Home Assistant records the history of every entity. Needs Home Assistant: the daemon keeps no time series. |
+| Notifications | equal | In Home Assistant, the event entity Alert raises one event when an alert starts, and the blueprint `alert_notification.yaml` sends a notification for a low battery, a device fault, a valve warning, an offline device, a boiler fault and a window that stays open. The texts are English. Needs Home Assistant: the daemon sends no notification. Not run on a real plant. |
 | Several users | not implemented | One bearer token. Under Home Assistant ingress every Home Assistant user can use the dashboard. |
 | HomeKit | not implemented | |
 | Duration of a change made on a valve | equal | The rule is applied by the daemon. No capture holds the thermostat buttons. |
