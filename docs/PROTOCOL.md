@@ -726,7 +726,8 @@ The resources that change pairing, key or factory state:
 
 - `d/reboot` (POST): schedules a reset about 5 s later with reboot reason attr
   `0148` = `0x20` (`coap_reboot_res_init`@0x21358, handler @0x2133c, disassembly). The
-  boot path reloads the stored key, so the valve rejoins. No key change.
+  boot path reloads the stored key, so the valve rejoins. No key change. On the plant the valve
+  reset about 5 s after the request and was back on the network about 40 s later (2026-10-13).
 - The physical button long-press runs `pair_factory_reset`@0x30a9c (disassembly plus
   Ghidra): it wipes the device config records `0xf2`, `0xf3` and `0xf4` to `0xfb`
   (`cfg_wipe`@0xc738), writes `015d`=0 and `015c`=0, sets attr `0270`=1, erases the

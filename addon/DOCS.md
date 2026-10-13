@@ -77,11 +77,11 @@ Every Home Assistant user can open the page, also a user who is not an administr
 shows for administrators only, but the page opens for everyone who signs in. Without the token, a user
 can read the state of the plant, set temperatures and weekly schedules, switch zones off, switch the home
 between home and away, set the flow limit, set the options and the temperature offset of a room, rename a
-device, lock a valve, and identify a valve or the wall
+device, lock a valve, and identify or restart a valve or the wall
 thermostat. The same user can change the installation and pair a device: add, change and delete rooms and
 heating circuits, add, move and remove devices, set the time zone, open the pair window and send the pair
 command. The page needs this for the first setup, because the add-on keeps a token that it creates in its
-data folder. The identity of the network, the network key, a pairing with another key, reboot,
+data folder. The identity of the network, the network key, a pairing with another key,
 calibration, firmware, raw device reads and the debug routes need the token, also from the page.
 Give the right to open the page with care.
 

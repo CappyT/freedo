@@ -231,7 +231,7 @@ the boiler on the page Boiler and in a banner on every page. It has English, Ita
 - Home Assistant add-on: select Open Web UI, or the entry freedo in the sidebar. The page needs no token.
 
 The page Rooms and devices manages the installation. It creates, renames and deletes rooms. It adds a
-heating circuit, changes its heat source and deletes it. In the settings of a room it renames, moves and removes a
+heating circuit, changes its heat source and deletes it. In the settings of a room it renames, moves, restarts and removes a
 device of that room, and it sets the circuit, the measuring device and the demand reporter. The devices in no
 room form the group No room, with the same settings. It adds a device: it opens the pair window, declares
 the device that the window hears and sends the pair command. A removal shows the effects before you confirm. Under Home Assistant ingress this

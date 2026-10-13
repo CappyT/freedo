@@ -168,17 +168,26 @@ there is one. The page and the settings of a room do these tasks:
 - Add a room, rename it, delete it. A delete leaves the devices of the room in the installation, in No
   room.
 - Add a device: it opens the pair window for 600 seconds and shows the time left, lists the devices the
-  window hears, declares the chosen one with a type, a name and a room, and sends the pair command. It then
-  shows the pairing as in progress, and as done only when the daemon served the device a session or learned
-  its serial number. Send again repeats the pair command while the window is open: a device can miss the
-  first one. The page closes the window when the device joined. It then shows only the name and the room
-  of the paired device, with Done and Add another device. The list marks a heard device as paired when
-  the daemon served it a session after its last request to join, and does not offer it again. See
+  window hears, declares the chosen one with a type, a name and a room, and sends the pair command. The
+  room has no default: choose a room, or No room. The page puts the device in the room before it sends the
+  pair command, so a refused room stops the run. A declared device that is in no room gets the room field
+  again. The page then shows the pairing as in progress, and as done only when the daemon read a frame of
+  the device under the network key after the command: the frame counter of the device moved, or the daemon
+  learned its serial number. Send again repeats the pair command while the window is open: a device can
+  miss the first one. The page closes the window when the device joined. It then shows only the name of
+  the paired device and the room that the daemon reports, with Done and Add another device. When the
+  daemon does not hold the device in the chosen room, the page says so and offers to put it there. The
+  list marks a heard device as paired when the daemon heard it after its last request to join and a
+  request of it carried the session, and does not offer it again. See
   [Pairing a device](#pairing-a-device).
 - Add a heating circuit, change its heat source, delete it.
 - In the settings of a room, for each device of the room: rename it, move it to another room or to No
-  room, and remove it from the installation. The settings of No room do the same for the devices in no
-  room.
+  room, restart it, and remove it from the installation. The settings of No room do the same for the
+  devices in no room.
+- A restart asks first. It queues `POST /api/nodes/{id}/reboot` for a valve or the wall thermostat, and
+  the page shows the messages that wait for the device. The device restarts about 5 seconds after it
+  receives the command, does not answer for about a minute, and joins again with its stored key. The
+  daemon needs a zone id for the command: a device in no room that never named one gets `id required`.
 - A removal shows the effects that the daemon reports and asks before the delete. A device that is the
   heat source of a circuit cannot be removed. The delete sends no frame, and the device keeps talking on
   the network.
@@ -241,7 +250,7 @@ fixed address `172.30.32.2`. The developer documentation for apps tells an app t
 connections from that address only and to treat the user as authenticated. The daemon follows it:
 
 - The flag `--ingress` makes the daemon accept the calls of the dashboard from the connection address
-  `172.30.32.2` without a token. Only the 50 method and path pairs of
+  `172.30.32.2` without a token. Only the 51 method and path pairs of
   [`internal/daemon/ingress_routes.json`](../internal/daemon/ingress_routes.json) qualify. They include
   the installation and pairing calls of the pages Rooms and devices and First setup, so those pages need no token
   under the add-on. Every other request from that address needs the token. [SECURITY.md](../SECURITY.md#home-assistant-ingress) lists

@@ -39,7 +39,7 @@ and `{ref}` stand for a zone number, a device and a device reference:
   `POST /api/presets/{id}/activate`.
 - Home: `PATCH /api/home` (home or away).
 - Boiler: `POST /api/boiler/flow` (the flow limit).
-- Device: `POST /api/nodes/{id}/childlock` and `/identify`, and
+- Device: `POST /api/nodes/{id}/childlock`, `/identify` and `/reboot`, and
   `PUT /api/install/devices/{ref}/label` (the label alone, no other field).
 - Installation, read: `GET /api/install`, `/api/install/devices`,
   `/api/install/devices/{ref}/removal`, `/api/install/zones` and `/api/install/circuits`.
@@ -56,7 +56,8 @@ So a Home Assistant user, without the token, can read the state of the plant, se
 write and remove the home and the away program of a zone, create, rename, delete and switch the program
 presets, switch zones off, switch the home between home and away, set the flow limit, set the temperature
 offset of a room, rename a device,
-and lock or identify a valve. A preset holds the weekly programs of the zones, so managing the presets is
+lock or identify a valve, and restart a valve or the wall thermostat. A restarted device does not answer
+for about a minute and then joins again with its stored key. A preset holds the weekly programs of the zones, so managing the presets is
 managing the weekly schedules: it gives no control over the plant that a schedule write does not already
 give. Only a preset that is active reaches the devices.
 
@@ -72,7 +73,7 @@ calls. Give the right to open the page with care.
 These stay behind the token, also from that address: the identity of the network (`home_id`,
 `coordinator`) and every other field of `PATCH /api/install`, the network key
 (`PUT /api/install/network_key`, and `POST /api/pair` with its `networkKeyHex` field), the kind and the
-serial of a device (`PATCH /api/install/devices/{ref}`), reboot, calibration and firmware,
+serial of a device (`PATCH /api/install/devices/{ref}`), calibration and firmware,
 the low-level device writes, the raw device reads and the debug routes. `GET /api/install` shows the
 home id and the coordinator EUI. They are identifiers, and no route returns the network key. The daemon compares the method and the exact path. It reads the address of the TCP
 connection and no header. It ignores `--ingress`, and logs a warning, unless the process runs under the

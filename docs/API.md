@@ -21,7 +21,7 @@ the routes. For the radio facts behind a rule, see [PROTOCOL.md](PROTOCOL.md).
 - `--health-public` makes `GET /api/health` readable without a token, for a container
   health check. The default is off.
 - `--ingress` makes the daemon accept the calls of the dashboard from the connection address
-  `172.30.32.2`, the Home Assistant ingress gateway, without a token. It covers 50 method and path
+  `172.30.32.2`, the Home Assistant ingress gateway, without a token. It covers 51 method and path
   pairs only. Only the add-on start script sets it, and it has no effect unless `SUPERVISOR_TOKEN` is
   set. Every other request needs the token. See [Access](OPERATION.md#access).
 - With no token, the daemon accepts a loopback address only and warns at start. An address
@@ -97,7 +97,12 @@ the session id, the challenge keys and the network key.
 - `Telemetry` of `/api/nodes` omits `auth_token`, `serial_id`, `cloud_session_id`,
   `challenge_key_rotate` and `0262`.
 - `SessionIssued`, `SessionAdopted` and `SessionIssuedUnix` tell whether and when the daemon
-  served a session. They do not carry the id.
+  served a session. They do not carry the id. `SessionIssuedUnix` is the time the daemon last built
+  an answer to `auth/token` or `auth/key`. A request that repeats the message id of the last one gets
+  the stored answer, and the time does not move, so the time can be older than the last join.
+  `SessionAdopted` has no time: it turns false when the daemon builds a new answer and true when a
+  later request carries the session id. A device that leaves the installation loses the time and keeps
+  `SessionIssued`.
 - `GET /api/install` reports `network_key.present`. `PUT /api/install/network_key` and the
   field `networkKeyHex` of `POST /api/pair` receive the key and never return it.
 - `GET /api/nodes/{id}/resource`, `/dbg/mem` and `/currentlog` return the raw device answer
@@ -163,7 +168,7 @@ banner.
 | `GET`, `PUT /api/nodes/{id}/display` | Read or write the display settings of a valve. |
 | `POST /api/nodes/{id}/identify`, `.../beep` | Make a valve or the wall thermostat signal itself (`beep` is an alias). |
 | `POST /api/nodes/{id}/calibrate` | Start the motor calibration of a valve. |
-| `POST /api/nodes/{id}/reboot` | Restart a device. |
+| `POST /api/nodes/{id}/reboot` | Restart a device. The body is `{}` or `{"id": N}`. The device keeps its key and joins again. |
 | `POST /api/nodes/{id}/extui` | Write the external interface endpoints. |
 | `POST /api/nodes/{id}/config` | Write chosen `d/config` tags. |
 | `DELETE /api/nodes/{id}/config/offlineScheduleEnabled` | Remove the per-device offline schedule value. |
