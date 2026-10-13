@@ -291,6 +291,11 @@ Heating is safety relevant.
   coordinator depends on the device firmware.
 - The database holds the network key. The API token protects the plant. See [`SECURITY.md`](SECURITY.md).
 
+## Community
+
+- Questions and reports from users: the [freedo topic](https://community.home-assistant.io/t/freedo-a-local-coordinator-for-tado-v3-868-mhz-devices-no-cloud-or-internet-needed-open-source/1028536) on the Home Assistant community forum.
+- Bugs and feature requests: the [issues](https://github.com/CappyT/freedo/issues) of this repository.
+
 ## Documentation
 
 - [`docs/OPERATION.md`](docs/OPERATION.md): configuration, container, dashboard, calibration, pairing.
