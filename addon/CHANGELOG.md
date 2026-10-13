@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.2
+
+- Breaking: the routes `POST /api/nodes/{id}/factoryreset` and `POST /api/nodes/{id}/netcmd` are
+  gone. No device resource receives the network commands they sent, so they had no effect. A
+  device leaves its network only when its button is held.
+
 ## 0.5.1
 
 - Dashboard: the page First setup shows the six steps of a new installation with their live state.
