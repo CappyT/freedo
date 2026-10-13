@@ -351,9 +351,6 @@ export const it: Record<Key, string> = {
 	'settings.unhandled': 'Eventi non gestiti',
 
 	'action.close': 'Chiudi',
-	'manage.token.title': 'Serve il token API',
-	'manage.token.body': 'Home Assistant apre la dashboard senza token. Una modifica dell’installazione e un abbinamento richiedono il token API. Inseriscilo una volta. Il browser lo conserva.',
-	'manage.token.needed': 'freedo richiede il token API per questa modifica.',
 	'devices.loose': 'Dispositivi senza stanza',
 	'devices.noRoom': 'Nessuna stanza',
 	'devices.moved': 'Dispositivo spostato.',

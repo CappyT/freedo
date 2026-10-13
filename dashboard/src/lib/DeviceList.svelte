@@ -7,9 +7,9 @@
 	import type { DeviceRow } from './devices.ts';
 	import { fmt, t } from './i18n.svelte.ts';
 	import Icon from './Icon.svelte';
-	import { install as installState, manage } from './install.svelte.ts';
+	import { manage } from './install.svelte.ts';
 	import { describeEffect, movePlan } from './install.ts';
-	import { api, install } from './session.ts';
+	import { api } from './session.ts';
 	import { toasts } from './toast.svelte.ts';
 	import type { Removal } from './types.ts';
 	import { zoneName } from './zones.ts';
@@ -41,11 +41,11 @@
 		const to = select.value === '' ? null : Number(select.value);
 		const from = room ?? null;
 		const done = await manage(async () => {
-			const { zone: claim } = await install.device(device.short);
+			const { zone: claim } = await api.installDevice(device.short);
 			for (const step of movePlan(claim, from, to)) {
-				if (step.op === 'claim') await install.claimZone(device.short, step.zone);
-				else if (step.op === 'leave') await install.removeMember(step.zone, device.short);
-				else await install.addMember(step.zone, device.short);
+				if (step.op === 'claim') await api.claimZone(device.short, step.zone);
+				else if (step.op === 'leave') await api.removeMember(step.zone, device.short);
+				else await api.addMember(step.zone, device.short);
 			}
 			return true;
 		}, t('devices.moved'));
@@ -68,9 +68,9 @@
 	async function askRemove(device: DeviceRow) {
 		let answer: Removal;
 		try {
-			answer = await install.removal(device.short);
+			answer = await api.removal(device.short);
 		} catch (error) {
-			toasts.push('error', installState.refused(error) ? t('manage.token.needed') : errorText(error));
+			toasts.push('error', errorText(error));
 			return;
 		}
 		removing = device;
@@ -83,7 +83,7 @@
 		const device = removing;
 		if (!device) return;
 		// The person saw the effects, so the delete releases the zone memberships. It never releases a heat source.
-		void manage(() => install.deleteDevice(device.short, true), t('devices.removed'));
+		void manage(() => api.deleteDevice(device.short, true), t('devices.removed'));
 	}
 
 	// The shared address of the row whose label is being changed, null when no row is.
@@ -189,6 +189,12 @@
 				{/if}
 
 				<div class="flags">
+					{#each device.faults as fault (fault)}
+						<span class="badge tone-fault">{conditionText(fault)}</span>
+					{/each}
+					{#each device.warnings as warning (warning)}
+						<span class="badge tone-warning">{conditionText(warning)}</span>
+					{/each}
 					{#each device.alerts as alert (alert)}
 						<span class="badge tone-warning">{t(alertKeys[alert])}</span>
 					{/each}

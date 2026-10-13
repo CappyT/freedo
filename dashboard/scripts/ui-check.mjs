@@ -443,7 +443,7 @@ try {
 		(await valueOf('[data-testid=add-device] form .field.grow input')) === 'Attic valve' && (await valueOf('[data-testid=add-device] .eui')) === valve.eui,
 		'the add device flow keeps its fields across a data poll'
 	);
-	check(!requests.some((r) => r === 'POST /api/pair' || r === 'POST /api/install/devices'), 'nothing is declared or paired before the person asks');
+	check(!requests.some((r) => r.startsWith('POST /api/pair/devices/') || r === 'POST /api/install/devices'), 'nothing is declared or paired before the person asks');
 	await clickIn('[data-testid=add-device]', 'Add and pair');
 	check(await toast('Pair command queued for Attic valve'), 'the device is declared and the pair command is queued');
 	const declaredValve = (await api(daemon.base, 'install/devices')).devices.find((d) => d.eui === valve.eui);
@@ -459,7 +459,7 @@ try {
 	check(true, 'the list marks the device as part of the installation');
 	await clickIn('[data-testid=add-device]', 'Send again');
 	await sleep(800);
-	check(requests.filter((r) => r === 'POST /api/pair').length === 2, 'Send again sends the pair command once more');
+	check(requests.filter((r) => r === 'POST /api/pair/devices/' + valve.eui).length === 2, 'Send again sends the pair command once more');
 	check(await tab.evaluate(`!!document.querySelector('[data-testid=pair-progress]')`), 'the flow still waits after the second command');
 	joinedShort = valve.short;
 	const joinedText = await tab.waitFor(`document.querySelector('[data-testid=pair-joined]')?.innerText`, 8000).catch(() => '');

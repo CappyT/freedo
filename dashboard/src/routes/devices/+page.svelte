@@ -11,9 +11,8 @@
 	import Icon from '#lib/Icon.svelte';
 	import { install, manage } from '#lib/install.svelte.ts';
 	import { shortOf } from '#lib/install.ts';
-	import InstallGate from '#lib/InstallGate.svelte';
 	import RoomForm from '#lib/RoomForm.svelte';
-	import { install as installApi } from '#lib/session.ts';
+	import { api } from '#lib/session.ts';
 	import type { Circuit } from '#lib/types.ts';
 	import { zoneName } from '#lib/zones.ts';
 
@@ -31,7 +30,7 @@
 	onMount(() => void install.load());
 
 	const setHeatSource = (circuit: Circuit, select: HTMLSelectElement) =>
-		manage(() => installApi.patchCircuit(circuit.ID, { heat_source: select.value }), t('circuits.saved')).then((done) => {
+		manage(() => api.patchCircuit(circuit.ID, { heat_source: select.value }), t('circuits.saved')).then((done) => {
 			if (!done) select.value = sourceOf(circuit);
 		});
 
@@ -54,8 +53,6 @@
 			</button>
 		</div>
 	</div>
-
-	<InstallGate />
 
 	{#if adding === 'room'}
 		<section class="panel" aria-labelledby="add-room-title">
@@ -155,7 +152,7 @@
 	title={t('circuits.delete.title', { name: doomed?.Name ?? '' })}
 	body={t('circuits.delete.body')}
 	confirm={t('circuits.delete')}
-	onconfirm={() => doomed && manage(() => installApi.deleteCircuit(doomed!.ID), t('circuits.deleted'))}
+	onconfirm={() => doomed && manage(() => api.deleteCircuit(doomed!.ID), t('circuits.deleted'))}
 />
 
 <style>

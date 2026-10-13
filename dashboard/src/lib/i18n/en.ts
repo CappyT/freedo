@@ -351,9 +351,6 @@ export const en = {
 	'settings.unhandled': 'Unhandled events',
 
 	'action.close': 'Close',
-	'manage.token.title': 'API token needed',
-	'manage.token.body': 'Home Assistant opens the dashboard without a token. A change of the installation and a pairing need the API token. Enter it once. The browser keeps it.',
-	'manage.token.needed': 'freedo needs the API token for this change.',
 	'devices.loose': 'Devices in no room',
 	'devices.noRoom': 'No room',
 	'devices.moved': 'Device moved.',

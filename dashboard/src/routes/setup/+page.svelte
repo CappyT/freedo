@@ -8,9 +8,8 @@
 	import Icon from '#lib/Icon.svelte';
 	import { install, manage } from '#lib/install.svelte.ts';
 	import { setupState, type StepState } from '#lib/install.ts';
-	import InstallGate from '#lib/InstallGate.svelte';
 	import RoomForm from '#lib/RoomForm.svelte';
-	import { install as api } from '#lib/session.ts';
+	import { api } from '#lib/session.ts';
 	import { zoneName } from '#lib/zones.ts';
 
 	const health = $derived(data.health);
@@ -51,8 +50,6 @@
 		<a class="btn" href={resolve('/devices')}><Icon name="devices" size={18} />{t('devices.title')}</a>
 	</div>
 	<p class="lead">{t('setup.lead')}</p>
-
-	<InstallGate />
 
 	{#if !data.loaded}
 		<p class="muted">{t('state.loading')}</p>

@@ -8,10 +8,12 @@ package daemon
 //
 //   - A request from the gateway address skips the token only for the method and path
 //     pairs in ingress_routes.json, the calls that the dashboard makes. Every other request
-//     from the gateway needs the token like a request from any other source. The routes
-//     that pair devices, change a device other than its label, change the installation or
-//     the network key, reset or flash a device, and read raw device answers are not in the
-//     list.
+//     from the gateway needs the token like a request from any other source. The list
+//     holds the installation and pairing calls of the dashboard, because an add-on user
+//     cannot read a generated token. The routes that write the identity of the network or
+//     the network key, pair with a key of the caller, reset or flash a device, and read raw
+//     device answers are not in the list. A listed write that shares a route with such a
+//     field has a route of its own that carries one field.
 //   - The decision reads the address of the TCP connection and nothing else. A header such
 //     as X-Forwarded-For or X-Ingress-Path is under the control of the caller.
 

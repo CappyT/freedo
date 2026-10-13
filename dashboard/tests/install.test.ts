@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createInstallClient } from '../src/lib/api.ts';
+import { createClient } from '../src/lib/api.ts';
 import {
 	countdown,
 	describeEffect,
@@ -179,15 +179,15 @@ describe('the device a view names', () => {
 	});
 });
 
-describe('the installation client', () => {
-	async function record(call: (client: ReturnType<typeof createInstallClient>) => Promise<unknown>) {
+describe('the installation calls of the client', () => {
+	async function record(call: (client: ReturnType<typeof createClient>) => Promise<unknown>) {
 		const seen: { method: string; path: string; body: unknown }[] = [];
 		const fetchStub = (async (url: string | URL | Request, init?: RequestInit) => {
 			const { pathname, search } = new URL(String(url));
 			seen.push({ method: init?.method ?? 'GET', path: pathname + search, body: init?.body ? JSON.parse(String(init.body)) : undefined });
 			return new Response('{"devices":[],"zones":[],"circuits":[]}', { status: 200 });
 		}) as unknown as typeof fetch;
-		await call(createInstallClient({ base: 'http://daemon/', fetch: fetchStub }));
+		await call(createClient({ base: 'http://daemon/', fetch: fetchStub }));
 		return seen;
 	}
 
@@ -205,18 +205,21 @@ describe('the installation client', () => {
 		]);
 	});
 
-	it('pairs one named device and opens the window for a number of seconds', async () => {
+	it('pairs one named device with no key in the request, and opens the window for a number of seconds', async () => {
 		expect(await record((c) => c.pair('04a3defa07c51b00'))).toEqual([
-			{ method: 'POST', path: '/api/pair', body: { target: '04a3defa07c51b00' } }
+			{ method: 'POST', path: '/api/pair/devices/04a3defa07c51b00', body: undefined }
 		]);
 		expect(await record((c) => c.openPairWindow(600))).toEqual([
 			{ method: 'POST', path: '/api/pair/window', body: { seconds: 600 } }
 		]);
 	});
 
-	it('removes the zone claim of a device with null', async () => {
+	it('writes the zone claim and the time zone through the routes that carry one field', async () => {
 		expect(await record((c) => c.claimZone('a304', null))).toEqual([
-			{ method: 'PATCH', path: '/api/install/devices/a304', body: { zone: null } }
+			{ method: 'PUT', path: '/api/install/devices/a304/zone', body: { zone: null } }
+		]);
+		expect(await record((c) => c.setTimezone('Europe/Rome'))).toEqual([
+			{ method: 'PUT', path: '/api/install/timezone', body: { timezone: 'Europe/Rome' } }
 		]);
 	});
 });

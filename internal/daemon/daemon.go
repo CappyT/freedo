@@ -1896,6 +1896,7 @@ func (d *daemon) mux() *http.ServeMux {
 	m.HandleFunc("DELETE /api/boiler/gas/meter", d.deleteGasMeter)
 	m.HandleFunc("POST /api/outdoor", d.postOutdoor)
 	m.HandleFunc("POST /api/pair", d.postPair)
+	m.HandleFunc("POST /api/pair/devices/{ref}", d.postPairDevice)
 	m.HandleFunc("GET /api/pair/window", d.getPairWindow)
 	m.HandleFunc("POST /api/pair/window", d.postPairWindow)
 	// Active-GET returns the correlated response, or {"queued":true}.
@@ -4047,14 +4048,27 @@ func (d *daemon) postPair(w http.ResponseWriter, r *http.Request) {
 	if !decodeBody(w, r, &b) {
 		return
 	}
+	d.queuePair(w, r, b.Target, b.NetworkKeyHex)
+}
+
+// postPairDevice queues d/pair for the device the path names, under the
+// network key of the installation. It takes no body, so the ingress route that
+// reaches it cannot send another key.
+func (d *daemon) postPairDevice(w http.ResponseWriter, r *http.Request) {
+	d.queuePair(w, r, r.PathValue("ref"), "")
+}
+
+// queuePair is the shared half of the two pair routes. An empty keyHex takes
+// the network key of the installation.
+func (d *daemon) queuePair(w http.ResponseWriter, r *http.Request, ref, keyHex string) {
 	target := ""
-	if b.Target != "" {
-		dev, err := d.resolve(b.Target)
+	if ref != "" {
+		dev, err := d.resolve(ref)
 		if err == nil {
 			target = hex.EncodeToString(dev.WireEUI())
 		} else {
 			v, jerr := d.doReq(r, func(e *tado.EmuState) (any, error) {
-				t, _ := e.PairJoinerTarget(b.Target)
+				t, _ := e.PairJoinerTarget(ref)
 				return t, nil
 			})
 			t, _ := v.(string)
@@ -4066,8 +4080,8 @@ func (d *daemon) postPair(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	key := d.inst.Load().NetworkKey()
-	if b.NetworkKeyHex != "" {
-		k, err := hex.DecodeString(b.NetworkKeyHex)
+	if keyHex != "" {
+		k, err := hex.DecodeString(keyHex)
 		if err != nil {
 			writeErr(w, http.StatusBadRequest, "bad networkKeyHex: "+err.Error())
 			return

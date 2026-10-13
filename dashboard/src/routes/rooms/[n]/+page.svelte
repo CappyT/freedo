@@ -6,9 +6,8 @@
 	import ConfirmDialog from '#lib/ConfirmDialog.svelte';
 	import { t } from '#lib/i18n.svelte.ts';
 	import Icon from '#lib/Icon.svelte';
-	import { install, manage } from '#lib/install.svelte.ts';
-	import InstallGate from '#lib/InstallGate.svelte';
-	import { install as api } from '#lib/session.ts';
+	import { manage } from '#lib/install.svelte.ts';
+	import { api } from '#lib/session.ts';
 	import type { InstallCircuit, InstallDevice, InstallZone } from '#lib/types.ts';
 	import { zoneName } from '#lib/zones.ts';
 
@@ -38,22 +37,22 @@
 
 	async function load() {
 		try {
-			const [zones, allDevices, allCircuits] = await Promise.all([api.zones(), api.devices(), api.circuits()]);
+			const [zones, allDevices, allCircuits] = await Promise.all([api.installZones(), api.installDevices(), api.installCircuits()]);
 			zone = zones.find((z) => z.number === number) ?? null;
 			devices = allDevices;
 			circuits = allCircuits;
 			problem = null;
 			if (!typed) name = zone?.name ?? '';
 		} catch (error) {
-			if (!install.refused(error)) problem = errorText(error);
+			problem = errorText(error);
 		}
 		loaded = true;
 	}
 
-	// The first read, and one more when the person enters the token or opens another room.
+	// The first read, and one more when the person opens another room.
 	$effect(() => {
 		void number;
-		if (!install.needsToken) void load();
+		void load();
 	});
 
 	async function run(command: () => Promise<unknown>, done: string): Promise<boolean> {
@@ -89,11 +88,7 @@
 <section class="page">
 	<a class="back small" href={resolve('/devices')}><Icon name="back" size={16} />{t('devices.title')}</a>
 
-	<InstallGate />
-
-	{#if install.needsToken}
-		<!-- The gate above asks for the token. -->
-	{:else if !loaded}
+	{#if !loaded}
 		<p class="muted">{t('state.loading')}</p>
 	{:else if problem}
 		<p class="notice tone-fault" role="alert"><Icon name="fault" /><span>{problem}</span></p>

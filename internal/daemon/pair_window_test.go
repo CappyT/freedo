@@ -244,6 +244,14 @@ func TestPairWindowAPI(t *testing.T) {
 		t.Errorf("pair by the joiner's short address: code=%d %v", code, res)
 	}
 
+	// The route of the dashboard names the device in the path and takes no key.
+	if code := postJSON(t, http.MethodPost, url+"/api/pair/devices/"+target, nil, &res); code != http.StatusOK || res["target"] != target {
+		t.Errorf("pair through the device route: code=%d %v", code, res)
+	}
+	if code := postJSON(t, http.MethodPost, url+"/api/pair/devices/ffff", nil, &res); code != http.StatusNotFound {
+		t.Errorf("the device route with an unknown device: code=%d %v, want 404", code, res)
+	}
+
 	if code := postJSON(t, http.MethodPost, url+"/api/pair/window", map[string]any{"seconds": 0}, &view); code != http.StatusOK || view.Open {
 		t.Errorf("close window: code=%d %+v", code, view)
 	}

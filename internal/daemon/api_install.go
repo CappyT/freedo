@@ -111,6 +111,20 @@ type deviceLabelPut struct {
 	Label string `json:"label"`
 }
 
+// deviceZonePut is the body of PUT /api/install/devices/{ref}/zone. Like
+// deviceLabelPut it carries one field, the zone the device answers to; null
+// removes the claim.
+type deviceZonePut struct {
+	Zone optInt `json:"zone"`
+}
+
+// timezonePut is the body of PUT /api/install/timezone. It carries the IANA
+// zone alone, so the ingress route that reaches it cannot change the identity
+// of the network, which PATCH /api/install also writes.
+type timezonePut struct {
+	Timezone optString `json:"timezone"`
+}
+
 type zoneCreate struct {
 	Rev     *uint64 `json:"rev"`
 	Number  *int    `json:"number"`
@@ -679,6 +693,43 @@ func (d *daemon) putInstallDeviceLabel(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (d *daemon) putInstallDeviceZone(w http.ResponseWriter, r *http.Request) {
+	var p deviceZonePut
+	if !decodeBody(w, r, &p) {
+		return
+	}
+	if !p.Zone.set {
+		writeErr(w, http.StatusBadRequest, "zone is required: a zone number, or null to remove the claim")
+		return
+	}
+	ref := r.PathValue("ref")
+	d.mutateInstall(w, "device", func(store *stateStore) (installResult, any, error) {
+		res, key, err := store.PatchDevice(r.Context(), ref, devicePatch{Zone: p.Zone})
+		if err != nil {
+			return res, nil, err
+		}
+		return res, viewDeviceOf(res.Install, key), nil
+	})
+}
+
+func (d *daemon) putInstallTimezone(w http.ResponseWriter, r *http.Request) {
+	var p timezonePut
+	if !decodeBody(w, r, &p) {
+		return
+	}
+	if !p.Timezone.set {
+		writeErr(w, http.StatusBadRequest, "timezone is required: an IANA name, or null to follow the host")
+		return
+	}
+	d.mutateInstall(w, "install", func(store *stateStore) (installResult, any, error) {
+		res, err := store.PatchInstall(r.Context(), installPatch{Timezone: p.Timezone})
+		if err != nil {
+			return res, nil, err
+		}
+		return res, installView(res.Install, res.Rev), nil
+	})
+}
+
 // viewDeviceOf renders the device a mutation left behind. A reference the new
 // installation cannot resolve renders as nothing rather than failing the answer
 // to a mutation that already committed.
@@ -973,11 +1024,13 @@ func (d *daemon) installRoutes(m *http.ServeMux) {
 	m.HandleFunc("GET /api/install", d.getInstall)
 	m.HandleFunc("PATCH /api/install", d.patchInstall)
 	m.HandleFunc("PUT /api/install/network_key", d.putInstallNetworkKey)
+	m.HandleFunc("PUT /api/install/timezone", d.putInstallTimezone)
 	m.HandleFunc("GET /api/install/devices", d.getInstallDevices)
 	m.HandleFunc("POST /api/install/devices", d.postInstallDevice)
 	m.HandleFunc("GET /api/install/devices/{ref}", d.getInstallDevice)
 	m.HandleFunc("PATCH /api/install/devices/{ref}", d.patchInstallDevice)
 	m.HandleFunc("PUT /api/install/devices/{ref}/label", d.putInstallDeviceLabel)
+	m.HandleFunc("PUT /api/install/devices/{ref}/zone", d.putInstallDeviceZone)
 	m.HandleFunc("GET /api/install/devices/{ref}/removal", d.getInstallDeviceRemoval)
 	m.HandleFunc("DELETE /api/install/devices/{ref}", d.deleteInstallDevice)
 	m.HandleFunc("GET /api/install/zones", d.getInstallZones)

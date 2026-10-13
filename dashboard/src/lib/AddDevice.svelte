@@ -4,9 +4,9 @@
 	import { data } from './data.svelte.ts';
 	import Icon from './Icon.svelte';
 	import { t } from './i18n.svelte.ts';
-	import { install as installState, manage } from './install.svelte.ts';
+	import { manage } from './install.svelte.ts';
 	import { countdown, joinedSince, wireEui } from './install.ts';
-	import { install } from './session.ts';
+	import { api } from './session.ts';
 	import { toasts } from './toast.svelte.ts';
 	import type { PairWindow } from './types.ts';
 	import { zoneName } from './zones.ts';
@@ -53,10 +53,10 @@
 
 	async function read() {
 		try {
-			pairWindow = await install.pairWindow();
+			pairWindow = await api.pairWindow();
 			problem = null;
 		} catch (error) {
-			if (!installState.refused(error)) problem = errorText(error);
+			problem = errorText(error);
 		}
 	}
 
@@ -83,12 +83,12 @@
 		pending = null;
 		joined = waiting.name;
 		toasts.push('ok', t('pair.joined', { name: waiting.name }));
-		void install.openPairWindow(0).then((view) => (pairWindow = view), () => undefined);
+		void api.openPairWindow(0).then((view) => (pairWindow = view), () => undefined);
 	});
 
 	async function setWindow(seconds: number) {
 		busy = true;
-		const view = await manage(() => install.openPairWindow(seconds), seconds > 0 ? t('pair.opened') : t('pair.closed'));
+		const view = await manage(() => api.openPairWindow(seconds), seconds > 0 ? t('pair.opened') : t('pair.closed'));
 		busy = false;
 		if (view) pairWindow = view;
 	}
@@ -103,10 +103,10 @@
 		const short = await manage(async () => {
 			let address = existing?.short;
 			if (address === undefined) {
-				address = (await install.createDevice({ eui: target, kind, label: name })).device.short;
-				if (zone !== null) await install.addMember(zone, target);
+				address = (await api.createDevice({ eui: target, kind, label: name })).device.short;
+				if (zone !== null) await api.addMember(zone, target);
 			}
-			await install.pair(target);
+			await api.pair(target);
 			return address;
 		}, t('pair.sent', { name }));
 		busy = false;
@@ -122,7 +122,7 @@
 		const waiting = pending;
 		if (!waiting) return;
 		busy = true;
-		await manage(() => install.pair(waiting.eui), t('pair.sent', { name: waiting.name }));
+		await manage(() => api.pair(waiting.eui), t('pair.sent', { name: waiting.name }));
 		busy = false;
 	}
 </script>

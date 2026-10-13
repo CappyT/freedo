@@ -634,6 +634,73 @@ func TestInstallAPIRenamesADeviceThroughTheLabelRoute(t *testing.T) {
 	}
 }
 
+// TestInstallAPIWritesTheZoneClaimThroughTheZoneRoute: the ingress route carries
+// the zone claim alone, under the rule of the general patch.
+func TestInstallAPIWritesTheZoneClaimThroughTheZoneRoute(t *testing.T) {
+	a := newInstallAPI(t)
+	a.declareDevices()
+	a.mutate(http.MethodPost, "/api/install/zones", map[string]any{"number": 1, "kind": "heating"})
+	a.mutate(http.MethodPost, "/api/install/zones/1/members", map[string]any{"ref": "VA9000000001"})
+
+	dev := a.mutate(http.MethodPut, "/api/install/devices/VA9000000001/zone",
+		map[string]any{"zone": 1})["device"].(map[string]any)
+	if dev["zone"] != float64(1) || dev["label"] != "lounge" {
+		t.Fatalf("device = %v, want only the zone claim changed", dev)
+	}
+	dev = a.mutate(http.MethodPut, "/api/install/devices/VA9000000001/zone",
+		map[string]any{"zone": nil})["device"].(map[string]any)
+	if dev["zone"] != nil {
+		t.Fatalf("device = %v, want the claim removed", dev)
+	}
+	if code, res := a.call(http.MethodPut, "/api/install/devices/VA9000000001/zone",
+		map[string]any{"zone": 1, "kind": "thermostat"}); code != http.StatusBadRequest {
+		t.Fatalf("a zone route with kind: got %d %v, want 400", code, res)
+	}
+	if code, res := a.call(http.MethodPut, "/api/install/devices/VA9000000001/zone",
+		map[string]any{}); code != http.StatusBadRequest {
+		t.Fatalf("a zone route with no zone: got %d %v, want 400", code, res)
+	}
+	// The claim of a zone the device is not a member of is refused, as in the patch.
+	if code, res := a.call(http.MethodPut, "/api/install/devices/VA9000000002/zone",
+		map[string]any{"zone": 1}); code == http.StatusOK {
+		t.Fatalf("a claim on a zone the device is not in: got %d %v, want a refusal", code, res)
+	}
+}
+
+// TestInstallAPIWritesTheTimezoneThroughItsRoute: the ingress route carries the
+// time zone alone. PATCH /api/install also writes the identity of the network,
+// and this route must not reach it.
+func TestInstallAPIWritesTheTimezoneThroughItsRoute(t *testing.T) {
+	a := newInstallAPI(t)
+	before := a.get("/api/install")
+
+	view := a.mutate(http.MethodPut, "/api/install/timezone",
+		map[string]any{"timezone": "Europe/Rome"})["install"].(map[string]any)
+	if view["timezone"] != "Europe/Rome" || view["home_id"] != before["home_id"] {
+		t.Fatalf("install = %v, want only the time zone changed", view)
+	}
+	for name, body := range map[string]map[string]any{
+		"home_id":     {"timezone": "Europe/Rome", "home_id": 7},
+		"coordinator": {"timezone": "Europe/Rome", "coordinator": map[string]any{"eui": "0102030405060708"}},
+		"an option":   {"timezone": "Europe/Rome", "flow_limit_c": 60},
+		"no timezone": {},
+	} {
+		if code, res := a.call(http.MethodPut, "/api/install/timezone", body); code != http.StatusBadRequest {
+			t.Errorf("a timezone route with %s: got %d %v, want 400", name, code, res)
+		}
+	}
+	if got := a.get("/api/install"); got["home_id"] != before["home_id"] ||
+		!reflect.DeepEqual(got["coordinator"], before["coordinator"]) {
+		t.Errorf("the identity moved: %v and %v, want %v and %v",
+			got["home_id"], got["coordinator"], before["home_id"], before["coordinator"])
+	}
+	view = a.mutate(http.MethodPut, "/api/install/timezone",
+		map[string]any{"timezone": nil})["install"].(map[string]any)
+	if view["timezone"] != "" {
+		t.Errorf("timezone = %v after null, want the host zone", view["timezone"])
+	}
+}
+
 // TestInstallAPIServesADuplicateLabelFromTheRows: an installation seeded before
 // the label rule keeps its duplicates. The daemon serves it and reports the
 // finding, because refusing to start would leave nothing to rename it with.

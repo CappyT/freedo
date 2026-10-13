@@ -40,8 +40,7 @@ and every page request gets `404`. The API works as before.
   the members, the circuit, the measuring device, the demand reporter and the delete. `setup` is the first
   setup: one card for each step, with the state that `GET /api/health` reports. Devices and Settings link to it,
   and so does the home page while the installation has no room.
-- `src/lib/api.ts`: the two clients of the HTTP API. `createClient` monitors and controls.
-  `createInstallClient` changes the installation and pairs. `data.svelte.ts` polls the views every 5 seconds.
+- `src/lib/api.ts`: the client of the HTTP API. `data.svelte.ts` polls the views every 5 seconds.
 - `src/lib/install.ts`: the rules of the installation pages: the number of a new zone, the writes of a move,
   the state of each setup step. `install.svelte.ts` runs a change and reads the state again.
 - `src/lib/schedule.ts`: the rules and the operations of the schedule editor.
@@ -79,9 +78,11 @@ The static files need no token. The API keeps its rules. In a standalone contain
 the API token once and keeps it in the browser storage. Under Home Assistant ingress the daemon trusts
 the gateway for the calls that `src/lib/api.ts` makes, so the page asks for nothing. The calls are listed in
 `../internal/daemon/ingress_routes.json`, and `tests/ingress.test.ts` fails when the client calls a
-pair that is not in the list. A new client call needs a line in that file, and every line of the file
-widens what a Home Assistant user can do without the token.
-
-The calls of `createInstallClient` are not in the list, and the same test fails when one of them is.
-Under ingress the daemon answers them `401`. The pages that use them then ask for the API token, and the
-rest of the dashboard works as before. See [`docs/OPERATION.md`](../docs/OPERATION.md#dashboard).
+pair that is not in the list. The test also holds the exact allowed set, and a list of pairs that must
+stay behind the token: the identity of the network, the network key, `POST /api/pair` with its key field,
+reset, firmware and debug. A new client call needs a line in the JSON file and in the test, and every
+line widens what a Home Assistant user can do without the token. The list holds the installation and
+pairing calls, so the pages Devices and First setup work under the add-on. Where the wider route also
+writes a field that ingress must not reach, the client calls a route that carries one field:
+`PUT /api/install/timezone`, `PUT /api/install/devices/{ref}/zone` and `POST /api/pair/devices/{ref}`.
+See [`docs/OPERATION.md`](../docs/OPERATION.md#dashboard).

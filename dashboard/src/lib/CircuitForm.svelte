@@ -4,7 +4,7 @@
 	import { t } from './i18n.svelte.ts';
 	import { manage } from './install.svelte.ts';
 	import { nextCircuitId } from './install.ts';
-	import { install } from './session.ts';
+	import { api } from './session.ts';
 
 	let name = $state('');
 	let chosen = $state<string | null>(null);
@@ -23,8 +23,8 @@
 		busy = true;
 		const rooms = bind ? unbound.map((z) => z.number) : [];
 		const done = await manage(async () => {
-			await install.createCircuit({ id, name: label, heat_source: source });
-			for (const number of rooms) await install.patchZone(number, { circuit: id });
+			await api.createCircuit({ id, name: label, heat_source: source });
+			for (const number of rooms) await api.patchZone(number, { circuit: id });
 			return true;
 		}, t('circuits.created'));
 		busy = false;

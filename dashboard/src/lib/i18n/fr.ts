@@ -351,9 +351,6 @@ export const fr: Record<Key, string> = {
 	'settings.unhandled': 'Événements non traités',
 
 	'action.close': 'Fermer',
-	'manage.token.title': 'Jeton d’API requis',
-	'manage.token.body': 'Home Assistant ouvre le tableau de bord sans jeton. Une modification de l’installation et un appairage demandent le jeton d’API. Saisis-le une fois. Le navigateur le garde.',
-	'manage.token.needed': 'freedo demande le jeton d’API pour cette modification.',
 	'devices.loose': 'Appareils sans pièce',
 	'devices.noRoom': 'Aucune pièce',
 	'devices.moved': 'Appareil déplacé.',

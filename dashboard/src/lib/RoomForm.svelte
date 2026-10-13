@@ -4,7 +4,7 @@
 	import { t } from './i18n.svelte.ts';
 	import { manage } from './install.svelte.ts';
 	import { nextZoneNumber } from './install.ts';
-	import { install } from './session.ts';
+	import { api } from './session.ts';
 	import type { ZoneKind } from './types.ts';
 
 	let name = $state('');
@@ -25,7 +25,7 @@
 		busy = true;
 		const done = await manage(
 			() =>
-				install.createZone({
+				api.createZone({
 					number,
 					name: label,
 					kind,

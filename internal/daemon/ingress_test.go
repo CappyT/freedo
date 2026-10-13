@@ -56,6 +56,7 @@ func TestFromAddr(t *testing.T) {
 func sample(pair string) (method, path string) {
 	method, path, _ = strings.Cut(pair, " ")
 	path = strings.ReplaceAll(path, "{n}", "3")
+	path = strings.ReplaceAll(path, "{number}", "3")
 	path = strings.ReplaceAll(path, "{id}", "0201")
 	path = strings.ReplaceAll(path, "{ref}", "0201")
 	return method, path
@@ -112,22 +113,19 @@ func TestIngressPassesEveryListedRoute(t *testing.T) {
 }
 
 // Everything else from the gateway needs the token like any other request. These are the
-// routes that pair, reset, flash or reconfigure, plus the reads of raw device data.
+// routes that write the identity of the network or the network key, pair with a key of the
+// caller, reset, flash or reconfigure a device, plus the reads of raw device data.
 func TestIngressRefusesEveryOtherRoute(t *testing.T) {
 	h := accessHandler(testAPIToken, false, true, okHandler())
 	bearer := "Bearer " + testAPIToken
 	for _, tc := range []struct{ method, path string }{
-		{"POST", "/api/pair/window"},
-		{"GET", "/api/pair/window"},
 		{"POST", "/api/pair"},
-		{"GET", "/api/install"},
 		{"PATCH", "/api/install"},
 		{"PUT", "/api/install/network_key"},
-		{"POST", "/api/install/devices"},
 		{"PATCH", "/api/install/devices/x"},
-		{"DELETE", "/api/install/devices/x"},
-		{"PATCH", "/api/install/zones/1"},
-		{"DELETE", "/api/install/circuits/1"},
+		{"PUT", "/api/install/zones/1/members"},
+		{"GET", "/api/install/zones/1"},
+		{"GET", "/api/install/circuits/1"},
 		{"POST", "/api/nodes/x/factoryreset"},
 		{"POST", "/api/nodes/x/fw"},
 		{"GET", "/api/nodes/x/fw"},
@@ -318,7 +316,7 @@ func TestServerWithIngress(t *testing.T) {
 	if got := request(h, "192.0.2.10:50000", "/api/zones"); got != http.StatusUnauthorized {
 		t.Errorf("other source API: status %d, want 401", got)
 	}
-	if got := send(h, gatewayPeer, "POST", "/api/pair/window"); got != http.StatusUnauthorized {
+	if got := send(h, gatewayPeer, "POST", "/api/pair"); got != http.StatusUnauthorized {
 		t.Errorf("a route outside the list from the gateway: status %d, want 401", got)
 	}
 }
