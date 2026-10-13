@@ -274,7 +274,7 @@ allows it.
 | `room_temp_max_age_sec` | 1800 | Age at which an external room temperature expires. |
 | `low_battery_cell_mv` | 1100 | Battery alarm threshold per cell. |
 | `offline_after_sec` | 3600 | Silence after which a device is `offline`. |
-| `flow_limit_c` | none | Flow limit of every circuit that no manual value, curve or adaptation sets, 30 to 75 C. It is also the manual maximum that the default curve reduces. While it is unset, such a circuit is served no limit: see [Flow limit](#flow-limit). A `null` does not clear a set value. |
+| `flow_limit_c` | none | Flow limit of every circuit that no manual value, curve or adaptation sets, 30 to 75 C. It is also the manual maximum that the default curve reduces. While it is unset, such a circuit is served no limit: see [Flow limit](#flow-limit). A `null` clears it. |
 | `outdoor_max_age_sec` | 3600 | Age at which the outdoor temperature expires. |
 | `flow_hysteresis_c`, `flow_min_interval_sec` | 1, 1800 | Smallest change and shortest interval of the served flow limit. |
 | `flow_curves`, `flow_auto_adapt` | none, `false` | Weather curve per circuit, and the automatic adaptation. |

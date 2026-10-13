@@ -524,8 +524,16 @@ func (s *stateStore) PatchInstall(ctx context.Context, p installPatch) (installR
 // patchFlowOptions writes the flow limit options a patch carries. A null curve
 // removes the circuit's curve.
 func patchFlowOptions(ctx context.Context, tx querier, p installPatch) error {
+	if p.FlowLimitC.set {
+		if p.FlowLimitC.value == nil {
+			if err := clearInstallValue(ctx, tx, "flow_limit_c"); err != nil {
+				return err
+			}
+		} else if err := setInstallValue(ctx, tx, "flow_limit_c", strconv.Itoa(*p.FlowLimitC.value)); err != nil {
+			return err
+		}
+	}
 	for key, v := range map[string]*int{
-		"flow_limit_c":          p.FlowLimitC,
 		"outdoor_max_age_sec":   p.OutdoorMaxAgeSec,
 		"room_temp_max_age_sec": p.RoomTempMaxAgeSec,
 		"flow_hysteresis_c":     p.FlowHysteresisC,
