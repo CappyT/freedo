@@ -28,9 +28,7 @@ ports_description:
   18080/tcp: HTTP API
 options:
   transmit: false
-  import_stable_state: false
 schema:
   serial_port: device(subsystem=tty)?
   api_token: password?
   transmit: bool
-  import_stable_state: bool

@@ -1,8 +1,10 @@
 #!/bin/sh
-# Exercises addon/run.sh in an alpine:3.24 container with stub daemon binaries,
-# as the stable and as the beta add-on. The Supervisor is absent, so the
-# discovery call fails with a warning. No network is needed.
-# Requires docker. Run it from the repository root:
+# Exercises addon/run.sh in an alpine:3.24 container, as the stable and as the
+# beta add-on: with stub daemon binaries for the start and the guard, and with
+# a daemon built from this tree for the import of a state. The Supervisor is
+# absent, so the discovery call fails with a warning. No network is needed.
+# Requires docker and go (GO names the go command). Run it from the repository
+# root:
 #   addon/test-run.sh
 set -eu
 
@@ -87,82 +89,132 @@ if contains "running freedo 0.6.0 (stable add-on)" "$out" && contains "RAN 0.6.0
 else no "stable starts with a leftover channel option: $out"; fi
 if [ ! -d "$sd/channel" ]; then ok "stable removes the old channel cache"; else no "stable removes the old channel cache"; fi
 
-# --- stable: the export holds the database, the -wal file and the manifest ---
-if grep -q "ran 0.6.0" "$share/freedo/stable/freedo-state.db" && [ -f "$share/freedo/stable/freedo-state.db-wal" ] \
-   && [ "$(jq -r '.version + " " + .schema' "$share/freedo/stable/export.json")" = "0.6.0 8" ]; then
-  ok "stable exports the state after the daemon stops"
-else no "stable exports the state after the daemon stops: $(ls -la "$share/freedo/stable" 2>&1)"; fi
-modes=$(stat -c '%a' "$share/freedo" "$share/freedo/stable/freedo-state.db" | tr '\n' ' ')
-if [ "$modes" = "700 600 " ]; then ok "the export is private"; else no "the export is private: got '$modes'"; fi
+# --- stable: nothing is copied to the share folder ----------------------------
+if [ ! -e "$share/freedo/stable" ] && grep -q "ran 0.6.0" "$sd/freedo-state.db"; then
+  ok "stable writes no copy of the state to the share folder"
+else no "stable writes no copy of the state to the share folder: $(ls -la "$share/freedo" 2>&1)"; fi
+if [ "$(stat -c '%a' "$share/freedo")" = 700 ]; then ok "the shared folder is private"; else no "the shared folder is private"; fi
 if [ "$(jq -r '.host + " " + (.stopped_at | type)' "$share/freedo/owner.json")" = "$stable number" ]; then
   ok "stable records its stop"
 else no "stable records its stop: $(cat "$share/freedo/owner.json" 2>&1)"; fi
 
-# --- stable: SIGTERM reaches the daemon and the export follows its exit ------
+# --- stable: SIGTERM reaches the daemon and the stop is recorded --------------
 printf '{"api_token":"tok","transmit":false}\n' > "$sd/options.json"
 cid=$(run_case "$sd" "$share" "$work/slow-bin" "$stable" -d --init | tail -1)
 sleep 2
-before=$(grep -c stopped "$share/freedo/stable/freedo-state.db" || true)
+running=$(jq -r '.stopped_at | type' "$share/freedo/owner.json")
 docker stop -t 20 "$cid" > /dev/null 2>&1 || true
-if [ "$before" = 0 ] && grep -q stopped "$share/freedo/stable/freedo-state.db"; then
-  ok "stable exports at start and again after SIGTERM"
-else no "stable exports at start and again after SIGTERM: before=$before"; fi
+if [ "$running" = null ] && grep -q stopped "$sd/freedo-state.db" \
+   && [ "$(jq -r '.stopped_at | type' "$share/freedo/owner.json")" = number ] && [ ! -e "$share/freedo/stable" ]; then
+  ok "SIGTERM reaches the daemon and the stop is recorded"
+else no "SIGTERM reaches the daemon and the stop is recorded: running=$running"; fi
 
-# --- beta: the first start imports the export ---------------------------------
+# --- a copy of an older release stays, and the log names it -------------------
+mkdir -p "$share/freedo/stable"
+printf 'schema 8\nold copy\n' > "$share/freedo/stable/freedo-state.db"
+printf '{"version":"0.7.0","schema":"8","exported_at":"2026-01-01T00:00:00Z"}\n' > "$share/freedo/stable/export.json"
+out=$(run_case "$sd" "$share" "$work/stable-bin" "$stable") || true
+if contains "/share/freedo/stable is a copy of the state from an older release" "$out" && contains "RAN 0.6.0" "$out" \
+   && [ "$(cat "$share/freedo/stable/freedo-state.db")" = "$(printf 'schema 8\nold copy')" ]; then
+  ok "stable leaves the copy of an older release and names it"
+else no "stable leaves the copy of an older release and names it: $out"; fi
+
+# --- beta: no import at the first start, a leftover option is ignored ---------
 bd="$work/beta-data"; mkdir -p "$bd"
-printf '{"api_token":"tok","transmit":false,"import_stable_state":false}\n' > "$bd/options.json"
-out=$(run_case "$bd" "$share" "$work/beta-bin" "$beta" -e FREEDO_BETA=1) || true
-if contains "imported the state of the stable add-on: freedo 0.6.0, schema 8" "$out" \
-   && contains "running freedo 0.7.0-beta.1 (beta add-on)" "$out" && grep -q stopped "$bd/freedo-state.db"; then
-  ok "beta imports the export at its first start"
-else no "beta imports the export at its first start: $out"; fi
-if ! grep -q "ran 0.7.0-beta.1" "$share/freedo/stable/freedo-state.db"; then
-  ok "beta leaves the export alone"
-else no "beta leaves the export alone"; fi
-
-# --- beta: the second start keeps its own state --------------------------------
-out=$(run_case "$bd" "$share" "$work/beta-bin" "$beta" -e FREEDO_BETA=1) || true
-if ! contains "imported" "$out" && [ "$(grep -c "ran 0.7.0-beta.1" "$bd/freedo-state.db")" = 2 ]; then
-  ok "beta does not import at the second start"
-else no "beta does not import at the second start: $out"; fi
-
-# --- beta: the option does not import the same export twice --------------------
 printf '{"api_token":"tok","transmit":false,"import_stable_state":true}\n' > "$bd/options.json"
 out=$(run_case "$bd" "$share" "$work/beta-bin" "$beta" -e FREEDO_BETA=1) || true
-if contains "is already imported" "$out" && [ "$(grep -c "ran 0.7.0-beta.1" "$bd/freedo-state.db")" = 3 ] \
-   && [ ! -d "$bd/backup" ]; then
-  ok "beta with the option on skips an export it already imported"
-else no "beta with the option on skips an export it already imported: $out"; fi
+if contains "running freedo 0.7.0-beta.1 (beta add-on)" "$out" && ! contains "imported" "$out" \
+   && contains "/share/freedo/stable is a copy" "$out" \
+   && [ "$(cat "$bd/freedo-state.db")" = "ran 0.7.0-beta.1" ] && [ ! -d "$bd/backup" ] \
+   && [ -f "$share/freedo/stable/export.json" ]; then
+  ok "beta starts on its own state and imports nothing"
+else no "beta starts on its own state and imports nothing: $out"; fi
 
-# --- beta: the option imports a new export and keeps the replaced state ------
-out=$(run_case "$sd" "$share" "$work/stable-bin" "$stable") || true
-sleep 1
-out=$(run_case "$bd" "$share" "$work/beta-bin" "$beta" -e FREEDO_BETA=1) || true
-kept=$(ls -d "$bd"/backup/before-import-* 2>/dev/null | head -1)
-if contains "imported the state of the stable add-on" "$out" && contains "before this import is in" "$out" \
-   && [ -n "$kept" ] && [ "$(grep -c "ran 0.7.0-beta.1" "$kept/freedo-state.db")" = 3 ] \
-   && [ "$(grep -c "ran 0.7.0-beta.1" "$bd/freedo-state.db")" = 1 ]; then
-  ok "beta with the option on imports a new export and keeps a copy"
-else no "beta with the option on imports a new export and keeps a copy: $out"; fi
+# --- the exit status of the daemon is the exit status of the script -----------
+write_stub "$work/fail-bin" 0.6.0 8
+sed -i 's/^exit 0$/exit 7/' "$work/fail-bin"
+d="$work/fail/data"; mkdir -p "$d" "$work/fail/share"
+printf '{"api_token":"tok","transmit":false}\n' > "$d/options.json"
+status=0
+out=$(run_case "$d" "$work/fail/share" "$work/fail-bin" "$stable") || status=$?
+if [ "$status" = 7 ]; then ok "the script exits with the status of the daemon"; else no "the script exits with the status of the daemon: $status $out"; fi
 
-# --- beta: no export, an empty installation starts ----------------------------
-d="$work/empty/data"; mkdir -p "$d" "$work/empty/share"
-printf '{"api_token":"tok","transmit":false,"import_stable_state":false}\n' > "$d/options.json"
-out=$(run_case "$d" "$work/empty/share" "$work/beta-bin" "$beta" -e FREEDO_BETA=1) || true
-if contains "starting with an empty installation" "$out" && contains "RAN 0.7.0-beta.1" "$out"; then
-  ok "beta with no export starts empty"
-else no "beta with no export starts empty: $out"; fi
+# --- the real daemon: export, import, restart and backup rotation -------------
+# The daemon replaces itself after an import. These cases prove that under
+# run.sh, with a daemon built from this tree, as the stable and as the beta
+# add-on.
+home_of() { docker exec "$1" curl -s -H "Authorization: Bearer tok" http://127.0.0.1:18080/api/install 2> /dev/null | jq -r '.home_id // empty' 2> /dev/null; }
+# wait_home waits until the daemon in container $1 serves an installation, and
+# with $2 until its home id is $2. It prints the home id.
+wait_home() {
+  n=0
+  while [ "$n" -lt 100 ]; do
+    h=$(home_of "$1") || h=
+    if [ -n "$h" ] && { [ -z "${2:-}" ] || [ "$h" = "$2" ]; }; then echo "$h"; return 0; fi
+    n=$((n + 1)); sleep 0.2
+  done
+  return 1
+}
+real="$work/freedo-real"
+if (cd "$repo" && CGO_ENABLED=0 "${GO:-go}" build -o "$real" ./cmd/freedo) 2> "$work/build.log"; then
+  for flavour in stable beta; do
+    if [ "$flavour" = beta ]; then hn=$beta; set -- -e FREEDO_BETA=1; else hn=$stable; set --; fi
+    src="$work/real-$flavour/src"; dst="$work/real-$flavour/dst"; s="$work/real-$flavour/share"
+    mkdir -p "$src" "$dst" "$s"
+    printf '{"api_token":"tok","transmit":false}\n' > "$src/options.json"
+    cp "$src/options.json" "$dst/options.json"
 
-# --- beta: an export of a newer schema stops the first start -----------------
-d="$work/newer/data"; s="$work/newer/share"; mkdir -p "$d" "$s/freedo/stable"
-printf 'schema 12\n' > "$s/freedo/stable/freedo-state.db"
-printf '{"version":"0.9.0","schema":"12","exported_at":"2026-01-01T00:00:00Z"}\n' > "$s/freedo/stable/export.json"
-printf '{"api_token":"tok","transmit":false,"import_stable_state":false}\n' > "$d/options.json"
-if out=$(run_case "$d" "$s" "$work/beta-bin" "$beta" -e FREEDO_BETA=1) && contains "RAN" "$out"; then
-  no "beta stops when it cannot read the export: $out"
-elif contains "ERROR" "$out" && [ ! -f "$d/freedo-state.db" ]; then
-  ok "beta stops when it cannot read the export"
-else no "beta stops when it cannot read the export: $out"; fi
+    cid=$(run_case "$src" "$s" "$real" "src-$hn" -d --init "$@" | tail -1)
+    want=$(wait_home "$cid") || want=
+    docker exec "$cid" curl -s -H "Authorization: Bearer tok" -o /data/export.db http://127.0.0.1:18080/api/state/export
+    docker stop -t 20 "$cid" > /dev/null 2>&1 || true
+    if [ -n "$want" ] && [ "$(head -c 15 "$src/export.db")" = "SQLite format 3" ]; then
+      ok "$flavour: the daemon exports its state"
+    else no "$flavour: the daemon exports its state: home=$want"; fi
+    cp "$src/export.db" "$dst/export.db"
+
+    cid=$(docker run -d --init --user "$(id -u):$(id -g)" --hostname "$hn" \
+      -v "$dst:/data:Z" -v "$s:/share:Z" -v "$work/run.sh:/run.sh:ro,Z" \
+      -v "$real:/usr/local/bin/freedo:ro,Z" -e SUPERVISOR_TOKEN=stub "$@" "$image" /run.sh)
+    own=$(wait_home "$cid") || own=
+    refused=$(docker exec "$cid" curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer tok" \
+      -X POST --data-binary @/data/export.db http://127.0.0.1:18080/api/state/import)
+    if [ -n "$own" ] && [ "$own" != "$want" ] && [ "$refused" = 400 ] && [ ! -e "$dst/freedo-state.db.import" ]; then
+      ok "$flavour: an import with no confirm changes nothing"
+    else no "$flavour: an import with no confirm changes nothing: own=$own status=$refused"; fi
+
+    i=1
+    while [ "$i" -le 4 ]; do
+      docker exec "$cid" curl -s -o /dev/null -H "Authorization: Bearer tok" \
+        -X POST --data-binary @/data/export.db 'http://127.0.0.1:18080/api/state/import?confirm=true'
+      n=0
+      while [ "$(docker logs "$cid" 2>&1 | grep -c 'starts on the imported state')" -lt "$i" ] && [ "$n" -lt 100 ]; do
+        n=$((n + 1)); sleep 0.2
+      done
+      wait_home "$cid" "$want" > /dev/null || true
+      i=$((i + 1))
+    done
+    got=$(home_of "$cid") || got=
+    log=$(docker logs "$cid" 2>&1)
+    if [ "$got" = "$want" ] && [ "$(echo "$log" | grep -c 'starts on the imported state')" = 4 ] \
+       && [ "$(echo "$log" | grep -c 'freedo: running freedo')" = 1 ]; then
+      ok "$flavour: the daemon restarts on the imported state under one run of the script"
+    else no "$flavour: the daemon restarts on the imported state under one run of the script: home=$got want=$want $log"; fi
+    if [ "$(ls -1d "$dst"/backup/before-import-*/ 2> /dev/null | wc -l)" = 3 ] \
+       && [ "$(ls -1 "$dst"/backup/before-import-*/freedo-state.db 2> /dev/null | wc -l)" = 3 ] \
+       && [ ! -e "$dst/freedo-state.db.import" ]; then
+      ok "$flavour: the three newest replaced states stay in the backup folder"
+    else no "$flavour: the three newest replaced states stay in the backup folder: $(ls -la "$dst/backup" 2>&1)"; fi
+    docker stop -t 20 "$cid" > /dev/null 2>&1 || true
+    status=$(docker inspect -f '{{.State.ExitCode}}' "$cid" 2> /dev/null) || status=
+    docker rm "$cid" > /dev/null 2>&1 || true
+    if [ "$status" = 0 ] && [ "$(jq -r '.host + " " + (.stopped_at | type)' "$s/freedo/owner.json")" = "$hn number" ]; then
+      ok "$flavour: SIGTERM stops the restarted daemon and the stop is recorded"
+    else no "$flavour: SIGTERM stops the restarted daemon and the stop is recorded: status=$status"; fi
+  done
+else
+  no "build the daemon for the import cases (set GO to the go command): $(cat "$work/build.log")"
+fi
 
 # --- guard: the other add-on answers, the start stops -------------------------
 d="$work/guard/data"; s="$work/guard/share"; mkdir -p "$d" "$s/freedo"
@@ -197,15 +249,6 @@ out2=$(run_case "$d" "$s" "$work/stable-bin" "$stable") || true
 if ! contains "waiting" "$out" && contains "RAN 0.6.0" "$out" && ! contains "waiting" "$out2" && contains "RAN 0.6.0" "$out2"; then
   ok "a dry-run start and a restart of the same add-on do not wait"
 else no "a dry-run start and a restart of the same add-on do not wait: $out $out2"; fi
-
-# --- stable: a database the daemon cannot check still starts ------------------
-d="$work/broken/data"; mkdir -p "$d" "$work/broken/share"
-printf 'broken\n' > "$d/freedo-state.db"
-printf '{"api_token":"tok","transmit":false}\n' > "$d/options.json"
-out=$(run_case "$d" "$work/broken/share" "$work/stable-bin" "$stable") || true
-if contains "was not exported" "$out" && contains "RAN 0.6.0" "$out" && [ ! -d "$work/broken/share/freedo/stable" ]; then
-  ok "stable starts and exports nothing when the check fails"
-else no "stable starts and exports nothing when the check fails: $out"; fi
 
 echo
 if [ "$fails" = 0 ]; then echo "all run.sh tests passed"; else echo "$fails run.sh test(s) failed"; exit 1; fi

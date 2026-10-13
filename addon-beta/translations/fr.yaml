@@ -14,9 +14,3 @@ configuration:
     description: >-
       Envoie des trames par radio. Désactivé signifie dry-run. Éteignez la
       passerelle commerciale avant d'activer cette option.
-  import_stable_state:
-    name: Importer de nouveau l'état stable
-    description: >-
-      Au prochain démarrage, remplace l'état de ce module par le dernier export
-      du module freedo stable. Le module garde une copie de l'état remplacé.
-      Désactivez l'option après l'import.

@@ -14,9 +14,3 @@ configuration:
     description: >-
       Send frames on air. Off means dry-run. Switch the commercial bridge off
       before you turn this on.
-  import_stable_state:
-    name: Import the stable state again
-    description: >-
-      At the next start, replace the state of this add-on with the last export
-      of the stable freedo add-on. The add-on keeps a copy of the replaced state.
-      Turn it off after the import.

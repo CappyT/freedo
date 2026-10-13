@@ -14,9 +14,3 @@ configuration:
     description: >-
       Invia frame via radio. Disattivato significa dry-run. Spegni il bridge
       commerciale prima di attivarlo.
-  import_stable_state:
-    name: Importa di nuovo lo stato stabile
-    description: >-
-      Al prossimo avvio, sostituisce lo stato di questo componente aggiuntivo
-      con l'ultima esportazione del componente freedo stabile. Il componente
-      conserva una copia dello stato sostituito. Disattivalo dopo l'importazione.

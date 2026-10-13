@@ -14,9 +14,3 @@ configuration:
     description: >-
       Sendet Frames per Funk. Aus bedeutet dry-run. Schalte die kommerzielle
       Bridge aus, bevor du dies einschaltest.
-  import_stable_state:
-    name: Stabilen Zustand erneut importieren
-    description: >-
-      Ersetzt beim nächsten Start den Zustand dieses Add-ons durch den letzten
-      Export des stabilen freedo-Add-ons. Das Add-on behält eine Kopie des
-      ersetzten Zustands. Nach dem Import wieder ausschalten.
