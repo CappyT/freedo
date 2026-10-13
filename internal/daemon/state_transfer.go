@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -118,6 +119,7 @@ func (d *daemon) getStateExport(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "export: "+err.Error())
 		return
 	}
+	log.Printf("state: export served to %s", stateCaller(r))
 	f, err := os.Open(file)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
@@ -263,6 +265,7 @@ func (d *daemon) postStateImport(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	log.Printf("state: import accepted from %s: exported by freedo %s at %s", stateCaller(r), info.ExportedBy, info.ExportedAt)
 	waitSec := 0
 	if d.leasesCounters() {
 		waitSec = int(midWait / time.Second)
@@ -276,6 +279,15 @@ func (d *daemon) postStateImport(w http.ResponseWriter, r *http.Request) {
 	case d.restart <- struct{}{}:
 	default:
 	}
+}
+
+// stateCaller names the peer of an export or an import for the log. The user id is
+// the one the request carries: only the ingress gateway sets it from a session.
+func stateCaller(r *http.Request) string {
+	if id := r.Header.Get(remoteUserHeader); id != "" {
+		return fmt.Sprintf("%s, Home Assistant user %q", r.RemoteAddr, id)
+	}
+	return r.RemoteAddr + ", with the API token"
 }
 
 // applyStagedImport moves a staged import into place before the start opens the
