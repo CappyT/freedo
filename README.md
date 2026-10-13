@@ -1,9 +1,6 @@
-<h1 align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/brand/svg/logo-reversed.svg">
-    <img src="assets/brand/svg/logo.svg" alt="freedo" height="72">
-  </picture>
-</h1>
+# freedo
+
+![freedo icon](https://raw.githubusercontent.com/CappyT/freedo/main/addon/icon.png)
 
 A local coordinator for tado V3+ 868 MHz heating devices, with a Home Assistant integration.
 
@@ -209,9 +206,10 @@ device. It has English, Italian, German and French texts and a light and a dark 
 - Home Assistant add-on: select Open Web UI, or the entry freedo in the sidebar. The page needs no token.
 
 The page Rooms and devices manages the installation. It creates, renames and deletes rooms. It adds a
-heating circuit, changes its heat source and deletes it. It moves a device, and it sets the circuit, the
-measuring device and the demand reporter of a room. It adds a device: it opens the pair window, declares
-the device that the window hears and sends the pair command. It removes a device and shows the effects before you confirm. Under Home Assistant ingress this
+heating circuit, changes its heat source and deletes it. In the settings of a room it renames, moves and removes a
+device of that room, and it sets the circuit, the measuring device and the demand reporter. The devices in no
+room form the group No room, with the same settings. It adds a device: it opens the pair window, declares
+the device that the window hears and sends the pair command. A removal shows the effects before you confirm. Under Home Assistant ingress this
 page and the page First setup need no token, so every Home Assistant user who can open the dashboard can
 change the installation and pair a device. The network key, the identity of the network,
 the kind and the serial of a device, the zone options and the name of a circuit stay in
