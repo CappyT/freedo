@@ -70,11 +70,13 @@ func TestInstallAPIReportsTheSideEffectsOfARemoval(t *testing.T) {
 		want      []string
 		forceable bool
 	}{
-		{"reporter and measuring device", "VA9000000001", []string{"reporter zone 1", "measuring_device zone 1"}, true},
-		{"plain member", "VA9000000002", []string{}, true},
+		{"reporter and measuring device", "VA9000000001",
+			[]string{"member zone 1", "reporter zone 1", "measuring_device zone 1"}, true},
+		{"plain member", "VA9000000002", []string{"member zone 1"}, true},
 		{"hot water, last member and heat source", "RU9000000001",
-			[]string{"hot_water zone 2", "last_member zone 2", "heat_source circuit 1"}, false},
-		{"last member is the measuring device", "VA9000000003", []string{"last_member zone 3", "measuring_device zone 3"}, true},
+			[]string{"member zone 2", "hot_water zone 2", "last_member zone 2", "heat_source circuit 1"}, false},
+		{"last member is the measuring device", "VA9000000003",
+			[]string{"member zone 3", "last_member zone 3", "measuring_device zone 3"}, true},
 		{"in no zone", "VA9000000004", []string{}, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -102,9 +104,9 @@ func TestInstallAPIRefusesARemovalWithoutForce(t *testing.T) {
 		effects   []string
 		referrers []string
 	}{
-		{"VA9000000001", []string{"reporter zone 1", "measuring_device zone 1"}, []string{"zone 1 members"}},
-		{"VA9000000002", []string{}, []string{"zone 1 members"}},
-		{"RU9000000001", []string{"hot_water zone 2", "last_member zone 2", "heat_source circuit 1"},
+		{"VA9000000001", []string{"member zone 1", "reporter zone 1", "measuring_device zone 1"}, []string{"zone 1 members"}},
+		{"VA9000000002", []string{"member zone 1"}, []string{"zone 1 members"}},
+		{"RU9000000001", []string{"member zone 2", "hot_water zone 2", "last_member zone 2", "heat_source circuit 1"},
 			[]string{"zone 2 members", "circuit 1 heat_source"}},
 	} {
 		for _, query := range []string{"", "?force=false", "?force="} {
@@ -187,7 +189,7 @@ func TestInstallAPIForceDoesNotReleaseAHeatSource(t *testing.T) {
 	// Once the circuit is gone the thermostat leaves its hot-water zone empty.
 	a.mutate(http.MethodDelete, "/api/install/circuits/1", nil)
 	res = a.get("/api/install/devices/RU9000000001/removal")
-	if got := effectsOf(t, res); !reflect.DeepEqual(got, []string{"hot_water zone 2", "last_member zone 2"}) || res["forceable"] != true {
+	if got := effectsOf(t, res); !reflect.DeepEqual(got, []string{"member zone 2", "hot_water zone 2", "last_member zone 2"}) || res["forceable"] != true {
 		t.Fatalf("effects = %v forceable = %v, want the hot-water zone left empty and the removal forceable", got, res["forceable"])
 	}
 	res = a.mutate(http.MethodDelete, "/api/install/devices/RU9000000001?force=true", nil)

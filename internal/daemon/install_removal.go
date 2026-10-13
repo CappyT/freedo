@@ -14,6 +14,7 @@ import (
 
 // The effects, named by the fields of the installation model.
 const (
+	effectMember          = "member"
 	effectHotWater        = "hot_water"
 	effectLastMember      = "last_member"
 	effectReporter        = "reporter"
@@ -30,8 +31,8 @@ type removalEffect struct {
 }
 
 // removalEffects lists what removing dev from in changes, zone by zone and then
-// circuit by circuit: the zone is the hot-water zone, the zone is left with no
-// member, the zone loses its demand reporter or its measuring device, and a
+// circuit by circuit: the zone loses the device as a member, the zone is the
+// hot-water zone, the zone is left with no member, the zone loses its demand reporter or its measuring device, and a
 // circuit loses its heat source. The measuring device is the one the daemon
 // reads the zone temperature from: the elected one, else the reporter, else the
 // only member.
@@ -45,6 +46,9 @@ func removalEffects(in *tado.Install, dev *tado.Device) []removalEffect {
 		}
 		zone := z.Number
 		onZone := func(effect string) removalEffect { return removalEffect{Effect: effect, Zone: &zone} }
+		// Every membership is listed, so an empty list means that DELETE needs no
+		// force.
+		effects = append(effects, onZone(effectMember))
 		if z.Kind == tado.ZoneHotWater {
 			effects = append(effects, onZone(effectHotWater))
 		}
