@@ -6,11 +6,14 @@
 		body: string;
 		/** A short list shown under the body, one entry per line. */
 		items?: string[];
-		confirm: string;
+		/** The label of the confirm button. Without it the dialog only informs, and has one button. */
+		confirm?: string;
 		onconfirm: () => void;
 	}
 
 	let { title, body, items = [], confirm, onconfirm }: Props = $props();
+	// A page can hold several dialogs, and each title needs its own id.
+	const uid = $props.id();
 	let dialog: HTMLDialogElement | undefined = $state();
 	let cancel: HTMLButtonElement | undefined = $state();
 
@@ -21,9 +24,9 @@
 	}
 </script>
 
-<dialog bind:this={dialog} aria-labelledby="confirm-title">
+<dialog bind:this={dialog} aria-labelledby="{uid}-title">
 	<form method="dialog">
-		<h2 id="confirm-title">{title}</h2>
+		<h2 id="{uid}-title">{title}</h2>
 		<p>{body}</p>
 		{#if items.length > 0}
 			<ul class="items">
@@ -34,11 +37,13 @@
 		{/if}
 		<div class="row actions">
 			<button class="btn" value="cancel" bind:this={cancel}>{t('action.cancel')}</button>
-			<button
-				class="btn primary"
-				value="ok"
-				onclick={() => onconfirm()}
-			>{confirm}</button>
+			{#if confirm !== undefined}
+				<button
+					class="btn primary"
+					value="ok"
+					onclick={() => onconfirm()}
+				>{confirm}</button>
+			{/if}
 		</div>
 	</form>
 </dialog>

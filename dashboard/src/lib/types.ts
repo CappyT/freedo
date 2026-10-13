@@ -140,6 +140,8 @@ export interface NodeView {
 	BatteryMV: number;
 	BatteryPct: number;
 	LastSeenUnix: number;
+	/** When the daemon last served the device a session, in Unix seconds. 0 before the first one. */
+	SessionIssuedUnix?: number;
 	LowBattery: boolean;
 	Fault: boolean;
 	CommsWarnings: string[] | null;
@@ -270,4 +272,74 @@ export interface ScheduleView {
 export interface Queued {
 	queued: boolean;
 	pending: number;
+}
+
+/** GET /api/install: the fields the dashboard reads. */
+export interface InstallInfo {
+	rev: number;
+	/** The IANA zone of the installation, empty while the daemon follows its host. */
+	timezone: string;
+	utc_offset_min: number | null;
+	warnings: string[];
+	counts: { devices: number; zones: number; circuits: number };
+}
+
+/** A device row of the installation. eui is the wire EUI in hexadecimal. */
+export interface InstallDevice {
+	eui: string;
+	short: string;
+	kind: DeviceKind;
+	serial: string;
+	label: string;
+	/** The one zone number the device answers to, null when the installation states none. */
+	zone: number | null;
+}
+
+/** A zone row of the installation. The references are wire EUIs. */
+export interface InstallZone {
+	number: number;
+	name: string;
+	kind: ZoneKind;
+	members: string[];
+	circuit: number | null;
+	reporter: string | null;
+	measuring_device: string | null;
+}
+
+export interface InstallCircuit {
+	id: number;
+	name: string;
+	heat_source: string;
+}
+
+export type RemovalEffectName = 'member' | 'hot_water' | 'last_member' | 'reporter' | 'measuring_device' | 'heat_source';
+
+export interface RemovalEffect {
+	effect: RemovalEffectName;
+	zone?: number;
+	circuit?: number;
+}
+
+/** GET /api/install/devices/{ref}/removal. forceable is false while the device is a heat source. */
+export interface Removal {
+	device: InstallDevice;
+	effects: RemovalEffect[];
+	forceable: boolean;
+}
+
+/** A device that the open pair window heard under the pairing key. */
+export interface PairJoiner {
+	eui: string;
+	short: string;
+	/** The label of the device when the installation declares it, else empty. */
+	label: string;
+	frames: number;
+}
+
+export interface PairWindow {
+	open: boolean;
+	until?: string;
+	/** The bridge answers the beacon requests of the window by itself (firmware v2.9 or later). */
+	responder: boolean;
+	joiners: PairJoiner[];
 }

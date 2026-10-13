@@ -74,7 +74,8 @@ class Data {
 		if (nodes.status === 'fulfilled') this.nodes = nodes.value;
 		if (home.status === 'fulfilled') this.home = home.value;
 		if (boiler.status === 'fulfilled') this.boiler = boiler.value;
-		if (circuits.status === 'fulfilled') this.circuits = circuits.value;
+		// An installation with no circuit answers null.
+		if (circuits.status === 'fulfilled') this.circuits = circuits.value ?? [];
 		if (presets.status === 'fulfilled') this.presets = presets.value.presets;
 		const all = [health, zones, nodes, home, boiler, circuits, presets];
 		const failed = all.filter((r): r is PromiseRejectedResult => r.status === 'rejected');

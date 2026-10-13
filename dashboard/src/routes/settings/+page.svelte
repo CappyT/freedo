@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import { auth } from '#lib/auth.svelte.ts';
 	import { data } from '#lib/data.svelte.ts';
 	import { serialLink } from '#lib/health.ts';
@@ -83,6 +84,15 @@
 			<button class="btn primary" type="submit" disabled={token.trim() === ''}><Icon name="key" size={18} />{t('token.save')}</button>
 			<button class="btn danger" type="button" onclick={removeToken} disabled={!auth.token}><Icon name="trash" size={18} />{t('settings.token.remove')}</button>
 		</form>
+	</section>
+
+	<section class="panel" aria-labelledby="install-title">
+		<header><h2 id="install-title">{t('settings.install')}</h2></header>
+		<p class="note">{t('settings.install.note')}</p>
+		<div class="row fill">
+			<a class="btn" href={resolve('/setup')}><Icon name="check" size={18} />{t('setup.link')}</a>
+			<a class="btn" href={resolve('/devices')}><Icon name="devices" size={18} />{t('devices.title')}</a>
+		</div>
 	</section>
 
 	<section class="panel" aria-labelledby="daemon-title">

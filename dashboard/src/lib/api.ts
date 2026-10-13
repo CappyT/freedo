@@ -4,12 +4,19 @@ import type {
 	EndRule,
 	Health,
 	Home,
+	InstallCircuit,
+	InstallDevice,
+	InstallInfo,
+	InstallZone,
 	NodeView,
+	PairWindow,
 	Preset,
 	PresetSchedules,
 	Queued,
+	Removal,
 	ScheduleView,
 	WindowView,
+	ZoneKind,
 	Zones
 } from './types.ts';
 
@@ -54,7 +61,7 @@ export interface Command extends Queued {
  * API calls are relative to the document, so the same build works at the root of
  * the daemon and under a prefix such as the Home Assistant ingress path.
  */
-export function createClient(options: ClientOptions = {}) {
+function transport(options: ClientOptions) {
 	const doFetch = options.fetch ?? ((...args: Parameters<typeof fetch>) => fetch(...args));
 	const timeoutMs = options.timeoutMs ?? 15_000;
 
@@ -96,6 +103,13 @@ export function createClient(options: ClientOptions = {}) {
 		}
 		return parsed as T;
 	}
+
+	return { url, request };
+}
+
+/** The calls that monitor and control the plant. Home Assistant ingress accepts them without a token. */
+export function createClient(options: ClientOptions = {}) {
+	const { url, request } = transport(options);
 
 	const zone = (n: number) => 'zones/' + n;
 
@@ -163,6 +177,63 @@ export function createClient(options: ClientOptions = {}) {
 }
 
 export type Client = ReturnType<typeof createClient>;
+
+/**
+ * The calls that change the installation and pair a device. They are a separate client because
+ * they are not in internal/daemon/ingress_routes.json: under Home Assistant ingress the daemon
+ * answers them 401 until the page sends the API token.
+ */
+export function createInstallClient(options: ClientOptions = {}) {
+	const { request } = transport(options);
+	const device = (ref: string) => 'install/devices/' + encodeURIComponent(ref);
+	const zone = (n: number) => 'install/zones/' + n;
+	const circuit = (id: number) => 'install/circuits/' + id;
+
+	return {
+		info: () => request<InstallInfo>('GET', 'install'),
+		/** An IANA name such as Europe/Rome. */
+		setTimezone: (timezone: string) => request<{ rev: number }>('PATCH', 'install', { timezone }),
+		devices: async () => (await request<{ devices: InstallDevice[] }>('GET', 'install/devices')).devices,
+		device: async (ref: string) => (await request<{ device: InstallDevice }>('GET', device(ref))).device,
+		createDevice: (body: { eui: string; kind: 'valve' | 'thermostat'; label: string }) =>
+			request<{ device: InstallDevice }>('POST', 'install/devices', body),
+		/** The one zone number a device answers to. Null removes the claim. */
+		claimZone: (ref: string, zoneNumber: number | null) =>
+			request<{ device: InstallDevice }>('PATCH', device(ref), { zone: zoneNumber }),
+		/** What a delete of the device changes. */
+		removal: (ref: string) => request<Removal>('GET', device(ref) + '/removal'),
+		/** force releases the zone memberships of the device. It never releases a heat source. */
+		deleteDevice: (ref: string, force: boolean) =>
+			request<{ rev: number }>('DELETE', device(ref) + (force ? '?force=true' : '')),
+		zones: async () => (await request<{ zones: InstallZone[] }>('GET', 'install/zones')).zones,
+		createZone: (body: { number: number; name: string; kind: ZoneKind; circuit?: number }) =>
+			request<{ zone: InstallZone }>('POST', 'install/zones', body),
+		patchZone: (n: number, patch: { name?: string; circuit?: number | null }) =>
+			request<{ zone: InstallZone }>('PATCH', zone(n), patch),
+		deleteZone: (n: number) => request<{ rev: number }>('DELETE', zone(n)),
+		addMember: (n: number, ref: string) => request<{ members: string[] }>('POST', zone(n) + '/members', { ref }),
+		removeMember: (n: number, ref: string) =>
+			request<{ members: string[] }>('DELETE', zone(n) + '/members/' + encodeURIComponent(ref)),
+		/** Elects the demand reporter or the measuring device of a zone. Null clears the election. */
+		setRole: (n: number, role: 'reporter' | 'measuring', ref: string | null) =>
+			ref === null
+				? request<{ rev: number }>('DELETE', zone(n) + '/' + role)
+				: request<{ rev: number }>('PUT', zone(n) + '/' + role, { ref }),
+		circuits: async () => (await request<{ circuits: InstallCircuit[] }>('GET', 'install/circuits')).circuits,
+		createCircuit: (body: { id: number; name: string; heat_source: string }) =>
+			request<{ circuit: InstallCircuit }>('POST', 'install/circuits', body),
+		patchCircuit: (id: number, patch: { name?: string; heat_source?: string }) =>
+			request<{ circuit: InstallCircuit }>('PATCH', circuit(id), patch),
+		deleteCircuit: (id: number) => request<{ rev: number }>('DELETE', circuit(id)),
+		pairWindow: () => request<PairWindow>('GET', 'pair/window'),
+		/** 0 closes the window. The daemon accepts at most 600 seconds. */
+		openPairWindow: (seconds: number) => request<PairWindow>('POST', 'pair/window', { seconds }),
+		/** Sends the pair command to the device with this wire EUI. */
+		pair: (target: string) => request<Command & { note?: string }>('POST', 'pair', { target })
+	};
+}
+
+export type InstallClient = ReturnType<typeof createInstallClient>;
 
 /** timer carries durationSec; the other rules carry none. */
 function endBody(end: EndSpec): { mode: EndRule; durationSec?: number } {

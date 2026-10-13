@@ -1,0 +1,129 @@
+import type { Health, RemovalEffect, ZoneKind } from './types.ts';
+
+// The daemon refuses a zone number or a circuit id above 31. Hot water is zone 0 on the radio.
+const MAX_ID = 31;
+const HOT_WATER_ZONE = 0;
+
+/** The number of a new zone: 0 for hot water, else the lowest free number from 1. Null when none is free. */
+export function nextZoneNumber(used: number[], kind: ZoneKind): number | null {
+	if (kind === 'hotwater') return used.includes(HOT_WATER_ZONE) ? null : HOT_WATER_ZONE;
+	return lowestFree(used);
+}
+
+/** The id of a new circuit: the lowest free id from 1. Null when none is free. */
+export function nextCircuitId(used: number[]): number | null {
+	return lowestFree(used);
+}
+
+function lowestFree(used: number[]): number | null {
+	for (let n = 1; n <= MAX_ID; n++) if (!used.includes(n)) return n;
+	return null;
+}
+
+/** A wire EUI as the daemon prints it: 16 hexadecimal digits. */
+export function wireEui(text: string): string | null {
+	const clean = text.trim().toLowerCase();
+	return /^[0-9a-f]{16}$/.test(clean) ? clean : null;
+}
+
+export type MoveStep =
+	| { op: 'claim'; zone: number | null }
+	| { op: 'leave'; zone: number }
+	| { op: 'join'; zone: number };
+
+/**
+ * The writes that move a device from one zone to another, in an order the daemon accepts.
+ * The daemon refuses a device that claims a zone it is not a member of, so a claim on the zone
+ * the device leaves goes first and comes back on the zone it joins. Null means no zone.
+ */
+export function movePlan(claim: number | null, from: number | null, to: number | null): MoveStep[] {
+	if (from === to) return [];
+	const steps: MoveStep[] = [];
+	const claimed = claim !== null && claim === from;
+	if (claimed) steps.push({ op: 'claim', zone: null });
+	if (from !== null) steps.push({ op: 'leave', zone: from });
+	if (to !== null) steps.push({ op: 'join', zone: to });
+	if (claimed && to !== null) steps.push({ op: 'claim', zone: to });
+	return steps;
+}
+
+export type EffectKey =
+	| 'remove.effect.member'
+	| 'remove.effect.hot_water'
+	| 'remove.effect.last_member'
+	| 'remove.effect.reporter'
+	| 'remove.effect.measuring_device'
+	| 'remove.effect.heat_source';
+
+/** The text key of a removal effect and the name it falls on: a zone or a circuit. */
+export function describeEffect(
+	effect: RemovalEffect,
+	zoneName: (n: number) => string,
+	circuitName: (id: number) => string
+): { key: EffectKey; name: string } {
+	const name =
+		effect.circuit !== undefined ? circuitName(effect.circuit) : effect.zone !== undefined ? zoneName(effect.zone) : '';
+	return { key: `remove.effect.${effect.effect}`, name };
+}
+
+export type StepState = 'done' | 'todo';
+
+export interface SetupState {
+	radio: StepState;
+	/** Why the radio step is open: no live radio, or a radio that is not calibrated. */
+	radioProblem: 'none' | 'noRadio' | 'notCalibrated';
+	timezone: StepState;
+	rooms: StepState;
+	transmit: StepState;
+	/** Why the transmit step is open: the other coordinator is on air, or the daemon runs in dry run. */
+	transmitProblem: 'none' | 'bridge' | 'dryRun';
+	devices: StepState;
+	circuits: StepState;
+}
+
+/**
+ * The state of each step of the first setup, from what the daemon reports. A heating room with no
+ * circuit keeps the circuit step open, because its valves then get no heat source.
+ */
+export function setupState(health: Health | null, zones: { kind: ZoneKind; circuit?: number }[]): SetupState {
+	const heating = zones.filter((z) => z.kind === 'heating');
+	const radioProblem = health?.mode !== 'live' ? 'noRadio' : health.calibrated === false ? 'notCalibrated' : 'none';
+	const transmitProblem = health?.bridgePresent ? 'bridge' : health?.transmitAllowed ? 'none' : 'dryRun';
+	const done = (ok: boolean): StepState => (ok ? 'done' : 'todo');
+	return {
+		radio: done(radioProblem === 'none'),
+		radioProblem,
+		timezone: done(health?.timezone !== undefined && !health.timezone.fallback),
+		rooms: done(heating.length > 0),
+		transmit: done(transmitProblem === 'none'),
+		transmitProblem,
+		devices: done((health?.devices.length ?? 0) > 0),
+		circuits: done(heating.length > 0 && heating.every((z) => z.circuit !== undefined))
+	};
+}
+
+/**
+ * The short address of the device that a view names. The engine views name a device by its
+ * serial number, and by its short address while it has none.
+ */
+export function shortOf(devices: { short: string; device: string }[], ref: string): string {
+	return devices.find((d) => d.short === ref || d.device === ref)?.short ?? '';
+}
+
+/**
+ * A device joined after a pair command when the daemon served it a session since the command, or
+ * learned its serial number. The answer of the pair command itself only says that it is queued.
+ */
+export function joinedSince(
+	node: { Serial: string; SessionIssuedUnix?: number } | undefined,
+	before: { serial: string; sessionUnix: number }
+): boolean {
+	if (!node) return false;
+	return (node.SessionIssuedUnix ?? 0) > before.sessionUnix || (before.serial === '' && node.Serial !== '');
+}
+
+/** Seconds as m:ss, for the time a pair window stays open. */
+export function countdown(seconds: number): string {
+	const left = Math.max(0, Math.round(seconds));
+	return `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createClient, type Client } from '../src/lib/api.ts';
+import { createClient, createInstallClient, type Client } from '../src/lib/api.ts';
 import routes from '../../internal/daemon/ingress_routes.json';
 
 // internal/daemon/ingress_routes.json lists the calls that the daemon accepts without a token
@@ -73,6 +73,26 @@ describe('the routes that need no token under ingress', () => {
 					`${name} calls ${pair}, which is not in internal/daemon/ingress_routes.json`
 				).toBe(true);
 			}
+		}
+	});
+
+	// The installation client changes the installation and pairs devices. Its calls need the token
+	// under ingress too, so none of them may be in the list.
+	it('hold no call of the installation client', async () => {
+		const seen: string[] = [];
+		const fetchStub = (async (url: string | URL | Request, init?: RequestInit) => {
+			seen.push(`${init?.method ?? 'GET'} ${new URL(String(url)).pathname}`);
+			return new Response('{"devices":[],"zones":[],"circuits":[],"device":{}}', { status: 200 });
+		}) as unknown as typeof fetch;
+		const install = createInstallClient({ base: 'http://daemon/', fetch: fetchStub });
+		const args: unknown[] = ['a304', 'a304', 'a304'];
+		for (const call of Object.values(install) as ((...a: unknown[]) => Promise<unknown>)[]) {
+			await call(...args).catch(() => undefined);
+		}
+		expect(seen.length).toBeGreaterThanOrEqual(Object.keys(install).length);
+		for (const pair of seen) {
+			const [method, path] = pair.split(' ') as [string, string];
+			expect(routes.filter((r) => matches(r, method, path)), pair).toEqual([]);
 		}
 	});
 

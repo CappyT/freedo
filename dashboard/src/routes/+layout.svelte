@@ -30,8 +30,8 @@
 			{ href: resolve('/'), label: 'nav.home', icon: 'home', active: route === '/' || route.startsWith('/zones') || route === '/hot-water' },
 			{ href: resolve('/programs'), label: 'nav.programs', icon: 'calendar', active: route === '/programs' },
 			{ href: resolve('/boiler'), label: 'nav.boiler', icon: 'flame', active: route === '/boiler' },
-			{ href: resolve('/devices'), label: 'nav.devices', icon: 'devices', active: route === '/devices' },
-			{ href: resolve('/settings'), label: 'nav.settings', icon: 'sliders', active: route === '/settings' }
+			{ href: resolve('/devices'), label: 'nav.devices', icon: 'devices', active: route === '/devices' || route.startsWith('/rooms') },
+			{ href: resolve('/settings'), label: 'nav.settings', icon: 'sliders', active: route === '/settings' || route === '/setup' }
 		];
 	});
 

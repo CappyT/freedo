@@ -162,7 +162,7 @@ try {
 			Boolean(await tab.waitFor(`document.body.innerText.includes('Living room')`)),
 			'the zones load through the prefix after the token is entered'
 		);
-		for (const route of ['#/zones/8', '#/hot-water', '#/boiler', '#/devices', '#/settings', '#/']) {
+		for (const route of ['#/zones/8', '#/hot-water', '#/boiler', '#/devices', '#/rooms/8', '#/setup', '#/settings', '#/']) {
 			await tab.evaluate(`location.hash = ${JSON.stringify(route)}`);
 			const ok = await tab
 				.waitFor(`document.querySelector('main h1') !== null && !document.body.innerText.includes('Loading')`, 8000)

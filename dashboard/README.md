@@ -17,7 +17,7 @@ SvelteKit 3 needs Node 22.17 or later. Run the commands in this directory.
 | `npm run embed` | Copy `build/` to `../internal/web/dist`, the directory that the daemon embeds. |
 | `npm run dev` | Start the development server. `FREEDO_DEV_API` names the daemon (default `http://127.0.0.1:8080`). |
 | `npm run prefix-check` | Check the build under a path prefix. See below. |
-| `npm run ui-check` | Drive the controls in headless Chrome against the daemon: typing in the schedule editor, a refused command, the first end rule, Turn off, the profiles on the Programs screen. `FREEDO_BIN` names a daemon binary that embeds the build. |
+| `npm run ui-check` | Drive the controls in headless Chrome against the daemon: typing in the schedule editor, a refused command, the first end rule, Turn off, the profiles on the Programs screen, the rooms and devices, the first setup on an empty database. `FREEDO_BIN` names a daemon binary that embeds the build. |
 
 To run the daemon with the dashboard:
 
@@ -32,9 +32,18 @@ and every page request gets `404`. The API works as before.
 ## Layout
 
 - `src/routes`: the pages. `/` is the home page, then `zones/[n]`, `hot-water`, `programs`, `boiler`,
-  `devices` and `settings`. `programs` holds the profiles and the home and away schedule of every
-  zone in each profile. The hot water page has no navigation item: its card on the home page leads there.
-- `src/lib/api.ts`: the client of the HTTP API. `data.svelte.ts` polls the views every 5 seconds.
+  `devices`, `rooms/[n]`, `setup` and `settings`. `programs` holds the profiles and the home and away
+  schedule of every zone in each profile. The hot water page has no navigation item: its card on the home
+  page leads there.
+- `devices` lists the devices room by room. It adds a room, pairs a device, moves a device between rooms,
+  removes a device and manages the heating circuits. `rooms/[n]` holds the settings of one room: the name,
+  the members, the circuit, the measuring device, the demand reporter and the delete. `setup` is the first
+  setup: one card for each step, with the state that `GET /api/health` reports. Devices and Settings link to it,
+  and so does the home page while the installation has no room.
+- `src/lib/api.ts`: the two clients of the HTTP API. `createClient` monitors and controls.
+  `createInstallClient` changes the installation and pairs. `data.svelte.ts` polls the views every 5 seconds.
+- `src/lib/install.ts`: the rules of the installation pages: the number of a new zone, the writes of a move,
+  the state of each setup step. `install.svelte.ts` runs a change and reads the state again.
 - `src/lib/schedule.ts`: the rules and the operations of the schedule editor.
 - `src/lib/i18n`: the texts. `en.ts` is the reference. `it.ts`, `de.ts` and `fr.ts` must define the
   same keys, and the type checker enforces it. The page picks the language from the browser.
@@ -71,5 +80,8 @@ the API token once and keeps it in the browser storage. Under Home Assistant ing
 the gateway for the calls that `src/lib/api.ts` makes, so the page asks for nothing. The calls are listed in
 `../internal/daemon/ingress_routes.json`, and `tests/ingress.test.ts` fails when the client calls a
 pair that is not in the list. A new client call needs a line in that file, and every line of the file
-widens what a Home Assistant user can do without the token. See
-[`docs/OPERATION.md`](../docs/OPERATION.md#dashboard).
+widens what a Home Assistant user can do without the token.
+
+The calls of `createInstallClient` are not in the list, and the same test fails when one of them is.
+Under ingress the daemon answers them `401`. The pages that use them then ask for the API token, and the
+rest of the dashboard works as before. See [`docs/OPERATION.md`](../docs/OPERATION.md#dashboard).

@@ -12,6 +12,11 @@
 // - A renamed device shows its new name right after the save, also when a poll was in flight.
 // - The buttons of a form row sit on the line of the controls, not of the labels.
 // - The Programs screen creates a profile, edits one that is not active and activates it.
+// - Rooms and devices adds a room, pairs a device that the pair window heard, moves a device,
+//   shows the effects of a removal before it deletes, and renames and deletes a room.
+// - The first setup takes a daemon with an empty database to a room, a paired thermostat and a circuit.
+//   The device that the pair window hears and the session of the joined device are put into the
+//   answers here: the daemon has no radio.
 //
 // Usage: FREEDO_BIN=./freedo node scripts/ui-check.mjs
 import { findChrome, launch } from './browser.mjs';
@@ -37,6 +42,8 @@ const check = (ok, message) => {
 
 const daemon = await startDaemon(bin);
 let browser;
+// The daemon of the first setup check: an empty database.
+let fresh;
 try {
 	await seed(daemon.base);
 	browser = await launch({ chrome });
@@ -50,11 +57,28 @@ try {
 	// While holdHealth is set, the answers of GET /api/health wait in held: a poll stays in flight.
 	let holdHealth = false;
 	const held = [];
+	// The device that an open pair window reports, as if the radio heard it. Null adds none.
+	let joiner = null;
+	// The short address of a device that the node view reports as joined: the daemon served it a session.
+	let joinedShort = null;
+	const fulfill = (p, json) =>
+		tab.call('Fetch.fulfillRequest', {
+			requestId: p.requestId,
+			responseCode: p.responseStatusCode,
+			responseHeaders: [{ name: 'Content-Type', value: 'application/json' }],
+			body: Buffer.from(JSON.stringify(json)).toString('base64')
+		});
+	const bodyOf = async (p) => {
+		const { body, base64Encoded } = await tab.call('Fetch.getResponseBody', { requestId: p.requestId });
+		return JSON.parse(base64Encoded ? Buffer.from(body, 'base64').toString() : body);
+	};
 	await tab.call('Fetch.enable', {
 		patterns: [
 			{ urlPattern: '*/api/*', requestStage: 'Request' },
 			{ urlPattern: '*/api/zones', requestStage: 'Response' },
-			{ urlPattern: '*/api/health', requestStage: 'Response' }
+			{ urlPattern: '*/api/health', requestStage: 'Response' },
+			{ urlPattern: '*/api/pair/window', requestStage: 'Response' },
+			{ urlPattern: '*/api/nodes', requestStage: 'Response' }
 		]
 	});
 	tab.on('Fetch.requestPaused', async (p) => {
@@ -81,16 +105,23 @@ try {
 				else await tab.call('Fetch.continueResponse', { requestId: p.requestId });
 				return;
 			}
+			if (path.endsWith('/api/nodes')) {
+				if (joinedShort === null) return void (await tab.call('Fetch.continueResponse', { requestId: p.requestId }));
+				const nodes = await bodyOf(p);
+				for (const node of nodes) if (node.Short === joinedShort) node.SessionIssuedUnix = Math.floor(Date.now() / 1000);
+				await fulfill(p, nodes);
+				return;
+			}
+			if (path.endsWith('/api/pair/window')) {
+				const json = await bodyOf(p);
+				if (joiner && json.open) json.joiners = [{ ...joiner, label: '', frames: 3 }];
+				await fulfill(p, json);
+				return;
+			}
 			if (zonesPatch === null) return void (await tab.call('Fetch.continueResponse', { requestId: p.requestId }));
-			const { body, base64Encoded } = await tab.call('Fetch.getResponseBody', { requestId: p.requestId });
-			const json = JSON.parse(base64Encoded ? Buffer.from(body, 'base64').toString() : body);
+			const json = await bodyOf(p);
 			for (const zone of json.declared) zonesPatch(zone);
-			await tab.call('Fetch.fulfillRequest', {
-				requestId: p.requestId,
-				responseCode: p.responseStatusCode,
-				responseHeaders: [{ name: 'Content-Type', value: 'application/json' }],
-				body: Buffer.from(JSON.stringify(json)).toString('base64')
-			});
+			await fulfill(p, json);
 		} catch {
 			await tab.call('Fetch.continueRequest', { requestId: p.requestId }).catch(() => {});
 		}
@@ -358,10 +389,219 @@ try {
 	await sleep(500);
 	const nowActive = (await (await fetch(daemon.base + '/api/home')).json()).preset;
 	check(nowActive?.name === 'Spring', `the daemon switched the active profile (${nowActive?.name})`);
+
+	// 12. Rooms and devices on the seeded installation.
+	const api = async (base, path) => (await fetch(base + '/api/' + path)).json();
+	const clickIn = (scope, text) =>
+		tab.evaluate(`(() => { const b = [...document.querySelectorAll(${JSON.stringify(scope + ' button')})].find((x) => x.textContent.trim().startsWith(${JSON.stringify(text)})); if (!b) throw new Error('no button ${text} in ${scope}'); b.click(); })()`);
+	const choose = (selector, value) =>
+		tab.evaluate(`(() => { const s = document.querySelector(${JSON.stringify(selector)}); s.value = ${JSON.stringify(value)}; s.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+	const valueOf = (selector) => tab.evaluate(`document.querySelector(${JSON.stringify(selector)})?.value`);
+	const rowSelect = (room, label) => `[...document.querySelectorAll('[data-room="${room}"] .device')].find((d) => d.querySelector('strong')?.textContent === ${JSON.stringify(label)})`;
+	const dialogText = () => tab.evaluate(`document.querySelector('dialog[open]')?.innerText ?? ''`);
+	const closeDialog = () => tab.evaluate(`[...document.querySelectorAll('dialog[open] button')].find((b) => b.textContent.trim() === 'Cancel').click()`);
+
+	await open('#/devices', `document.querySelector('[data-room="3"] .device')`);
+	check(
+		(await tab.evaluate(`[...document.querySelectorAll('[data-room] > header h2')].map((h) => h.textContent)`)).join() === 'Hot water,Hall,Bath,Office,Kitchen,Living room,Bedroom',
+		'the devices are grouped by room'
+	);
+	await clickIn('.page-head', 'Add room');
+	await tab.waitFor(`document.querySelector('[data-testid=room-form]')`);
+	await typeInto('[data-testid=room-form] input', 'Attic');
+	const offRoom = await tab.evaluate(misaligned);
+	check(offRoom.length === 0, `the buttons of the room form sit on the line of their controls (${offRoom})`);
+	await sleep(6500);
+	check((await valueOf('[data-testid=room-form] input')) === 'Attic', 'the open room form keeps its text across a data poll');
+	await clickIn('[data-testid=room-form]', 'Add room');
+	check(await toast('Room added'), 'the room is added');
+	const attic = (await api(daemon.base, 'install/zones')).zones.find((z) => z.name === 'Attic');
+	check(attic?.number === 4 && attic?.circuit === 1, `the daemon stores the room under the lowest free number, on the circuit (${attic?.number}, ${attic?.circuit})`);
+
+	// Add a device: the window, the device it hears, the description and the pair command.
+	const valve = { eui: '0ba9cefa07c51b00', short: 'a90b' };
+	await clickIn('.page-head', 'Add device');
+	await tab.waitFor(`document.querySelector('[data-testid=add-device]')`);
+	requests.length = 0;
+	await clickIn('[data-testid=add-device]', 'Open the pair window');
+	check(await toast('Pair window open'), 'the pair window opens');
+	const opened = await api(daemon.base, 'pair/window');
+	check(opened.open === true && Date.parse(opened.until) - Date.now() > 500_000, 'the daemon reports the window open for 10 minutes');
+	const left = await tab.waitFor(`document.querySelector('[data-testid=pair-left]')?.textContent`);
+	check(/Open, (10:00|9:\d\d) left/.test(left), `the flow shows the time left (${left})`);
+	check(await tab.evaluate(`/Waiting for a device/.test(document.querySelector('[data-testid=add-device]').innerText)`), 'the flow waits for the device');
+	joiner = valve;
+	await tab.waitFor(`document.querySelector('.joiner')`, 8000);
+	await click('.joiner');
+	check((await valueOf('[data-testid=add-device] .eui')) === valve.eui, 'the device that the window heard fills the address');
+	await typeInto('[data-testid=add-device] form .field.grow input', 'Attic valve');
+	await choose('[data-testid=add-device] form .field:last-of-type select', '4');
+	const offPair = await tab.evaluate(misaligned);
+	check(offPair.length === 0, `the buttons of the device form sit on the line of their controls (${offPair})`);
+	await sleep(6500);
+	check(
+		(await valueOf('[data-testid=add-device] form .field.grow input')) === 'Attic valve' && (await valueOf('[data-testid=add-device] .eui')) === valve.eui,
+		'the add device flow keeps its fields across a data poll'
+	);
+	check(!requests.some((r) => r === 'POST /api/pair' || r === 'POST /api/install/devices'), 'nothing is declared or paired before the person asks');
+	await clickIn('[data-testid=add-device]', 'Add and pair');
+	check(await toast('Pair command queued for Attic valve'), 'the device is declared and the pair command is queued');
+	const declaredValve = (await api(daemon.base, 'install/devices')).devices.find((d) => d.eui === valve.eui);
+	check(declaredValve?.label === 'Attic valve' && declaredValve?.kind === 'valve', 'the daemon declares the device');
+	check((await api(daemon.base, 'install/zones/4')).zone.members.includes(valve.eui), 'the device is a member of its room');
+	await tab.waitFor(`document.querySelector('[data-testid=pair-progress]')`);
+	await sleep(6500);
+	check(
+		await tab.evaluate(`/Pairing Attic valve/.test(document.querySelector('[data-testid=pair-progress]')?.innerText ?? '') && !document.querySelector('[data-testid=pair-joined]')`),
+		'a queued pair command shows as in progress, not as a success, also after a data poll'
+	);
+	await tab.waitFor(`/In the installation: Attic valve/.test(document.querySelector('.joiner')?.textContent ?? '')`, 8000);
+	check(true, 'the list marks the device as part of the installation');
+	await clickIn('[data-testid=add-device]', 'Send again');
+	await sleep(800);
+	check(requests.filter((r) => r === 'POST /api/pair').length === 2, 'Send again sends the pair command once more');
+	check(await tab.evaluate(`!!document.querySelector('[data-testid=pair-progress]')`), 'the flow still waits after the second command');
+	joinedShort = valve.short;
+	const joinedText = await tab.waitFor(`document.querySelector('[data-testid=pair-joined]')?.innerText`, 8000).catch(() => '');
+	check(/Attic valve joined the network/.test(joinedText), 'the flow reports the success when the daemon served the device a session');
+	await sleep(500);
+	check((await api(daemon.base, 'pair/window')).open === false, 'the pair window closes when the pairing ends');
+	joiner = null;
+	joinedShort = null;
+	await clickIn('#add-device-title ~', 'Close');
+
+	// Move a device, and a refused move.
+	await tab.waitFor(`${rowSelect(3, 'office')}`);
+	await tab.evaluate(`(() => { const s = ${rowSelect(3, 'office')}.querySelector('select'); s.value = '4'; s.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+	check(await toast('Device moved'), 'the move is accepted');
+	const afterMove = (await api(daemon.base, 'install/zones')).zones;
+	check(
+		afterMove.find((z) => z.number === 3).members.length === 0 && afterMove.find((z) => z.number === 4).members.includes('08a4defa07c51b00'),
+		'the daemon moved the device to the other room'
+	);
+	await tab.waitFor(`${rowSelect(4, 'office')}`);
+	failing.add('DELETE /api/install/zones/2/members/a304');
+	await tab.evaluate(`(() => { const s = ${rowSelect(2, 'bath')}.querySelector('select'); s.value = '3'; s.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+	check(await toast('refused for the check'), 'the refusal of a move is shown');
+	await sleep(400);
+	check((await tab.evaluate(`${rowSelect(2, 'bath')}.querySelector('select').value`)) === '2', 'the room of the device returns to what the daemon says after a refused move');
+	failing.clear();
+
+	// Remove a device: the effects first.
+	requests.length = 0;
+	await tab.evaluate(`[...${rowSelect(1, 'Hall wall unit')}.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Remove').click()`);
+	await tab.waitFor(`document.querySelector('dialog[open]')`);
+	check(/heat source/.test(await dialogText()) && !(await tab.evaluate(`!!document.querySelector('dialog[open] button.primary')`)), 'a heat source cannot be removed, and the dialog says why');
+	await closeDialog();
+	await tab.evaluate(`[...${rowSelect(5, 'kitchen valve left')}.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Remove').click()`);
+	await tab.waitFor(`document.querySelector('dialog[open]')`);
+	const effects = await tab.evaluate(`[...document.querySelectorAll('dialog[open] li')].map((li) => li.textContent)`);
+	check(effects.some((e) => e === 'Kitchen loses its demand reporter.'), `the removal lists its effects before the confirm (${effects.join(' | ')})`);
+	await closeDialog();
+	await sleep(300);
+	check(!requests.some((r) => r.startsWith('DELETE ')), 'Cancel removes nothing');
+	await tab.evaluate(`[...${rowSelect(5, 'kitchen valve left')}.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Remove').click()`);
+	await tab.waitFor(`document.querySelector('dialog[open]')`);
+	await tab.evaluate(`document.querySelector('dialog[open] button.primary').click()`);
+	check(await toast('Device removed'), 'the removal is accepted after the confirm');
+	check(!(await api(daemon.base, 'install/devices')).devices.some((d) => d.serial === 'VA1000000006'), 'the daemon removed the device');
+
+	// Room settings: the name, the measuring device and the delete.
+	await click('[data-room="4"] header a');
+	await tab.waitFor(`document.querySelector('main h1')?.textContent === 'Attic'`);
+	await tab.evaluate(`document.querySelector('main form input').focus(); document.querySelector('main form input').select()`);
+	await type('Loft');
+	await sleep(6500);
+	check((await valueOf('main form input')) === 'Loft', 'a typed room name survives a data poll');
+	const offName = await tab.evaluate(misaligned);
+	check(offName.length === 0, `the buttons of the room settings sit on the line of their controls (${offName})`);
+	await clickIn('main form', 'Save');
+	check(await toast('Room renamed'), 'the room is renamed');
+	await tab.waitFor(`document.querySelector('main h1')?.textContent === 'Loft'`);
+	await choose('.choices label:nth-child(2) select', valve.eui);
+	check(await toast('Room saved'), 'the measuring device is saved');
+	const loft = (await api(daemon.base, 'install/zones/4')).zone;
+	check(loft.name === 'Loft' && loft.measuring_device === valve.eui, `the daemon stores the name and the measuring device (${loft.name}, ${loft.measuring_device})`);
+	requests.length = 0;
+	await clickIn('main', 'Delete room');
+	await tab.waitFor(`document.querySelector('dialog[open]')`);
+	const staying = await tab.evaluate(`[...document.querySelectorAll('dialog[open] li')].map((li) => li.textContent)`);
+	check(staying.includes('Attic valve') && staying.includes('office'), `the delete names the devices that lose their room (${staying.join(' | ')})`);
+	check(!requests.some((r) => r.startsWith('DELETE ')), 'Delete room sends nothing before the person confirms');
+	await tab.evaluate(`document.querySelector('dialog[open] button.primary').click()`);
+	check(await toast('Room deleted'), 'the room is deleted');
+	await tab.waitFor(`location.hash === '#/devices' && document.querySelector('[data-room="none"]')`);
+	check(!(await api(daemon.base, 'install/zones')).zones.some((z) => z.number === 4), 'the daemon deleted the room');
+	check(
+		(await tab.evaluate(`[...document.querySelectorAll('[data-room="none"] .device strong')].map((s) => s.textContent).sort().join()`)) === 'Attic valve,office',
+		'its devices show under the devices in no room'
+	);
+
+	// 13. The first setup on a daemon with an empty database.
+	fresh = await startDaemon(bin);
+	const setupRoot = fresh.base + '/';
+	const step = (name) => tab.evaluate(`document.querySelector('[data-step="${name}"]')?.dataset.state`);
+	const stepDone = (name) => tab.waitFor(`document.querySelector('[data-step="${name}"]')?.dataset.state === 'done'`, 8000).then(() => true, () => false);
+	await tab.navigate(setupRoot);
+	await tab.waitFor(`[...document.querySelectorAll('main a')].some((a) => a.textContent.includes('Start the setup'))`);
+	await tab.evaluate(`[...document.querySelectorAll('main a')].find((a) => a.textContent.includes('Start the setup')).click()`);
+	await tab.waitFor(`document.querySelector('[data-step="radio"]')`);
+	check(true, 'the empty home page leads to the first setup');
+	const states = [];
+	for (const name of ['radio', 'timezone', 'rooms', 'transmit', 'devices', 'circuits']) states.push(await step(name));
+	check(states.every((v) => v === 'todo'), `every step of an empty daemon with no radio is open (${states})`);
+	check(await tab.evaluate(`/no live radio/.test(document.querySelector('[data-step="radio"]').innerText) && /--tx/.test(document.querySelector('[data-step="transmit"]').innerText)`), 'the steps outside the dashboard say what to do');
+	const offSetup = await tab.evaluate(misaligned);
+	check(offSetup.length === 0, `the buttons of the setup forms sit on the line of their controls (${offSetup})`);
+
+	await typeInto('[data-step="timezone"] input', 'Europe/Rome');
+	await clickIn('[data-step="timezone"]', 'Set time zone');
+	check(await toast('Time zone set'), 'the time zone is set');
+	check(await stepDone('timezone'), 'the time zone step follows the health of the daemon');
+	check((await api(fresh.base, 'install')).timezone === 'Europe/Rome', 'the daemon stores the time zone');
+
+	await typeInto('[data-step="rooms"] input', 'Kitchen');
+	await sleep(6500);
+	check((await valueOf('[data-step="rooms"] input')) === 'Kitchen', 'a setup form keeps its text across a data poll');
+	await clickIn('[data-step="rooms"]', 'Add room');
+	check(await toast('Room added'), 'the first room is added');
+	check(await stepDone('rooms'), 'the rooms step is done');
+
+	const wall = { eui: '05a2cafa07c51b00', short: 'a205' };
+	await clickIn('[data-step="devices"]', 'Open the pair window');
+	check(await toast('Pair window open'), 'the setup opens the pair window');
+	joiner = wall;
+	await tab.waitFor(`document.querySelector('.joiner')`, 8000);
+	await click('.joiner');
+	await choose('[data-step="devices"] form .field:nth-of-type(2) select', 'thermostat');
+	await typeInto('[data-step="devices"] form .field.grow input', 'Wall');
+	await choose('[data-step="devices"] form .field:last-of-type select', '1');
+	await clickIn('[data-step="devices"]', 'Add and pair');
+	check(await toast('Pair command queued for Wall'), 'the setup declares and pairs the thermostat');
+	check(await stepDone('devices'), 'the devices step is done');
+	joinedShort = wall.short;
+	check(
+		await tab.waitFor(`/Wall joined the network/.test(document.querySelector('[data-testid=pair-joined]')?.innerText ?? '')`, 8000).then(() => true, () => false),
+		'the setup reports the thermostat as joined'
+	);
+	joiner = null;
+	joinedShort = null;
+
+	await tab.waitFor(`document.querySelector('[data-testid=circuit-form]')`, 8000);
+	await typeInto('[data-testid=circuit-form] input', 'House');
+	await clickIn('[data-testid=circuit-form]', 'Add circuit');
+	check(await toast('Circuit added'), 'the circuit is added');
+	check(await stepDone('circuits'), 'the circuits step is done');
+	const built = await api(fresh.base, 'install/zones/1');
+	check(
+		built.zone.name === 'Kitchen' && built.zone.circuit === 1 && built.zone.members.includes(wall.eui),
+		`the daemon holds the room, its thermostat and its circuit (${JSON.stringify([built.zone.name, built.zone.circuit, built.zone.members])})`
+	);
+	check((await api(fresh.base, 'install/circuits')).circuits[0]?.heat_source === wall.eui, 'the thermostat is the heat source of the circuit');
 } catch (error) {
 	check(false, String(error?.stack ?? error));
 } finally {
-	for (const cleanup of [() => browser?.close(), () => daemon.stop()]) {
+	for (const cleanup of [() => browser?.close(), () => daemon.stop(), () => fresh?.stop()]) {
 		try {
 			await cleanup();
 		} catch (error) {
