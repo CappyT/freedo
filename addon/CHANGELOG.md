@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.6.0
+
+- Add-on freedo beta: a second add-on of the repository runs the pre-releases. It has its own data
+  and imports a copy of the state of the add-on freedo at its first start. The two add-ons must
+  not run at the same time. See the documentation of freedo beta for the move and the return.
+- The option `channel` is gone. The add-on freedo runs stable releases only. Home Assistant shows
+  a warning for a saved `channel` value until you save the configuration once.
+- The add-on freedo writes a copy of its state to `/share/freedo/stable` at each start and stop.
+  The copy holds the network key.
+- Home Assistant: Configure has one page for each room, with its area, its temperature source, its
+  window and door sensors and its correction. A list shows what each room uses. A window sensor
+  that another room uses moves to the room that selects it. The select Temperature source offers
+  the same choices as the page.
+- Home Assistant: a room stays off while one of its window sensors is open, also past the time
+  limit of the daemon. A reset of the window by service does not hold while a sensor is open.
+- Dashboard: the settings of a room rename, move and remove its devices. The devices in no room
+  form the group No room. The device rows keep Identify and Child lock.
+- Dashboard: the burner badge follows the burner of the boiler, also while it heats hot water. A
+  second badge shows a heating request.
+- Dashboard: one name for each page in the navigation, the title and the links.
+
 ## 0.5.2
 
 - Breaking: the routes `POST /api/nodes/{id}/factoryreset` and `POST /api/nodes/{id}/netcmd` are
