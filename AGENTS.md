@@ -20,7 +20,8 @@ routes and `CONTRIBUTING.md` for the rules of a change.
 - `tado`: codec, CoAP, TLV, state and coordinator logic. `tado/testdata`: small synthetic fixtures.
 - `cc1101`: serial link to the ESP32 bridge.
 - `custom_components/freedo`: Home Assistant integration. `homeassistant`: blueprint and Python tests.
-- `addon`: Home Assistant add-on. `repository.yaml`, `hacs.json`: store metadata.
+- `addon`: Home Assistant add-on, and its start script. `addon-beta`: the add-on for pre-releases, same
+  image. `repository.yaml`, `hacs.json`: store metadata.
 - `firmware/cc1101_bridge`: Arduino sketch of the ESP32 + CC1101 bridge.
 - `hardware/radio`: KiCad design of the radio board.
 - `.github/workflows`: CI, validation and release.

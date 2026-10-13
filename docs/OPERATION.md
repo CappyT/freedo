@@ -90,9 +90,10 @@ a database of a newer schema and stops with `schema version "8" is unsupported`.
 adds the [program presets](API.md#program-presets).
 
 To go back to a daemon before schema 8, stop the daemon and restore a copy of the database
-that you made before the upgrade. The add-on keeps a copy of the database before it runs a
-beta version: see [addon/DOCS.md](../addon/DOCS.md). Outside the add-on, copy
-`freedo-state.db` while the daemon is stopped, before you install a newer version.
+that you made before the upgrade. Copy `freedo-state.db` while the daemon is stopped, before you
+install a newer version. In Home Assistant, the pre-releases run in the beta add-on on a copy of
+the database, and the database of the stable add-on keeps its schema: see
+[addon-beta/DOCS.md](../addon-beta/DOCS.md).
 
 The restored copy holds the state at the time of the copy. You lose every change made after
 it, and in particular:
@@ -115,12 +116,13 @@ The image `ghcr.io/cappyt/freedo` exists for `linux/amd64` and `linux/arm64`, wi
 version tag (for example `0.2.0`), `latest` for the newest stable release and `beta` for the
 newest pre-release. The `Dockerfile` builds a static binary into an
 Alpine image. The process runs as user 10001. The image holds the daemon with the [dashboard](#dashboard)
-embedded. The second target `addon` builds the Home Assistant add-on image. Its start
-command reads the add-on options, so use it only inside Home Assistant.
+embedded. The second target `addon` builds the Home Assistant add-on image
+`ghcr.io/cappyt/freedo-addon`, with the same tags. The stable and the beta add-on both run it: the
+Supervisor pulls the tag that the `version` of the add-on names. Its start command reads the add-on
+options, so use it only inside Home Assistant.
 
 Every release also attaches the daemon binary of each platform, `freedo-linux-amd64` and
-`freedo-linux-arm64`, taken from the image of the same release, with `SHA256SUMS`. The add-on beta
-channel downloads them when the add-on option `channel` is `beta`.
+`freedo-linux-arm64`, taken from the image of the same release, with `SHA256SUMS`.
 
 ```sh
 docker pull ghcr.io/cappyt/freedo:latest

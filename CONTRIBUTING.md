@@ -61,15 +61,37 @@ go build -ldflags "\
 `--version` prints the stamp. A build without `-ldflags` reads the revision and the date from
 the Go toolchain.
 
-A stable release has one version. The tag `vX.Y.Z`, `version` in `addon/config.yaml` and `version`
-in `custom_components/freedo/manifest.json` all say `X.Y.Z`. A pre-release has a tag such as
-`vX.Y.Z-beta.N`: `manifest.json` says `X.Y.Z-beta.N` and `addon/config.yaml` keeps the last stable
-version, because the add-on follows the stable releases only. The release workflow stops when the
-versions do not match these rules. It tags the images of a stable release `latest` and those of a
-pre-release `beta`, and it marks a pre-release as such on GitHub. Every release attaches the daemon
-binary of each platform, `freedo-linux-amd64` and `freedo-linux-arm64`, taken from the daemon image
-of the same release, and one `SHA256SUMS` for every released file. The add-on beta channel downloads
-those binaries.
+### Releases
+
+The repository holds two add-ons that run the same image, `ghcr.io/cappyt/freedo-addon`. The
+Supervisor pulls the image tag that `version` in the `config.yaml` of the add-on names. `addon` is
+the stable add-on. `addon-beta` is the beta add-on, and it carries every release, so a beta user is
+never behind a stable release.
+
+| File | Stable release `vX.Y.Z` | Pre-release `vX.Y.Z-beta.N` |
+|---|---|---|
+| `custom_components/freedo/manifest.json` | `X.Y.Z` | `X.Y.Z-beta.N` |
+| `addon-beta/config.yaml` | `X.Y.Z` | `X.Y.Z-beta.N` |
+| `addon/config.yaml` | `X.Y.Z` | the last stable version, unchanged |
+| Changelog | a section in `addon/CHANGELOG.md` | a section in `addon-beta/CHANGELOG.md` |
+
+To release, set the versions in one commit, push it, then push the tag. The Supervisor offers a
+version as soon as the commit is on `main`, and the update fails until the release workflow has
+pushed the image. So push the tag right after the commit.
+
+`.github/scripts/check-versions.sh` checks these rules. The validation workflow runs it on every
+push, and the release workflow runs it with the tag and stops when a rule fails. The script also
+checks that `icon.png` and `logo.png` are the same in both add-on folders: the Supervisor reads each
+folder on its own, so `addon-beta` holds copies.
+
+The release workflow tags the images with the version. It adds `latest` on a stable release and
+`beta` on a pre-release, and it marks a pre-release as such on GitHub. Every release attaches the
+daemon binary of each platform, `freedo-linux-amd64` and `freedo-linux-arm64`, taken from the daemon
+image of the same release, and one `SHA256SUMS` for every released file.
+
+Both add-ons run `addon/run.sh`. The beta add-on sets `FREEDO_BETA` in its `config.yaml`, and the
+script then imports instead of exporting. `addon/test-run.sh` runs the script in a container as both
+add-ons. Run it after a change to the script. It needs docker.
 
 ## Rules for changes
 

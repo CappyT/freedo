@@ -87,6 +87,18 @@ The network key protects the radio traffic. It lives in the database `freedo-sta
 the database can decrypt the traffic and command the devices. Protect the database and its
 backups. The add-on stores it in its data folder, which Home Assistant backups include.
 
+The stable add-on also writes a copy of the database to `/share/freedo/stable/`, for the beta add-on.
+The copy holds the network key. The folder has mode `0700` and the files have mode `0600`. That stops
+no add-on: every add-on that maps the `share` folder runs as root and reads the copy, and a file
+sharing add-on gives it to its users. A backup that includes the share folder holds it too. Install
+only add-ons you trust, and delete `/share/freedo/stable` when you do not use the beta add-on. The
+stable add-on writes it again at each start. The beta add-on keeps the databases that an import
+replaced under `/data/backup/` in its data folder.
+
+The file `/share/freedo/owner.json` names the add-on that started last. A process that can write to
+the share folder can change it. It can then delay the start of an add-on by up to 250 seconds, or
+stop the start while the host it names answers on port 18080.
+
 The pairing key is the same on every valve and is not secret. The network key crosses the air
 under the pairing key during a pairing. Keep the pair window short and the band quiet.
 

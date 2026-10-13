@@ -29,7 +29,8 @@ and restart Home Assistant.
 With the freedo add-on, the Supervisor sends the host, the port and the token of
 the add-on to Home Assistant. Settings -> Devices & services then lists freedo
 as discovered: select it and confirm. The add-on repeats the message at each
-start, so a changed token updates the entry.
+start, so a changed token updates the entry. The add-ons freedo and freedo beta
+share the entry: it takes the host and the token of the one that started last.
 
 For a daemon that runs elsewhere, add the integration from Settings -> Devices
 & services and enter:
