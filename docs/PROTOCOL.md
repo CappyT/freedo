@@ -678,6 +678,80 @@ deadline and logs that count, as it does on an explicit close.
 The key crosses the air in the clear, under a key that every valve shares. So the
 commissioning window must stay short and the band must stay quiet.
 
+### Network commands and leaving the network
+
+A "network command" is a value `t` in 1000 to 1008. The valve firmware carries a
+handler for them, `coap_res_netcmd_write`@0x224e0: it reads the URI-query `t`
+(`coap_msg_uriquery_find_param`, key `t`@0x38be0), converts it to an integer and
+branches through a jump table at 0x2258e (disassembly, confirmed with Ghidra
+pseudocode).
+
+| `t` | Effect in the firmware | Address |
+|---|---|---|
+| 1000 | queue a reboot: write reboot reason attr `0148` = `0x20` | 0x225c6 |
+| 1001 | mark the running OTA image bits (`ota_image_state_bits_update(1)`) | 0x22642 |
+| 1002 | clear the OTA image bits (`ota_image_state_bits_update(0)`) | 0x225ea |
+| 1003 | send the OTA image-state report | 0x225f2 |
+| 1004 | store the payload length byte, no device change | 0x22646 |
+| 1005 | `rxwindow`: `FUN_14fc8(0)` then a radio-table callback | 0x225f8 |
+| 1006 | tear the node down, then the 1005 action and enable subsystem `0f` | 0x22608 |
+| 1007 | erase the network key: `FUN_14fc8(0x80)`, disable subsystem `0f`, call the key-erase helper @0xbe0c, then mark the OTA image bits | 0x2262c |
+| 1008 | `devinfo`: send the device-info report (attr `0260`) | 0x22626 |
+
+The key-erase helper @0xbe0c overwrites provisioning field `0x12`, the 16-byte
+network key, with 16 bytes `0xFF` and commits it (`prov_mount_page(1)`,
+`prov_field_write(0x12)`, `prov_store_commit`, disassembly). So `t=1007` erases the
+stored key. It does not reboot and it does not open the pairing window. A valve that
+runs `1007` keeps the key in RAM until the next reset; after the next reset it has no
+key and no open window.
+
+`coap_res_netcmd_write` is present but not wired to any received resource in this
+image (valve 215.1). Its only reference is one data word at a resource descriptor
+0x3acb4, and nothing references that descriptor (Ghidra: no code reference to the
+handler, no reference to the descriptor; the constant 0x224e1 appears once in the
+image). The path `d/test/v1`@0x38360 is used once only, to enqueue a boot report
+(`dispatch_node_enqueue`@0x22068), not to register a receiver. The 19 resources that
+the valve registers as CoAP receivers (`coap_dispatch_node_register`) do not include
+`d/test/v1`: `d/pair`, `d/config`, `d/reboot`, `d/identify`, `d/lock`, `d/sched`,
+`d/fw`, `d/fw/state`, `d/fw/rq`, `d/currentlog`, `d/dbg/st`, `d/dbg/m`, `d/dbg2/tlvs`,
+`z/config`, `z/s`, `z/cpe`, `z/extui`, `z/legionella` and the device self node. So a
+write to `d/test/v1` matches no receiver and runs no handler.
+
+This matches the plant (2026-10-13): a write to `d/test/v1?t=1007` takes the MAC ack,
+gets no CoAP answer, and leaves the key in place; the valve keeps reporting and, after
+a `d/reboot`, rejoins with the stored key. On this firmware a coordinator cannot run
+network command 1007. freedo sends no network command.
+
+The resources that change pairing, key or factory state:
+
+- `d/reboot` (POST): schedules a reset about 5 s later with reboot reason attr
+  `0148` = `0x20` (`coap_reboot_res_init`@0x21358, handler @0x2133c, disassembly). The
+  boot path reloads the stored key, so the valve rejoins. No key change.
+- The physical button long-press runs `pair_factory_reset`@0x30a9c (disassembly plus
+  Ghidra): it wipes the device config records `0xf2`, `0xf3` and `0xf4` to `0xfb`
+  (`cfg_wipe`@0xc738), writes `015d`=0 and `015c`=0, sets attr `0270`=1, erases the
+  network key (@0xbe0c), then forces a system reset. It also enters commissioning
+  through `pair_enter_commissioning`@0xbff0, which installs the shared pairing key and
+  opens the window.
+- `pair_factory_reset`@0x30a9c and `pair_enter_commissioning`@0xbff0 are reached only
+  from the button UI state machine (callers 0x26c6e, 0x27636 and 0x26f26, 0x278ac;
+  Ghidra cross-references). No CoAP resource, network command, attribute write or
+  reboot reason reaches them. There is no remote way to enter commissioning.
+
+So there is no frame a coordinator can send to detach a valve from the network. The
+button is required. A hypothetical working `1007` would make this worse, not better:
+it erases the key without a reboot and without a window, so the valve would be deaf
+after its next reset until someone holds the button. After the button and the new
+pairing the valve reports fault state code 8 (`01a3` = `0x4000`) until it is mounted
+again, because the reset clears its calibration (plant, 2026-10-13).
+
+The wall thermostat carries the same resources (`d/test/v1`, `d/reboot`, `d/pair`,
+`d/dbg2/tlvs`) and the same network-command jump table (`t - 0x3e8`@0x20de2). Its
+`t=1007` branch calls the same key-erase helper (@0xc7fc: field `0x12` = 16 bytes
+`0xFF`, commit), and its button factory reset calls that helper too (caller 0x31428,
+disassembly). The thermostat mirrors the valve; its network-command receive wiring is
+not traced separately.
+
 ### Echo and neighbor discovery
 
 A valve sends the bridge an ICMPv6 Echo Request with identifier and sequence
