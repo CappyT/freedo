@@ -103,6 +103,33 @@ async def test_discovery_updates_the_token_of_a_known_add_on(hass):
     assert entry.data["token"] == TOKEN
 
 
+@pytest.mark.parametrize(
+    ("known", "started"),
+    [(HOST, f"{HOST}-beta"), (f"{HOST}-beta", HOST)],
+)
+async def test_discovery_moves_the_entry_between_the_stable_and_the_beta_add_on(
+    hass, known, started
+):
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_HOST: known, CONF_PORT: PORT, "token": "old-token"},
+        unique_id=f"{HOST}:{PORT}",
+    )
+    entry.add_to_hass(hass)
+    config = {CONF_HOST: started, CONF_PORT: PORT, "token": TOKEN, "started": "1"}
+    with patch("custom_components.freedo.async_setup_entry", return_value=True):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": config_entries.SOURCE_HASSIO},
+            data=discovery(config),
+        )
+        await hass.async_block_till_done()
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "already_configured"
+    assert entry.data == {CONF_HOST: started, CONF_PORT: PORT, "token": TOKEN}
+    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
+
+
 async def test_discovery_without_a_token_sends_an_empty_one(hass):
     config = {CONF_HOST: HOST, CONF_PORT: str(PORT)}
     result = await hass.config_entries.flow.async_init(

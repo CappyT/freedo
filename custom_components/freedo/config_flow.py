@@ -102,8 +102,11 @@ class FreedoConfigFlow(ConfigFlow, domain=DOMAIN):
             CONF_PORT: int(config[CONF_PORT]),
             CONF_TOKEN: config.get(CONF_TOKEN, ""),
         }
+        # The beta add-on has the host of the stable one plus "-beta". Both
+        # serve the same plant, so they share the id and the entry follows the
+        # add-on that started last.
         await self.async_set_unique_id(
-            f"{self._discovered[CONF_HOST]}:{self._discovered[CONF_PORT]}"
+            f"{self._discovered[CONF_HOST].removesuffix('-beta')}:{self._discovered[CONF_PORT]}"
         )
         self._abort_if_unique_id_configured(updates=self._discovered)
         return await self.async_step_hassio_confirm()
