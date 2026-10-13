@@ -89,8 +89,8 @@ func (d *daemon) windowZone(number int) (*tado.Zone, error) {
 
 // setWindow applies the open or the close of one source to zone. When the
 // zone itself changes state its zoneWriteTargets owe the new 62e0. A source
-// that already holds the zone keeps its hold: a repeated open restarts
-// nothing. It reports whether the stored state changed.
+// that already holds the zone keeps its hold, except an external one that
+// opens again: see nextWindow. It reports whether the stored state changed.
 func (d *daemon) setWindow(e *tado.EmuState, zone int, src windowSource, open bool, hold time.Duration, dispatch func(string)) bool {
 	next, changed := d.nextWindow(zone, src, open, hold)
 	if !changed {
@@ -102,9 +102,13 @@ func (d *daemon) setWindow(e *tado.EmuState, zone int, src windowSource, open bo
 
 // nextWindow returns, as a new map, the sources that hold zone once src opens
 // or closes, and whether they differ from the current ones. It changes nothing.
+// A repeated external open keeps since and restarts the cap: the caller states
+// that the window is still open. A repeated device report restarts nothing,
+// because the member repeats it by itself.
 func (d *daemon) nextWindow(zone int, src windowSource, open bool, hold time.Duration) (zoneWindow, bool) {
 	w := d.windows[zone]
-	if _, held := w[src]; open == held {
+	current, held := w[src]
+	if open == held && !(open && src == windowExternal) {
 		return w, false
 	}
 	next := make(zoneWindow, len(w)+1)
@@ -113,7 +117,11 @@ func (d *daemon) nextWindow(zone int, src windowSource, open bool, hold time.Dur
 	}
 	if open {
 		now := d.retryNow().UTC()
-		next[src] = windowHold{since: now, deadline: now.Add(hold)}
+		since := now
+		if held {
+			since = current.since
+		}
+		next[src] = windowHold{since: since, deadline: now.Add(hold)}
 	} else {
 		delete(next, src)
 	}

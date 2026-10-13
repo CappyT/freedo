@@ -539,7 +539,10 @@ state from an outside source, for example a Home Assistant sensor.
 - A member that clears its own `62e0` sends `DELETE h/<home>/z/N/ow`. The daemon answers
   `2.05`, drops that source and, when the zone closes, writes `62e0=0` to the zone writers.
 - The zone stays open while one source keeps it open. An outside window without a close ends
-  after `external_window_max_sec`.
+  after `external_window_max_sec`. An open on a zone that the outside source already holds
+  restarts that time, keeps `since` and writes nothing to the devices. So a source that
+  repeats the open before `deadline` keeps the zone open, and the zone closes by itself when
+  the source stops.
 - `open`, `source`, `since` and `deadline` are stored and appear in `GET /api/zones` and, for
   each zone, in `/api/health`. The hot water zone has no window.
 

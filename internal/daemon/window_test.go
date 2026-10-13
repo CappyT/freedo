@@ -183,6 +183,13 @@ func (w windowState) source() string {
 	return *w.Source
 }
 
+func (w windowState) since() string {
+	if w.Since == nil {
+		return ""
+	}
+	return *w.Since
+}
+
 func (w windowState) deadline() string {
 	if w.Deadline == nil {
 		return ""
@@ -424,9 +431,15 @@ func TestWindowExternalOpenClose(t *testing.T) {
 	wantWindowWrites(t, "the external open", d, in, "01", a)
 	wantNoWrites(t, "the external open on the relayed member", d, b)
 
+	// A repeated open restarts the cap and writes nothing to the devices.
 	clock.advance(time.Minute)
-	if _, code := postWindow(t, url, 5, true); code != http.StatusOK {
+	w, code = postWindow(t, url, 5, true)
+	if code != http.StatusOK {
 		t.Fatalf("second open: code=%d", code)
+	}
+	wantWindow(t, "the repeated open answer", w, true, "external", windowStart.Add(31*time.Minute))
+	if w.since() != windowStart.UTC().Format(time.RFC3339) {
+		t.Errorf("a repeated open: since=%q, want the first open", w.since())
 	}
 	wantNoWrites(t, "a repeated open", d, a, b)
 
