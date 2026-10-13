@@ -477,6 +477,12 @@ export const it: Record<Key, string> = {
 	'pair.retry': 'Invia di nuovo',
 	'pair.stop': 'Smetti di attendere',
 	'pair.joined': '{name} si è unito alla rete.',
+	'pair.done.title': '{name} è abbinato',
+	'pair.done.body': 'Il dispositivo si è unito alla rete e comunica con freedo.',
+	'pair.done.room': 'Stanza: {room}',
+	'pair.done.noRoom': 'Il dispositivo non è in nessuna stanza.',
+	'pair.another': 'Aggiungi un altro dispositivo',
+	'pair.joiner.paired': 'Abbinato: {name}',
 	'remove.effect.member': '{name} perde questo dispositivo.',
 
 	'boiler.faultState': 'Codici di guasto',

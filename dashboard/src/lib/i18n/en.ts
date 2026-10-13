@@ -477,6 +477,12 @@ export const en = {
 	'pair.retry': 'Send again',
 	'pair.stop': 'Stop waiting',
 	'pair.joined': '{name} joined the network.',
+	'pair.done.title': '{name} is paired',
+	'pair.done.body': 'The device joined the network and reports to freedo.',
+	'pair.done.room': 'Room: {room}',
+	'pair.done.noRoom': 'The device is in no room.',
+	'pair.another': 'Add another device',
+	'pair.joiner.paired': 'Paired: {name}',
 	'remove.effect.member': '{name} loses this device.',
 
 	'boiler.faultState': 'Fault codes',

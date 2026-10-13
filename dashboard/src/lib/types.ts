@@ -368,6 +368,8 @@ export interface PairJoiner {
 	short: string;
 	/** The label of the device when the installation declares it, else empty. */
 	label: string;
+	/** When the daemon last heard the device ask to join, as an RFC 3339 time. */
+	lastSeen: string;
 	frames: number;
 }
 

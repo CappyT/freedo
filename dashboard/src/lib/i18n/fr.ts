@@ -477,6 +477,12 @@ export const fr: Record<Key, string> = {
 	'pair.retry': 'Envoyer à nouveau',
 	'pair.stop': 'Ne plus attendre',
 	'pair.joined': '{name} a rejoint le réseau.',
+	'pair.done.title': '{name} est appairé',
+	'pair.done.body': 'L’appareil a rejoint le réseau et communique avec freedo.',
+	'pair.done.room': 'Pièce : {room}',
+	'pair.done.noRoom': 'L’appareil n’est dans aucune pièce.',
+	'pair.another': 'Ajouter un autre appareil',
+	'pair.joiner.paired': 'Appairé : {name}',
 	'remove.effect.member': '{name} perd cet appareil.',
 
 	'boiler.faultState': 'Codes de défaut',

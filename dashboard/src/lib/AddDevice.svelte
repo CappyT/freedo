@@ -5,10 +5,10 @@
 	import Icon from './Icon.svelte';
 	import { t } from './i18n.svelte.ts';
 	import { manage } from './install.svelte.ts';
-	import { countdown, joinedSince, wireEui } from './install.ts';
+	import { countdown, joinedSince, joinerPaired, wireEui } from './install.ts';
 	import { api } from './session.ts';
 	import { toasts } from './toast.svelte.ts';
-	import type { PairWindow } from './types.ts';
+	import type { PairJoiner, PairWindow } from './types.ts';
 	import { zoneName } from './zones.ts';
 
 	// The longest window the daemon accepts. The page closes it when the pairing ends.
@@ -24,6 +24,13 @@
 		before: { serial: string; sessionUnix: number };
 	}
 
+	interface Props {
+		/** Closes the flow. Without it the flow has no Done action, as in the first setup. */
+		onclose?: () => void;
+	}
+
+	let { onclose }: Props = $props();
+
 	let pairWindow = $state<PairWindow | null>(null);
 	let problem = $state<string | null>(null);
 	let eui = $state('');
@@ -32,8 +39,8 @@
 	let room = $state('');
 	let busy = $state(false);
 	let pending = $state<Pending | null>(null);
-	/** The name of the last device that joined. */
-	let joined = $state<string | null>(null);
+	/** The device whose pairing ended. While it is set, the flow shows the end and no step. */
+	let done = $state<{ short: string; name: string } | null>(null);
 	let now = $state(Date.now());
 
 	const health = $derived(data.health);
@@ -42,6 +49,10 @@
 	const joiners = $derived(pairWindow?.joiners ?? []);
 	// The daemon lists a declared device in the health view, by its short address.
 	const declared = (short: string) => health?.devices.find((d) => d.short === short);
+	const paired = (joiner: PairJoiner) => joinerPaired(joiner, data.nodes.find((n) => n.Short === joiner.short));
+	const doneRooms = $derived(
+		data.models.filter((m) => done !== null && m.zone.members.includes(done.short)).map((m) => zoneName(m.zone, t('zone.hotWaterName')))
+	);
 	const known = $derived.by(() => {
 		const joiner = joiners.find((j) => j.eui === target);
 		return joiner ? declared(joiner.short) : undefined;
@@ -81,7 +92,7 @@
 		if (!waiting) return;
 		if (!joinedSince(data.nodes.find((n) => n.Short === waiting.short), waiting.before)) return;
 		pending = null;
-		joined = waiting.name;
+		done = { short: waiting.short, name: waiting.name };
 		toasts.push('ok', t('pair.joined', { name: waiting.name }));
 		void api.openPairWindow(0).then((view) => (pairWindow = view), () => undefined);
 	});
@@ -113,7 +124,6 @@
 		if (short === undefined) return;
 		const node = data.nodes.find((n) => n.Short === short);
 		pending = { eui: target, short, name, before: { serial: node?.Serial ?? '', sessionUnix: node?.SessionIssuedUnix ?? 0 } };
-		joined = null;
 		eui = '';
 		label = '';
 	}
@@ -127,71 +137,92 @@
 	}
 </script>
 
+{#snippet windowControl()}
+	{#if pairWindow?.open}
+		<span class="badge tone-heating" data-testid="pair-left">{t('pair.left', { time: left ?? '-' })}</span>
+		<button class="btn" type="button" disabled={busy} onclick={() => setWindow(0)}>{t('pair.close')}</button>
+	{:else}
+		<button class="btn primary" type="button" disabled={busy} onclick={() => setWindow(WINDOW_SEC)}>
+			<Icon name="bolt" size={18} />{t('pair.open')}
+		</button>
+	{/if}
+{/snippet}
+
 <div class="add" data-testid="add-device">
 	{#if health && !health.transmitAllowed}
 		<p class="notice tone-warning" role="status"><Icon name="warning" /><span>{t('pair.noTx')}</span></p>
 	{/if}
 
-	<ol class="steps">
-		<li>
-			<h3>{t('pair.step.window')}</h3>
-			<p class="small muted">{t('pair.step.window.body')}</p>
+	{#if done}
+		<div class="end" role="status" data-testid="pair-done">
+			<h3><Icon name="check" />{t('pair.done.title', { name: done.name })}</h3>
+			<p>{t('pair.done.body')}</p>
+			<p>{doneRooms.length > 0 ? t('pair.done.room', { room: doneRooms.join(', ') }) : t('pair.done.noRoom')}</p>
 			<div class="row fill">
-				{#if pairWindow?.open}
-					<span class="badge tone-heating" data-testid="pair-left">{t('pair.left', { time: left ?? '-' })}</span>
-					<button class="btn" type="button" disabled={busy} onclick={() => setWindow(0)}>{t('pair.close')}</button>
-				{:else}
-					<button class="btn primary" type="button" disabled={busy} onclick={() => setWindow(WINDOW_SEC)}>
-						<Icon name="bolt" size={18} />{t('pair.open')}
-					</button>
-				{/if}
+				{#if onclose}<button class="btn primary" type="button" onclick={onclose}>{t('setup.done')}</button>{/if}
+				<button class="btn" class:primary={!onclose} type="button" onclick={() => (done = null)}>
+					<Icon name="plus" size={18} />{t('pair.another')}
+				</button>
 			</div>
-			{#if pairWindow?.open && health?.transmitAllowed && !pairWindow.responder}
-				<p class="note">{t('pair.noResponder')}</p>
-			{/if}
-			{#if problem}<p class="note">{problem}</p>{/if}
-		</li>
-
-		<li>
-			<h3>{t('pair.step.button')}</h3>
-			<p class="small muted">{t('pair.step.button.body')}</p>
-			{#if joiners.length === 0}
-				<p class="small waiting" role="status">{pairWindow?.open ? t('pair.waiting') : t('pair.noJoiners')}</p>
-			{:else}
-				<ul class="joiners">
-					{#each joiners as joiner (joiner.eui)}
-						{@const device = declared(joiner.short)}
-						<li>
-							<button class="btn joiner" type="button" aria-pressed={joiner.eui === target} disabled={pending !== null} onclick={() => (eui = joiner.eui)}>
-								<span class="mono">{joiner.eui}</span>
-								<span class="small muted">{device ? t('pair.joiner.known', { name: device.label || device.device }) : t('pair.joiner.new')}</span>
-							</button>
-						</li>
-					{/each}
-				</ul>
-			{/if}
-		</li>
-
-		<li>
-			<h3>{t('pair.step.describe')}</h3>
-			{#if pending}
-				<div class="notice tone-warning progress" role="status" data-testid="pair-progress">
-					<Icon name="clock" />
-					<div>
-						<p><strong>{t('pair.progress', { name: pending.name })}</strong></p>
-						<p>{pairWindow?.open ? t('pair.progress.body') : t('pair.progress.closed')}</p>
-					</div>
-				</div>
-				<div class="row fill">
-					<button class="btn primary" type="button" disabled={busy || !pairWindow?.open} onclick={retry}>
-						<Icon name="refresh" size={18} />{t('pair.retry')}
-					</button>
-					<button class="btn" type="button" disabled={busy} onclick={() => (pending = null)}>{t('pair.stop')}</button>
-				</div>
-			{:else}
-				{#if joined}
-					<p class="notice tone-idle" role="status" data-testid="pair-joined"><Icon name="check" /><span>{t('pair.joined', { name: joined })}</span></p>
+		</div>
+	{:else if pending}
+		<div class="notice tone-warning progress" role="status" data-testid="pair-progress">
+			<Icon name="clock" />
+			<div>
+				<p><strong>{t('pair.progress', { name: pending.name })}</strong></p>
+				<progress aria-hidden="true"></progress>
+				<p>{pairWindow?.open ? t('pair.progress.body') : t('pair.progress.closed')}</p>
+			</div>
+		</div>
+		<div class="row fill">
+			{@render windowControl()}
+			<button class="btn primary" type="button" disabled={busy || !pairWindow?.open} onclick={retry}>
+				<Icon name="refresh" size={18} />{t('pair.retry')}
+			</button>
+			<button class="btn" type="button" disabled={busy} onclick={() => (pending = null)}>{t('pair.stop')}</button>
+		</div>
+		{#if problem}<p class="note">{problem}</p>{/if}
+	{:else}
+		<ol class="steps">
+			<li>
+				<h3>{t('pair.step.window')}</h3>
+				<p class="small muted">{t('pair.step.window.body')}</p>
+				<div class="row fill">{@render windowControl()}</div>
+				{#if pairWindow?.open && health?.transmitAllowed && !pairWindow.responder}
+					<p class="note">{t('pair.noResponder')}</p>
 				{/if}
+				{#if problem}<p class="note">{problem}</p>{/if}
+			</li>
+
+			<li>
+				<h3>{t('pair.step.button')}</h3>
+				<p class="small muted">{t('pair.step.button.body')}</p>
+				{#if joiners.length === 0}
+					<p class="small waiting" role="status">{pairWindow?.open ? t('pair.waiting') : t('pair.noJoiners')}</p>
+				{:else}
+					<ul class="joiners">
+						{#each joiners as joiner (joiner.eui)}
+							{@const device = declared(joiner.short)}
+							<li>
+								{#if device && paired(joiner)}
+									<div class="joiner paired">
+										<span class="mono">{joiner.eui}</span>
+										<span class="small muted">{t('pair.joiner.paired', { name: device.label || device.device })}</span>
+									</div>
+								{:else}
+									<button class="btn joiner" type="button" aria-pressed={joiner.eui === target} onclick={() => (eui = joiner.eui)}>
+										<span class="mono">{joiner.eui}</span>
+										<span class="small muted">{device ? t('pair.joiner.known', { name: device.label || device.device }) : t('pair.joiner.new')}</span>
+									</button>
+								{/if}
+							</li>
+						{/each}
+					</ul>
+				{/if}
+			</li>
+
+			<li>
+				<h3>{t('pair.step.describe')}</h3>
 				<form class="row fill" onsubmit={submit}>
 					<label class="field">
 						<span>{t('pair.eui')}</span>
@@ -222,9 +253,9 @@
 					</button>
 				</form>
 				{#if known}<p class="note">{t('pair.known', { name: known.label || known.device })}</p>{/if}
-			{/if}
-		</li>
-	</ol>
+			</li>
+		</ol>
+	{/if}
 </div>
 
 <style>
@@ -273,8 +304,29 @@
 		box-shadow: inset 0 0 0 1px var(--action);
 	}
 
-	.progress p + p {
-		margin-top: 0.25rem;
+	.joiner.paired {
+		display: flex;
+		padding: 0.5rem 0.9rem;
+		border: 1px dashed var(--border-strong);
+		border-radius: var(--radius-md);
+	}
+
+	.progress progress {
+		display: block;
+		width: min(16rem, 100%);
+		margin: 0.5rem 0;
+		accent-color: var(--action);
+	}
+
+	.end {
+		display: grid;
+		gap: 0.6rem;
+	}
+
+	.end h3 {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
 	}
 
 	.eui {

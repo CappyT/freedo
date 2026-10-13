@@ -13,7 +13,8 @@
 //   a poll was in flight.
 // - The buttons of a form row sit on the line of the controls, not of the labels.
 // - The Programs screen creates a profile, edits one that is not active and activates it.
-// - Rooms and devices adds a room and pairs a device that the pair window heard. The settings of a
+// - Rooms and devices adds a room and pairs a device that the pair window heard. A pairing in progress
+//   and a pairing that ended each replace the steps, and a device that joined is not offered again. The settings of a
 //   room move a device, show the effects of a removal before the delete, offer only free devices,
 //   and rename and delete the room. No room is the group of the devices in no room.
 // - The settings of a heated room save its options in one request and keep the ranges of the daemon.
@@ -21,7 +22,8 @@
 //   A boiler fault code shows on the boiler page and as a banner.
 // - The first setup takes a daemon with an empty database to a room, a paired thermostat and a circuit.
 //   The device that the pair window hears and the session of the joined device are put into the
-//   answers here: the daemon has no radio.
+//   answers here: the daemon has no radio. As the daemon does, the answers keep the device in the
+//   list after the window closes.
 //
 // Usage: FREEDO_BIN=./freedo node scripts/ui-check.mjs
 import { findChrome, launch } from './browser.mjs';
@@ -62,8 +64,12 @@ try {
 	// While holdHealth is set, the answers of GET /api/health wait in held: a poll stays in flight.
 	let holdHealth = false;
 	const held = [];
-	// The device that an open pair window reports, as if the radio heard it. Null adds none.
+	// The device that the pair window reports, as if the radio heard it. Null adds none.
 	let joiner = null;
+	const hear = (device) => {
+		const at = new Date().toISOString();
+		joiner = { ...device, label: '', firstSeen: at, lastSeen: at, frames: 3, lastClass: 'BeaconReq' };
+	};
 	// The short address of a device that the node view reports as joined: the daemon served it a session.
 	let joinedShort = null;
 	// Fields put into the answer of GET /api/boiler, as if the boiler reported them. Null changes nothing.
@@ -121,13 +127,17 @@ try {
 			if (path.endsWith('/api/nodes')) {
 				if (joinedShort === null) return void (await tab.call('Fetch.continueResponse', { requestId: p.requestId }));
 				const nodes = await bodyOf(p);
-				for (const node of nodes) if (node.Short === joinedShort) node.SessionIssuedUnix = Math.floor(Date.now() / 1000);
+				for (const node of nodes) {
+					if (node.Short !== joinedShort) continue;
+					node.SessionIssuedUnix = Math.floor(Date.now() / 1000);
+					node.Serial ||= 'VA1000000099';
+				}
 				await fulfill(p, nodes);
 				return;
 			}
 			if (path.endsWith('/api/pair/window')) {
 				const json = await bodyOf(p);
-				if (joiner && json.open) json.joiners = [{ ...joiner, label: '', frames: 3 }];
+				if (joiner) json.joiners = [joiner];
 				await fulfill(p, json);
 				return;
 			}
@@ -457,9 +467,9 @@ try {
 	const left = await tab.waitFor(`document.querySelector('[data-testid=pair-left]')?.textContent`);
 	check(/Open, (10:00|9:\d\d) left/.test(left), `the flow shows the time left (${left})`);
 	check(await tab.evaluate(`/Waiting for a device/.test(document.querySelector('[data-testid=add-device]').innerText)`), 'the flow waits for the device');
-	joiner = valve;
-	await tab.waitFor(`document.querySelector('.joiner')`, 8000);
-	await click('.joiner');
+	hear(valve);
+	await tab.waitFor(`document.querySelector('button.joiner')`, 8000);
+	await click('button.joiner');
 	check((await valueOf('[data-testid=add-device] .eui')) === valve.eui, 'the device that the window heard fills the address');
 	await typeInto('[data-testid=add-device] form .field.grow input', 'Attic valve');
 	await choose('[data-testid=add-device] form .field:last-of-type select', '4');
@@ -479,22 +489,55 @@ try {
 	await tab.waitFor(`document.querySelector('[data-testid=pair-progress]')`);
 	await sleep(6500);
 	check(
-		await tab.evaluate(`/Pairing Attic valve/.test(document.querySelector('[data-testid=pair-progress]')?.innerText ?? '') && !document.querySelector('[data-testid=pair-joined]')`),
+		await tab.evaluate(`/Pairing Attic valve/.test(document.querySelector('[data-testid=pair-progress]')?.innerText ?? '') && !document.querySelector('[data-testid=pair-done]')`),
 		'a queued pair command shows as in progress, not as a success, also after a data poll'
 	);
-	await tab.waitFor(`/In the installation: Attic valve/.test(document.querySelector('.joiner')?.textContent ?? '')`, 8000);
-	check(true, 'the list marks the device as part of the installation');
+	check(
+		await tab.evaluate(`!document.querySelector('[data-testid=add-device] :is(form, .steps)') && !!document.querySelector('[data-testid=pair-progress] progress')`),
+		'a pairing in progress replaces the steps and the form, and shows that it runs'
+	);
 	await clickIn('[data-testid=add-device]', 'Send again');
 	await sleep(800);
 	check(requests.filter((r) => r === 'POST /api/pair/devices/' + valve.eui).length === 2, 'Send again sends the pair command once more');
 	check(await tab.evaluate(`!!document.querySelector('[data-testid=pair-progress]')`), 'the flow still waits after the second command');
 	joinedShort = valve.short;
-	const joinedText = await tab.waitFor(`document.querySelector('[data-testid=pair-joined]')?.innerText`, 8000).catch(() => '');
-	check(/Attic valve joined the network/.test(joinedText), 'the flow reports the success when the daemon served the device a session');
+	const doneText = await tab.waitFor(`document.querySelector('[data-testid=pair-done]')?.innerText`, 8000).catch(() => '');
+	check(/Attic valve is paired/.test(doneText) && /Room: Attic/.test(doneText), `the flow ends on the name and the room of the paired device (${doneText})`);
 	await sleep(500);
 	check((await api(daemon.base, 'pair/window')).open === false, 'the pair window closes when the pairing ends');
-	joiner = null;
+	// The daemon keeps the device in the list of the closed window. Wait for a poll that reads it.
+	await sleep(6500);
+	const ended = await tab.evaluate(`(() => {
+		const flow = document.querySelector('[data-testid=add-device]');
+		return { done: !!flow.querySelector('[data-testid=pair-done]'), steps: !!flow.querySelector('.steps'), form: !!flow.querySelector('form'), joiner: !!flow.querySelector('.joiner'), text: flow.innerText };
+	})()`);
+	check(
+		ended.done && !ended.steps && !ended.form && !ended.joiner && !/Hold the button|In the installation/.test(ended.text),
+		`after the pairing the flow shows the end only: no step, no form, no heard device (${JSON.stringify(ended)})`
+	);
+	await clickIn('[data-testid=pair-done]', 'Done');
+	check(await tab.waitFor(`!document.querySelector('#add-device-title')`, 3000).then(() => true, () => false), 'Done closes the flow');
+
+	// The device that joined stays in the answer of the closed window. The flow does not offer it again.
+	await clickIn('.page-head', 'Add device');
+	await tab.waitFor(`document.querySelector('[data-testid=add-device] .joiner')`, 8000);
+	check(
+		await tab.evaluate(`!document.querySelector('[data-testid=add-device] button.joiner') && /Paired: Attic valve/.test(document.querySelector('[data-testid=add-device] .joiner').innerText)`),
+		'a heard device that joined shows as paired and cannot be selected'
+	);
+	// A declared device that asks to join again: the daemon served it no session since.
 	joinedShort = null;
+	hear({ eui: '04a3defa07c51b00', short: 'a304' });
+	await clickIn('[data-testid=add-device]', 'Open the pair window');
+	await tab.waitFor(`/In the installation: bath/.test(document.querySelector('[data-testid=add-device] button.joiner')?.innerText ?? '')`, 8000);
+	await click('[data-testid=add-device] button.joiner');
+	await clickIn('[data-testid=add-device]', 'Pair again');
+	check(await toast('Pair command queued for bath'), 'a declared device that is not paired can be paired again');
+	check(await tab.waitFor(`/Pairing bath/.test(document.querySelector('[data-testid=pair-progress]')?.innerText ?? '')`, 3000).then(() => true, () => false), 'the second pairing shows as in progress');
+	await clickIn('[data-testid=add-device]', 'Stop waiting');
+	await clickIn('[data-testid=add-device]', 'Close the window');
+	check(await toast('Pair window closed'), 'the pair window closes on request');
+	joiner = null;
 	await clickIn('#add-device-title ~', 'Close');
 
 	// The options of a room: one form, one save, and the checks of the daemon before the request.
@@ -591,6 +634,8 @@ try {
 	await tab.waitFor(`document.querySelector('dialog[open]')`);
 	const effects = await tab.evaluate(`[...document.querySelectorAll('dialog[open] li')].map((li) => li.textContent)`);
 	check(effects.some((e) => e === 'Kitchen loses its demand reporter.'), `the removal lists its effects before the confirm (${effects.join(' | ')})`);
+	const dialogs = await tab.evaluate(`({ title: document.querySelector('dialog[open] h2').textContent, hidden: [...document.querySelectorAll('dialog:not([open])')].every((d) => getComputedStyle(d).display === 'none') })`);
+	check(dialogs.title === 'Remove kitchen valve left?' && dialogs.hidden, `the open dialog names the device, and a closed dialog is not rendered (${JSON.stringify(dialogs)})`);
 	await closeDialog();
 	await sleep(300);
 	check(!requests.some((r) => r.startsWith('DELETE ')), 'Cancel removes nothing');
@@ -731,9 +776,9 @@ try {
 	const wall = { eui: '05a2cafa07c51b00', short: 'a205' };
 	await clickIn('[data-step="devices"]', 'Open the pair window');
 	check(await toast('Pair window open'), 'the setup opens the pair window');
-	joiner = wall;
-	await tab.waitFor(`document.querySelector('.joiner')`, 8000);
-	await click('.joiner');
+	hear(wall);
+	await tab.waitFor(`document.querySelector('button.joiner')`, 8000);
+	await click('button.joiner');
 	await choose('[data-step="devices"] form .field:nth-of-type(2) select', 'thermostat');
 	await typeInto('[data-step="devices"] form .field.grow input', 'Wall');
 	await choose('[data-step="devices"] form .field:last-of-type select', '1');
@@ -742,8 +787,8 @@ try {
 	check(await stepDone('devices'), 'the devices step is done');
 	joinedShort = wall.short;
 	check(
-		await tab.waitFor(`/Wall joined the network/.test(document.querySelector('[data-testid=pair-joined]')?.innerText ?? '')`, 8000).then(() => true, () => false),
-		'the setup reports the thermostat as joined'
+		await tab.waitFor(`/Wall is paired/.test(document.querySelector('[data-testid=pair-done]')?.innerText ?? '') && !document.querySelector('[data-step="devices"] :is(form, .steps)')`, 8000).then(() => true, () => false),
+		'the setup ends the pairing on the paired thermostat, with no step and no form'
 	);
 	joiner = null;
 	joinedShort = null;

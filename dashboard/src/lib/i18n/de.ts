@@ -477,6 +477,12 @@ export const de: Record<Key, string> = {
 	'pair.retry': 'Erneut senden',
 	'pair.stop': 'Nicht mehr warten',
 	'pair.joined': '{name} ist dem Netz beigetreten.',
+	'pair.done.title': '{name} ist gekoppelt',
+	'pair.done.body': 'Das Gerät ist dem Netz beigetreten und meldet sich bei freedo.',
+	'pair.done.room': 'Raum: {room}',
+	'pair.done.noRoom': 'Das Gerät ist in keinem Raum.',
+	'pair.another': 'Weiteres Gerät hinzufügen',
+	'pair.joiner.paired': 'Gekoppelt: {name}',
 	'remove.effect.member': '{name} verliert dieses Gerät.',
 
 	'boiler.faultState': 'Fehlercodes',

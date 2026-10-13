@@ -69,7 +69,7 @@
 				<h2 id="add-device-title">{t('pair.title')}</h2>
 				<button class="btn" onclick={() => (adding = null)}><Icon name="close" size={18} />{t('action.close')}</button>
 			</header>
-			<AddDevice />
+			<AddDevice onclose={() => (adding = null)} />
 		</section>
 	{/if}
 

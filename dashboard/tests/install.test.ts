@@ -5,6 +5,7 @@ import {
 	countdown,
 	describeEffect,
 	joinedSince,
+	joinerPaired,
 	movePlan,
 	moveTargets,
 	nextCircuitId,
@@ -114,6 +115,27 @@ describe('a device after the pair command', () => {
 
 	it('has not joined on a serial number that the daemon knew before', () => {
 		expect(joinedSince({ Serial: 'VA9000000001', SessionIssuedUnix: 100 }, { serial: 'VA9000000001', sessionUnix: 100 })).toBe(false);
+	});
+});
+
+describe('a device that the pair window heard', () => {
+	const joiner = { lastSeen: '2026-01-10T17:18:49.4Z' };
+	const heard = Date.parse(joiner.lastSeen) / 1000;
+
+	it('is paired when the daemon served it a session after its last request to join', () => {
+		expect(joinerPaired(joiner, { SessionIssuedUnix: Math.floor(heard) + 17 })).toBe(true);
+		expect(joinerPaired(joiner, { SessionIssuedUnix: Math.floor(heard) })).toBe(true);
+	});
+
+	it('waits while its last session is older than its request, as a declared device that joins again', () => {
+		expect(joinerPaired(joiner, { SessionIssuedUnix: Math.floor(heard) - 3600 })).toBe(false);
+		expect(joinerPaired(joiner, { SessionIssuedUnix: 0 })).toBe(false);
+		expect(joinerPaired(joiner, {})).toBe(false);
+	});
+
+	it('waits while the daemon holds no node for it or no time for the request', () => {
+		expect(joinerPaired(joiner, undefined)).toBe(false);
+		expect(joinerPaired({ lastSeen: '' }, { SessionIssuedUnix: Math.floor(heard) + 17 })).toBe(false);
 	});
 });
 

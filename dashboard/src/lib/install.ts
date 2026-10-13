@@ -122,6 +122,17 @@ export function joinedSince(
 	return (node.SessionIssuedUnix ?? 0) > before.sessionUnix || (before.serial === '' && node.Serial !== '');
 }
 
+/**
+ * A device that the pair window heard is paired when the daemon served it a session after its last
+ * request to join. The daemon keeps the device in the list of the window after the device joins and
+ * after the window closes, so the list alone does not tell a waiting device from a paired one.
+ */
+export function joinerPaired(joiner: { lastSeen: string }, node: { SessionIssuedUnix?: number } | undefined): boolean {
+	const heard = Date.parse(joiner.lastSeen);
+	if (!node || Number.isNaN(heard)) return false;
+	return (node.SessionIssuedUnix ?? 0) >= Math.floor(heard / 1000);
+}
+
 /** Seconds as m:ss, for the time a pair window stays open. */
 export function countdown(seconds: number): string {
 	const left = Math.max(0, Math.round(seconds));
