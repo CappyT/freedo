@@ -377,6 +377,69 @@ func TestWindowDeviceCloseEndsHold(t *testing.T) {
 	wantWindow(t, "a device close under an external hold", zoneWindowOf(t, url, 5), true, "external", externalEnd)
 }
 
+// TestWindowResetEndsDeviceHold: an external close leaves a window that a valve
+// detected open, a reset ends it before its 62c0 and the zone writer owes
+// 62e0 = 0 at once, and a later report opens a new window.
+func TestWindowResetEndsDeviceHold(t *testing.T) {
+	in := windowInstall(t, nil)
+	clock := newTestClock(windowStart)
+	d, url := newWindowDaemon(t, in, clock, nil)
+	a, b := wireOf(t, in, "VA1000000006"), wireOf(t, in, "VA1000000001")
+	seedBlock(t, d, in, "VA1000000006", 5)
+	seedBlock(t, d, in, "VA1000000001", 5)
+	reset := func() (windowState, int) {
+		var w windowState
+		code := postJSON(t, http.MethodPost, url+"/api/zones/5/window", map[string]any{"open": false, "reset": true}, &w)
+		return w, code
+	}
+
+	report(t, d, in, "VA1000000006", 5, 0x6021)
+	wantWindowWrites(t, "the device open", d, in, "01", a)
+	deviceEnd := windowStart.Add(900 * time.Second)
+
+	clock.advance(60 * time.Second)
+	w, code := postWindow(t, url, 5, false)
+	if code != http.StatusOK {
+		t.Fatalf("external close: code=%d", code)
+	}
+	wantWindow(t, "an external close under a device hold", w, true, "device", deviceEnd)
+	wantNoWrites(t, "an external close under a device hold", d, a, b)
+
+	w, code = reset()
+	if code != http.StatusOK {
+		t.Fatalf("reset: code=%d", code)
+	}
+	wantWindow(t, "the reset answer", w, false, "", time.Time{})
+	wantWindowWrites(t, "the reset", d, in, "00", a)
+	wantNoWrites(t, "the reset on the relayed member", d, b)
+	wantWindow(t, "after the reset", zoneWindowOf(t, url, 5), false, "", time.Time{})
+	if _, code := reset(); code != http.StatusOK {
+		t.Fatalf("second reset: code=%d", code)
+	}
+	wantNoWrites(t, "a repeated reset", d, a, b)
+
+	clock.advance(time.Second)
+	report(t, d, in, "VA1000000006", 5, 0x6022)
+	wantWindowWrites(t, "a report after the reset", d, in, "01", a)
+	wantWindow(t, "a report after the reset", zoneWindowOf(t, url, 5), true, "device", clock.now().Add(900*time.Second))
+
+	// A reset ends both sources.
+	if _, code := postWindow(t, url, 5, true); code != http.StatusOK {
+		t.Fatalf("external open: code=%d", code)
+	}
+	wantNoWrites(t, "an external open under a device hold", d, a, b)
+	if w, code = reset(); code != http.StatusOK {
+		t.Fatalf("reset of both: code=%d", code)
+	}
+	wantWindow(t, "the reset of both", w, false, "", time.Time{})
+	wantWindowWrites(t, "the reset of both", d, in, "00", a)
+
+	var bad map[string]any
+	if code := postJSON(t, http.MethodPost, url+"/api/zones/5/window", map[string]any{"open": true, "reset": true}, &bad); code != http.StatusBadRequest {
+		t.Errorf("a reset with open true: code=%d, want 400", code)
+	}
+}
+
 // TestWindowDeviceReportHonoursZoneConfig: a zone with the detection off takes
 // no write, a zone duration other than the default sets the deadline, and a
 // device outside the zone opens nothing.

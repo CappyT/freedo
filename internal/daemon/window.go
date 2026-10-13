@@ -454,20 +454,27 @@ func (d *daemon) windowViews() map[string]any {
 }
 
 // postZoneWindow opens or closes the external window of a zone. The zone stays
-// open while its own detector still holds it.
+// open while its own detector still holds it, except on a reset: the close a
+// person asks for drops every source. A contact that closes sends no reset, so
+// it does not cancel what a valve detected.
 func (d *daemon) postZoneWindow(w http.ResponseWriter, r *http.Request) {
 	zone, _, ok := d.pathZoneMembers(w, r)
 	if !ok {
 		return
 	}
 	var b struct {
-		Open *bool `json:"open"`
+		Open  *bool `json:"open"`
+		Reset bool  `json:"reset"`
 	}
 	if !decodeBody(w, r, &b) {
 		return
 	}
 	if b.Open == nil {
 		writeErr(w, http.StatusBadRequest, "open is required")
+		return
+	}
+	if b.Reset && *b.Open {
+		writeErr(w, http.StatusBadRequest, "reset needs open false")
 		return
 	}
 	z, err := d.windowZone(zone)
@@ -478,6 +485,9 @@ func (d *daemon) postZoneWindow(w http.ResponseWriter, r *http.Request) {
 	hold := d.inst.Load().Options.ExternalWindowMax()
 	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
 		next, changed := d.nextWindow(z.Number, windowExternal, *b.Open, hold)
+		if b.Reset {
+			next, changed = nil, d.windows[z.Number].open()
+		}
 		if !changed {
 			return d.windowView(z.Number), nil
 		}
