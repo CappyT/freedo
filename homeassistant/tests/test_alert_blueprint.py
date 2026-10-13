@@ -212,3 +212,75 @@ async def test_more_actions_get_the_title_and_the_message(hass, freezer):
     assert [(c.data["name"], c.data["message"]) for c in logged] == [
         ("freedo", "Boiler fault: codes 291.")
     ]
+
+
+LIVING = "climate.living"
+BEDROOM = "climate.bedroom"
+OUTDOOR = "sensor.outdoor"
+
+
+def room(hass, entity, name, inside, action="heating"):
+    hass.states.async_set(
+        entity, "heat", {"friendly_name": name, "current_temperature": inside, "hvac_action": action}
+    )
+
+
+def outdoor(hass, value):
+    hass.states.async_set(OUTDOOR, value, {"unit_of_measurement": "°C"})
+
+
+WARM = {"warm_rooms": [LIVING, BEDROOM], "warm_outdoor_sensor": OUTDOOR}
+
+
+async def test_a_room_that_heats_while_it_is_warmer_outside(hass, freezer):
+    room(hass, LIVING, "Living", 19.0)
+    room(hass, BEDROOM, "Bedroom", 21.5)
+    outdoor(hass, "19.5")
+    calls = await start(hass, freezer, **WARM)
+    # 19.5 outside is not 1 degree above any room.
+    await settle(hass, freezer, hours=1)
+    assert calls == []
+    outdoor(hass, "20.5")
+    await settle(hass, freezer, minutes=29)
+    assert calls == []
+    await settle(hass, freezer, minutes=2)
+    assert messages(calls) == [
+        "It is warmer outside (20.5°C) than in Living (19.0). The heating is on there"
+        " and is not needed: switch it off or open a window."
+    ]
+    # It holds, and a second room joins: no other reminder.
+    outdoor(hass, "23.0")
+    await settle(hass, freezer, hours=2)
+    assert len(calls) == 1
+    # It ends, then starts again: a new reminder, for the rooms of that time.
+    outdoor(hass, "10.0")
+    await settle(hass, freezer, minutes=5)
+    outdoor(hass, "23.0")
+    await settle(hass, freezer, minutes=31)
+    assert messages(calls)[1:] == [
+        "It is warmer outside (23.0°C) than in Living (19.0), Bedroom (21.5). The heating is on"
+        " there and is not needed: switch it off or open a window."
+    ]
+
+
+async def test_no_warm_reminder_for_a_room_that_does_not_heat(hass, freezer):
+    room(hass, LIVING, "Living", 19.0, action="idle")
+    room(hass, BEDROOM, "Bedroom", None)
+    outdoor(hass, "25.0")
+    calls = await start(hass, freezer, **WARM)
+    await settle(hass, freezer, hours=2)
+    # An outdoor sensor with no reading sends nothing either.
+    room(hass, LIVING, "Living", 19.0)
+    outdoor(hass, "unavailable")
+    await settle(hass, freezer, hours=2)
+    assert calls == []
+
+
+async def test_no_warm_reminder_without_its_inputs(hass, freezer):
+    # The default: no room, and an outdoor sensor that does not exist.
+    room(hass, LIVING, "Living", 19.0)
+    outdoor(hass, "25.0")
+    calls = await start(hass, freezer)
+    await settle(hass, freezer, hours=2)
+    assert calls == []
+

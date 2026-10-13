@@ -12,8 +12,11 @@ blueprint:
     - An alert sends one notification. It sends no other one while it holds,
     and none after a restart of Home Assistant.
 
-    - Optional: a notification when a window of a room stays open longer than
-    a time.
+    - Optional: a reminder when a window of a room stays open longer than a
+    time.
+
+    - Optional: a reminder when a room heats while it is warmer outside than in
+    the room.
 
     - During the quiet time the notification waits, and goes out when the quiet
     time ends.
@@ -73,7 +76,10 @@ blueprint:
       input:
         window_sensors:
           name: Window sensors
-          description: The freedo Window sensors of the rooms to watch. Empty sends none.
+          description: >-
+            The freedo Window sensors of the rooms to watch. Empty sends none.
+            A sensor is on for a window that a valve detected and for one that
+            a window or door sensor of the room reports.
           default: []
           selector:
             entity:
@@ -85,6 +91,55 @@ blueprint:
         window_delay:
           name: Open for
           description: The window stays open for this time before the notification.
+          default:
+            hours: 0
+            minutes: 30
+            seconds: 0
+          selector:
+            duration:
+    warm:
+      name: Warmer outside
+      description: >-
+        Optional. A reminder that the heating is not needed: a room heats while
+        the outdoor temperature is above the temperature of the room.
+      collapsed: true
+      input:
+        warm_rooms:
+          name: Rooms
+          description: The freedo climate entities of the rooms to watch. Empty sends none.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: climate
+                  integration: freedo
+        warm_outdoor_sensor:
+          name: Outdoor temperature sensor
+          description: >-
+            For example the freedo sensor Outdoor temperature. The default
+            names a sensor that does not exist. Select a sensor to use this
+            reminder.
+          default: sensor.freedo_outdoor_unset
+          selector:
+            entity:
+              filter:
+                - domain: sensor
+                  device_class: temperature
+        warm_margin:
+          name: Warmer by
+          description: The outdoor temperature is above the room temperature by this much.
+          default: 1
+          selector:
+            number:
+              min: 0
+              max: 10
+              step: 0.5
+              unit_of_measurement: °C
+              mode: box
+        warm_delay:
+          name: For
+          description: This holds for this time before the reminder.
           default:
             hours: 0
             minutes: 30
@@ -153,6 +208,12 @@ variables:
     device_offline: Device offline
     boiler_fault: Boiler fault
 
+# The rooms that heat while it is warmer outside, as a list of entity ids.
+trigger_variables:
+  warm_rooms: !input warm_rooms
+  warm_outdoor_sensor: !input warm_outdoor_sensor
+  warm_margin: !input warm_margin
+
 triggers:
   - trigger: event.received
     target:
@@ -165,6 +226,23 @@ triggers:
     to: "on"
     for: !input window_delay
     id: window
+  # It fires when the first room starts to heat against a warmer outside, and
+  # again only after no room does.
+  - trigger: template
+    value_template: >-
+      {% set outside = states(warm_outdoor_sensor) %}
+      {% set ns = namespace(rooms=0) %}
+      {% for room in warm_rooms %}
+        {% set inside = state_attr(room, 'current_temperature') %}
+        {% if is_number(outside) and is_number(inside)
+           and state_attr(room, 'hvac_action') == 'heating'
+           and outside | float > inside | float + warm_margin | float %}
+          {% set ns.rooms = ns.rooms + 1 %}
+        {% endif %}
+      {% endfor %}
+      {{ ns.rooms > 0 }}
+    for: !input warm_delay
+    id: warm
 
 actions:
   - variables:
@@ -177,6 +255,18 @@ actions:
              or device_attr(trigger.entity_id, 'name')
              or trigger.to_state.name %}
           Window open for more than {{ minutes }} minutes: {{ room }}.
+        {% elif trigger.id == 'warm' %}
+          {% set outside = states(warm_outdoor_sensor) %}
+          {% set ns = namespace(rooms=[]) %}
+          {% for room in warm_rooms %}
+            {% set inside = state_attr(room, 'current_temperature') %}
+            {% if is_number(outside) and is_number(inside)
+               and state_attr(room, 'hvac_action') == 'heating'
+               and outside | float > inside | float + warm_margin | float %}
+              {% set ns.rooms = ns.rooms + [state_attr(room, 'friendly_name') ~ ' (' ~ inside ~ ')'] %}
+            {% endif %}
+          {% endfor %}
+          It is warmer outside ({{ outside }}{{ state_attr(warm_outdoor_sensor, 'unit_of_measurement') or '' }}) than in {{ ns.rooms | join(', ') }}. The heating is on there and is not needed: switch it off or open a window.
         {% else %}
           {% set event = trigger.to_state.attributes %}
           {% set ns = namespace(details=[]) %}
