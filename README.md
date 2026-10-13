@@ -73,8 +73,11 @@ Tested on a real plant (one plant, one ESP32 development board with one CC1101 m
   40 seconds after the command.
 - The add-on freedo beta: the move from the add-on freedo, with the copy of the state that the add-ons
   made by themselves up to 0.7.0. Every device talked to the beta add-on in three minutes. The return
-  to the add-on freedo did not run. The backup of the dashboard, which replaces that copy, did not run
-  on a plant: no download, no restore, in neither direction.
+  to the add-on freedo did not run.
+- The backup of the dashboard, in the web interface of the add-on freedo beta: a download as a Home
+  Assistant administrator with no token, and a restore of that file in the same add-on. The daemon
+  kept the replaced state, restarted by itself, waited 250 seconds and talked to the devices again
+  with no decryption error. A restore in the other add-on did not run.
 - The read of the firmware version of each device.
 - freedo runs as the only coordinator of that plant, as a Home Assistant add-on with the integration.
   The devices of that plant were not paired from scratch, apart from one valve.
