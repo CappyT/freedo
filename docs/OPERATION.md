@@ -171,7 +171,10 @@ there is one. The page and the settings of a room do these tasks:
   window hears, declares the chosen one with a type, a name and a room, and sends the pair command. It then
   shows the pairing as in progress, and as done only when the daemon served the device a session or learned
   its serial number. Send again repeats the pair command while the window is open: a device can miss the
-  first one. The page closes the window when the device joined. See [Pairing a device](#pairing-a-device).
+  first one. The page closes the window when the device joined. It then shows only the name and the room
+  of the paired device, with Done and Add another device. The list marks a heard device as paired when
+  the daemon served it a session after its last request to join, and does not offer it again. See
+  [Pairing a device](#pairing-a-device).
 - Add a heating circuit, change its heat source, delete it.
 - In the settings of a room, for each device of the room: rename it, move it to another room or to No
   room, and remove it from the installation. The settings of No room do the same for the devices in no
