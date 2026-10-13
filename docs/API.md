@@ -924,7 +924,7 @@ algorithm of the tado cloud, which is not public.
   at 16 C and above.
 - The option needs `flow_limit_c`, the reference of the reduction. A `PATCH /api/install` that
   switches it on while `flow_limit_c` is unset gets `400`. Send both in one request, or set
-  `flow_limit_c` first.
+  `flow_limit_c` first. A `null` `flow_limit_c` while the option is on gets `400` too.
 - A circuit with an enabled curve of its own follows that curve. The default curve does not apply
   to it.
 - The outdoor temperature comes from `POST /api/outdoor`. Home Assistant must feed it: the

@@ -521,8 +521,8 @@ func (s *stateStore) PatchInstall(ctx context.Context, p installPatch) (installR
 	})
 }
 
-// patchFlowOptions writes the flow limit options a patch carries. A null curve
-// removes the circuit's curve.
+// patchFlowOptions writes the flow limit options a patch carries. A null flow
+// limit clears it, and a null curve removes the circuit's curve.
 func patchFlowOptions(ctx context.Context, tx querier, p installPatch) error {
 	if p.FlowLimitC.set {
 		if p.FlowLimitC.value == nil {

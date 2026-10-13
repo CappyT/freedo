@@ -303,6 +303,13 @@ func TestInstallAPIClearsFlowLimit(t *testing.T) {
 		t.Fatalf("stored flow limit after a set = %d %v, want 50 true", v, ok)
 	}
 
+	// The default curve needs the limit as its reference, so a clear is refused.
+	a.mutate(http.MethodPatch, "/api/install", map[string]any{"flow_default_curve": true})
+	if code, body := a.call(http.MethodPatch, "/api/install", map[string]any{"flow_limit_c": nil}); code != http.StatusBadRequest {
+		t.Errorf("a null under the default curve: %d %v, want 400", code, body)
+	}
+	a.mutate(http.MethodPatch, "/api/install", map[string]any{"flow_default_curve": false})
+
 	// An absent field leaves the limit alone.
 	a.mutate(http.MethodPatch, "/api/install", map[string]any{"flow_hysteresis_c": 2})
 	if got := a.get("/api/install")["flow_limit_c"]; got != float64(50) {
