@@ -168,13 +168,13 @@ func TestPairDispatchesAfterUnansweredAttempt(t *testing.T) {
 	d.retryAfter, d.retryNow = clock.after, func() time.Time { return now }
 	t.Cleanup(func() { close(d.done) })
 
-	if err := emu.EnqueueNetcmd(dhwNode, 1); err != nil {
+	if err := emu.EnqueueReboot(dhwNode, 1); err != nil {
 		t.Fatal(err)
 	}
 	d.dispatchQueued(emu, dhwNode)
 	attempts := rad.queuedAttempts()
 	if len(attempts) != 1 || !emu.QueuedDownlinkAwaitingCSL(dhwNode) {
-		t.Fatalf("attempts %v, want the netcmd on the radio", attempts)
+		t.Fatalf("attempts %v, want the reboot on the radio", attempts)
 	}
 	if err := emu.EnqueuePair(dhwNode, defaultInstall.NetworkKey()); err != nil {
 		t.Fatal(err)

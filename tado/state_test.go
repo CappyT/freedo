@@ -356,8 +356,6 @@ func TestResourceDownlinks(t *testing.T) {
 			func(e *EmuState) error { return e.EnqueueCalibrate("bedroom") }},
 		{"reboot", "downlink reboot", NetworkKey, "d/reboot", []string{"id=5"},
 			func(e *EmuState) error { return e.EnqueueReboot("bedroom", 5) }},
-		{"netcmd", "downlink netcmd", NetworkKey, "d/test/v1", []string{"t=1007"},
-			func(e *EmuState) error { return e.EnqueueNetcmd("bedroom", 1007) }},
 		{"mode", "downlink mode", NetworkKey, "z/s", []string{"id=4"},
 			func(e *EmuState) error {
 				seedHeatingBlock(e, mustB(NodeByAny("bedroom").WireLE))

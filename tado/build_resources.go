@@ -99,16 +99,6 @@ func BuildRebootCoAP(id int, mid uint16, token, srcEUI, dstEUI []byte) ([]byte, 
 	})
 }
 
-// BuildNetcmdCoAP builds d/test/v1?t=T. The valve handler reads only t.
-func BuildNetcmdCoAP(t int, mid uint16, token, srcEUI, dstEUI []byte) ([]byte, error) {
-	return deviceWrite(deviceReq{
-		Path:    []string{"d", "test", "v1"},
-		Query:   []string{"t=" + strconv.Itoa(t)},
-		Options: []CoAPOption{optUriPort},
-		MID:     mid, Token: token, SrcEUI: srcEUI, DstEUI: dstEUI,
-	})
-}
-
 // BuildGetCoAP builds a bridge-initiated CoAP GET to a device resource.
 func BuildGetCoAP(path, query []string, mid uint16, token, srcEUI, dstEUI []byte) ([]byte, error) {
 	return buildGetCoAP(path, query, nil, mid, token, srcEUI, dstEUI)

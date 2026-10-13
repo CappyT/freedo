@@ -199,22 +199,22 @@ func TestInstallAPIForceDoesNotReleaseAHeatSource(t *testing.T) {
 }
 
 // TestInstallAPIRemovalSendsNoFrame: DELETE edits the installation only. A
-// factory reset the device has not taken yet goes with its queue, and the
-// daemon no longer resolves the device to send another.
+// reboot the device has not taken yet goes with its queue, and the daemon
+// does not resolve the device to send another.
 func TestInstallAPIRemovalSendsNoFrame(t *testing.T) {
 	a := removalFixture(t)
-	if code, res := a.call(http.MethodPost, "/api/nodes/VA9000000004/factoryreset", map[string]any{"confirm": true}); code != http.StatusOK && code != http.StatusAccepted {
-		t.Fatalf("factory reset: got %d %v", code, res)
+	if code, res := a.call(http.MethodPost, "/api/nodes/VA9000000004/reboot", map[string]any{"id": 1}); code != http.StatusOK && code != http.StatusAccepted {
+		t.Fatalf("reboot: got %d %v", code, res)
 	}
 	if got := a.pending()[apiValveRightEUI]; got == 0 {
-		t.Fatal("no downlink waits for the device before the removal, want the netcmd")
+		t.Fatal("no downlink waits for the device before the removal, want the reboot")
 	}
 	a.mutate(http.MethodDelete, "/api/install/devices/VA9000000004", nil)
 	left, err := a.d.do(func(e *tado.EmuState) (any, error) { return e.Pending(apiValveRightEUI), nil })
 	if err != nil || left != 0 {
 		t.Errorf("%v downlinks still wait for the removed device (%v), want none", left, err)
 	}
-	if code, res := a.call(http.MethodPost, "/api/nodes/VA9000000004/factoryreset", map[string]any{"confirm": true}); code != http.StatusNotFound {
-		t.Errorf("factory reset after the removal: got %d %v, want 404", code, res)
+	if code, res := a.call(http.MethodPost, "/api/nodes/VA9000000004/reboot", map[string]any{"id": 1}); code != http.StatusNotFound {
+		t.Errorf("reboot after the removal: got %d %v, want 404", code, res)
 	}
 }

@@ -120,18 +120,16 @@ const ALLOWED = [
 ];
 
 // What stays behind the token under ingress, whatever the client does: the identity of the network,
-// the network key, a pairing with a key of the caller, reset, firmware and the debug routes.
+// the network key, a pairing with a key of the caller, reboot, firmware and the debug routes.
 const TOKEN_ONLY = [
 	'PATCH /api/install',
 	'PUT /api/install/network_key',
 	'PATCH /api/install/devices/0201',
 	'PUT /api/install/zones/3/members',
 	'POST /api/pair',
-	'POST /api/nodes/0201/factoryreset',
 	'POST /api/nodes/0201/reboot',
 	'POST /api/nodes/0201/fw',
 	'POST /api/nodes/0201/config',
-	'POST /api/nodes/0201/netcmd',
 	'GET /api/debug/rx',
 	'POST /api/debug/decrypt'
 ];

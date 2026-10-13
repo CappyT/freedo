@@ -420,7 +420,7 @@ func TestPairGoesFirst(t *testing.T) {
 	if !e.MarkQueuedDownlinkAwaitingCSL(joinerEUI, identify.Bytes[2]) {
 		t.Fatal("the radio did not take the identify attempt")
 	}
-	if err := e.EnqueueNetcmd(target, 1); err != nil {
+	if err := e.EnqueueReboot(target, 1); err != nil {
 		t.Fatal(err)
 	}
 	if err := e.EnqueueChildLock(target, 1, true); err != nil {
@@ -429,7 +429,7 @@ func TestPairGoesFirst(t *testing.T) {
 	if err := e.EnqueuePair(target, NetworkKey); err != nil {
 		t.Fatal(err)
 	}
-	if got, want := queueKinds(e, target), []string{"identify", "pair", "netcmd", "childlock"}; !slices.Equal(got, want) {
+	if got, want := queueKinds(e, target), []string{"identify", "pair", "reboot", "childlock"}; !slices.Equal(got, want) {
 		t.Fatalf("queue %v, want %v: only the attempt on the radio stays ahead of d/pair", got, want)
 	}
 	if a, ok := queuedAttempt(t, e, target); ok {
@@ -443,7 +443,7 @@ func TestPairGoesFirst(t *testing.T) {
 	if !ok || !strings.HasPrefix(pair.Reason, "downlink pair") {
 		t.Fatalf("attempt after the identify %q, want d/pair", pair.Reason)
 	}
-	if got, want := queueKinds(e, target), []string{"pair", "identify", "netcmd", "childlock"}; !slices.Equal(got, want) {
+	if got, want := queueKinds(e, target), []string{"pair", "identify", "reboot", "childlock"}; !slices.Equal(got, want) {
 		t.Fatalf("queue %v, want %v", got, want)
 	}
 	q := e.Queue(target)
@@ -460,7 +460,7 @@ func TestPairGoesFirst(t *testing.T) {
 	// again.
 	now = now.Add(time.Second)
 	actions := e.OnFrame(deviceAck(t, joinerEUI, ParseApp(f.Plaintext).CoAP.MID, "2.04"))
-	if got, want := queueKinds(e, target), []string{"identify", "netcmd", "childlock"}; !slices.Equal(got, want) {
+	if got, want := queueKinds(e, target), []string{"identify", "reboot", "childlock"}; !slices.Equal(got, want) {
 		t.Fatalf("queue after the 2.04 %v, want %v", got, want)
 	}
 	again, ok := findAction(actions, ActData, "downlink identify")

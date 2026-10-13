@@ -3547,23 +3547,6 @@ func (e *EmuState) EnqueueReboot(target string, id int) error {
 	return nil
 }
 
-// EnqueueNetcmd queues netcmd?t=T.
-func (e *EmuState) EnqueueNetcmd(target string, t int) error {
-	wire, _, err := e.resolve(target)
-	if err != nil {
-		return err
-	}
-	mid, token, err := downlinkIDs()
-	if err != nil {
-		return err
-	}
-	pkt, err := BuildNetcmdCoAP(t, mid, token, e.selfEUI, wire)
-	if err != nil {
-		return err
-	}
-	return e.enqueue(target, "netcmd", fmt.Sprintf("netcmd t=%d", t), pkt, e.key, mid)
-}
-
 // EnqueueMode queues a z/s write that changes only the overlay (6240): the rest
 // of the block is resent from the node's last-known values.
 func (e *EmuState) EnqueueMode(target string, id int, overlay byte) error {

@@ -80,7 +80,7 @@ func TestBuildChildLockCoAP(t *testing.T) {
 	}
 }
 
-func TestBuildIdentifyRebootNetcmd(t *testing.T) {
+func TestBuildIdentifyReboot(t *testing.T) {
 	dst := testDstEUI(t)
 
 	pkt, err := BuildIdentifyCoAP(0x0101, []byte{0x01}, BridgeEUI, dst)
@@ -149,20 +149,6 @@ func TestBuildIdentifyRebootNetcmd(t *testing.T) {
 		t.Errorf("reboot uri-port = %v/%x, want 7/ffff", ok, o.Val)
 	}
 
-	pkt, err = BuildNetcmdCoAP(1007, 0x0103, []byte{0x03}, BridgeEUI, dst)
-	if err != nil {
-		t.Fatal(err)
-	}
-	m = parseBuilt(t, pkt)
-	if m.Type != "CON" || m.Code != "0.03" {
-		t.Errorf("netcmd type/code = %s %s, want CON 0.03", m.Type, m.Code)
-	}
-	if m.Path != "d/test/v1" || m.Query != "t=1007" {
-		t.Errorf("uri = %q, want d/test/v1?t=1007", m.URI())
-	}
-	if len(m.Payload) != 0 {
-		t.Errorf("netcmd payload = %x, want empty", m.Payload)
-	}
 	if err := checkInlineUDP(BridgeEUI, dst, pkt); err != nil {
 		t.Error(err)
 	}

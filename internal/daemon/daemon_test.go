@@ -1200,60 +1200,6 @@ func TestDaemonCalibrateQueuesValveOnly(t *testing.T) {
 	}
 }
 
-func TestDaemonNetcmdT1006UsesValvePathAndGuardsLeave(t *testing.T) {
-	radio := newImmediateTestRadio(true, nil)
-	d, url := newImmediateDaemon(t, tado.EmuConfig{TxCounter: 100000, NoAutoQueue: true}, radio, false)
-	var response struct {
-		Queued  bool   `json:"queued"`
-		Pending int    `json:"pending"`
-		Error   string `json:"error"`
-	}
-	if code := postJSON(t, http.MethodPost, url+"/api/nodes/a408/netcmd", map[string]any{"t": 1006}, &response); code != http.StatusOK || !response.Queued || response.Pending != 1 {
-		t.Fatalf("netcmd t=1006: got %d %+v", code, response)
-	}
-	attempts := waitForQueuedAttempts(t, radio, 1)
-	if len(attempts) != 1 || !attempts[0].CSLTx {
-		t.Fatalf("attempts=%+v, want one CSL netcmd", attempts)
-	}
-	data, err := tado.ParseData(defaultInstall.NetworkKey(), attempts[0].Bytes)
-	if err != nil {
-		t.Fatal(err)
-	}
-	request := tado.ParseApp(data.Plaintext).CoAP
-	if request == nil || request.Type != "CON" || request.Code != "0.03" || request.URI() != "d/test/v1?t=1006" {
-		t.Fatalf("netcmd request=%+v", request)
-	}
-
-	for _, body := range []map[string]any{{"cmd": "rejoin"}, {"cmd": "leave"}, {"t": 1007}, {"t": 1004}} {
-		response.Error = ""
-		if code := postJSON(t, http.MethodPost, url+"/api/nodes/a408/netcmd", body, &response); code != http.StatusBadRequest {
-			t.Fatalf("netcmd %v: got %d %+v, want 400", body, code, response)
-		}
-	}
-
-	device, err := defaultInstall.Resolve("a408")
-	if err != nil {
-		t.Fatal(err)
-	}
-	radio.frames <- tado.BuildEnhAck(data.Seq, defaultInstall.CoordinatorEUI(), device.WireEUI(), 0)
-	deadline := time.Now().Add(time.Second)
-	for time.Now().Before(deadline) {
-		v, err := d.do(func(e *tado.EmuState) (any, error) { return e.QueueHistory("a408"), nil })
-		if err != nil {
-			t.Fatal(err)
-		}
-		history := v.([]tado.DownlinkOutcome)
-		if len(history) > 0 {
-			if history[0].Kind != "netcmd" || history[0].Result != "delivered" || history[0].Reason != "enhanced-ack" {
-				t.Fatalf("history=%+v", history)
-			}
-			return
-		}
-		time.Sleep(time.Millisecond)
-	}
-	t.Fatal("netcmd t=1006 did not complete from its Enhanced ACK")
-}
-
 func TestDaemonExtuiActiveGet(t *testing.T) {
 	radio := newImmediateTestRadio(true, nil)
 	_, url := newImmediateDaemon(t, tado.EmuConfig{TxCounter: 100000, NoAutoQueue: true}, radio, false)
@@ -4727,20 +4673,6 @@ func TestDaemonConfigAndActiveGet(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("info GET: got %d, want 404", resp.StatusCode)
-	}
-
-	var fr struct {
-		Queued bool   `json:"queued"`
-		Error  string `json:"error"`
-	}
-	if code := postJSON(t, http.MethodPost, srv.URL+"/api/nodes/"+short+"/factoryreset",
-		map[string]any{}, &fr); code != http.StatusBadRequest {
-		t.Fatalf("unconfirmed factory reset: got %d %+v, want 400", code, fr)
-	}
-	fr.Error = ""
-	if code := postJSON(t, http.MethodPost, srv.URL+"/api/nodes/"+short+"/factoryreset",
-		map[string]any{"confirm": true}, &fr); code != http.StatusOK || !fr.Queued {
-		t.Fatalf("confirmed factory reset: got %d %+v", code, fr)
 	}
 
 	var ov struct {

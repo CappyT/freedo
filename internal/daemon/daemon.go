@@ -1885,10 +1885,8 @@ func (d *daemon) mux() *http.ServeMux {
 	m.HandleFunc("POST /api/nodes/{id}/calibrate", d.postCalibrate)
 	m.HandleFunc("POST /api/nodes/{id}/reboot", d.postReboot)
 	m.HandleFunc("POST /api/nodes/{id}/extui", d.postExtui)
-	m.HandleFunc("POST /api/nodes/{id}/netcmd", d.postNetcmd)
 	m.HandleFunc("POST /api/nodes/{id}/config", d.postConfig)
 	m.HandleFunc("DELETE /api/nodes/{id}/config/offlineScheduleEnabled", d.deleteOfflineSchedule)
-	m.HandleFunc("POST /api/nodes/{id}/factoryreset", d.postFactoryReset)
 	m.HandleFunc("PUT /api/nodes/{id}/schedule", d.putSchedule)
 	m.HandleFunc("POST /api/boiler/dhw", d.postBoilerDHW)
 	m.HandleFunc("POST /api/boiler/flow", d.postBoilerFlow)
@@ -3450,52 +3448,6 @@ func (d *daemon) postExtui(w http.ResponseWriter, r *http.Request) {
 	queued(w, v, d.persist(err), map[string]any{"lid": "pzh"})
 }
 
-// netcmds are the named non-destructive netcmd values confirmed in the firmware.
-var netcmds = map[string]int{"rxwindow": 1005, "devinfo": 1008}
-
-func (d *daemon) postNetcmd(w http.ResponseWriter, r *http.Request) {
-	_, target, ok := d.pathNode(w, r)
-	if !ok {
-		return
-	}
-	var b struct {
-		Cmd string `json:"cmd"`
-		T   int    `json:"t"`
-	}
-	if !decodeBody(w, r, &b) {
-		return
-	}
-	t := b.T
-	if b.Cmd != "" {
-		v, known := netcmds[b.Cmd]
-		if !known {
-			writeErr(w, http.StatusBadRequest, "bad cmd "+b.Cmd)
-			return
-		}
-		t = v
-	}
-	if t == 0 {
-		writeErr(w, http.StatusBadRequest, "cmd or t required")
-		return
-	}
-	if !safeNetcmd(t) {
-		writeErr(w, http.StatusBadRequest, "netcmd t is not a non-destructive command")
-		return
-	}
-	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
-		if err := e.EnqueueNetcmd(target, t); err != nil {
-			return nil, err
-		}
-		d.dispatchQueued(e, target)
-		return e.Pending(target), nil
-	})
-	queued(w, v, d.persist(err), nil)
-}
-
-func safeNetcmd(t int) bool {
-	return t == 1005 || t == 1006 || t == 1008
-}
-
 // putSchedule writes the document of one device. A member of a heating zone
 // takes it as the home program of its first heating zone in the active preset,
 // which every member of that zone is then served (setZoneProgram): the zone
@@ -3818,34 +3770,6 @@ func (d *daemon) postZoneOffset(w http.ResponseWriter, r *http.Request) {
 		}
 		return e.EnqueueConfig(target, zoneNumber, cw)
 	})
-}
-
-// postFactoryReset is guarded: it needs {"confirm":true} and enqueues a network
-// leave (netcmd 1007). A full NVM wipe still needs the physical button; this
-// unjoins the device from our network.
-func (d *daemon) postFactoryReset(w http.ResponseWriter, r *http.Request) {
-	_, target, ok := d.pathNode(w, r)
-	if !ok {
-		return
-	}
-	var b struct {
-		Confirm bool `json:"confirm"`
-	}
-	if !decodeBody(w, r, &b) {
-		return
-	}
-	if !b.Confirm {
-		writeErr(w, http.StatusBadRequest, `factory reset needs {"confirm":true}`)
-		return
-	}
-	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
-		if err := e.EnqueueNetcmd(target, 1007); err != nil {
-			return nil, err
-		}
-		d.dispatchQueued(e, target)
-		return e.Pending(target), nil
-	})
-	queued(w, v, d.persist(err), map[string]any{"note": "network leave queued; NVM wipe needs the physical button"})
 }
 
 // activeNodeGet enqueues a bridge-initiated GET and returns its correlated response.
