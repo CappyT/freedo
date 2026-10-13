@@ -6,7 +6,14 @@ export type Tone = 'heating' | 'idle' | 'away' | 'off' | 'warning' | 'fault' | '
 /** What the zone does now. The label key selects the text. */
 export type StateKey = 'heating' | 'idle' | 'on' | 'away' | 'off' | 'windowOpen' | 'offline' | 'fault';
 
-export type AlertKey = 'lowBattery' | 'commsWarning' | 'fallback' | 'deviceOffline' | 'deviceFault' | 'windowUndelivered';
+export type AlertKey =
+	| 'lowBattery'
+	| 'commsWarning'
+	| 'fallback'
+	| 'deviceOffline'
+	| 'deviceFault'
+	| 'deviceWarning'
+	| 'windowUndelivered';
 
 export interface ZoneState {
 	state: StateKey;
@@ -58,6 +65,7 @@ export function zoneStatus(
 	const allOffline = healths.length > 0 && healths.length === members.length && healths.every((h) => h.offline);
 	if (!allOffline && healths.some((h) => h.offline)) alerts.push('deviceOffline');
 	if (healths.some((h) => h.fault)) alerts.push('deviceFault');
+	if (healths.some((h) => (h.deviceWarnings?.length ?? 0) > 0)) alerts.push('deviceWarning');
 	if (healths.some((h) => h.lowBattery)) alerts.push('lowBattery');
 	if (healths.some((h) => (h.commsWarnings?.length ?? 0) > 0)) alerts.push('commsWarning');
 	if (fallbacks.some((f) => f.zone === zone.number)) alerts.push('fallback');

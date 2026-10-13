@@ -20,7 +20,8 @@ func TestViewJSONKeys(t *testing.T) {
 		want []string
 	}{
 		{"ValveView", ValveView{}, []string{
-			"BatteryMV", "BatteryPct", "CSLPeriod", "CSLPhase", "ChildLock", "CommsWarnings", "Display", "FallbackMode", "Fault", "FaultWord",
+			"BatteryMV", "BatteryPct", "CSLPeriod", "CSLPhase", "ChildLock", "CommsWarnings", "DeviceWarnings", "Display", "FallbackMode",
+			"Fault", "FaultWord", "Faults",
 			"HeatDemandPct", "HumidityPct", "LastSeenUnix", "LowBattery", "Mode", "Offline", "OpenWindow",
 			"RelayState", "Room", "RxCounter", "SchedSetpointC", "Serial", "SessionAdopted", "SessionIssued",
 			"SessionIssuedUnix", "SetpointC", "Short", "Telemetry", "TempC",

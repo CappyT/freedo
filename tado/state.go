@@ -36,8 +36,9 @@ type ValveView struct {
 	BatteryPct int `json:"BatteryPct"`
 	// FaultWord is tag 01a3 of d/<serial>/err, 0 when no fault or never reported.
 	FaultWord uint32 `json:"FaultWord"`
-	// FallbackMode is tag 0182 of d/<serial>/fallback, the device-level mode:
-	// 0 none, 1 hold, 2 fixed, 3 frost, 0x7f unset. 0 when never reported.
+	// FallbackMode is tag 0182 of d/<serial>/fallback, 0 when never reported.
+	// Wall thermostat: 0 none, 1 hold, 2 fixed, 3 frost, 0x7f unset. Valve: 1
+	// while its zone has no control (zone flag 6400 is 0), else 0.
 	FallbackMode int    `json:"FallbackMode"`
 	RelayState   int    `json:"RelayState"`
 	RxCounter    uint32 `json:"RxCounter"`
@@ -52,14 +53,16 @@ type ValveView struct {
 	SessionAdopted    bool  `json:"SessionAdopted"`
 	SessionIssuedUnix int64 `json:"SessionIssuedUnix"`
 	// LowBattery follows the installation's low battery voltage with a
-	// hysteresis of BatteryHysteresisCellMV. Fault, CommsWarnings and Offline
-	// come from the daemon: the engine leaves them false and null. Fault is set
-	// by the bits of FaultWord that are no communication warning, which
-	// CommsWarnings names (see DecodeFaultWord), null with none.
-	LowBattery    bool     `json:"LowBattery"`
-	Fault         bool     `json:"Fault"`
-	CommsWarnings []string `json:"CommsWarnings"`
-	Offline       bool     `json:"Offline"`
+	// hysteresis of BatteryHysteresisCellMV. Fault, Faults, DeviceWarnings,
+	// CommsWarnings and Offline come from the daemon: the engine leaves them
+	// false and null. The three lists hold the names DecodeFaultWord gives
+	// for FaultWord, null with none, and Fault says that Faults holds one.
+	LowBattery     bool     `json:"LowBattery"`
+	Fault          bool     `json:"Fault"`
+	Faults         []string `json:"Faults"`
+	DeviceWarnings []string `json:"DeviceWarnings"`
+	CommsWarnings  []string `json:"CommsWarnings"`
+	Offline        bool     `json:"Offline"`
 	// Display is the display part of a valve's served d/config, set by the
 	// daemon; null on any other device.
 	Display *DisplaySettings `json:"Display"`

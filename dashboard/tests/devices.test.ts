@@ -24,6 +24,20 @@ describe('device rows', () => {
 		});
 	});
 
+	it('name the faults and the valve warnings of the fault word', () => {
+		const health = {
+			devices: [
+				device({ deviceWarnings: ['notMounted'] }),
+				device({ short: '0202', fault: true, faults: ['stall'] }),
+				device({ short: '0203', fault: true })
+			]
+		} as unknown as Health;
+		const rows = buildDevices([], health, []);
+		expect(rows[0]).toMatchObject({ faults: [], warnings: ['notMounted'], alerts: [] });
+		expect(rows[1]).toMatchObject({ faults: ['stall'], warnings: [], alerts: [] });
+		expect(rows[2]).toMatchObject({ faults: [], alerts: ['deviceFault'] });
+	});
+
 	it('let a wall thermostat of a zone identify itself', () => {
 		const models = buildZones([zone()], [demand()], [], null, false);
 		const rows = buildDevices([], { devices: [device({ kind: 'thermostat', batteryMV: 0 })] } as unknown as Health, models);

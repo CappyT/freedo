@@ -114,6 +114,9 @@
       },
       "comms_warning": {
         "name": "Kommunikationswarnung"
+      },
+      "valve_warning": {
+        "name": "Ventilwarnung"
       }
     },
     "sensor": {

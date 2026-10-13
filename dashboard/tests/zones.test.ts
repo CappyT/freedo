@@ -59,6 +59,12 @@ describe('zone state', () => {
 		expect(result.alerts).toEqual(['deviceFault', 'lowBattery', 'commsWarning']);
 	});
 
+	it('raises a valve that is not mounted as a warning, not as a fault', () => {
+		const result = status(zone(), demand(), [member(device({ faultWord: 0x4000, deviceWarnings: ['notMounted'] }))]);
+		expect(result.state).toBe('idle');
+		expect(result.alerts).toEqual(['deviceWarning']);
+	});
+
 	it('raises a fallback of the thermostat and an undelivered window as alerts', () => {
 		const z = zone({ window: { open: false, source: null, since: null, deadline: null, undelivered: ['0201'] } });
 		const result = zoneStatus(z, demand(), [member(device())], false, [{ zone: 2, mode: 1, name: 'hold', source: 'x', since: '' }]);
@@ -86,6 +92,8 @@ describe('zone view model', () => {
 		LastSeenUnix: 1_700_000_000,
 		LowBattery: false,
 		Fault: false,
+		Faults: null,
+		DeviceWarnings: null,
 		CommsWarnings: null,
 		Offline: false,
 		ChildLock: false,

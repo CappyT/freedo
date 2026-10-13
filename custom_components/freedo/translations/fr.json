@@ -114,6 +114,9 @@
       },
       "comms_warning": {
         "name": "Alerte de communication"
+      },
+      "valve_warning": {
+        "name": "Alerte de la vanne"
       }
     },
     "sensor": {

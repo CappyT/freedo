@@ -17,17 +17,19 @@ import (
 )
 
 type deviceHealth struct {
-	Device        string   `json:"device"`
-	Short         string   `json:"short"`
-	Kind          string   `json:"kind"`
-	BatteryMV     int      `json:"batteryMV"`
-	LowBattery    bool     `json:"lowBattery"`
-	Fault         bool     `json:"fault"`
-	FaultWord     uint32   `json:"faultWord"`
-	CommsWarnings []string `json:"commsWarnings"`
-	Offline       bool     `json:"offline"`
-	LastSeen      *string  `json:"lastSeen"`
-	FallbackMode  int      `json:"fallbackMode"`
+	Device         string   `json:"device"`
+	Short          string   `json:"short"`
+	Kind           string   `json:"kind"`
+	BatteryMV      int      `json:"batteryMV"`
+	LowBattery     bool     `json:"lowBattery"`
+	Fault          bool     `json:"fault"`
+	FaultWord      uint32   `json:"faultWord"`
+	Faults         []string `json:"faults"`
+	DeviceWarnings []string `json:"deviceWarnings"`
+	CommsWarnings  []string `json:"commsWarnings"`
+	Offline        bool     `json:"offline"`
+	LastSeen       *string  `json:"lastSeen"`
+	FallbackMode   int      `json:"fallbackMode"`
 }
 
 type deviceAlert struct {
@@ -185,7 +187,7 @@ func TestHealthDeviceAlerts(t *testing.T) {
 
 // TestHealthFaultWordBits: bits 0x02 and 0x80 of the fault word say the radio
 // link is weak, so they are communication warnings and raise no fault alert.
-// Any other bit is a device fault. The raw word stays visible in both cases.
+// A fault flag is a device fault. The raw word stays visible in both cases.
 func TestHealthFaultWordBits(t *testing.T) {
 	clock := newTestClock(windowStart)
 	in := windowInstall(t, nil)
@@ -307,6 +309,55 @@ func TestHealthLowBatteryThresholdChange(t *testing.T) {
 	}
 	if got := alertHealthOf(t, url).device(t, "VA1000000005"); got.LowBattery {
 		t.Errorf("valve at 2100 mV under a 2000 mV limit = %+v, want no low battery", got)
+	}
+}
+
+// TestHealthValveState: the state code of the fault word is a warning or a
+// fault by its value. A valve off its radiator (code 8, word 0x4000) is a
+// warning: it raises no fault and no alert.
+func TestHealthValveState(t *testing.T) {
+	var logs bytes.Buffer
+	log.SetOutput(&logs)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+	clock := newTestClock(windowStart)
+	in := windowInstall(t, nil)
+	d, url := newAlertDaemon(t, in, clock)
+
+	deviceReport(t, d, in, "VA1000000001", "err", 0x6401, faultWord(0x4000))
+	deviceReport(t, d, in, "VA1000000002", "err", 0x6402, faultWord(0x4800|0x04|0x80))
+	deviceReport(t, d, in, "VA1000000001", "fallback", 0x6403, tado.TLV{Tag: "0182", Val: []byte{1}})
+
+	h := alertHealthOf(t, url)
+	alerts := h.alerts()
+	got := h.device(t, "VA1000000001")
+	if got.Fault || got.Faults != nil || got.FaultWord != 0x4000 || !reflect.DeepEqual(got.DeviceWarnings, []string{"notMounted"}) {
+		t.Errorf("valve off its radiator = %+v, want the warning notMounted and no fault", got)
+	}
+	if raised, ok := alerts["VA1000000001"]; ok {
+		t.Errorf("valve off its radiator raised %v, want no alert", raised)
+	}
+	got = h.device(t, "VA1000000002")
+	if !got.Fault || !reflect.DeepEqual(got.Faults, []string{"storeWrite", "stall"}) || got.DeviceWarnings != nil ||
+		!reflect.DeepEqual(got.CommsWarnings, []string{"noConfigAnswer"}) {
+		t.Errorf("stalled valve = %+v, want the faults storeWrite and stall", got)
+	}
+	if !reflect.DeepEqual(alerts["VA1000000002"], []string{"fault"}) {
+		t.Errorf("stalled valve raised %v, want fault", alerts["VA1000000002"])
+	}
+
+	var node struct {
+		Fault                  bool
+		Faults, DeviceWarnings []string
+	}
+	if code := getJSON(t, url+"/api/nodes/VA1000000001", &node); code != http.StatusOK ||
+		node.Fault || node.Faults != nil || !reflect.DeepEqual(node.DeviceWarnings, []string{"notMounted"}) {
+		t.Errorf("node API of the valve off its radiator = %d %+v, want the warning and no fault", code, node)
+	}
+
+	// Mode 1 of a valve says its zone has no control. It is no hold fallback.
+	if strings.Contains(logs.String(), "hold") || !strings.Contains(logs.String(), "reports zone control mode 1") {
+		t.Errorf("log of the valve device mode:\n%s", logs.String())
 	}
 }
 

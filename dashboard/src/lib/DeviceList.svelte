@@ -3,7 +3,7 @@
 	import { act, errorText } from './actions.ts';
 	import ConfirmDialog from './ConfirmDialog.svelte';
 	import { data } from './data.svelte.ts';
-	import { alertKeys } from './describe.ts';
+	import { alertKeys, conditionText } from './describe.ts';
 	import type { DeviceRow } from './devices.ts';
 	import { fmt, t } from './i18n.svelte.ts';
 	import Icon from './Icon.svelte';

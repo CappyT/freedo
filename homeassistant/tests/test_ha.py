@@ -3001,6 +3001,40 @@ async def test_comms_warning_binary_sensor(hass, client):
     assert (state.state, state.attributes["warnings"]) == ("off", [])
 
 
+async def test_valve_warning_binary_sensor(hass, client):
+    # A valve off its radiator reports state code 8: a warning, no fault.
+    for dev in client.health_json["devices"]:
+        dev.update(fault=False, faultWord=0, faults=None, deviceWarnings=None)
+    client.health_json["devices"][0].update(faultWord=0x4000, deviceWarnings=["notMounted"])
+    entry = await setup_entry(hass, client)
+    warning = entity_id(hass, entry, "binary_sensor", "aaaa_deviceWarnings")
+    state = hass.states.get(warning)
+    assert state.state == "on"
+    assert state.attributes["warnings"] == ["notMounted"]
+    assert state.attributes["device_class"] == "problem"
+    assert er.async_get(hass).async_get(warning).entity_category == "diagnostic"
+    fault = entity_id(hass, entry, "binary_sensor", "aaaa_fault")
+    assert hass.states.get(fault).state == "off"
+    assert hass.states.get(fault).attributes["faults"] == []
+    # The state code of the wall thermostat is always 0.
+    assert not has_entity(hass, entry, "binary_sensor", "cccc_deviceWarnings")
+
+    client.health_json["devices"][0].update(
+        fault=True, faultWord=0x4800, faults=["stall"], deviceWarnings=None
+    )
+    await refresh(hass, entry)
+    state = hass.states.get(warning)
+    assert (state.state, state.attributes["warnings"]) == ("off", [])
+    state = hass.states.get(fault)
+    assert (state.state, state.attributes["faults"]) == ("on", ["stall"])
+
+
+async def test_no_valve_warning_sensor_without_the_field(hass, client):
+    entry = await setup_entry(hass, client)
+    assert not has_entity(hass, entry, "binary_sensor", "aaaa_deviceWarnings")
+    assert hass.states.get(entity_id(hass, entry, "binary_sensor", "aaaa_fault")).attributes["faults"] == []
+
+
 async def test_no_comms_warning_sensor_without_the_field(hass, client):
     # A daemon older than the link bits of the fault word sends no list.
     for dev in client.health_json["devices"]:

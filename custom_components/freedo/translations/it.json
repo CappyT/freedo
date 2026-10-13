@@ -114,6 +114,9 @@
       },
       "comms_warning": {
         "name": "Avviso di comunicazione"
+      },
+      "valve_warning": {
+        "name": "Avviso valvola"
       }
     },
     "sensor": {

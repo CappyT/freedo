@@ -10,7 +10,11 @@ import (
 // leaves it on the first notification of that observe.
 //
 //	thermostat  PUT h/<home>/z/N/fallback  6460  zone mode, u8
-//	any device  PUT d/<serial>/fallback    0182  device mode, u8; valves send 0
+//	any device  PUT d/<serial>/fallback    0182  device mode, u8
+//
+// The modes below are those of the wall thermostat. A valve sends 0182 = 1
+// while its zone has no control (zone flag 6400 is 0) and 0 otherwise, so on a
+// valve 1 is no hold mode.
 //
 // The coordinator records the reports and answers 2.04. It never sends 6400,
 // 6460 or 0182.

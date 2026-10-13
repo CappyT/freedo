@@ -404,28 +404,114 @@ var tags = withHVACTags(map[string]tagInfo{
 	"0261": {"challenge_key_rotate", hexVal},  // new challenge key id2, 16B
 })
 
-// Bits of the fault word, tag 01a3 of d/<serial>/err, as app_state_flags_recompute
-// (valve firmware, @0x2e0fc) sets them. Both describe the radio link, not the
-// device: a missed answer clears itself at the next one.
+// The fault word, tag 01a3 of d/<serial>/err, is flags | (state code << 11).
+// docs/PROTOCOL.md lists the condition that sets each flag and each state code.
 const (
-	// FaultNoNeighbour: no IPv6 source address, or no neighbour, at the 60 s check.
-	FaultNoNeighbour uint32 = 0x02
-	// FaultNoConfigAnswer: no answer to the valve's own d/config GET for 90 min
-	// (5400 s timer, cleared by any answer code), and from boot until the first answer.
+	FaultNoNeighbour    uint32 = 0x02
+	FaultStoreWrite     uint32 = 0x04
+	FaultConfigWrite    uint32 = 0x08
 	FaultNoConfigAnswer uint32 = 0x80
+	FaultStackLow       uint32 = 0x100000
+	// FaultIgnored: no firmware code sets it, so it is no condition of the device.
+	FaultIgnored uint32 = 0x200000
+
+	FaultStateMask  uint32 = 0xf800
+	FaultStateShift        = 11
 )
 
-// DecodeFaultWord splits a fault word into the communication warnings it
-// carries, by bit order, and whether any other bit is set. A bit this table does
-// not know counts as a device fault.
-func DecodeFaultWord(w uint32) (warnings []string, fault bool) {
+// State codes of the valve motor. The wall thermostat always reports 0.
+const (
+	ValveStateOK                      = 0
+	ValveStateCalibrationNoPinContact = 1
+	ValveStateCalibrationNoEndStop    = 2
+	ValveStateCalibrationTravel       = 3
+	ValveStateShortTravel             = 4
+	ValveStateLowVoltageReference     = 5
+	ValveStateCalibrationPower        = 6
+	ValveStateLowVoltageMove          = 7
+	ValveStateNotMounted              = 8
+	ValveStateStall                   = 9
+	ValveStateNoReference             = 10
+	ValveStateUnknownResult           = 11
+	ValveStateLowVoltage              = 13
+	ValveStateEarlyStall              = 14
+)
+
+// valveStates names each state code and says whether it is a fault. A code
+// with no entry is a fault named state<code>.
+var valveStates = map[uint32]struct {
+	name  string
+	fault bool
+}{
+	ValveStateCalibrationNoPinContact: {"calibrationNoPinContact", false},
+	ValveStateCalibrationNoEndStop:    {"calibrationNoEndStop", true},
+	ValveStateCalibrationTravel:       {"calibrationTravel", true},
+	ValveStateShortTravel:             {"shortTravel", false},
+	ValveStateLowVoltageReference:     {"lowVoltage", false},
+	ValveStateCalibrationPower:        {"calibrationPower", true},
+	ValveStateLowVoltageMove:          {"lowVoltage", false},
+	ValveStateNotMounted:              {"notMounted", false},
+	ValveStateStall:                   {"stall", true},
+	ValveStateNoReference:             {"recalibrating", false},
+	ValveStateUnknownResult:           {"unknownResult", true},
+	ValveStateLowVoltage:              {"lowVoltage", false},
+	ValveStateEarlyStall:              {"earlyStall", true},
+}
+
+var faultFlags = []struct {
+	bit  uint32
+	name string
+}{
+	{FaultStoreWrite, "storeWrite"},
+	{FaultConfigWrite, "configWrite"},
+	{FaultStackLow, "stackLow"},
+}
+
+// FaultStatus is a decoded fault word. Each list is nil when it is empty.
+type FaultStatus struct {
+	// CommsWarnings names the flags that describe the radio link.
+	CommsWarnings []string
+	// Warnings names a state code that needs attention and is no fault.
+	Warnings []string
+	// Faults names the fault flags and a fault state code.
+	Faults []string
+}
+
+// Fault reports whether the word carries a device fault.
+func (s FaultStatus) Fault() bool { return len(s.Faults) > 0 }
+
+// DecodeFaultWord splits a fault word into its flags and its state code. A bit
+// that the firmware analysis does not know counts as the fault "unknown".
+func DecodeFaultWord(w uint32) FaultStatus {
+	var s FaultStatus
 	if w&FaultNoNeighbour != 0 {
-		warnings = append(warnings, "noNeighbour")
+		s.CommsWarnings = append(s.CommsWarnings, "noNeighbour")
 	}
 	if w&FaultNoConfigAnswer != 0 {
-		warnings = append(warnings, "noConfigAnswer")
+		s.CommsWarnings = append(s.CommsWarnings, "noConfigAnswer")
 	}
-	return warnings, w&^(FaultNoNeighbour|FaultNoConfigAnswer) != 0
+	known := FaultNoNeighbour | FaultNoConfigAnswer | FaultIgnored | FaultStateMask
+	for _, f := range faultFlags {
+		known |= f.bit
+		if w&f.bit != 0 {
+			s.Faults = append(s.Faults, f.name)
+		}
+	}
+	if code := (w & FaultStateMask) >> FaultStateShift; code != ValveStateOK {
+		st, ok := valveStates[code]
+		switch {
+		case !ok:
+			s.Faults = append(s.Faults, fmt.Sprintf("state%d", code))
+		case st.fault:
+			s.Faults = append(s.Faults, st.name)
+		default:
+			s.Warnings = append(s.Warnings, st.name)
+		}
+	}
+	if w&^known != 0 {
+		s.Faults = append(s.Faults, "unknown")
+	}
+	return s
 }
 
 // The boiler bus resources of the wall thermostat.

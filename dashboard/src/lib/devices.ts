@@ -13,6 +13,9 @@ export interface DeviceRow {
 	firmware: string | null;
 	offline: boolean;
 	alerts: AlertKey[];
+	/** The names the daemon gives to the faults and to the valve warnings of the fault word. */
+	faults: string[];
+	warnings: string[];
 	/** Null on a device with no child lock. */
 	childLock: boolean | null;
 	canIdentify: boolean;
@@ -28,7 +31,9 @@ export function buildDevices(nodes: NodeView[], health: Health | null, models: Z
 			.map((m) => ({ number: m.zone.number, name: m.zone.name, kind: m.zone.kind }));
 		const alerts: AlertKey[] = [];
 		if (h.lowBattery) alerts.push('lowBattery');
-		if (h.fault) alerts.push('deviceFault');
+		const faults = h.faults ?? [];
+		// The names say more than the general text, which stays for a fault with no name.
+		if (h.fault && faults.length === 0) alerts.push('deviceFault');
 		if ((h.commsWarnings?.length ?? 0) > 0) alerts.push('commsWarning');
 		if (h.offline) alerts.push('deviceOffline');
 		return {
@@ -43,6 +48,8 @@ export function buildDevices(nodes: NodeView[], health: Health | null, models: Z
 			firmware: firmwareOf(node),
 			offline: h.offline,
 			alerts,
+			faults,
+			warnings: h.deviceWarnings ?? [],
 			childLock: node?.ChildLock ?? null,
 			canIdentify: (h.kind === 'valve' || h.kind === 'thermostat') && zones.length > 0
 		};

@@ -1,4 +1,5 @@
 import { fmt, t, type Key } from './i18n.svelte.ts';
+import { en } from './i18n/en.ts';
 import type { Overlay, Target } from './types.ts';
 import type { AlertKey, ZoneModel } from './zones.ts';
 
@@ -41,5 +42,12 @@ export const alertKeys: Record<AlertKey, Key> = {
 	fallback: 'alert.fallback',
 	deviceOffline: 'alert.deviceOffline',
 	deviceFault: 'alert.deviceFault',
+	deviceWarning: 'alert.deviceWarning',
 	windowUndelivered: 'alert.windowUndelivered'
 };
+
+/** The text of a fault or a warning the daemon names. A name with no text shows as it is. */
+export function conditionText(name: string): string {
+	const key = `condition.${name}`;
+	return key in en ? t(key as Key) : name;
+}

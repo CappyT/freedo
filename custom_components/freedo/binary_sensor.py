@@ -14,7 +14,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import FreedoConfigEntry, FreedoCoordinator
 from .entity import FreedoEntity
-from .model import KIND_BRIDGE, Zone, zone_heating
+from .model import KIND_BRIDGE, KIND_VALVE, Zone, zone_heating
 
 
 async def async_setup_entry(
@@ -38,6 +38,10 @@ async def async_setup_entry(
         # A daemon older than the link bits of the fault word sends no list.
         if "commsWarnings" in dev:
             entities.append(DeviceAlert(coordinator, short, "commsWarnings"))
+        # Only the valve has a state code, and only a daemon that decodes it
+        # sends the list.
+        if dev.get("kind") == KIND_VALVE and "deviceWarnings" in dev:
+            entities.append(DeviceAlert(coordinator, short, "deviceWarnings"))
         entities.append(DeviceConnectivity(coordinator, short))
     async_add_entities(entities)
 
@@ -124,6 +128,7 @@ _ALERTS = {
     "lowBattery": (BinarySensorDeviceClass.BATTERY, "low_battery"),
     "fault": (BinarySensorDeviceClass.PROBLEM, "fault"),
     "commsWarnings": (BinarySensorDeviceClass.PROBLEM, "comms_warning"),
+    "deviceWarnings": (BinarySensorDeviceClass.PROBLEM, "valve_warning"),
 }
 
 
@@ -143,9 +148,10 @@ class _DeviceEntity(FreedoEntity):
 
 
 class DeviceAlert(_DeviceEntity, BinarySensorEntity):
-    """GET /api/health devices[].lowBattery, .fault or .commsWarnings. The
-    communication warnings are the link bits of the fault word, which a missed
-    answer sets and the next one clears: they are not a device fault."""
+    """GET /api/health devices[].lowBattery, .fault, .commsWarnings or
+    .deviceWarnings. The communication warnings are the link bits of the fault
+    word, which a missed answer sets and the next one clears. The device
+    warnings are valve states such as not mounted. Neither is a device fault."""
 
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
@@ -163,9 +169,13 @@ class DeviceAlert(_DeviceEntity, BinarySensorEntity):
     def extra_state_attributes(self) -> dict[str, Any] | None:
         dev = self._device or {}
         if self._field == "fault":
-            return {"fault_word": dev.get("faultWord"), "fallback_mode": dev.get("fallbackMode")}
-        if self._field == "commsWarnings":
-            return {"warnings": dev.get("commsWarnings") or []}
+            return {
+                "fault_word": dev.get("faultWord"),
+                "faults": dev.get("faults") or [],
+                "fallback_mode": dev.get("fallbackMode"),
+            }
+        if self._field in ("commsWarnings", "deviceWarnings"):
+            return {"warnings": dev.get(self._field) or []}
         return {"battery_mv": dev.get("batteryMV")}
 
 

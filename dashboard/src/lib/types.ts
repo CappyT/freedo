@@ -19,6 +19,10 @@ export interface HealthDevice {
 	lowBattery: boolean;
 	fault: boolean;
 	faultWord: number;
+	/** The names of the faults in the fault word. `fault` is true when there is one. */
+	faults: string[] | null;
+	/** The names of the valve states that are a warning and no fault. */
+	deviceWarnings: string[] | null;
 	commsWarnings: string[] | null;
 	offline: boolean;
 	lastSeen: string | null;
@@ -144,6 +148,8 @@ export interface NodeView {
 	SessionIssuedUnix?: number;
 	LowBattery: boolean;
 	Fault: boolean;
+	Faults: string[] | null;
+	DeviceWarnings: string[] | null;
 	CommsWarnings: string[] | null;
 	Offline: boolean;
 	ChildLock: boolean | null;

@@ -2127,7 +2127,8 @@ func (d *daemon) deviceHealth(e *tado.EmuState) ([]map[string]any, []map[string]
 		devices = append(devices, map[string]any{
 			"device": name, "short": dev.Short(), "kind": string(dev.Kind), "label": dev.Label,
 			"batteryMV": vv.BatteryMV, "lowBattery": vv.LowBattery,
-			"fault": vv.Fault, "faultWord": vv.FaultWord, "commsWarnings": vv.CommsWarnings,
+			"fault": vv.Fault, "faultWord": vv.FaultWord, "faults": vv.Faults,
+			"deviceWarnings": vv.DeviceWarnings, "commsWarnings": vv.CommsWarnings,
 			"offline": vv.Offline, "lastSeen": lastSeen,
 			"fallbackMode": vv.FallbackMode,
 		})
@@ -2150,9 +2151,9 @@ func (d *daemon) deviceHealth(e *tado.EmuState) ([]map[string]any, []map[string]
 	return devices, alerts
 }
 
-// applyAlerts sets the fault, communication warning and offline flags of one
-// device; the engine rates the battery. The fault word splits in two: the bits
-// that only say the radio link is weak are warnings, any other bit is a fault.
+// applyAlerts sets the fault, warning and offline flags of one device; the
+// engine rates the battery. Only the fault names of the fault word set Fault:
+// a weak radio link and a valve state such as not mounted are warnings.
 // Offline comes from the installation thresholds. A device never heard
 // since the start counts its silence from the start, so a restart does not flag
 // every device at once. A bridge raises none: it must stay off the air while
@@ -2161,7 +2162,8 @@ func (d *daemon) applyAlerts(vv *tado.ValveView, kind tado.DeviceKind, opts tado
 	if kind == tado.KindBridge {
 		return
 	}
-	vv.CommsWarnings, vv.Fault = tado.DecodeFaultWord(vv.FaultWord)
+	st := tado.DecodeFaultWord(vv.FaultWord)
+	vv.Fault, vv.Faults, vv.DeviceWarnings, vv.CommsWarnings = st.Fault(), st.Faults, st.Warnings, st.CommsWarnings
 	seen := d.started
 	if vv.LastSeenUnix != 0 {
 		seen = time.Unix(vv.LastSeenUnix, 0)
@@ -2196,12 +2198,19 @@ func (d *daemon) logZoneStateReports(e *tado.EmuState) {
 }
 
 // logFallbackEvents logs each zone or device entering, changing or leaving a
-// fallback mode.
+// fallback mode. The device mode of a valve is no fallback: it says whether
+// the control of its zone is present.
 func (d *daemon) logFallbackEvents(e *tado.EmuState) {
+	inst := d.inst.Load()
 	for _, ev := range e.TakeFallbackEvents() {
 		what := "device " + ev.Device
 		if ev.Zone >= 0 {
 			what = fmt.Sprintf("zone %d (reported by %s)", ev.Zone, ev.Device)
+		} else if inst != nil {
+			if dev, err := inst.Resolve(ev.Device); err == nil && dev.Kind == tado.KindValve {
+				log.Printf("valve %s reports zone control mode %d (0 present, 1 absent)", ev.Device, ev.To)
+				continue
+			}
 		}
 		switch {
 		case !tado.FallbackActive(ev.From):

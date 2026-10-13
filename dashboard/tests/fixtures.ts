@@ -46,6 +46,8 @@ export const device = (over: Partial<HealthDevice> = {}): HealthDevice => ({
 	lowBattery: false,
 	fault: false,
 	faultWord: 0,
+	faults: null,
+	deviceWarnings: null,
 	commsWarnings: null,
 	offline: false,
 	lastSeen: null,

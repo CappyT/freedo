@@ -102,7 +102,8 @@
       "zone_fallback": { "name": "Fallback" },
       "low_battery": { "name": "Low battery" },
       "fault": { "name": "Fault" },
-      "comms_warning": { "name": "Communication warning" }
+      "comms_warning": { "name": "Communication warning" },
+      "valve_warning": { "name": "Valve warning" }
     },
     "sensor": {
       "flow_temperature": { "name": "Flow temperature" },
