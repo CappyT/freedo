@@ -42,3 +42,27 @@ pre-release has its notes here.
   key, or from the learned serial.
 - Run on a real plant with 0.7.0-beta.2: a valve paired from the dashboard, and the warning for a
   valve that is not mounted, with no fault alert.
+
+## 0.7.1-beta.1
+
+- Breaking: the add-ons copy no state by themselves. freedo beta imports no copy of the state of the
+  add-on freedo at its first start.
+- Breaking: the option `import_stable_state` of freedo beta is gone. Home Assistant shows a warning
+  for a saved value until you save the configuration once.
+- Daemon: `GET /api/state/export` downloads the whole state as one SQLite file.
+  `POST /api/state/import?confirm=true` checks such a file, keeps the replaced database in
+  `backup/before-import-<time>/` (the three newest stay) and restarts the daemon by itself. A file
+  of a newer schema is refused.
+- Daemon: with Transmit on, a start less than 250 seconds after an import waits for the rest of
+  that time.
+- Dashboard: Settings has the section Backup, with Download backup and Restore backup. The backup
+  holds the network key.
+- In the web interface of the add-on, the backup is for Home Assistant administrators only and
+  needs no token. The add-on asks Home Assistant about the user at every request and refuses when
+  it gets no answer. Another client needs the API token.
+- freedo beta has the permission `homeassistant_api`, to ask Home Assistant whether a user is an
+  administrator. With it an add-on can call the whole API of Home Assistant. freedo uses the list
+  of the users only.
+- The folder `/share/freedo/stable` of older releases holds the network key and nothing reads it.
+  The add-on does not delete it: delete it by hand. The log names it at each start.
+- The backup did not run on a plant yet: this pre-release is the first run.
