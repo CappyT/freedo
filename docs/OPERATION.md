@@ -220,10 +220,10 @@ fixed address `172.30.32.2`. The developer documentation for apps tells an app t
 connections from that address only and to treat the user as authenticated. The daemon follows it:
 
 - The flag `--ingress` makes the daemon accept the calls of the dashboard from the connection address
-  `172.30.32.2` without a token. Only the 25 method and path pairs of
-  [`internal/daemon/ingress_routes.json`](../internal/daemon/ingress_routes.json) qualify. Every other
-  request from that address needs the token. The installation and the pairing are among those: the pages
-  Devices and First setup ask for the API token before their first change, and the browser keeps it. [SECURITY.md](../SECURITY.md#home-assistant-ingress) lists
+  `172.30.32.2` without a token. Only the 50 method and path pairs of
+  [`internal/daemon/ingress_routes.json`](../internal/daemon/ingress_routes.json) qualify. They include
+  the installation and pairing calls of the pages Devices and First setup, so those pages need no token
+  under the add-on. Every other request from that address needs the token. [SECURITY.md](../SECURITY.md#home-assistant-ingress) lists
   the pairs and what a user can do with them.
 - Only `addon/run.sh` sets the flag. The bootstrap file and the environment have no such setting, and
   the container image does not set it. The daemon ignores the flag and logs a warning unless the

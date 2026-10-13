@@ -21,7 +21,7 @@ the routes. For the radio facts behind a rule, see [PROTOCOL.md](PROTOCOL.md).
 - `--health-public` makes `GET /api/health` readable without a token, for a container
   health check. The default is off.
 - `--ingress` makes the daemon accept the calls of the dashboard from the connection address
-  `172.30.32.2`, the Home Assistant ingress gateway, without a token. It covers 25 method and path
+  `172.30.32.2`, the Home Assistant ingress gateway, without a token. It covers 50 method and path
   pairs only. Only the add-on start script sets it, and it has no effect unless `SUPERVISOR_TOKEN` is
   set. Every other request needs the token. See [Access](OPERATION.md#access).
 - With no token, the daemon accepts a loopback address only and warns at start. An address
@@ -64,6 +64,13 @@ Every write under `/api/install` answers `{"rev": N, "warnings": [...], <object>
 write accepts `rev` as an optimistic concurrency token. The label of a device is unique:
 a write that repeats the label of another device gets `409` and names that device.
 A delete that breaks a reference gets `409` and names the row that holds the reference.
+
+Three routes carry one field of a wider route: `PUT /api/install/timezone`,
+`PUT /api/install/devices/{ref}/label` and `PUT /api/install/devices/{ref}/zone`. They follow the rules
+of the wider route and refuse every other field. `POST /api/pair/devices/{ref}` is `POST /api/pair`
+with the target in the path and no `networkKeyHex`. The dashboard calls these, so
+[Home Assistant ingress](../SECURITY.md#home-assistant-ingress) reaches them without a token and
+does not reach the identity of the network or another network key.
 
 `GET /api/install/devices/{ref}/removal` answers `{"rev", "device", "effects", "forceable"}`. It shows
 what `DELETE` on the same device changes. Each entry of `effects` is `{"effect", "zone"}` or
@@ -178,6 +185,7 @@ banner.
 | `POST /api/outdoor` | Give the outdoor temperature. |
 | `GET`, `POST /api/pair/window` | Read, open or close the pair window. |
 | `POST /api/pair` | Send the `d/pair` command to a device. |
+| `POST /api/pair/devices/{ref}` | Send the `d/pair` command to the named device, under the network key of the installation. No body. |
 
 ### Installation
 
@@ -185,9 +193,11 @@ banner.
 |---|---|
 | `GET`, `PATCH /api/install` | Read or change the installation and its options. |
 | `PUT /api/install/network_key` | Write the network key (only while no device is declared). |
+| `PUT /api/install/timezone` | Write the time zone alone: `{"timezone": "Europe/Rome"}`, `null` to follow the host. |
 | `GET`, `POST /api/install/devices` | List or declare devices. |
 | `GET`, `PATCH`, `DELETE /api/install/devices/{ref}` | Read, change or delete a device. |
 | `PUT /api/install/devices/{ref}/label` | Rename a device: write the label alone. |
+| `PUT /api/install/devices/{ref}/zone` | Write the zone the device answers to, alone: `{"zone": 3}`, `null` to remove it. |
 | `GET /api/install/devices/{ref}/removal` | Show what a removal changes. |
 | `GET`, `POST /api/install/zones` | List or declare zones. |
 | `GET`, `PATCH`, `DELETE /api/install/zones/{number}` | Read, change or delete a zone. |
@@ -693,15 +703,26 @@ report adds a sample with `4060`, `40a0`, `4160` and the fresh outdoor temperatu
 
 ### Faults, battery and alerts
 
-`GET /api/health` lists `devices` with `lowBattery`, `fault` (with `faultWord`),
-`commsWarnings` and `offline`. `alerts` lists the devices with at least one alarm.
-`/api/nodes` shows the same data as `LowBattery`, `Fault`, `FaultWord`, `CommsWarnings` and
-`Offline`.
+`GET /api/health` lists `devices` with `lowBattery`, `fault` (with `faultWord` and
+`faults`), `deviceWarnings`, `commsWarnings` and `offline`. `alerts` lists the devices with
+at least one alarm. `/api/nodes` shows the same data as `LowBattery`, `Fault`, `FaultWord`,
+`Faults`, `DeviceWarnings`, `CommsWarnings` and `Offline`.
 
-- The fault word `01a3` has two bits for the radio link: `0x02` (no IPv6 neighbour) and
-  `0x80` (no answer to the `d/config` GET for 90 minutes, or since start). They appear in
-  `commsWarnings` (`noNeighbour`, `noConfigAnswer`), not in `fault` or `alerts`. Any other
-  bit sets `fault`.
+- The fault word `01a3` holds flags and, in bits `0xf800`, one state code of the valve
+  motor. The daemon decodes it into three lists of names, each `null` when it is empty.
+  [`PROTOCOL.md`](PROTOCOL.md) gives the condition behind each name.
+- `faults` names the device faults: the flags `storeWrite`, `configWrite` and `stackLow`,
+  the valve states `calibrationNoEndStop`, `calibrationTravel`, `calibrationPower`, `stall`,
+  `earlyStall`, `unknownResult`, `state12` and `state15`, and `unknown` for a bit with no
+  known meaning. `fault` is true when `faults` holds a name, and only then does `alerts`
+  carry `fault`.
+- `deviceWarnings` names a valve state that is no fault: `notMounted` (the valve is off
+  its radiator), `calibrationNoPinContact`, `shortTravel`, `lowVoltage` and `recalibrating`.
+  It does not set `fault` and does not appear in `alerts`. The wall thermostat has no state
+  code.
+- `commsWarnings` names the two flags for the radio link: `noNeighbour` (`0x02`, no IPv6
+  neighbour) and `noConfigAnswer` (`0x80`, no answer to the `d/config` GET for 90 minutes, or
+  since start). They do not set `fault` and do not appear in `alerts`.
 - `low_battery_cell_mv` is the threshold per cell: 2200 mV for a valve (two cells) and
   3300 mV for the wall thermostat (three cells). The level is the highest `0162` reading of
   the last three hours. `lowBattery` turns on below the threshold and off above the threshold

@@ -950,25 +950,27 @@ Tag `01a3` is one RAM word in the valve (0x20003850) and in the wall thermostat
 (0x20002090). Both images hold the same code for it. A set helper (valve @0x108d8,
 thermostat @0x106e0) and a clear helper (@0x1094c, @0x10754) change single bits, and
 each change sends `d/*/err`. Byte 1 of the word holds a state code from the interface
-module of the device, and no flags. `tado.FaultNoNeighbour` and
-`tado.FaultNoConfigAnswer` name two bits, and `tado.DecodeFaultWord` splits a word into
-warnings and fault. Addresses in the table are valve first, thermostat second.
+module of the device, and no flags. The constants in `tado/tlv.go` name the flags, the
+mask and the state codes, and `tado.DecodeFaultWord` splits a word into communication
+warnings, device warnings and faults. Addresses in the table are valve first, thermostat
+second.
 
 | Bit | Constant | Set when |
 |---|---|---|
 | `0x02` | `FaultNoNeighbour` | the 60 s check (@0x2e188) finds no IPv6 source address or no neighbour |
-| `0x04` | - | the attribute store refuses a write in the common attribute set path (@0xd902, @0xe116). No code clears the bit, so it stays until a reboot |
-| `0x08` | - | a write of a persistent configuration record fails 3 times, or the write of a default record fails (@0xcc94 and @0xccdc, @0xd694 and @0xd6dc). No code clears the bit |
+| `0x04` | `FaultStoreWrite` | the attribute store refuses a write in the common attribute set path (@0xd902, @0xe116). No code clears the bit, so it stays until a reboot |
+| `0x08` | `FaultConfigWrite` | a write of a persistent configuration record fails 3 times, or the write of a default record fails (@0xcc94 and @0xccdc, @0xd694 and @0xd6dc). No code clears the bit |
 | `0x80` | `FaultNoConfigAnswer` | the valve got no answer to its own `d/config` GET for 90 min (timer 5400 s, cleared by any answer code in `config_report_response_handle`@0x1fb70), and from boot until the first answer |
-| `0xf800` | - | state code of the interface module, `(word >> 11) & 0x1f`. The module writes attribute `0fa3` = code `<< 3`, and an observer copies it into byte 1 (@0x108f8, @0x10700). Bits `0x0700` always read 0 |
-| `0x100000` | - | the stack check finds 32 units or less of free stack (@0x2e2d8, @0x2cc2a). No code clears the bit |
-| `0x200000` | - | no code sets the bit. The `d/*/err` serializer clears it after a report that carries it (@0x20712, @0x1ee66) |
+| `0xf800` | `FaultStateMask` | state code of the interface module, `(word >> 11) & 0x1f`. The module writes attribute `0fa3` = code `<< 3`, and an observer copies it into byte 1 (@0x108f8, @0x10700). Bits `0x0700` always read 0 |
+| `0x100000` | `FaultStackLow` | the stack check finds 32 units or less of free stack (@0x2e2d8, @0x2cc2a). No code clears the bit |
+| `0x200000` | `FaultIgnored` | no code sets the bit. The `d/*/err` serializer clears it after a report that carries it (@0x20712, @0x1ee66) |
 
 Bits `0x02` and `0x80` describe the radio link. A missed hourly GET on a weak link sets
 `0x80` and the next `2.05` clears it. The daemon reports them as
 `commsWarnings` (`noNeighbour`, `noConfigAnswer`) in `/api/health` and
-`/api/nodes`, and keeps `fault` false for them. Any other bit sets `fault`.
-`faultWord` keeps the raw word.
+`/api/nodes`, and keeps `fault` false for them. The flags `0x04`, `0x08` and `0x100000`
+are the faults `storeWrite`, `configWrite` and `stackLow`. The daemon ignores `0x200000`.
+A bit outside this table is the fault `unknown`. `faultWord` keeps the raw word.
 
 The state code of the valve comes from the motor state machine
 (`hvac_therm_interface_valve`, state byte at 0x2000922f, published @0xa340). The code
@@ -997,6 +999,29 @@ After a failed move the valve waits `0276` seconds (default 600) and tries again
 
 A plant measurement agrees with code 8. A valve that is off its radiator reports
 `01a3 = 0x4000`. After the valve is mounted it sends `d/*/mnt` and `01a3 = 0`.
+
+The daemon names each state code and rates it. A warning keeps `fault` false: the valve
+works, or it recovers with a new calibration, new batteries or a mount on a radiator.
+
+| Code | Name | Rated as |
+|---|---|---|
+| 1 | `calibrationNoPinContact` | warning |
+| 2 | `calibrationNoEndStop` | fault |
+| 3 | `calibrationTravel` | fault |
+| 4 | `shortTravel` | warning |
+| 5, 7, 13 | `lowVoltage` | warning |
+| 6 | `calibrationPower` | fault |
+| 8 | `notMounted` | warning |
+| 9 | `stall` | fault |
+| 10 | `recalibrating` | warning |
+| 11 | `unknownResult` | fault |
+| 12, 15 | `state12`, `state15` | fault |
+| 14 | `earlyStall` | fault |
+
+Only code 8 is measured on a plant. The other names come from the firmware analysis
+alone. Codes 6 and 7 also cover a motor driver that is not ready, which the names
+`calibrationPower` and `lowVoltage` do not say. Codes 12 and 15 have no resolved cause,
+so their names carry the number only.
 
 The wall thermostat sets the same bits `0x02`, `0x04`, `0x08`, `0x80` and `0x100000`
 from the same conditions. Its two interface module records (0x5bd78, 0x5bd9c) hold no

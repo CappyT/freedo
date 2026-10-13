@@ -41,16 +41,39 @@ and `{ref}` stand for a zone number, a device and a device reference:
 - Boiler: `POST /api/boiler/flow` (the flow limit).
 - Device: `POST /api/nodes/{id}/childlock` and `/identify`, and
   `PUT /api/install/devices/{ref}/label` (the label alone, no other field).
+- Installation, read: `GET /api/install`, `/api/install/devices`, `/api/install/devices/{ref}`,
+  `/api/install/devices/{ref}/removal`, `/api/install/zones` and `/api/install/circuits`.
+- Installation, write: `PUT /api/install/timezone` (the time zone alone), `POST /api/install/devices`,
+  `PUT /api/install/devices/{ref}/zone` (the zone claim alone), `DELETE /api/install/devices/{ref}`,
+  `POST /api/install/zones`, `PATCH` and `DELETE /api/install/zones/{n}`,
+  `POST /api/install/zones/{n}/members`, `DELETE /api/install/zones/{n}/members/{ref}`,
+  `PUT` and `DELETE /api/install/zones/{n}/reporter` and `/measuring`, `POST /api/install/circuits`,
+  and `PATCH` and `DELETE /api/install/circuits/{id}`.
+- Pairing: `GET` and `POST /api/pair/window`, and `POST /api/pair/devices/{ref}` (no body: the network
+  key of the installation, never a key of the caller).
 
 So a Home Assistant user, without the token, can read the state of the plant, set temperatures, read,
 write and remove the home and the away program of a zone, create, rename, delete and switch the program
 presets, switch zones off, switch the home between home and away, set the flow limit, rename a device,
 and lock or identify a valve. A preset holds the weekly programs of the zones, so managing the presets is
 managing the weekly schedules: it gives no control over the plant that a schedule write does not already
-give. Only a preset that is active reaches the devices. The list gives no access to the installation, the
-network key or the firmware. Every other request from that address needs the token. This includes
-pairing, the installation and the network key, factory reset, reboot, calibration and firmware, the raw
-device reads and the debug routes. The daemon compares the method and the exact path. It reads the address of the TCP
+give. Only a preset that is active reaches the devices.
+
+Every Home Assistant user who can open the page can also change the installation and pair devices,
+without the token. That user can add, rename and delete rooms, write every option of a room
+(`PATCH /api/install/zones/{n}`), add, change and delete heating circuits, declare, move and remove
+devices, set the time zone, open the pair window for up to 600 seconds and send the pair command. A
+pairing sends the network key over the air under the public pairing key, so a user who can open the page
+can cause that. A removed device or a deleted room stops the control of that room. The project accepts
+this, because an add-on user cannot read a token that the add-on created and the first setup needs these
+calls. Give the right to open the page with care.
+
+These stay behind the token, also from that address: the identity of the network (`home_id`,
+`coordinator`) and every other field of `PATCH /api/install`, the network key
+(`PUT /api/install/network_key`, and `POST /api/pair` with its `networkKeyHex` field), the kind and the
+serial of a device (`PATCH /api/install/devices/{ref}`), factory reset, reboot, calibration and firmware,
+the low-level device writes, the raw device reads and the debug routes. `GET /api/install` shows the
+home id and the coordinator EUI. They are identifiers, and no route returns the network key. The daemon compares the method and the exact path. It reads the address of the TCP
 connection and no header. It ignores `--ingress`, and logs a warning, unless the process runs under the
 Supervisor: the variable `SUPERVISOR_TOKEN` must be set. Outside the Supervisor the address
 `172.30.32.2` belongs to some other host.

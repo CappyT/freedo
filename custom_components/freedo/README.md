@@ -60,6 +60,7 @@ The integration and the options of the add-on have English, Italian, German and 
 | binary_sensor Heating | heating zone | `/api/zones` `demand` `DemandPct` above 0 |
 | binary_sensor Fallback | zone | `/api/health` `zoneFallback` |
 | binary_sensor Low battery, Fault, Communication warning, Connectivity | device | `/api/health` `devices[]` (`commsWarnings`) |
+| binary_sensor Valve warning | valve | `/api/health` `devices[]` `deviceWarnings` |
 | sensor Battery, Battery voltage | device | `/api/nodes` `BatteryPct`, `/api/health` `batteryMV` |
 | sensor Firmware version, Temperature, Humidity | device | `/api/nodes` `Telemetry` `fw_run_version`, `TempC`, `HumidityPct` |
 | sensor Heating demand | heating zone | `/api/zones` `demand` `DemandPct` |
@@ -312,6 +313,14 @@ hub, so both do not record the same reading.
   `noConfigAnswer`. These are the link bits of the fault word. They clear
   when the link recovers and are not a Fault. A daemon that sends no
   `commsWarnings` gets no sensor.
+- Binary sensor Fault is on while the device reports a fault. The attribute
+  `faults` lists the names the daemon gives, for example `stall`, and
+  `fault_word` holds the raw word. `docs/API.md` lists the names.
+- Binary sensor Valve warning is on while the valve reports a state that is no
+  fault. The attribute `warnings` lists it: `notMounted` (the valve is off its
+  radiator), `calibrationNoPinContact`, `shortTravel`, `lowVoltage` or
+  `recalibrating`. Such a state leaves Fault off. A daemon that sends no
+  `deviceWarnings` gets no sensor.
 
 ### Valve controls
 
