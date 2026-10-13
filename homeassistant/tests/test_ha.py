@@ -422,7 +422,7 @@ def add_sensor(hass, entry, entity, name, value, area=None, device_area=None):
         other = MockConfigEntry(domain="test")
         other.add_to_hass(hass)
         device = dr.async_get(hass).async_get_or_create(
-            config_entry_id=other.entry_id, identifiers={("test", entity)}
+            config_entry_id=other.entry_id, identifiers={("test", entity)}, name=name
         )
         dr.async_get(hass).async_update_device(device.id, area_id=device_area)
         device_id = device.id
@@ -1315,6 +1315,12 @@ def wire_form(result):
     return {field["name"]: field for field in wire["data_schema"]}
 
 
+def room_rows(result):
+    """The table of the step Rooms: the cells of each room, by room name."""
+    rows = [row.strip("| ").split(" | ") for row in result["description_placeholders"]["rooms"].splitlines()]
+    return {row[0]: row[1:] for row in rows}
+
+
 async def open_room(hass, entry, room, result=None):
     """Choose a room in the list of the branch Rooms. result is the list a
     saved page returned; without it, Configure opens."""
@@ -1381,12 +1387,18 @@ async def test_job_see_what_each_room_uses(hass, client):
     runtime = entry.runtime_data
     result = await open_branch(hass, entry, "rooms")
     assert result["step_id"] == "rooms"
-    # Each heating room with its area, its source with the reading and its
-    # window sensors; the hot water is not a room. Done is the default.
-    assert choices(result, "room") == {
-        "1": "Living · Soggiorno · hall temperature (20.1 °C) · Window sensors: 2",
-        "2": "Bedroom · No area · Bedroom (VA0000000004) · Window sensors: 0",
-        "done": "Done",
+    # A flow does not know the language of its user, so it sends no word of
+    # its own: the choices are the room names, and the frontend translates the
+    # choice done with the selector translation.
+    assert choices(result, "room") == {"1": "Living", "2": "Bedroom", "done": "done"}
+    config = result["data_schema"].schema[form_fields(result)["room"]].config
+    assert config["translation_key"] == "room_choice"
+    # The table holds names and numbers: each heating room with its area, its
+    # source with the reading and the number of its window sensors. The hot
+    # water is not a room.
+    assert room_rows(result) == {
+        "Living": ["Soggiorno", "hall temperature (20.1 °C)", "2"],
+        "Bedroom": ["-", "Bedroom (VA0000000004)", "0"],
     }
     assert form_fields(result)["room"].default() == "done"
     assert wire_form(result)["room"]["selector"]["select"]["mode"] == "list"
@@ -1432,9 +1444,7 @@ async def test_job_use_a_wall_sensor_as_the_room_temperature(hass, client):
     assert entry.options["room_temperatures"] == {"2": "sensor.wall"}
     assert entry.runtime_data is runtime
     # The list and the select show the sensor.
-    assert choices(result, "room")["2"] == (
-        "Bedroom · Camera · Wall sensor (18.1 °C) · Window sensors: 0"
-    )
+    assert room_rows(result)["Bedroom"] == ["Camera", "Wall sensor (18.1 °C)", "0"]
     bedroom = entity_id(hass, entry, "select", BEDROOM_SOURCE)
     assert hass.states.get(bedroom).state == "Wall sensor (18.1 °C)"
     # The page shows it too.
@@ -1467,7 +1477,7 @@ async def test_job_stop_the_heating_on_two_window_contacts(hass, client):
     )
     assert entry.options == {"windows": {LIVING_WINDOW: 1, BALCONY_DOOR: 1}}
     assert entry.runtime_data is runtime
-    assert choices(result, "room")["1"].endswith("Window sensors: 2")
+    assert room_rows(result)["Living"][-1] == "2"
     await close_rooms(hass, result)
     # The room goes to the daemon at once, and it is open while one is open.
     assert client.windows == [(1, False)]
@@ -1492,9 +1502,7 @@ async def test_job_sensor_and_windows_on_one_page(hass, client):
     result = await submit_room(
         hass, result, temperature_source="sensor:sensor.wall", windows=[LIVING_WINDOW]
     )
-    assert choices(result, "room")["1"] == (
-        "Living · No area · Wall sensor (20.4 °C) · Window sensors: 1"
-    )
+    assert room_rows(result)["Living"] == ["-", "Wall sensor (20.4 °C)", "1"]
     await close_rooms(hass, result)
     assert entry.options == {
         "room_temperature_paused": [],
@@ -1590,7 +1598,7 @@ async def test_room_page_chooses_a_device(hass, client):
     assert client.room_temp_clears == [1]
     assert entry.options[CONF_ROOM_TEMP_PAUSED] == [1]
     assert not any(c[0] == "patch_zone" and "offset_mode" in c[2] for c in client.calls)
-    assert choices(result, "room")["1"] == f"Living · No area · {LIVING_DEVICE} · Window sensors: 0"
+    assert room_rows(result)["Living"] == ["-", LIVING_DEVICE, "0"]
     living = entity_id(hass, entry, "select", LIVING_SOURCE)
     assert hass.states.get(living).state == LIVING_DEVICE
     # The select brings the sensor back, and the page follows.
@@ -1650,6 +1658,45 @@ async def test_room_page_lists_the_sensors_of_the_area_first(hass, client):
     hass.config_entries.options.async_abort(result["flow_id"])
 
 
+async def test_a_sensor_alone_on_its_device_takes_the_device_name(hass, client):
+    # The state name repeats the device and adds the entity: "Kitchen
+    # thermometer Temperature". The device name tells the sensor when the
+    # device has one sensor of the list.
+    entry = await setup_entry(hass, client)
+    other = MockConfigEntry(domain="test")
+    other.add_to_hass(hass)
+    devices, entities = dr.async_get(hass), er.async_get(hass)
+
+    def add(domain, key, device_name, name, state, device_class, user_name=None):
+        device = devices.async_get_or_create(
+            config_entry_id=other.entry_id, identifiers={("test", device_name)}, name=device_name
+        )
+        registered = entities.async_get_or_create(
+            domain, "test", key, suggested_object_id=key, device_id=device.id
+        )
+        entities.async_update_entity(registered.entity_id, name=user_name)
+        hass.states.async_set(
+            registered.entity_id, state, {"device_class": device_class, "friendly_name": name}
+        )
+
+    add("sensor", "kitchen", "Kitchen thermometer", "Kitchen thermometer Temperature", "22.0", "temperature")
+    # Two temperature sensors on one device keep their names, and so does a
+    # sensor the user named.
+    add("sensor", "probe_in", "Probe", "Probe Inside", "21.0", "temperature")
+    add("sensor", "probe_out", "Probe", "Probe Outside", "9.0", "temperature")
+    add("sensor", "hall", "Hall thermometer", "My hall", "20.0", "temperature", user_name="My hall")
+    add("binary_sensor", "contact", "Kitchen window", "Kitchen window Opening", "off", "opening")
+    await refresh(hass, entry)
+    result = await open_room(hass, entry, 1)
+    assert list(choices(result, "temperature_source").values())[2:] == [
+        "Kitchen thermometer (22.0)", "My hall (20.0)", "Probe Inside (21.0)", "Probe Outside (9.0)",
+    ]
+    assert list(choices(result, "windows").values()) == ["Kitchen window"]
+    living = entity_id(hass, entry, "select", LIVING_SOURCE)
+    assert "Kitchen thermometer (22.0)" in hass.states.get(living).attributes["options"]
+    hass.config_entries.options.async_abort(result["flow_id"])
+
+
 async def test_room_page_moves_a_window_sensor_from_another_room(hass, client):
     add_opening(hass, LIVING_WINDOW, "Living window", state="on")
     add_opening(hass, BALCONY_DOOR, "Balcony door", device_class="door")
@@ -1661,8 +1708,8 @@ async def test_room_page_moves_a_window_sensor_from_another_room(hass, client):
     result = await open_room(hass, entry, 2)
     # The page names the room that holds each sensor now.
     assert choices(result, "windows") == {
-        BALCONY_DOOR: "Balcony door (used by Living)",
-        LIVING_WINDOW: "Living window (used by Living)",
+        BALCONY_DOOR: "Balcony door [Living]",
+        LIVING_WINDOW: "Living window [Living]",
     }
     result = await submit_room(hass, result, windows=[LIVING_WINDOW])
     await close_rooms(hass, result)

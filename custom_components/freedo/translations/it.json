@@ -46,7 +46,7 @@
       },
       "rooms": {
         "title": "Stanze",
-        "description": "Ogni stanza mostra la sua area, la sua sorgente della temperatura e il numero dei suoi sensori di finestra. Seleziona una stanza per modificarla, oppure Fine per chiudere.",
+        "description": "Seleziona una stanza per modificarla, oppure Fine per chiudere.\n\n| Stanza | Area | Sorgente della temperatura | Sensori di finestra |\n|---|---|---|---|\n{rooms}",
         "data": {
           "room": "Stanza"
         }
@@ -62,7 +62,7 @@
         "data_description": {
           "area": "Il dispositivo della stanza passa all'area. Le sue valvole e i suoi termostati passano anche loro, se non li hai messi in un'altra area. Puoi impostare l'area anche nella pagina del dispositivo.",
           "temperature_source": "Ciò che misura la temperatura della stanza: un dispositivo della stanza oppure un sensore di Home Assistant. L'elenco mostra prima i dispositivi della stanza, poi i sensori dell'area che la stanza ha ora, poi gli altri sensori con la loro area. Dopo aver cambiato l'area, invia e riapri la stanza per vedere prima i sensori della nuova area.",
-          "windows": "Il riscaldamento della stanza si ferma finché uno di questi sensori è aperto. Un sensore serve una sola stanza: un sensore usato da un'altra stanza passa a questa."
+          "windows": "Il riscaldamento della stanza si ferma finché uno di questi sensori è aperto. Un sensore serve una sola stanza: un sensore usato da un'altra stanza la mostra tra parentesi quadre, e passa a questa stanza."
         },
         "sections": {
           "advanced": {
@@ -447,11 +447,8 @@
     }
   },
   "selector": {
-    "room_text": {
+    "room_choice": {
       "options": {
-        "no_area": "Nessuna area",
-        "window_sensors": "Sensori di finestra",
-        "used_by": "usato da",
         "done": "Fine"
       }
     },

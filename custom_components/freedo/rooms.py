@@ -318,14 +318,37 @@ def opening_sensors(hass: HomeAssistant) -> list[tuple[State, str | None]]:
     return _class_states(hass, "binary_sensor", OPENING_CLASSES)
 
 
-def sensor_label(state: State) -> str:
+def short_names(hass: HomeAssistant, states: list[State]) -> dict[str, str]:
+    """The name to show for each state, by entity id. The name of a state
+    repeats its device and adds the name of the entity, such as "Kitchen
+    thermometer Temperature". When a device has one state in the list, the
+    device name tells the sensor, and it is shorter. A name the user gave to
+    the entity stays."""
+    entities = er.async_get(hass)
+    devices = dr.async_get(hass)
+    names = {state.entity_id: state.name for state in states}
+    by_device: dict[str, list[str]] = {}
+    for state in states:
+        entry = entities.async_get(state.entity_id)
+        if entry is not None and entry.device_id and not entry.name:
+            by_device.setdefault(entry.device_id, []).append(state.entity_id)
+    for device_id, entity_ids in by_device.items():
+        device = devices.async_get(device_id)
+        name = (device.name_by_user or device.name) if device else None
+        if name and len(entity_ids) == 1:
+            names[entity_ids[0]] = name
+    return names
+
+
+def sensor_label(state: State, name: str | None = None) -> str:
     """The sensor name with its reading, the name alone without a number."""
+    name = name or state.name
     try:
         float(state.state)
     except ValueError:
-        return state.name
+        return name
     unit = state.attributes.get(ATTR_UNIT_OF_MEASUREMENT)
-    return f"{state.name} ({state.state} {unit})" if unit else f"{state.name} ({state.state})"
+    return f"{name} ({state.state} {unit})" if unit else f"{name} ({state.state})"
 
 
 def source_choices(
@@ -344,8 +367,10 @@ def source_choices(
     mapped = room_temp_zones(entry.options.get(CONF_ROOM_TEMPS) or {}).get(zone.number)
     near: list[tuple[str, str, str]] = []
     far: list[tuple[str, str, str]] = []
-    for state, sensor_area in temperature_sensors(hass):
-        label = sensor_label(state)
+    sensors = temperature_sensors(hass)
+    names = short_names(hass, [state for state, _ in sensors])
+    for state, sensor_area in sensors:
+        label = sensor_label(state, names[state.entity_id])
         if state.entity_id == mapped:
             mapped = None
         if area_id is not None and sensor_area == area_id:

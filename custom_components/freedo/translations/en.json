@@ -46,7 +46,7 @@
       },
       "rooms": {
         "title": "Rooms",
-        "description": "Each room shows its area, its temperature source and the number of its window sensors. Select a room to change it, or Done to close.",
+        "description": "Select a room to change it, or Done to close.\n\n| Room | Area | Temperature source | Window sensors |\n|---|---|---|---|\n{rooms}",
         "data": {
           "room": "Room"
         }
@@ -62,7 +62,7 @@
         "data_description": {
           "area": "The room device moves to the area. Its valves and thermostats move too, unless you placed them in another area. You can also set the area on the device page.",
           "temperature_source": "What measures the room temperature: a device of the room or a Home Assistant sensor. The list shows the devices of the room first, then the sensors of the area that the room has now, then the other sensors with their area. After you change the area, submit and open the room again to see the sensors of the new area first.",
-          "windows": "The heating of the room stops while one of these sensors is open. A sensor serves one room: a sensor that another room uses moves to this room."
+          "windows": "The heating of the room stops while one of these sensors is open. A sensor serves one room: a sensor that another room uses shows that room in square brackets, and it moves to this room."
         },
         "sections": {
           "advanced": {
@@ -355,11 +355,8 @@
     }
   },
   "selector": {
-    "room_text": {
+    "room_choice": {
       "options": {
-        "no_area": "No area",
-        "window_sensors": "Window sensors",
-        "used_by": "used by",
         "done": "Done"
       }
     },

@@ -46,7 +46,7 @@
       },
       "rooms": {
         "title": "Räume",
-        "description": "Jeder Raum zeigt seinen Bereich, seine Temperaturquelle und die Anzahl seiner Fenstersensoren. Wähle einen Raum aus, um ihn zu ändern, oder Fertig zum Schließen.",
+        "description": "Wähle einen Raum aus, um ihn zu ändern, oder Fertig zum Schließen.\n\n| Raum | Bereich | Temperaturquelle | Fenstersensoren |\n|---|---|---|---|\n{rooms}",
         "data": {
           "room": "Raum"
         }
@@ -62,7 +62,7 @@
         "data_description": {
           "area": "Das Gerät des Raums kommt in den Bereich. Seine Ventile und Thermostate kommen auch dorthin, außer du hast sie in einen anderen Bereich gesetzt. Du kannst den Bereich auch auf der Geräteseite setzen.",
           "temperature_source": "Was die Temperatur des Raums misst: ein Gerät des Raums oder ein Home Assistant-Sensor. Die Liste zeigt zuerst die Geräte des Raums, dann die Sensoren des Bereichs, den der Raum jetzt hat, dann die anderen Sensoren mit ihrem Bereich. Nach einer Änderung des Bereichs: absenden und den Raum erneut öffnen, um die Sensoren des neuen Bereichs zuerst zu sehen.",
-          "windows": "Die Heizung des Raums stoppt, solange einer dieser Sensoren offen ist. Ein Sensor dient einem Raum: Ein Sensor, den ein anderer Raum verwendet, wechselt zu diesem Raum."
+          "windows": "Die Heizung des Raums stoppt, solange einer dieser Sensoren offen ist. Ein Sensor dient einem Raum: Ein Sensor, den ein anderer Raum verwendet, zeigt diesen Raum in eckigen Klammern und wechselt zu diesem Raum."
         },
         "sections": {
           "advanced": {
@@ -447,11 +447,8 @@
     }
   },
   "selector": {
-    "room_text": {
+    "room_choice": {
       "options": {
-        "no_area": "Kein Bereich",
-        "window_sensors": "Fenstersensoren",
-        "used_by": "verwendet von",
         "done": "Fertig"
       }
     },

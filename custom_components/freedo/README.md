@@ -457,7 +457,9 @@ current source, and both write the same state: see Rooms.
     member whose `zone` field names another room is left out. The device the
     zone measures on is always an option.
   - The sensors with the device class temperature in the area of the zone
-    device, labelled with their name and reading. A sensor counts in the area
+    device, labelled with their name and reading. A sensor that is the only
+    temperature sensor of its device shows the device name, which is shorter
+    than the entity name. A name that you gave to the entity stays. A sensor counts in the area
     when the entity or its device is there. The entities of freedo are left out.
     The sensor mapped to the zone is always an option, also without the device
     class.
@@ -722,10 +724,14 @@ Each heating zone is a room. The branch Rooms holds everything that ties a room
 to Home Assistant: its area, its temperature source, its window and door
 sensors and its correction.
 
-- The branch starts with a list of the heating rooms. Each line shows the room
-  name, its area, its temperature source with the reading, and the number of
-  its window sensors. Choose a room to open its page, or Done to close. The
+- The branch starts with a table of the heating rooms: the room name, its
+  area, its temperature source with the reading, and the number of its window
+  sensors. Choose a room below it to open its page, or Done to close. The
   branch needs the loaded integration.
+- A flow does not get the language of the user who opened it: the frontend
+  translates the form. So the texts that the integration builds at run time
+  hold names and numbers only. The words are in the translated description,
+  and the choice Done is a selector translation.
 - The page of a room holds four settings:
   - Area: the Home Assistant area of the room. See Area of a room.
   - Temperature source: a device of the room or a Home Assistant temperature
@@ -783,12 +789,13 @@ The page of a room maps binary sensors to it. The heating of the room stops
 while one of them is open.
 
 - The list shows the binary sensors with the device class window, door, opening
-  or garage door, by name: those in the area of the room first, then the others
+  or garage door, by name, with the rule of the temperature sensors for the
+  device name: those in the area of the room first, then the others
   with their area. A sensor that is already mapped stays in the list without
   such a device class. With no such sensor at all, the field is an entity
   selector.
-- A sensor serves one room. A sensor of another room shows that room in its
-  label, and it moves to the room that chooses it.
+- A sensor serves one room. A sensor of another room shows that room in square
+  brackets, and it moves to the room that chooses it.
 - On each change of the state of a room, the integration sends
   `POST /api/zones/{n}/window` with `{"open": bool}`. A room is open when one
   of its sensors is on. The pushes of one room go one at a time, and each

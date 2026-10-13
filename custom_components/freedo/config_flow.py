@@ -20,7 +20,6 @@ from homeassistant.data_entry_flow import section
 from homeassistant.helpers import area_registry as ar, selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.service_info.hassio import HassioServiceInfo
-from homeassistant.helpers.translation import async_get_translations
 
 from .api import FreedoAuthError, FreedoClient, FreedoConnectionError, FreedoError
 from .const import (
@@ -52,6 +51,7 @@ from .rooms import (
     async_set_zone_area,
     current_source,
     opening_sensors,
+    short_names,
     source_choices,
     zone_area,
 )
@@ -200,8 +200,6 @@ class FreedoOptionsFlow(OptionsFlowWithReload):
 
     def __init__(self) -> None:
         self._room = 0
-        # The words of the room labels: they are built at run time.
-        self._words: dict[str, str] = {}
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -235,14 +233,13 @@ class FreedoOptionsFlow(OptionsFlowWithReload):
         runtime = getattr(self.config_entry, "runtime_data", None)
         return runtime.coordinator.data if runtime is not None else None
 
-    def _word(self, key: str) -> str:
-        return self._words.get(f"component.{DOMAIN}.selector.room_text.options.{key}", key)
-
     async def async_step_rooms(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """The heating rooms, each with its area, its temperature source and
-        the number of its window sensors. The page of the chosen room follows."""
+        """The heating rooms to choose from, and a table of what each uses. A
+        flow does not know the language of its user: the frontend translates
+        the form. So the run-time texts hold names and numbers only, and the
+        words are in the description and in the selector translation."""
         data = self._loaded_data()
         if data is None:
             return self.async_abort(reason="not_loaded")
@@ -255,41 +252,49 @@ class FreedoOptionsFlow(OptionsFlowWithReload):
                 return self.async_create_entry(data=dict(self.config_entry.options))
             self._room = int(user_input[CONF_ROOM])
             return await self.async_step_room()
-        self._words = await async_get_translations(
-            self.hass, self.hass.config.language, "selector", [DOMAIN]
-        )
         options = [
-            selector.SelectOptionDict(value=str(z.number), label=self._room_label(data, z))
-            for z in zones
+            selector.SelectOptionDict(value=str(z.number), label=z.name) for z in zones
         ]
-        options.append(selector.SelectOptionDict(value=ROOM_DONE, label=self._word("done")))
+        options.append(selector.SelectOptionDict(value=ROOM_DONE, label=ROOM_DONE))
         schema = vol.Schema(
             {
                 vol.Required(CONF_ROOM, default=ROOM_DONE): selector.SelectSelector(
                     selector.SelectSelectorConfig(
-                        options=options, mode=selector.SelectSelectorMode.LIST
+                        options=options,
+                        # It translates the choice done. A room has no
+                        # translation and keeps its name.
+                        translation_key="room_choice",
+                        mode=selector.SelectSelectorMode.LIST,
                     )
                 )
             }
         )
-        return self.async_show_form(step_id="rooms", data_schema=schema)
+        return self.async_show_form(
+            step_id="rooms",
+            data_schema=schema,
+            description_placeholders={
+                "rooms": "\n".join(self._room_row(data, z) for z in zones)
+            },
+        )
 
-    def _room_label(self, data: FreedoData, zone: Zone) -> str:
-        """The room name, its area, its temperature source and the number of
-        its window sensors."""
+    def _room_row(self, data: FreedoData, zone: Zone) -> str:
+        """The row of a room in the table of the step Rooms: its name, its
+        area, its temperature source and the number of its window sensors."""
         entry = self.config_entry
         area_id = zone_area(self.hass, entry.entry_id, zone.number)
         area = ar.async_get(self.hass).async_get_area(area_id) if area_id else None
-        parts = [zone.name, area.name if area else self._word("no_area")]
         current = current_source(entry, data, zone)
-        parts.extend(
-            label
-            for kind, target, label in source_choices(self.hass, entry, data, zone, area_id)
-            if (kind, target) == current
+        source = next(
+            (
+                label
+                for kind, target, label in source_choices(self.hass, entry, data, zone, area_id)
+                if (kind, target) == current
+            ),
+            None,
         )
         windows = window_zones(entry.options.get(CONF_WINDOWS) or {}).get(zone.number, [])
-        parts.append(f"{self._word('window_sensors')}: {len(windows)}")
-        return " · ".join(parts)
+        cells = [zone.name, area.name if area else "-", source or "-", str(len(windows))]
+        return "| " + " | ".join(cell.replace("|", "\\|") for cell in cells) + " |"
 
     async def async_step_room(
         self, user_input: dict[str, Any] | None = None
@@ -365,8 +370,8 @@ class FreedoOptionsFlow(OptionsFlowWithReload):
 
     def _window_selector(self, data: FreedoData, zone: Zone, area_id: str | None) -> Any:
         """The window and door sensors, the ones in area_id first. A sensor of
-        another room names that room: an entity selector cannot label an
-        option, so the list is a select of entity ids. A mapped sensor without
+        another room names that room in square brackets: an entity selector
+        cannot label an option, so the list is a select of entity ids. A mapped sensor without
         such a device class stays a choice. With no sensor at all it is the
         entity selector."""
         areas = ar.async_get(self.hass)
@@ -381,21 +386,22 @@ class FreedoOptionsFlow(OptionsFlowWithReload):
         def option(entity_id: str, label: str) -> selector.SelectOptionDict:
             other = data.zones.get(mapped.get(entity_id, zone.number))
             if other is not None and other.number != zone.number:
-                label = f"{label} ({self._word('used_by')} {other.name})"
+                label = f"{label} [{other.name}]"
             return selector.SelectOptionDict(value=entity_id, label=label)
 
         near: list[selector.SelectOptionDict] = []
         far: list[selector.SelectOptionDict] = []
         known = set()
-        for state, sensor_area in opening_sensors(self.hass):
+        sensors = opening_sensors(self.hass)
+        names = short_names(self.hass, [state for state, _ in sensors])
+        for state, sensor_area in sensors:
             known.add(state.entity_id)
+            name = names[state.entity_id]
             if area_id is not None and sensor_area == area_id:
-                near.append(option(state.entity_id, state.name))
+                near.append(option(state.entity_id, name))
                 continue
             area = areas.async_get_area(sensor_area) if sensor_area else None
-            far.append(
-                option(state.entity_id, f"{state.name}, {area.name}" if area else state.name)
-            )
+            far.append(option(state.entity_id, f"{name}, {area.name}" if area else name))
         for entity_id in sorted(mapped.keys() - known):
             state = self.hass.states.get(entity_id)
             near.append(option(entity_id, state.name if state else entity_id))

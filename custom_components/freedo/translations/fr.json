@@ -46,7 +46,7 @@
       },
       "rooms": {
         "title": "Pièces",
-        "description": "Chaque pièce affiche sa pièce Home Assistant, sa source de température et le nombre de ses capteurs de fenêtre. Sélectionnez une pièce pour la modifier, ou Terminé pour fermer.",
+        "description": "Sélectionnez une pièce pour la modifier, ou Terminé pour fermer.\n\n| Pièce | Pièce Home Assistant | Source de température | Capteurs de fenêtre |\n|---|---|---|---|\n{rooms}",
         "data": {
           "room": "Pièce"
         }
@@ -62,7 +62,7 @@
         "data_description": {
           "area": "L'appareil de la pièce passe dans cette pièce Home Assistant. Ses vannes et ses thermostats y passent aussi, sauf si vous les avez placés dans une autre pièce. Vous pouvez aussi la définir sur la page de l'appareil.",
           "temperature_source": "Ce qui mesure la température de la pièce : un appareil de la pièce ou un capteur Home Assistant. La liste affiche d'abord les appareils de la pièce, puis les capteurs de sa pièce Home Assistant actuelle, puis les autres capteurs avec leur pièce Home Assistant. Après un changement de pièce Home Assistant, validez et rouvrez la pièce pour voir d'abord les capteurs de la nouvelle.",
-          "windows": "Le chauffage de la pièce s'arrête tant que l'un de ces capteurs est ouvert. Un capteur sert une seule pièce : un capteur utilisé par une autre pièce passe à celle-ci."
+          "windows": "Le chauffage de la pièce s'arrête tant que l'un de ces capteurs est ouvert. Un capteur sert une seule pièce : un capteur utilisé par une autre pièce l'affiche entre crochets, et il passe à cette pièce."
         },
         "sections": {
           "advanced": {
@@ -447,11 +447,8 @@
     }
   },
   "selector": {
-    "room_text": {
+    "room_choice": {
       "options": {
-        "no_area": "Aucune pièce Home Assistant",
-        "window_sensors": "Capteurs de fenêtre",
-        "used_by": "utilisé par",
         "done": "Terminé"
       }
     },

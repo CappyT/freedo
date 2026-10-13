@@ -97,7 +97,7 @@ ROOM_KEYS = [
     ("options", "step", "outdoor"),
     ("options", "error", "write_failed"),
     ("selector", "correction_method"),
-    ("selector", "room_text"),
+    ("selector", "room_choice"),
     ("entity", "select", "room_temperature_correction"),
     ("entity", "select", "temperature_source"),
     ("issues", "rooms_no_area"),
@@ -140,6 +140,20 @@ def test_room_texts_name_rooms_and_freedo(language):
         room["sections"]["advanced"]["data"]["correction"]
         == select["room_temperature_correction"]["name"]
     )
+
+
+@pytest.mark.parametrize("language", ("en", *LANGUAGES))
+def test_the_flow_builds_no_text_of_its_own(language):
+    """A flow does not know the language of its user, and the frontend
+    translates the form. So the options flow loads no translation, and every
+    select of it that names a translation key has its options in each
+    language."""
+    source = (INTEGRATION.parent / "config_flow.py").read_text()
+    assert "async_get_translations" not in source
+    assert "config.language" not in source
+    selectors = json.loads((INTEGRATION / f"{language}.json").read_text())["selector"]
+    for key in re.findall(r'translation_key="(\w+)"', source):
+        assert selectors[key]["options"], key
 
 
 # An entity row on a device page leaves about 100 px to the name of a number,
