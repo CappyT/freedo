@@ -1,0 +1,290 @@
+blueprint:
+  name: freedo auxiliary heat
+  description: >-
+    Runs another heat source of a room, for example an air conditioner or a
+    heat pump, while the room is far below its target. The radiators keep
+    heating: the automation reads the freedo room and never writes to it.
+    Create one automation for each room.
+
+
+    - The appliance starts when the room is below its target by the start gap,
+    and stops when the room is within the stop gap or after the maximum run
+    time.
+
+    - It does not start while the room is off, in away or has an open window,
+    and it stops when one of these begins.
+
+    - A person who changes the appliance during a run keeps it: the automation
+    leaves the appliance alone until the room is within the stop gap.
+
+    - At the stop the appliance returns to the state it had before the run, or
+    turns off.
+
+    - The appliance rests for the minimum off time after each run.
+  domain: automation
+  author: CappyT
+  source_url: https://github.com/CappyT/freedo/blob/main/homeassistant/blueprints/automation/freedo/auxiliary_heat.yaml
+  homeassistant:
+    min_version: "2026.8.0"
+  input:
+    room:
+      name: Room
+      description: The freedo climate entity of the room.
+      selector:
+        entity:
+          filter:
+            - domain: climate
+              integration: freedo
+    appliance:
+      name: Appliance
+      description: The climate entity of the other heat source of the room.
+      selector:
+        entity:
+          filter:
+            - domain: climate
+    start_gap:
+      name: Start gap
+      description: >-
+        The appliance starts when the room is at least this much below its
+        target.
+      default: 1.5
+      selector:
+        number:
+          min: 0.5
+          max: 10
+          step: 0.1
+          unit_of_measurement: °C
+          mode: box
+    stop_gap:
+      name: Stop gap
+      description: >-
+        The appliance stops when the room is at most this much below its
+        target. Keep it below the start gap.
+      default: 0.3
+      selector:
+        number:
+          min: 0
+          max: 5
+          step: 0.1
+          unit_of_measurement: °C
+          mode: box
+    appliance_mode:
+      name: Appliance mode
+      description: The HVAC mode the appliance runs in.
+      default: heat
+      selector:
+        select:
+          options:
+            - label: Heat
+              value: heat
+            - label: Heat and cool
+              value: heat_cool
+            - label: Auto
+              value: auto
+    appliance_temperature:
+      name: Appliance temperature
+      description: The target temperature the appliance runs at.
+      default: 22
+      selector:
+        number:
+          min: 10
+          max: 35
+          step: 0.5
+          unit_of_measurement: °C
+          mode: box
+    restore:
+      name: State after the run
+      default: previous
+      selector:
+        select:
+          options:
+            - label: The state before the run
+              value: previous
+            - label: "Off"
+              value: "off"
+    limits:
+      name: Limits
+      collapsed: true
+      input:
+        max_run:
+          name: Maximum run time
+          description: >-
+            The appliance stops after this time. It starts again only after the
+            room has been within the stop gap.
+          default:
+            hours: 2
+            minutes: 0
+            seconds: 0
+          selector:
+            duration:
+        min_off:
+          name: Minimum off time
+          description: >-
+            The appliance does not start again for this time after a run, to
+            protect its compressor.
+          default:
+            hours: 0
+            minutes: 10
+            seconds: 0
+          selector:
+            duration:
+        window_start:
+          name: Start of the time window
+          description: >-
+            The appliance starts only between the two times. A run that started
+            can end after the window. Keep both times equal for the whole day.
+          default: "00:00:00"
+          selector:
+            time:
+        window_end:
+          name: End of the time window
+          default: "00:00:00"
+          selector:
+            time:
+
+# One run lasts from the start of the appliance to the end of its off time, so
+# a trigger that arrives in between starts nothing.
+mode: single
+max_exceeded: silent
+
+variables:
+  room: !input room
+  appliance: !input appliance
+  start_gap: !input start_gap
+  stop_gap: !input stop_gap
+  appliance_mode: !input appliance_mode
+  appliance_temperature: !input appliance_temperature
+  restore: !input restore
+  max_run: !input max_run
+  scene_id: "freedo_auxiliary_{{ appliance | replace('.', '_') }}"
+  reason: ""
+
+triggers:
+  - trigger: state
+    entity_id: !input room
+  - trigger: time
+    at: !input window_start
+  - trigger: homeassistant
+    event: start
+    id: start
+
+actions:
+  - variables:
+      # A restart of Home Assistant ends a run and leaves the appliance on. The
+      # automation takes it back when it finds it in the mode and at the
+      # temperature of a run.
+      adopted: >-
+        {{ trigger.id == 'start' and is_state(appliance, appliance_mode)
+           and state_attr(appliance, 'temperature') == appliance_temperature }}
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ adopted }}"
+        sequence: []
+      - conditions:
+          - condition: time
+            after: !input window_start
+            before: !input window_end
+          - condition: template
+            value_template: >-
+              {% set target = state_attr(room, 'temperature') %}
+              {% set current = state_attr(room, 'current_temperature') %}
+              {{ is_number(target) and is_number(current)
+                 and (target - current) | round(2) >= start_gap
+                 and states(room) not in ['off', 'unavailable', 'unknown']
+                 and state_attr(room, 'target_source') not in ['away', 'window']
+                 and not state_attr(room, 'window_open')
+                 and states(appliance) not in ['unavailable', 'unknown'] }}
+        sequence:
+          - if:
+              - condition: template
+                value_template: "{{ restore == 'previous' }}"
+            then:
+              - action: scene.create
+                data:
+                  scene_id: "{{ scene_id }}"
+                  snapshot_entities:
+                    - "{{ appliance }}"
+          - action: climate.set_hvac_mode
+            target:
+              entity_id: !input appliance
+            data:
+              hvac_mode: !input appliance_mode
+          - action: climate.set_temperature
+            continue_on_error: true
+            target:
+              entity_id: !input appliance
+            data:
+              temperature: !input appliance_temperature
+          - wait_template: >-
+              {{ is_state(appliance, appliance_mode)
+                 and state_attr(appliance, 'temperature') in [none, appliance_temperature] }}
+            timeout:
+              minutes: 2
+    default:
+      - stop: The appliance does not start.
+  - variables:
+      started: "{{ now().timestamp() }}"
+      # The temperature the appliance reports once it runs. A later change of
+      # it is the change of a person.
+      held: "{{ state_attr(appliance, 'temperature') }}"
+      reason: "{{ '' if is_state(appliance, appliance_mode) else 'failed' }}"
+  - repeat:
+      while:
+        - condition: template
+          value_template: "{{ reason == '' }}"
+      sequence:
+        - wait_for_trigger:
+            - trigger: state
+              entity_id: !input room
+            - trigger: state
+              entity_id: !input appliance
+          timeout:
+            minutes: 1
+        - variables:
+            reason: >-
+              {% set target = state_attr(room, 'temperature') %}
+              {% set current = state_attr(room, 'current_temperature') %}
+              {# An appliance that drops out, as a cloud device does, decides
+                 nothing: the run goes on when it is back. #}
+              {% if states(appliance) in ['unavailable', 'unknown'] %}
+              {% elif not is_state(appliance, appliance_mode)
+                 or state_attr(appliance, 'temperature') != held %}
+                manual
+              {% elif states(room) in ['off', 'unavailable', 'unknown']
+                 or state_attr(room, 'target_source') in ['away', 'window']
+                 or state_attr(room, 'window_open')
+                 or not is_number(target) or not is_number(current) %}
+                blocked
+              {% elif (target - current) | round(2) <= stop_gap %}
+                reached
+              {% elif now().timestamp() - started >= timedelta(**max_run).total_seconds() %}
+                timeout
+              {% endif %}
+  - if:
+      - condition: template
+        value_template: "{{ reason != 'manual' }}"
+    then:
+      - if:
+          - condition: template
+            value_template: >-
+              {{ restore == 'previous' and not adopted
+                 and states['scene.' ~ scene_id] is not none }}
+        then:
+          - action: scene.turn_on
+            target:
+              entity_id: "scene.{{ scene_id }}"
+        else:
+          - action: climate.turn_off
+            target:
+              entity_id: !input appliance
+  - if:
+      - condition: template
+        value_template: "{{ reason in ['manual', 'timeout'] }}"
+    then:
+      - wait_template: >-
+          {% set target = state_attr(room, 'temperature') %}
+          {% set current = state_attr(room, 'current_temperature') %}
+          {{ not is_number(target) or not is_number(current)
+             or (target - current) | round(2) <= stop_gap }}
+  - delay: !input min_off

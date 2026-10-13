@@ -1,0 +1,250 @@
+blueprint:
+  name: freedo distance setback
+  description: >-
+    Lowers the rooms in steps with the distance of the nearest person, and
+    raises them as that person approaches, so the home is warm on arrival. It
+    sets the freedo number Away of each room. The freedo switch Away stays with
+    the blueprint "freedo presence away" or with you.
+
+
+    - Inside the comfort distance a room keeps its program temperature, also
+    while Away is on.
+
+    - Outside it the room is one temperature step lower, and one more step for
+    each distance step, down to the lowest temperature.
+
+    - A room never goes above its program temperature.
+
+    - A distance that is unknown, a person that is unavailable and a blocking
+    entity that is on all give the program temperature.
+
+    - A valve receives a write only while Away is on, and each room changes at
+    most once in the minimum interval.
+  domain: automation
+  author: CappyT
+  source_url: https://github.com/CappyT/freedo/blob/main/homeassistant/blueprints/automation/freedo/distance_setback.yaml
+  homeassistant:
+    min_version: "2026.8.0"
+  input:
+    rooms:
+      name: Rooms
+      description: >-
+        The freedo climate entities of the rooms to lower. The automation sets
+        the number Away of each of these rooms. Leave out a room that has an
+        away schedule: it follows that schedule.
+      selector:
+        entity:
+          multiple: true
+          filter:
+            - domain: climate
+              integration: freedo
+    distance_sensor:
+      name: Distance of the nearest person
+      description: >-
+        The sensor "Nearest distance" of the Proximity integration for the home
+        zone.
+      selector:
+        entity:
+          filter:
+            - domain: sensor
+              device_class: distance
+    people:
+      name: People
+      description: >-
+        Optional. The people or device trackers that the Proximity integration
+        tracks. While one of them is unavailable or unknown, the rooms keep
+        their program temperature. Proximity leaves such a person out, so the
+        distance alone does not show it.
+      default: []
+      selector:
+        entity:
+          multiple: true
+          filter:
+            - domain:
+                - person
+                - device_tracker
+    lowest_temperature:
+      name: Lowest temperature
+      description: >-
+        No room goes below this temperature. 5 °C means off.
+      default: 16
+      selector:
+        number:
+          min: 5
+          max: 25
+          step: 0.5
+          unit_of_measurement: °C
+          mode: box
+    comfort_distance:
+      name: Comfort distance
+      description: >-
+        Inside this distance the rooms keep their program temperature.
+      default: 2
+      selector:
+        number:
+          min: 0
+          max: 100
+          step: 0.5
+          unit_of_measurement: km
+          mode: box
+    step_distance:
+      name: Distance step
+      description: >-
+        Each full step beyond the comfort distance lowers the rooms by one more
+        temperature step. Use the distance a person travels in the time a room
+        needs to gain one temperature step.
+      default: 10
+      selector:
+        number:
+          min: 1
+          max: 500
+          step: 0.5
+          unit_of_measurement: km
+          mode: box
+    step_temperature:
+      name: Temperature step
+      default: 1
+      selector:
+        number:
+          min: 0.5
+          max: 5
+          step: 0.5
+          unit_of_measurement: °C
+          mode: box
+    hysteresis:
+      name: Hysteresis
+      description: >-
+        A person must come this much closer than a step boundary before the
+        rooms rise again. It stops a position that moves around a boundary from
+        changing the rooms.
+      default: 2
+      selector:
+        number:
+          min: 0
+          max: 50
+          step: 0.5
+          unit_of_measurement: km
+          mode: box
+    min_interval:
+      name: Minimum interval
+      description: >-
+        The shortest time between two changes of the rooms. A change that
+        comes earlier waits, and only the last one applies.
+      default:
+        hours: 0
+        minutes: 5
+        seconds: 0
+      selector:
+        duration:
+    block_entities:
+      name: Blocking entities
+      description: >-
+        Optional. The rooms keep their program temperature while one of these
+        entities is on, for example a guest mode switch or a schedule helper
+        for the night.
+      default: []
+      selector:
+        entity:
+          multiple: true
+          filter:
+            - domain:
+                - binary_sensor
+                - input_boolean
+                - schedule
+                - switch
+
+# A run that waits for the minimum interval drops the triggers that arrive. It
+# reads the states again after the wait, so it loses no change.
+mode: single
+max_exceeded: silent
+
+variables:
+  rooms: !input rooms
+  distance_sensor: !input distance_sensor
+  people: !input people
+  block_entities: !input block_entities
+  lowest: !input lowest_temperature
+  comfort_km: !input comfort_distance
+  step_km: !input step_distance
+  step_c: !input step_temperature
+  hysteresis_km: !input hysteresis
+  min_interval: !input min_interval
+  plan: []
+
+triggers:
+  - trigger: state
+    entity_id: !input distance_sensor
+    to: null
+  # The program temperature moves at each block of the weekly program.
+  - trigger: state
+    entity_id: !input rooms
+    attribute: program_temperature
+  - trigger: state
+    entity_id: !input people
+    to: null
+  - trigger: state
+    entity_id: !input block_entities
+    to: null
+  - trigger: homeassistant
+    event: start
+
+actions:
+  - repeat:
+      sequence:
+        - variables:
+            plan: >-
+              {% set km_per = {'km': 1, 'm': 0.001, 'mi': 1.609344,
+                               'nmi': 1.852, 'yd': 0.0009144, 'ft': 0.0003048,
+                               'in': 0.0000254, 'cm': 0.00001, 'mm': 0.000001} %}
+              {% set factor = km_per.get(state_attr(distance_sensor, 'unit_of_measurement')) %}
+              {% set raw = states(distance_sensor) %}
+              {% set comfort = factor is none or not is_number(raw)
+                 or block_entities | select('is_state', 'on') | list | count > 0
+                 or people | select('is_state', ['unavailable', 'unknown']) | list | count > 0 %}
+              {% set km = 0 if comfort else raw | float * factor %}
+              {# The level is free between these two. The current value of the
+                 number Away decides inside the band: that is the hysteresis. #}
+              {% set shallow = 0 if comfort or km <= comfort_km
+                 else 1 + ((km - comfort_km) / step_km) | int %}
+              {# At the comfort distance the hysteresis is at most half of it,
+                 so a person who comes home always reaches the program. #}
+              {% set deep = 0 if comfort
+                 or km + [hysteresis_km, comfort_km / 2] | min <= comfort_km
+                 else 1 + ([km + hysteresis_km - comfort_km, 0] | max / step_km) | int %}
+              {% set ns = namespace(plan=[]) %}
+              {% for room in rooms %}
+                {% set number = device_entities(device_id(room) or '')
+                   | select('match', '^number[.]')
+                   | select('is_state_attr', 'device_class', 'temperature')
+                   | first | default('') %}
+                {% set program = state_attr(room, 'program_temperature') %}
+                {% if number and is_number(program) and is_number(states(number)) %}
+                  {% set program = program | float %}
+                  {% set now_c = states(number) | float %}
+                  {% set warm = [program, [lowest, program - shallow * step_c] | max] | min %}
+                  {% set cold = [program, [lowest, program - deep * step_c] | max] | min %}
+                  {% set want = [[now_c, cold] | max, warm] | min %}
+                  {% set want = [[want, 5] | max, 25] | min | round(1) %}
+                  {% if (want - now_c) | abs >= 0.05 %}
+                    {% set ns.plan = ns.plan + [{'entity_id': number, 'value': want}] %}
+                  {% endif %}
+                {% endif %}
+              {% endfor %}
+              {{ ns.plan }}
+        - if:
+            - condition: template
+              value_template: "{{ plan | count > 0 }}"
+          then:
+            - repeat:
+                for_each: "{{ plan }}"
+                sequence:
+                  - action: number.set_value
+                    target:
+                      entity_id: "{{ repeat.item.entity_id }}"
+                    data:
+                      value: "{{ repeat.item.value }}"
+            - delay:
+                seconds: "{{ [timedelta(**min_interval).total_seconds(), 1] | max }}"
+      until:
+        - condition: template
+          value_template: "{{ plan | count == 0 }}"
