@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.7.2
+
+- Daemon: with Transmit on, during the wait after an import the daemon serves the web interface.
+  `GET /api/health` reports `importWait` with the seconds left, and every other API route answers
+  `503` with `Retry-After`. The radio stays closed. The wait still counts 250 seconds from the
+  import, and a restart in the middle continues it.
+- Dashboard: a countdown shows on every page during that wait. The page takes no command and
+  returns to normal by itself.
+- While one add-on waits, the other add-on refuses to start.
+- Run on one plant with 0.7.1: the return from freedo beta to the add-on freedo with a backup. The
+  countdown did not run on a plant.
+
 ## 0.7.1
 
 - Breaking: the add-ons copy no state by themselves. The add-on freedo writes no copy to
