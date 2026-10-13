@@ -19,8 +19,10 @@ Everything that this page does not describe works as in the stable add-on: read 
 
 ## Move to the beta add-on
 
-The backup needs the API token in both add-ons. Set the option `api_token` of each add-on to a value
-you choose, and enter it in the section API token of the page Settings of its web interface.
+The backup is for Home Assistant administrators: sign in as one. No token is needed. Like the stable
+add-on, this add-on has the permission `homeassistant_api` to ask Home Assistant whether the user is an
+administrator: see
+[Backup](https://github.com/CappyT/freedo/blob/main/addon/DOCS.md#backup).
 
 1. Open the web interface of the stable freedo add-on, then Settings. In the section Backup select
    Download backup. The file holds the network key: keep it private.

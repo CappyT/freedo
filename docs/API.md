@@ -23,7 +23,9 @@ the routes. For the radio facts behind a rule, see [PROTOCOL.md](PROTOCOL.md).
 - `--ingress` makes the daemon accept the calls of the dashboard from the connection address
   `172.30.32.2`, the Home Assistant ingress gateway, without a token. It covers 51 method and path
   pairs only. Only the add-on start script sets it, and it has no effect unless `SUPERVISOR_TOKEN` is
-  set. Every other request needs the token. See [Access](OPERATION.md#access).
+  set. With the flag, the gateway also reaches the two routes of the
+  [state export and import](#state-export-and-import) for a Home Assistant administrator. Every other
+  request needs the token. See [Access](OPERATION.md#access).
 - With no token, the daemon accepts a loopback address only and warns at start. An address
   that is not loopback stops the start. `--insecure-no-auth` removes this limit. With it,
   every host that reaches the port controls the plant.
@@ -1107,8 +1109,23 @@ through the API. A network with no paired device and a wall thermostat are not v
 The two routes move the whole state of a daemon to another daemon, or back to an earlier state. The
 state is the installation with the network key and the coordinator identity, the programs and the
 presets, the frame counters, the device sessions, the options and the learned values. Both routes
-need the API token, also from the Home Assistant ingress gateway: the file holds the network key,
-and an import replaces the identity of the network.
+need the API token: the file holds the network key, and an import replaces the identity of the
+network.
+
+Under the Home Assistant add-on there is a second way in, for administrators. A request from the
+ingress gateway `172.30.32.2` passes without the token when its header `X-Remote-User-Id` names an
+active Home Assistant administrator. The daemon asks Home Assistant at every request. The answers
+without the token:
+
+| Case | Answer |
+|---|---|
+| The user is an active administrator. | The route runs. |
+| No `X-Remote-User-Id`, an id that Home Assistant does not know, a user who is not an administrator, an inactive user, a system user. | `403` |
+| Home Assistant does not answer in 5 seconds, or its answer is not usable. | `503` |
+| The request comes from another address, with or without the header. | `401` |
+
+The two pairs are in `internal/daemon/ingress_admin_routes.json`. See
+[SECURITY.md](../SECURITY.md#backup-home-assistant-administrators-only).
 
 `GET /api/state/export` answers with one SQLite file. The daemon first saves its state, then writes
 the file with `VACUUM INTO`, which reads one consistent snapshot while the daemon keeps running. The

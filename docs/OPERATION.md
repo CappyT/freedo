@@ -189,9 +189,10 @@ Settings also has the section Backup. Download backup saves the [state export](#
 and the section warns that the file holds the network key. Restore backup takes a file, asks first
 with the list of what the backup replaces, and sends it. The page then shows that freedo restarts,
 with the 250 seconds of a transmitting daemon when they apply, and reconnects by itself: a missing
-answer during the restart is not shown as a fault. Both actions need the API token, also under the
-Home Assistant add-on. Store the token in the section API token of the same page. Without it the
-section says so, and every other page keeps working.
+answer during the restart is not shown as a fault. Under the Home Assistant add-on both actions
+work for an administrator with no token, and another user reads in the section that only a Home
+Assistant administrator can download or restore a backup. Outside the add-on both actions need the
+API token of the page. A refusal stays in the section, and every other page keeps working.
 
 The page Rooms and devices manages the installation. It lists the devices room by room, with the state
 of each device, identify and the child lock. The devices in no room form a last group, No room, while
@@ -286,16 +287,22 @@ connections from that address only and to treat the user as authenticated. The d
   [`internal/daemon/ingress_routes.json`](../internal/daemon/ingress_routes.json) qualify. They include
   the installation and pairing calls of the pages Rooms and devices and First setup, so those pages need no token
   under the add-on. Every other request from that address needs the token. [SECURITY.md](../SECURITY.md#home-assistant-ingress) lists
-  the pairs and what a user can do with them. The export and the import of the state are not among
-  them: the section Backup of Settings needs the token under the add-on too.
+  the pairs and what a user can do with them.
+- The export and the import of the state are not among them. They are the 2 pairs of
+  [`internal/daemon/ingress_admin_routes.json`](../internal/daemon/ingress_admin_routes.json): from the
+  gateway address the daemon serves them without a token only to a Home Assistant administrator. It
+  reads the user from `X-Remote-User-Id`, which the Supervisor sets, and asks Home Assistant through
+  `ws://supervisor/core/websocket` with the command `config/auth/list`. The add-ons declare
+  `homeassistant_api: true` for that. No answer means no access.
 - Only `addon/run.sh` sets the flag. The bootstrap file and the environment have no such setting, and
   the container image does not set it. The daemon ignores the flag and logs a warning unless the
   variable `SUPERVISOR_TOKEN` is set, which only the Supervisor does.
 - Every other source still needs the token: other apps, the host, the LAN, and the published port 18080.
 - The daemon compares the method and the exact path, and reads the address of the TCP connection. A
-  header such as `X-Forwarded-For` or `X-Ingress-Path` has no effect.
+  header such as `X-Forwarded-For` or `X-Ingress-Path` has no effect. `X-Remote-User-Id` counts for the
+  2 backup pairs only, and only on a connection from the gateway address.
 
-The daemon cannot tell the Home Assistant users apart. Every user who can open the panel can use those
+For the 51 pairs the daemon does not tell the Home Assistant users apart. Every user who can open the panel can use those
 calls, and the project accepts this. Home Assistant lets every user open an ingress session, so the
 add-on option `panel_admin` (default `true`) hides only the sidebar entry. The Supervisor adds the
 headers `X-Remote-User-Id`, `X-Remote-User-Name` and `X-Remote-User-Display-Name`, and none of them

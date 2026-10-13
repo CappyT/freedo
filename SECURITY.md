@@ -28,8 +28,9 @@ The add-on starts the daemon with `--ingress`. Home Assistant authenticates the 
 forwards the request from the address `172.30.32.2`. Every Home Assistant user can open an ingress
 session, also a user who is not an administrator: `panel_admin` hides only the sidebar entry. The
 Supervisor adds the name and the id of the user to the request, and no header says whether the user is
-an administrator. The daemon cannot tell an administrator from another user, and no add-on setting keeps
-a signed-in user out of ingress.
+an administrator. No add-on setting keeps a signed-in user out of ingress. For the routes below the
+daemon does not tell the users apart. For the [backup](#backup-home-assistant-administrators-only) it
+asks Home Assistant about the user.
 
 For a request from `172.30.32.2`, the daemon skips the token for these method and path pairs only. They
 are the calls of the dashboard. The list is `internal/daemon/ingress_routes.json`, and `{n}`, `{id}`
@@ -78,16 +79,46 @@ These stay behind the token, also from that address: the identity of the network
 `coordinator`) and every other field of `PATCH /api/install`, the network key
 (`PUT /api/install/network_key`, and `POST /api/pair` with its `networkKeyHex` field), the kind and the
 serial of a device (`PATCH /api/install/devices/{ref}`), calibration and firmware,
-the low-level device writes, the raw device reads, the debug routes, and the export and the import of
-the state (`GET /api/state/export`, `POST /api/state/import`). `GET /api/install` shows the
-home id and the coordinator EUI. They are identifiers. One route returns the network key: the state
-export, which is the whole database. It needs the token from every source, because every Home Assistant
-user can reach ingress. So does the import, which replaces the network key, the identity and the
-installation. The section Backup of the dashboard therefore asks an add-on user for the API token: set
-the option `api_token` of the add-on and store the same value on the page Settings. The daemon compares the method and the exact path. It reads the address of the TCP
-connection and no header. It ignores `--ingress`, and logs a warning, unless the process runs under the
+the low-level device writes, the raw device reads and the debug routes. `GET /api/install` shows the
+home id and the coordinator EUI. They are identifiers. For these routes the daemon compares the method
+and the exact path, and reads the address of the TCP connection and no header. It ignores `--ingress`,
+and logs a warning, unless the process runs under the
 Supervisor: the variable `SUPERVISOR_TOKEN` must be set. Outside the Supervisor the address
 `172.30.32.2` belongs to some other host.
+
+### Backup: Home Assistant administrators only
+
+One route returns the network key: `GET /api/state/export`, the whole database. Its counterpart
+`POST /api/state/import` replaces the network key, the identity and the installation. Every Home
+Assistant user can reach ingress, so these two routes are a class of their own, listed in
+`internal/daemon/ingress_admin_routes.json`. The daemon serves them without the token only when all of
+this holds:
+
+- the TCP connection comes from the gateway address `172.30.32.2`;
+- the request carries `X-Remote-User-Id`. The Supervisor sets this header to the user of the ingress
+  session and removes a value that the browser sent;
+- Home Assistant answers that this user is active, is not a system user, and is the owner or a member
+  of the group `system-admin`.
+
+The daemon asks at every request and keeps no answer, so a user who lost the administrator group loses
+the backup at once. It refuses with `403` when the header is missing, when Home Assistant does not know
+the id, and when the user is not an administrator. It refuses with `503` when Home Assistant does not
+answer within 5 seconds, refuses the sign-in or sends an answer that the daemon cannot read. From every
+other address the header has no effect and the routes need the token. A request with the token passes
+as before.
+
+So under the add-on a Home Assistant administrator can read the network key through a backup and can
+replace the whole state, with no token. A user who is not an administrator cannot.
+
+To ask the question, both add-ons declare `homeassistant_api: true`. The daemon opens the WebSocket
+proxy of the Supervisor, `ws://supervisor/core/websocket`, signs in with `SUPERVISOR_TOKEN` and sends
+one command, `config/auth/list`. The permission is wider than that one command: the add-on can call the
+REST and the WebSocket API of Home Assistant Core as the Supervisor system user, which is an
+administrator. It can read every state, call every service and read and change the users. The daemon
+uses none of that. The permission does not change the security rating that the Supervisor shows: the
+rating falls for a Supervisor role `manager` or `admin`, a disabled AppArmor profile, the host network,
+the host PID namespace, privileged capabilities, Docker access and full access, and this add-on asks for
+none of them.
 
 The API uses plain HTTP. There is no TLS, so the token and all data cross the network in clear
 text. Run the daemon on a trusted network, or put a TLS proxy in front. Without a token the daemon
@@ -99,7 +130,8 @@ the database can decrypt the traffic and command the devices. Protect the databa
 backups. The add-on stores it in its data folder, which Home Assistant backups include.
 
 A state export is a copy of the database, so it holds the network key. The daemon writes it only as
-the answer to `GET /api/state/export`, to a client that has the token. Keep the downloaded file as
+the answer to `GET /api/state/export`, to a client that has the token or to a Home Assistant
+administrator through ingress. Keep the downloaded file as
 private as the database, and delete it when you do not need it. An import keeps the databases that it
 replaced under `backup/before-import-<time>/` next to the database, the three newest only. They hold
 the network key of the replaced state. In the add-on this folder is in the data folder.
