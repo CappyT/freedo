@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { act } from '#lib/actions.ts';
-	import { burnerHours, canSetFlow, flowDrivers, flowInRange } from '#lib/boiler.ts';
+	import { burnerHours, burnerState, canSetFlow, flowDrivers, flowInRange } from '#lib/boiler.ts';
 	import { data } from '#lib/data.svelte.ts';
 	import { fmt, t, type Key } from '#lib/i18n.svelte.ts';
 	import Icon from '#lib/Icon.svelte';
@@ -32,9 +32,12 @@
 	<div class="page-head titled">
 		<h1>{t('boiler.title')}</h1>
 		{#if boiler}
-			<span class="badge" class:tone-heating={boiler.HeatActive} class:tone-idle={!boiler.HeatActive}>
-				{boiler.HeatActive ? t('boiler.burnerOn') : t('boiler.burnerOff')}
+			{@const burner = burnerState(boiler)}
+			<span class="badge" class:tone-heating={burner === 'on'} class:tone-idle={burner === 'off'} class:tone-off={burner === 'unknown'} data-testid="burner">
+				{burner === 'on' ? t('boiler.burnerOn') : burner === 'off' ? t('boiler.burnerOff') : t('boiler.burnerUnknown')}
 			</span>
+			<!-- The burner flag does not say what the burner works for. The call of the heating circuit is the one sure cause. -->
+			{#if boiler.HeatActive}<span class="badge tone-heating" data-testid="heat-call">{t('boiler.heatCall')}</span>{/if}
 		{/if}
 	</div>
 

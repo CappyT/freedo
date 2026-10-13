@@ -245,6 +245,8 @@ export const it: Record<Key, string> = {
 	'boiler.faults': 'La caldaia segnala questi codici di guasto: {codes}.',
 	'boiler.burnerOn': 'Bruciatore acceso',
 	'boiler.burnerOff': 'Bruciatore spento',
+	'boiler.burnerUnknown': 'Stato del bruciatore non riportato',
+	'boiler.heatCall': 'Riscaldamento richiesto',
 	'boiler.live': 'Valori in tempo reale',
 	'boiler.flow': 'Mandata',
 	'boiler.return': 'Ritorno',

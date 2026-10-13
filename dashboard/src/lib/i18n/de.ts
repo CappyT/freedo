@@ -245,6 +245,8 @@ export const de: Record<Key, string> = {
 	'boiler.faults': 'Der Kessel meldet Fehlercodes: {codes}.',
 	'boiler.burnerOn': 'Brenner an',
 	'boiler.burnerOff': 'Brenner aus',
+	'boiler.burnerUnknown': 'Brennerzustand nicht gemeldet',
+	'boiler.heatCall': 'Heizung angefordert',
 	'boiler.live': 'Aktuelle Werte',
 	'boiler.flow': 'Vorlauf',
 	'boiler.return': 'Rücklauf',

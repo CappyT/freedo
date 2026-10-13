@@ -245,6 +245,8 @@ export const fr: Record<Key, string> = {
 	'boiler.faults': 'La chaudière signale des codes de panne : {codes}.',
 	'boiler.burnerOn': 'Brûleur allumé',
 	'boiler.burnerOff': 'Brûleur éteint',
+	'boiler.burnerUnknown': 'État du brûleur non rapporté',
+	'boiler.heatCall': 'Chauffage demandé',
 	'boiler.live': 'Valeurs en direct',
 	'boiler.flow': 'Départ',
 	'boiler.return': 'Retour',

@@ -245,6 +245,8 @@ export const en = {
 	'boiler.faults': 'The boiler reports fault codes: {codes}.',
 	'boiler.burnerOn': 'Burner on',
 	'boiler.burnerOff': 'Burner off',
+	'boiler.burnerUnknown': 'Burner state not reported',
+	'boiler.heatCall': 'Heating requested',
 	'boiler.live': 'Live values',
 	'boiler.flow': 'Flow',
 	'boiler.return': 'Return',

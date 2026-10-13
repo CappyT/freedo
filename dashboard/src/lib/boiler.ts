@@ -1,4 +1,4 @@
-import type { FlowCircuit } from './types.ts';
+import type { Boiler, FlowCircuit } from './types.ts';
 
 export type FlowDriver = 'manual' | 'curve' | 'defaultCurve' | 'adapt';
 
@@ -26,4 +26,16 @@ export function flowInRange(c: FlowCircuit, value: number): boolean {
 
 export function burnerHours(minutes: number | null): number | null {
 	return minutes === null ? null : Math.round((minutes / 60) * 10) / 10;
+}
+
+export type BurnerState = 'on' | 'off' | 'unknown';
+
+/**
+ * Whether the burner runs. Only the burner flag of the boiler tells it. The call for heat of the
+ * heating circuit does not: the burner also runs for hot water while no room asks for heat, and
+ * it can be off while a room asks. A boiler that reports no flag has an unknown state.
+ */
+export function burnerState(boiler: Pick<Boiler, 'Present' | 'Active' | 'Mon'>): BurnerState {
+	if (!boiler.Present || typeof boiler.Mon?.boiler_flag !== 'number') return 'unknown';
+	return boiler.Active ? 'on' : 'off';
 }
