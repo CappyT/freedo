@@ -13,71 +13,85 @@ Everything that this page does not describe works as in the stable add-on: read 
   add-on. One coordinator serves a radio network. An add-on that finds the other one running stops
   its start with an error in the log.
 - Turn on Start on boot for the add-on you use, and turn it off for the other one.
-- The two add-ons have separate data. A change you make here does not reach the stable add-on.
+- The two add-ons have separate data. A change you make here does not reach the stable add-on, and
+  nothing moves by itself. A [backup](https://github.com/CappyT/freedo/blob/main/addon/DOCS.md#backup)
+  carries the state from one add-on to the other.
 
 ## Move to the beta add-on
 
-1. Update the stable freedo add-on and start it once. Its documentation must have the section State
-   export: an older version writes no export, and this add-on then has nothing to import.
+The backup needs the API token in both add-ons. Set the option `api_token` of each add-on to a value
+you choose, and enter it in the section API token of the page Settings of its web interface.
+
+1. Open the web interface of the stable freedo add-on, then Settings. In the section Backup select
+   Download backup. The file holds the network key: keep it private.
 2. Stop the stable add-on and turn off its Start on boot.
-3. Install freedo beta. Select the same serial port and save.
-4. Start freedo beta. At the first start it imports the state export, and the log says so:
-   `imported the state of the stable add-on: freedo <version>, schema <n>, exported at <time>`.
-5. Check the plant in the web interface, then turn on Transmit and restart. The options of the two
-   add-ons are separate, so this add-on starts in dry-run.
+3. Install freedo beta. Select the same serial port and save. Leave Transmit off.
+4. Start freedo beta. It starts with an empty installation of its own.
+5. Open its web interface, then Settings. In the section Backup choose the file and select Restore
+   backup. The page lists what the backup replaces and asks first. The daemon restarts on the backup
+   by itself, and the page reconnects after a few seconds.
+6. Check the plant in the web interface, then turn on Transmit. The add-on restarts.
 
 The freedo integration needs no change. The add-on that starts tells Home Assistant its address and
 its token, and the integration follows it.
 
-With Transmit on, a start less than 250 seconds after the stop of the other add-on waits for the rest
-of that time. The log says how long.
+The daemon upgrades the schema of a restored backup when the pre-release needs it. The database of
+the stable add-on keeps its schema.
+
+Two waits protect the message identifiers. A device keeps the identifiers it saw for 247 seconds, and
+each database continues its own sequence.
+
+- With Transmit on, a start less than 250 seconds after the stop of the other add-on waits for the rest
+  of that time.
+- With Transmit on, a start less than 250 seconds after a restore waits for the rest of that time. The
+  web interface does not answer while the daemon waits.
+
+The log says how long each wait is.
 
 ## Options
 
-The options `serial_port`, `api_token` and `transmit` work as in the stable add-on. This add-on adds
-one option.
+The options `serial_port`, `api_token` and `transmit` work as in the stable add-on. This add-on has
+no option of its own.
 
-| Option | Default | Meaning |
-|---|---|---|
-| `import_stable_state` | off | At the next start, replace the state of this add-on with the state export of the stable add-on. |
+A configuration saved by a release up to 0.7.0 holds the option `import_stable_state`. The option has
+no effect, and the Supervisor logs a warning about it at each start. Open the Configuration tab and
+save once to remove it.
 
 The API port 18080 has no host port by default, so that both add-ons can be installed. Set one in
 the Network tab when another client needs the API. The integration does not need it.
 
-## Import
-
-The stable add-on writes a copy of its database to `/share/freedo/stable/` at every start and after
-every stop. This add-on reads that copy and never writes to it.
-
-- With no database of its own, this add-on imports the copy at start. When the folder holds no copy,
-  the add-on starts with an empty installation and the log says so. When this daemon cannot read the
-  copy, the start stops with an error.
-- With a database of its own, this add-on imports only when `import_stable_state` is on. It first
-  moves its own database to `/data/backup/before-import-<time>/` and keeps the three newest of these
-  folders. Turn the option off after the import. While the option is on, the add-on imports each new
-  export once: a copy that it already imported is not imported again.
-
-The daemon upgrades the schema of the imported database when the pre-release needs it. The copy in
-`/share/freedo/stable/` and the database of the stable add-on keep their schema.
-
 ## Return to the stable add-on
 
-Stop this add-on, then start the stable add-on. The stable add-on runs on its own database, in the
-state of its last stop. Nothing made here goes back by itself:
+The return is the same move in the other direction.
+
+1. In the web interface of this add-on, download a backup.
+2. Stop this add-on and turn off its Start on boot.
+3. Start the stable add-on and restore the backup in its web interface.
+
+The stable add-on accepts the backup only when it reads the schema of the file. A pre-release with a
+newer schema writes a backup that the stable add-on refuses with a message that names the two schema
+versions. Then the stable add-on stays on its own database, in the state of its last stop:
 
 - A room, a device, a program, a preset or an option that you changed here is not in the stable
   database. Make the change again there.
 - A device that you paired here is not in the stable installation. Add it there too. The network key
-  is the same in both add-ons.
+  is the same in both add-ons when this add-on runs on a backup of the stable one.
 - A device keeps the program it fetched last until a schedule write changes its document. Check the
   programs after the return, as after a
   [database rollback](https://github.com/CappyT/freedo/blob/main/docs/OPERATION.md#schema-upgrade-and-rollback).
 
-The older state is safe on air. The devices do not check the frame counter, so the lower counter of
-the stable database is accepted. The wait of 250 seconds at the start covers the message identifiers.
+An older state is safe on air. The devices do not check the frame counter, so a lower counter is
+accepted. The two waits of 250 seconds cover the message identifiers.
 
-To start this add-on again later from the current stable state, turn on `import_stable_state` for
-one start.
+A restore keeps the database that it replaced in `/data/backup/before-import-<time>/`, and the three
+newest of these folders stay.
+
+## The folder /share/freedo/stable of older releases
+
+Releases up to 0.7.0 kept a copy of the stable database in `/share/freedo/stable/` and this add-on
+imported it. No release writes or reads that folder now, and no add-on deletes it. The copy holds the
+network key: delete `/share/freedo/stable` by hand. The log names the folder at every start while it
+exists.
 
 ## Data and backups
 

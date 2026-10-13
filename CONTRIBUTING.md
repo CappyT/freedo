@@ -89,9 +89,12 @@ The release workflow tags the images with the version. It adds `latest` on a sta
 daemon binary of each platform, `freedo-linux-amd64` and `freedo-linux-arm64`, taken from the daemon
 image of the same release, and one `SHA256SUMS` for every released file.
 
-Both add-ons run `addon/run.sh`. The beta add-on sets `FREEDO_BETA` in its `config.yaml`, and the
-script then imports instead of exporting. `addon/test-run.sh` runs the script in a container as both
-add-ons. Run it after a change to the script. It needs docker.
+Both add-ons run `addon/run.sh`. The beta add-on sets `FREEDO_BETA` in its `config.yaml`, which
+changes only the name in the log. The script copies no state between the add-ons: the user moves it
+with the export and the import of the daemon. `addon/test-run.sh` runs the script in a container as
+both add-ons, with stub daemons and with a daemon built from the tree for the import and its restart.
+Run it after a change to the script or to the import. It needs docker and Go: `GO` names the go
+command.
 
 ## Rules for changes
 

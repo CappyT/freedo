@@ -17,7 +17,7 @@ SvelteKit 3 needs Node 22.17 or later. Run the commands in this directory.
 | `npm run embed` | Copy `build/` to `../internal/web/dist`, the directory that the daemon embeds. |
 | `npm run dev` | Start the development server. `FREEDO_DEV_API` names the daemon (default `http://127.0.0.1:8080`). |
 | `npm run prefix-check` | Check the build under a path prefix. See below. |
-| `npm run ui-check` | Drive the controls in headless Chrome against the daemon: typing in the schedule editor, a refused command, the first end rule, Turn off, the profiles on the Programs screen, the rooms and devices, the first setup on an empty database. `FREEDO_BIN` names a daemon binary that embeds the build. |
+| `npm run ui-check` | Drive the controls in headless Chrome against the daemon: typing in the schedule editor, a refused command, the first end rule, Turn off, the profiles on the Programs screen, the rooms and devices, the first setup on an empty database, the download and the restore of a backup. `FREEDO_BIN` names a daemon binary that embeds the build. |
 
 To run the daemon with the dashboard:
 
@@ -46,6 +46,8 @@ and every page request gets `404`. The API works as before.
 - `src/lib/install.ts`: the rules of the installation pages: the number of a new zone, the writes of a move,
   the state of each setup step. `install.svelte.ts` runs a change and reads the state again.
 - `src/lib/schedule.ts`: the rules and the operations of the schedule editor.
+- `src/lib/backup.ts`: the download and the upload of a backup, and the wait for the restart of the
+  daemon. The section Backup of `settings` uses it.
 - `src/lib/i18n`: the texts. `en.ts` is the reference. `it.ts`, `de.ts` and `fr.ts` must define the
   same keys, and the type checker enforces it. The page picks the language from the browser.
 - `src/lib/fonts`: the fonts, with their licences. See the README in that directory.
@@ -72,7 +74,8 @@ The daemon redirects a nested path that no file matches to the root of the app, 
 `npm run prefix-check` proves it. It starts the daemon given by `FREEDO_BIN` (a binary that embeds the
 build) behind a proxy that strips a random `/api/hassio_ingress/...` prefix and answers 404 to every
 other path. It loads every file that the page references, and, when Chrome is on the machine (or
-`CHROME` names it), it runs the app under the prefix and opens each page.
+`CHROME` names it), it runs the app under the prefix, opens each page, and downloads and restores a
+backup.
 
 ## Access
 
@@ -87,4 +90,10 @@ line widens what a Home Assistant user can do without the token. The list holds 
 pairing calls, so the pages Rooms and devices and First setup work under the add-on. Where the wider route also
 writes a field that ingress must not reach, the client calls a route that carries one field:
 `PUT /api/install/timezone`, `PUT /api/install/devices/{ref}/zone` and `POST /api/pair/devices/{ref}`.
+
+The backup is the exception. `src/lib/backup.ts` calls `GET /api/state/export` and
+`POST /api/state/import`, which are not in the list and are not methods of the client in `api.ts`. The
+file holds the network key and every Home Assistant user can reach ingress, so both calls need the API
+token under the add-on too. The section Backup of Settings says so when the daemon refuses the call, and
+does not open the token form of the whole page.
 See [`docs/OPERATION.md`](../docs/OPERATION.md#dashboard).

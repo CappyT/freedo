@@ -71,8 +71,10 @@ Tested on a real plant (one plant, one ESP32 development board with one CC1101 m
 - On the page Rooms and devices: a room created, its options saved and the room deleted, a device moved
   from No room to a room, a device removed, and a valve restarted. The valve joined again by itself about
   40 seconds after the command.
-- The add-on freedo beta: the move from the add-on freedo with the import of its state. Every device
-  talked to the beta add-on in three minutes. The return to the add-on freedo did not run.
+- The add-on freedo beta: the move from the add-on freedo, with the copy of the state that the add-ons
+  made by themselves up to 0.7.0. Every device talked to the beta add-on in three minutes. The return
+  to the add-on freedo did not run. The backup of the dashboard, which replaces that copy, did not run
+  on a plant: no download, no restore, in neither direction.
 - The read of the firmware version of each device.
 - freedo runs as the only coordinator of that plant, as a Home Assistant add-on with the integration.
   The devices of that plant were not paired from scratch, apart from one valve.
@@ -190,8 +192,9 @@ The add-on and the integration follow two channels:
 - Stable: tags `vX.Y.Z`. The add-on freedo and HACS offer them by default.
 - Experimental: pre-release tags such as `vX.Y.Z-beta.N`, with less testing on a real plant. HACS
   offers them to the integration when you turn on the beta versions of the freedo repository. The
-  second add-on of the repository, freedo beta, runs them. It has its own data and imports a copy
-  of the state of the add-on freedo at its first start. The two add-ons must not run at the same
+  second add-on of the repository, freedo beta, runs them. It has its own data. To move the plant,
+  download a backup on the page Settings of one add-on, stop it, start the other one and restore
+  the backup there. The same steps go back. The two add-ons must not run at the same
   time. See [`addon-beta/DOCS.md`](addon-beta/DOCS.md) for the move and the return. The daemon
   images of a pre-release carry the version tag and `beta`, so a container installation can run
   them.

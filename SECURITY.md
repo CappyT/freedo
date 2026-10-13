@@ -18,14 +18,18 @@ The API token protects the plant. Anyone who has the token can:
 - change the installation, including devices, zones, circuits and (while no device is
   declared) the network key;
 - pair devices and start a firmware transfer;
-- read device identifiers from the installation routes.
+- read device identifiers from the installation routes;
+- download the whole state with `GET /api/state/export`, which holds the network key, and replace
+  the whole state with `POST /api/state/import`.
 
 ## Home Assistant ingress
 
 The add-on starts the daemon with `--ingress`. Home Assistant authenticates the user and the Supervisor
 forwards the request from the address `172.30.32.2`. Every Home Assistant user can open an ingress
-session, also a user who is not an administrator: `panel_admin` hides only the sidebar entry. The daemon
-cannot tell the users apart.
+session, also a user who is not an administrator: `panel_admin` hides only the sidebar entry. The
+Supervisor adds the name and the id of the user to the request, and no header says whether the user is
+an administrator. The daemon cannot tell an administrator from another user, and no add-on setting keeps
+a signed-in user out of ingress.
 
 For a request from `172.30.32.2`, the daemon skips the token for these method and path pairs only. They
 are the calls of the dashboard. The list is `internal/daemon/ingress_routes.json`, and `{n}`, `{id}`
@@ -74,8 +78,13 @@ These stay behind the token, also from that address: the identity of the network
 `coordinator`) and every other field of `PATCH /api/install`, the network key
 (`PUT /api/install/network_key`, and `POST /api/pair` with its `networkKeyHex` field), the kind and the
 serial of a device (`PATCH /api/install/devices/{ref}`), calibration and firmware,
-the low-level device writes, the raw device reads and the debug routes. `GET /api/install` shows the
-home id and the coordinator EUI. They are identifiers, and no route returns the network key. The daemon compares the method and the exact path. It reads the address of the TCP
+the low-level device writes, the raw device reads, the debug routes, and the export and the import of
+the state (`GET /api/state/export`, `POST /api/state/import`). `GET /api/install` shows the
+home id and the coordinator EUI. They are identifiers. One route returns the network key: the state
+export, which is the whole database. It needs the token from every source, because every Home Assistant
+user can reach ingress. So does the import, which replaces the network key, the identity and the
+installation. The section Backup of the dashboard therefore asks an add-on user for the API token: set
+the option `api_token` of the add-on and store the same value on the page Settings. The daemon compares the method and the exact path. It reads the address of the TCP
 connection and no header. It ignores `--ingress`, and logs a warning, unless the process runs under the
 Supervisor: the variable `SUPERVISOR_TOKEN` must be set. Outside the Supervisor the address
 `172.30.32.2` belongs to some other host.
@@ -89,13 +98,17 @@ The network key protects the radio traffic. It lives in the database `freedo-sta
 the database can decrypt the traffic and command the devices. Protect the database and its
 backups. The add-on stores it in its data folder, which Home Assistant backups include.
 
-The stable add-on also writes a copy of the database to `/share/freedo/stable/`, for the beta add-on.
-The copy holds the network key. The folder has mode `0700` and the files have mode `0600`. That stops
-no add-on: every add-on that maps the `share` folder runs as root and reads the copy, and a file
-sharing add-on gives it to its users. A backup that includes the share folder holds it too. Install
-only add-ons you trust, and delete `/share/freedo/stable` when you do not use the beta add-on. The
-stable add-on writes it again at each start. The beta add-on keeps the databases that an import
-replaced under `/data/backup/` in its data folder.
+A state export is a copy of the database, so it holds the network key. The daemon writes it only as
+the answer to `GET /api/state/export`, to a client that has the token. Keep the downloaded file as
+private as the database, and delete it when you do not need it. An import keeps the databases that it
+replaced under `backup/before-import-<time>/` next to the database, the three newest only. They hold
+the network key of the replaced state. In the add-on this folder is in the data folder.
+
+Releases before 0.7.1 copied the database of the stable add-on to `/share/freedo/stable/` at every
+start and stop. No release writes or reads that folder now, and the add-on does not delete it: it is a
+file of the user. The copy holds the network key, and every add-on that maps the `share` folder can
+read it. Delete `/share/freedo/stable` by hand. The log of the add-on names the folder at every start
+while it exists.
 
 The file `/share/freedo/owner.json` names the add-on that started last. A process that can write to
 the share folder can change it. It can then delay the start of an add-on by up to 250 seconds, or

@@ -39,8 +39,8 @@ checks.
 ## Pre-releases and the beta add-on
 
 This add-on runs stable releases only. Pre-releases run in a second add-on of the same repository,
-freedo beta, which has its own data folder. Its documentation describes the import and the return to
-this add-on.
+freedo beta, which has its own data folder. Its documentation describes the move there and the return
+to this add-on, with a [backup](#backup).
 
 The two add-ons must not run at the same time: one coordinator serves a radio network. Each add-on
 writes its host name to `/share/freedo/owner.json` at start and the time of its stop when it stops. An
@@ -53,18 +53,43 @@ for one of the two add-ons only.
 The daemon also opens the serial port for itself alone. A second daemon on the same port stops at
 start with `Serial port busy`.
 
-## State export
+## Backup
 
-The add-on copies its database to `/share/freedo/stable/` at every start, before the daemon opens
-it, and after every stop of the daemon. The folder holds `freedo-state.db`, its `-wal` file when one
-exists, and `export.json` with the daemon version, the schema version and the time of the export. The
-beta add-on reads this copy. Nothing reads it back: this add-on never imports.
+The page Settings of the [web interface](#web-interface) has the section Backup.
 
-The copy holds the network key. The folder `/share/freedo` has mode `0700` and the files have mode
-`0600`, but every add-on that maps the `share` folder runs as root and can read them, and so can a
-user of a file sharing add-on. Home Assistant backups that include the share folder hold the copy.
-Delete `/share/freedo/stable` when you do not use the beta add-on and do not want this copy. The add-on
-writes it again at the next start.
+- Download backup saves one file with the whole state of the daemon: the rooms, the devices, the
+  heating circuits, the programs, the network key, the frame counters and the learned values.
+- Restore backup takes such a file. The daemon checks the file, keeps its current database in
+  `/data/backup/before-import-<time>/` (the three newest of these folders stay) and restarts on the
+  file by itself. The add-on does not stop. The page loses the daemon for a few seconds and
+  reconnects.
+
+The backup is how the state moves between this add-on and freedo beta, in both directions. Nothing
+moves by itself: the add-on writes no copy of its state at start or at stop.
+
+Both actions need the API token, also in the web interface. Set the option `api_token` to a value you
+choose, save and restart the add-on. Then enter the same value in the section API token of the page
+Settings. A token that the add-on created is not readable, so it does not work for this.
+
+The backup holds the network key. Anyone who has the file can read the radio traffic and command the
+devices. Keep it private and delete it when you do not need it.
+
+With Transmit on, the daemon waits 250 seconds after a restore before it starts, and the web interface
+does not answer during that time. A device keeps the message identifiers it saw for 247 seconds, and
+the restored state continues its own sequence of identifiers. The devices keep their programs while
+the daemon waits. Check the programs after a restore: a device keeps the program it fetched last until
+a schedule write changes its document.
+
+A file from a newer daemon is refused: update this add-on first. A file from an older daemon is
+upgraded.
+
+### The folder /share/freedo/stable of older releases
+
+Releases up to 0.7.0 copied the database to `/share/freedo/stable/` at every start and stop. This
+release does not write or read that folder, and it does not delete it. The copy holds the network key,
+and every add-on that maps the `share` folder can read it. Delete `/share/freedo/stable` by hand, for
+example with a file editor add-on or a terminal. The log names the folder at every start while it
+exists.
 
 ## Web interface
 
@@ -82,7 +107,8 @@ thermostat. The same user can change the installation and pair a device: add, ch
 heating circuits, add, move and remove devices, set the time zone, open the pair window and send the pair
 command. The page needs this for the first setup, because the add-on keeps a token that it creates in its
 data folder. The identity of the network, the network key, a pairing with another key,
-calibration, firmware, raw device reads and the debug routes need the token, also from the page.
+calibration, firmware, raw device reads, the debug routes and the [backup](#backup) need the token,
+also from the page.
 Give the right to open the page with care.
 
 The port 18080 does not share this rule: a client of that port needs the token for every API route. The
@@ -113,8 +139,9 @@ manage the installation through the API under `/api/install`. The
 
 The add-on keeps its state under its data folder: the database `freedo-state.db`, the generated
 `api_token` and the log `freedo-unhandled.log`. Home Assistant backups include this folder. The
-database holds the network key, so protect the backups. The only data outside this folder is the
-[state export](#state-export).
+database holds the network key, so protect the backups. The folder `backup` holds the databases that
+a [restore](#backup) replaced, with their network keys. The only data outside the data folder is
+`/share/freedo/owner.json`, the record of the add-on that runs: it holds a host name and a time.
 
 The backup is cold: Home Assistant stops the add-on, copies the folder and starts the add-on again.
 A cold backup keeps the SQLite files consistent.
@@ -126,7 +153,7 @@ device labels and serial numbers: remove them before you share it.
 
 - The add-on logs to the add-on log.
 - Stop and restart send SIGTERM. The daemon saves its state and exits in less than 10 seconds. The
-  add-on then writes the state export. The Supervisor waits 30 seconds for both.
+  Supervisor waits 30 seconds.
 - After a radio error the daemon exits. Turn on the Watchdog switch of the add-on so that Home
   Assistant starts it again.
 - The daemon follows the time zone of its container (variable `TZ`) for the device clock and the

@@ -91,8 +91,9 @@ then, and the circuit must change first. An empty list means that the delete nee
 
 ### Credentials in answers
 
-No route outside `/api/debug/*` returns a credential. The credentials are the device token,
-the session id, the challenge keys and the network key.
+No route outside `/api/debug/*` and `GET /api/state/export` returns a credential. The credentials
+are the device token, the session id, the challenge keys and the network key. The
+[state export](#state-export-and-import) is the whole database, so it holds all of them.
 
 - `Telemetry` of `/api/nodes` omits `auth_token`, `serial_id`, `cloud_session_id`,
   `challenge_key_rotate` and `0262`.
@@ -210,6 +211,15 @@ banner.
 | `PUT`, `DELETE /api/install/zones/{number}/measuring` | Set or clear the measuring device. |
 | `GET`, `POST /api/install/circuits` | List or declare circuits. |
 | `GET`, `PATCH`, `DELETE /api/install/circuits/{id}` | Read, change or delete a circuit. |
+
+### State
+
+| Route | Purpose |
+|---|---|
+| `GET /api/state/export` | Download a snapshot of the state database, as one file. |
+| `POST /api/state/import?confirm=true` | Replace the state database with an exported file and restart the daemon. |
+
+See [State export and import](#state-export-and-import).
 
 ### Debug
 
@@ -1091,6 +1101,72 @@ device shows its EUI in `joiners`, so open the window before you declare the dev
 
 The full procedure is in [OPERATION.md](OPERATION.md#pairing-a-device). It ran on air on one valve,
 through the API. A network with no paired device and a wall thermostat are not verified on air.
+
+## State export and import
+
+The two routes move the whole state of a daemon to another daemon, or back to an earlier state. The
+state is the installation with the network key and the coordinator identity, the programs and the
+presets, the frame counters, the device sessions, the options and the learned values. Both routes
+need the API token, also from the Home Assistant ingress gateway: the file holds the network key,
+and an import replaces the identity of the network.
+
+`GET /api/state/export` answers with one SQLite file. The daemon first saves its state, then writes
+the file with `VACUUM INTO`, which reads one consistent snapshot while the daemon keeps running. The
+file is the database itself, with no `-wal` file. Two more rows of the table `meta` say where it
+comes from: `exported_by` is the daemon version and `exported_at` is the time, RFC 3339 in UTC. The
+schema version is the row `schema_version` that every database holds. The answer has
+`Content-Type: application/vnd.sqlite3`, `Cache-Control: no-store` and the file name
+`freedo-state-<version>-<UTC time>.db` in `Content-Disposition`. Keep the file private.
+
+```sh
+curl -H "Authorization: Bearer $(cat freedo_api_token)" -OJ http://127.0.0.1:8080/api/state/export
+```
+
+`POST /api/state/import?confirm=true` takes the file as the request body. Without `confirm=true`
+the daemon answers `400` and reads nothing. The daemon checks the file before it touches its own
+database:
+
+| Check | Answer when it fails |
+|---|---|
+| The body is at most 64 MiB. | `413` |
+| The file is a SQLite database with the freedo schema. | `400` |
+| The schema version is not newer than this daemon reads. | `409`: update the daemon first |
+| `PRAGMA integrity_check` finds no damage. | `400` |
+| The installation loads and validates, as at a start. | `400` |
+
+A file of an older schema is accepted: the daemon migrates the copy before it uses it. A refused
+import changes nothing.
+
+An accepted import answers `202`:
+
+```json
+{"schema": "8", "exportedBy": "0.7.1", "exportedAt": "2026-03-01T10:00:00Z", "restart": true, "waitSec": 0}
+```
+
+The daemon stores the checked file as `<database>.import` next to its database and restarts
+itself: it stops in order, as on SIGTERM, and replaces its process with a new start of the same
+command line. The process id stays, so a container, a service manager or the add-on start script
+sees one process that keeps running. The new start moves the current database and its `-wal` and
+`-shm` files to `backup/before-import-<UTC time>/` next to the database, keeps the three newest of
+these folders, and moves the imported file into place. A daemon that stops between these steps
+finishes them at its next start. The API does not answer for a few seconds.
+
+`waitSec` is `250` when the daemon transmits on a live radio, else `0`. A device keeps the CoAP
+message identifiers that it saw for 247 seconds, and the imported database continues its own
+sequence of identifiers. So a start with `--tx` on a live radio waits until 250 seconds have passed
+since the import, before it opens the radio and the API. The devices keep their programs during
+that time. A dry-run start does not wait. The devices do not check the frame counter, so a lower
+counter in the imported database is accepted.
+
+```sh
+curl -H "Authorization: Bearer $(cat freedo_api_token)" -H "Content-Type: application/octet-stream" \
+  --data-binary @freedo-state-0.7.1-20260301T100000Z.db \
+  "http://127.0.0.1:8080/api/state/import?confirm=true"
+```
+
+The imported state does not tell the devices that their documents changed: check the programs
+after an import, as after a [database rollback](OPERATION.md#schema-upgrade-and-rollback). An
+import of a database with another network key cuts the devices off until they are paired again.
 
 ## Unhandled log
 

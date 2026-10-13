@@ -91,8 +91,9 @@ adds the [program presets](API.md#program-presets).
 
 To go back to a daemon before schema 8, stop the daemon and restore a copy of the database
 that you made before the upgrade. Copy `freedo-state.db` while the daemon is stopped, before you
-install a newer version. In Home Assistant, the pre-releases run in the beta add-on on a copy of
-the database, and the database of the stable add-on keeps its schema: see
+install a newer version, or download a [backup](#backup) while it runs. An older daemon does not
+import a backup of a newer schema. In Home Assistant, the pre-releases run in the beta add-on on
+its own database, and the database of the stable add-on keeps its schema: see
 [addon-beta/DOCS.md](../addon-beta/DOCS.md).
 
 The restored copy holds the state at the time of the copy. You lose every change made after
@@ -109,6 +110,29 @@ the restore, and write again each one that differs from the one you want.
 Do not change `schema_version` by hand. An older daemon then ignores the presets and the
 away programs, and it runs without the hot water program once schema 8 moved it into the
 presets.
+
+### Backup
+
+The daemon exports its whole state as one file and imports such a file: see
+[State export and import](API.md#state-export-and-import). The page Settings of the
+[dashboard](#dashboard) has both actions in the section Backup. The file holds the network key.
+Anyone who has it can decrypt the radio traffic and command the devices: keep it private.
+
+An import keeps the replaced database in `backup/before-import-<UTC time>/` next to the database,
+the three newest only, and restarts the daemon by itself. What restarts the daemon:
+
+- Home Assistant add-on: the daemon replaces its own process, and the start script keeps waiting on
+  the same process id. The add-on does not stop, and the Supervisor does nothing.
+- Container image: the daemon is the first process of the container and replaces itself. The
+  container does not stop, so no restart policy is needed.
+- Plain binary: the same. Under a service manager the process id stays.
+
+When the replacement of the process fails, the daemon exits with status 1 and the imported file
+stays staged. The next start, by a restart policy or by hand, applies it.
+
+With `--tx` on a live radio, the start waits until 250 seconds have passed since the import, and the
+API does not answer during that time. The log says how long. To go back to the replaced state, stop
+the daemon and copy the files of the newest `before-import` folder over the database.
 
 ## Container
 
@@ -160,6 +184,14 @@ home and away programs, and chooses and manages the program presets. It
 calls the routes of [API.md](API.md) and no other.
 Settings shows the health summary of the daemon. It marks `serialErrors` above zero with a warning:
 see [Serial link faults](#serial-link-faults).
+
+Settings also has the section Backup. Download backup saves the [state export](#backup) as a file,
+and the section warns that the file holds the network key. Restore backup takes a file, asks first
+with the list of what the backup replaces, and sends it. The page then shows that freedo restarts,
+with the 250 seconds of a transmitting daemon when they apply, and reconnects by itself: a missing
+answer during the restart is not shown as a fault. Both actions need the API token, also under the
+Home Assistant add-on. Store the token in the section API token of the same page. Without it the
+section says so, and every other page keeps working.
 
 The page Rooms and devices manages the installation. It lists the devices room by room, with the state
 of each device, identify and the child lock. The devices in no room form a last group, No room, while
@@ -254,7 +286,8 @@ connections from that address only and to treat the user as authenticated. The d
   [`internal/daemon/ingress_routes.json`](../internal/daemon/ingress_routes.json) qualify. They include
   the installation and pairing calls of the pages Rooms and devices and First setup, so those pages need no token
   under the add-on. Every other request from that address needs the token. [SECURITY.md](../SECURITY.md#home-assistant-ingress) lists
-  the pairs and what a user can do with them.
+  the pairs and what a user can do with them. The export and the import of the state are not among
+  them: the section Backup of Settings needs the token under the add-on too.
 - Only `addon/run.sh` sets the flag. The bootstrap file and the environment have no such setting, and
   the container image does not set it. The daemon ignores the flag and logs a warning unless the
   variable `SUPERVISOR_TOKEN` is set, which only the Supervisor does.
@@ -264,7 +297,9 @@ connections from that address only and to treat the user as authenticated. The d
 
 The daemon cannot tell the Home Assistant users apart. Every user who can open the panel can use those
 calls, and the project accepts this. Home Assistant lets every user open an ingress session, so the
-add-on option `panel_admin` (default `true`) hides only the sidebar entry. Do not set `--ingress` in
+add-on option `panel_admin` (default `true`) hides only the sidebar entry. The Supervisor adds the
+headers `X-Remote-User-Id`, `X-Remote-User-Name` and `X-Remote-User-Display-Name`, and none of them
+says whether the user is an administrator. Do not set `--ingress` in
 another setup. A reverse proxy on the host shows the daemon its own address, not the address of the
 client.
 
