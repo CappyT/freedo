@@ -946,20 +946,98 @@ marks a role that the capture shows but does not resolve.
 | 0161 | `sen_0161` | uint16 | one sample of 6205 in a thermostat `d/*/sen` |
 | 021a | `dcfg_const_021a` | uint16 | `d/config`, always `0000`, no store backend |
 
-Tag `01a3` bits, from `app_state_flags_recompute`@0x2e0fc in the valve firmware.
-`tado.FaultNoNeighbour` and `tado.FaultNoConfigAnswer` name them, and
-`tado.DecodeFaultWord` splits a word into warnings and fault.
+Tag `01a3` is one RAM word in the valve (0x20003850) and in the wall thermostat
+(0x20002090). Both images hold the same code for it. A set helper (valve @0x108d8,
+thermostat @0x106e0) and a clear helper (@0x1094c, @0x10754) change single bits, and
+each change sends `d/*/err`. Byte 1 of the word holds a state code from the interface
+module of the device, and no flags. `tado.FaultNoNeighbour` and
+`tado.FaultNoConfigAnswer` name two bits, and `tado.DecodeFaultWord` splits a word into
+warnings and fault. Addresses in the table are valve first, thermostat second.
 
 | Bit | Constant | Set when |
 |---|---|---|
 | `0x02` | `FaultNoNeighbour` | the 60 s check (@0x2e188) finds no IPv6 source address or no neighbour |
+| `0x04` | - | the attribute store refuses a write in the common attribute set path (@0xd902, @0xe116). No code clears the bit, so it stays until a reboot |
+| `0x08` | - | a write of a persistent configuration record fails 3 times, or the write of a default record fails (@0xcc94 and @0xccdc, @0xd694 and @0xd6dc). No code clears the bit |
 | `0x80` | `FaultNoConfigAnswer` | the valve got no answer to its own `d/config` GET for 90 min (timer 5400 s, cleared by any answer code in `config_report_response_handle`@0x1fb70), and from boot until the first answer |
+| `0xf800` | - | state code of the interface module, `(word >> 11) & 0x1f`. The module writes attribute `0fa3` = code `<< 3`, and an observer copies it into byte 1 (@0x108f8, @0x10700). Bits `0x0700` always read 0 |
+| `0x100000` | - | the stack check finds 32 units or less of free stack (@0x2e2d8, @0x2cc2a). No code clears the bit |
+| `0x200000` | - | no code sets the bit. The `d/*/err` serializer clears it after a report that carries it (@0x20712, @0x1ee66) |
 
-Both bits describe the radio link. A missed hourly GET on a weak link sets
+Bits `0x02` and `0x80` describe the radio link. A missed hourly GET on a weak link sets
 `0x80` and the next `2.05` clears it. The daemon reports them as
 `commsWarnings` (`noNeighbour`, `noConfigAnswer`) in `/api/health` and
 `/api/nodes`, and keeps `fault` false for them. Any other bit sets `fault`.
 `faultWord` keeps the raw word.
+
+The state code of the valve comes from the motor state machine
+(`hvac_therm_interface_valve`, state byte at 0x2000922f, published @0xa340). The code
+is one value: `0x4000` is code 8. Each motor move and each calibration
+writes the code again, so a later successful move or a calibration start sets it to 0.
+After a failed move the valve waits `0276` seconds (default 600) and tries again.
+
+| Code | Word | Set when |
+|---|---|---|
+| 0 | `0x0000` | a move ends at its target, or a calibration starts or ends without a remark |
+| 1 | `0x0800` | calibration fails with error 1 after the last attempt: the search finds no contact with the valve pin |
+| 2 | `0x1000` | calibration fails with error 2: the closing move finds no end stop |
+| 3 | `0x1800` | calibration fails with error 3: the travel between pin contact and end stop is below 300 steps, or the motor stops in an early phase |
+| 4 | `0x2000` | calibration ends and is accepted with a travel of 300 to 899 steps, after the last attempt |
+| 5 | `0x2800` | the low-voltage sequence of code 13 ended its reference move |
+| 6 | `0x3000` | calibration fails with error 6: the voltage check refuses the start, or the motor driver is not ready |
+| 7 | `0x3800` | the voltage check refuses or stops a move (supply at 1699 or less during the move, or code 13 is latched), or the motor driver is not ready |
+| 8 | `0x4000` | a move to the closed end runs 200 steps past the calibrated closed position and finds no stall. The pin gives no resistance: the valve is not on a radiator, or the calibration does not fit the radiator |
+| 9 | `0x4800` | a move to a position between the ends stops on a stall |
+| 10 | `0x5000` | a move is requested while the motor has no reference position, or the target is above 3500 steps. The valve starts a calibration |
+| 11 | `0x5800` | a move or a calibration returns a result that the state machine does not know |
+| 12 | `0x6000` | move result 8. No code path that produces this result is found |
+| 13 | `0x6800` | the voltage under motor load (tag `0273`) reads 2149 or less on two checks in sequence (@0x1d618). The valve then makes one last move and refuses the next ones |
+| 14 | `0x7000` | a move to the closed end stalls more than 100 steps before the calibrated closed position |
+| 15 | `0x7800` | a move reaches its target after the driver saw a load event |
+
+A plant measurement agrees with code 8. A valve that is off its radiator reports
+`01a3 = 0x4000`. After the valve is mounted it sends `d/*/mnt` and `01a3 = 0`.
+
+The wall thermostat sets the same bits `0x02`, `0x04`, `0x08`, `0x80` and `0x100000`
+from the same conditions. Its two interface module records (0x5bd78, 0x5bd9c) hold no
+status function, so the thermostat never writes `0fa3` and its state code stays 0. The
+thermostat has no other fault word. A boiler fault travels in the `hvac/*` resources
+and is not part of `01a3`.
+
+`d/*/err` carries `01a3`, `1010`, `1011` to `1015` and `02a9`. The other tags hold
+diagnostic values and have no confirmed meaning.
+
+Calibration of the valve reports in `d/*/mnt`. Tag `01fa` (`calib_state`) is the
+progress and tag `01fb` (`calib_error`) is the result code of the motor
+(`valve_app_fsm_event`@0xab96, result from @0xeb38). The valve repeats a failed
+calibration up to `0277` times (default 3) before it reports the failure. Errors 6 and
+11 are not repeated.
+
+| `01fa` | Meaning |
+|---|---|
+| 0 | idle, the valve waits for the mount signal (`01b8` = 1) |
+| 1 | started |
+| 2 | done, `01b5` and `01b6` hold the open and the closed position |
+| 3 | failed, `01b5` and `01b6` read 0 except for error 6 |
+
+| `01fb` | Meaning |
+|---|---|
+| 0 | no error |
+| 1 | no contact with the valve pin |
+| 2 | no end stop on the closing move |
+| 3 | travel below 300 steps, or a stop in an early phase, or a move that an abort or low voltage ends |
+| 6 | the voltage check refuses the start, or the motor driver is not ready |
+
+Tag `0182` of `d/*/fallback` is the device fallback mode.
+
+| Device | `0182` | Meaning |
+|---|---|---|
+| valve | 0 | the control of its zone is present (zone flag `6400` is not 0) |
+| valve | 1 | the control of its zone is absent (`6400` = 0). The valve feeds its own temperature to the zone (`coap_zone_ctrl_attr_write`@0x30ad8) |
+| thermostat | 0 to 3 | the mode of its fallback manager (@0x31664 refuses a value above 3). 0 is no fallback and 1 is the entry mode. `tado/fallback.go` names the modes |
+
+A valve has no mode 2 or 3. A plant measurement shows `0182 = 1` on a valve directly
+after pairing and 0 some minutes later.
 
 The `z/s` control block names `6020` `zone_kind` (1 heating, 2 hot water) and
 `6260` `zone_channel_enable`. The flags `6160` and `61e0` carry the home and away
