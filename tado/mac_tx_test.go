@@ -44,6 +44,27 @@ func TestMACRetransmissionKeepsSeq(t *testing.T) {
 	}
 }
 
+// A downlink that needs no CoAP answer is delivered by the Enhanced ACK of the
+// device, and the queue history records it so.
+func TestEnhAckDeliveryRecordsOutcome(t *testing.T) {
+	e, _, _ := newTestEmu(t)
+	if err := e.EnqueueChildLock("bedroom", 10, true); err != nil {
+		t.Fatal(err)
+	}
+	f := nextAttempt(t, e, "bedroom")
+	e.OnFrame(BuildEnhAck(f.Seq, BridgeEUI, f.DstEUI, 0x0101))
+	if n := e.Pending("bedroom"); n != 0 {
+		t.Fatalf("pending=%d after the Enhanced ACK, want 0", n)
+	}
+	history := e.QueueHistory("bedroom")
+	if len(history) != 1 || history[0].Result != "delivered" || history[0].Reason != "enhanced-ack" || history[0].Tries != 1 {
+		t.Errorf("history=%+v, want one delivery by enhanced-ack on the first try", history)
+	}
+	if st := e.Stats(); st.DownlinksDelivered != 1 {
+		t.Errorf("delivered=%d, want 1", st.DownlinksDelivered)
+	}
+}
+
 // A downlink that waits for a CoAP answer retries as a new frame.
 func TestCoAPTransactionRetryTakesNewSeq(t *testing.T) {
 	e, _, _ := newTestEmu(t)
