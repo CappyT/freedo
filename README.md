@@ -29,28 +29,44 @@ Tested on a real plant (one plant, one ESP32 development board with one CC1101 m
 
 - Reception and decoding of device reports (temperature, demand, boiler values, battery), and the MAC and CSL
   exchange with the bridge firmware.
-- Setpoint and return-to-program writes to valves and to the wall thermostat.
+- Setpoint, boost and return-to-program writes to a valve.
+- Hot water on, off and temperature writes to the wall thermostat.
 - A fixed flow limit, read back from the boiler through the OpenTherm values the thermostat reports.
+- Identify on a valve and on the wall thermostat.
+- The display orientation and the change notice of a valve.
+- The motor calibration, on one valve.
+- The temperature correction in the modes `config` and `dbg2`, on one valve.
+- A window state that the coordinator sets, on one valve.
+- Pairing one valve through the API: the factory reset command, the removal from the installation, the
+  pair window of the bridge firmware, the declaration of a device that the installation did not hold, the
+  `d/pair` command and the serial that the daemon learns from the device. The valve works in its zone
+  again.
+- The read of the firmware version of each device.
+- freedo runs as the only coordinator of that plant, as a Home Assistant add-on with the integration.
+  The run is two days long.
 
 Tested only with automated tests and synthetic fixtures:
 
-- Home and away writes, away temperatures and the end rule `until_auto_change`.
-- Pairing a device to a freedo network, with the pair window of bridge firmware v2.9.
+- Home and away writes, away temperatures, away programs and the end rule `until_auto_change`.
+- A network that starts with no paired device, and the pairing of a wall thermostat.
 - The Router Advertisement gateway and DNS addresses (`router_gateway`, `router_dns`) and the zone
   configuration of a heating zone with no circuit.
-- Weekly schedules on the devices and the offline schedule (devices run the program alone).
+- Weekly schedules on the devices, the program profiles and the offline schedule (devices run the
+  program alone).
 - Firmware transfer to a device. No block was ever sent on air.
 - Early start, the weather curves (your own and the default curve), automatic flow adaptation, the
-  external room temperature and the controller gain suggestion.
+  external room temperature, the automatic correction and the controller gain suggestion.
 - The energy and gas estimate. No comparison with a gas meter exists.
 - The web dashboard. `npm test` covers the API client and the schedule editor logic. `npm run prefix-check`
   and `npm run ui-check` start the daemon with no radio and a seeded synthetic installation. They open each
   page in headless Chrome under a path prefix, and drive the schedule editor, the presence switch, the
-  child lock and Turn off. It has not run against a real plant, and the Home Assistant ingress path has
-  not run inside Home Assistant.
-- The Home Assistant integration and the presence blueprint. The repository documents automated tests only.
+  child lock, Turn off, the profiles, the rename of a device, the page Rooms and devices (a room, a
+  pairing, a move, a removal, a circuit) and the first setup on an empty database. The pages Rooms and
+  devices and First setup did not run on the plant. No record lists the other dashboard commands that ran
+  there.
+- The presence blueprint and the season profile blueprint.
 
-freedo has not run for several days as the only coordinator of a plant.
+No record covers a run longer than two days or a long outage of the coordinator.
 
 ## Scope and limits
 
@@ -62,10 +78,11 @@ freedo has not run for several days as the only coordinator of a plant.
   no test on air has used.
 - An existing tado plant pairs to freedo from scratch. Each device leaves the commercial bridge and
   joins the network of freedo. You lose the tado app and the cloud functions for those devices. The
-  rooms and schedules that you set in the tado app do not move to freedo: you describe them again
-  through the API. To go back, pair the devices to the tado bridge again. That procedure belongs to
-  the tado bridge and is not documented or tested here. freedo can make a device leave its network
-  (`POST /api/nodes/{id}/factoryreset`).
+  rooms and schedules that you set in the tado app do not move to freedo. You describe the rooms again
+  in the dashboard or through the API, and the schedules in the dashboard, Home Assistant or the API. To go back,
+  pair the devices to the tado bridge again. That procedure belongs to the tado bridge and is not
+  documented or tested here. freedo sends a device the command to leave its network
+  (`POST /api/nodes/{id}/factoryreset`). The device leaves when you then hold its button.
 - A setup import from the tado cloud is planned: rooms, schedules and settings. The devices still pair from
   scratch. It is not available.
 - Supported hardware: the valves and the wall thermostats of the V3+ line. Other device types
@@ -159,26 +176,40 @@ the token.
 
 ## First setup
 
+The page First setup of the [dashboard](#dashboard) shows these steps with their live state.
+
 1. Start the daemon in dry-run and read its log.
 2. Check `GET /api/health`. The field `calibrated` must be `true`. If it is `false`, calibrate the radio once:
    see [Radio calibration](docs/OPERATION.md#radio-calibration). The field `timezone.name` must be the
-   time zone of the plant. If `timezone.fallback` is `true`, the daemon uses the zone of its host: see
-   [Time zone](docs/OPERATION.md#time-zone).
-3. Describe the installation through the API under `/api/install`: devices, zones and circuits. The
-   daemon creates a network key and a coordinator identity at the first start.
-4. Switch the commercial bridge off, add `--tx` (or the add-on option Transmit) and run one safe command.
-5. Pair the devices as described in [`docs/OPERATION.md`](docs/OPERATION.md#pairing-a-device).
+   time zone of the plant. If `timezone.fallback` is `true`, the daemon uses the zone of its host: set
+   the time zone on the page, or see [Time zone](docs/OPERATION.md#time-zone).
+3. Add the rooms, on the page or through the API under `/api/install`. The daemon creates a network key
+   and a coordinator identity at the first start.
+4. Switch the commercial bridge off and add `--tx` (or the add-on option Transmit).
+5. Pair the devices, on the page or as described in [`docs/OPERATION.md`](docs/OPERATION.md#pairing-a-device).
+6. Add the heating circuit, on the page or through the API.
+
+The calibration, the serial port, `--tx` and the commercial bridge stay outside the page.
 
 ## Dashboard
 
 The daemon serves a web interface at its HTTP address. It shows the zones, the hot water, the boiler and
-the devices. It sets temperatures, switches the home between home and away, and edits the weekly
-schedules. It has English, Italian, German and French texts and a light and a dark theme.
+the devices. It sets temperatures with the four end rules, boosts a zone and switches it off. It switches
+the home between home and away. It edits the home and away schedules, and it creates, renames, deletes and
+activates the program profiles. It sets the flow limit, renames a device, locks a valve and identifies a
+device. It has English, Italian, German and French texts and a light and a dark theme.
 
 - Container: open `http://<host>:8080/` and enter the API token once.
-- Home Assistant add-on: select Open Web UI, or the entry freedo in the sidebar. No token is needed.
+- Home Assistant add-on: select Open Web UI, or the entry freedo in the sidebar. The pages that monitor and control
+  need no token.
 
-The dashboard monitors and controls. Installation management stays in the API. See
+The page Rooms and devices manages the installation. It creates, renames and deletes rooms. It adds a
+heating circuit, changes its heat source and deletes it. It moves a device, and it sets the circuit, the
+measuring device and the demand reporter of a room. It adds a device: it opens the pair window, declares
+the device that the window hears and sends the pair command. It removes a device and shows the effects before you confirm. Under Home Assistant ingress this
+page and the page First setup ask for the API token once. The network key, the identity of the network,
+the kind and the serial of a device, the zone options, the name of a circuit and the factory reset stay in
+the API. See
 [`docs/OPERATION.md`](docs/OPERATION.md#dashboard) for the access rules and
 [`dashboard/README.md`](dashboard/README.md) to build it.
 
@@ -198,7 +229,9 @@ what is not verified on air. The routes are in [`docs/API.md`](docs/API.md). The
 | Boost for a zone or for all zones | equal | Home Assistant sends one command for each zone. |
 | Weekly schedule and copy | equal | Several day programs in one document, and the schedule fetch after an edit, are not verified on air. |
 | Home and away | equal | The write shapes come from a capture. The transmission is not verified on air. |
-| Away temperature for each zone | equal | 5 C means off in away, as in the cloud. Hot water has no field. Not verified on air. |
+| Away temperature for each zone | equal | 5 C means off in away, as in the cloud. Hot water takes no away temperature: it is off in away unless it has an away schedule. Not verified on air. |
+| Away schedule for each zone | extra | A zone with an away schedule follows it while the home is away, hot water included. No capture holds this write shape. Not verified on air. |
+| Program profiles | extra | A profile holds the home and away schedules of every zone. One profile is active. The dashboard and Home Assistant switch it, and a blueprint switches it by season. Not verified on air. |
 | Preheat before arrival | partial | A blueprint ends away when a person enters an approach zone. One distance for the whole home. No travel time. |
 | Early start | equal | The daemon learns the heating rate of each zone. No firmware does this. Not verified on air. |
 | Geofencing | partial | A blueprint uses the presence of Home Assistant for the whole home. The daemon has no geofencing code. |
@@ -211,10 +244,10 @@ what is not verified on air. The routes are in [`docs/API.md`](docs/API.md). The
 | Temperature correction | equal | Three modes. `config` homes the motor. `dbg2` ran on one valve and is in no capture. |
 | Automatic correction from an outside sensor | extra | In modes `config` and `dbg2`, at most once per settable interval, with a deadband. Each write in mode `config` homes the motor. Not verified on air. |
 | Room temperature from an outside sensor | extra | Mode `setpoint` shifts the setpoints. With the automatic correction the learners read the sensor. Home Assistant chooses for each room a device of the room or the sensor. Filter and limits are design estimates. Not verified on air. |
-| Manage rooms and devices | partial | Through the API. The dashboard renames devices. Home Assistant chooses the measuring device of each room. A device declared without a serial takes it from its first request. Home Assistant creates entities at integration start, so reload it after a change. |
-| Interface | partial | A web dashboard on the daemon monitors and controls the zones, the hot water, the boiler and the devices. It has no installation management yet: use the API. Not tested on a real plant. |
-| Pair a device | partial | The pair window with firmware v2.9 is not verified on air. The integration opens the window and does not send the pair command. |
-| Remove a device | partial | The API reports the effects first. The delete sends no frame. The device leaves the network only after `factoryreset`. |
+| Manage rooms and devices | partial | The dashboard creates, renames and deletes rooms, creates and deletes circuits, moves and renames devices, and sets the measuring device and the demand reporter. The zone options (window, correction, away temperature) are in the API and in Home Assistant, the controller gains in the API only. Home Assistant maps each room to an area. A device declared without a serial takes it from its first request. Home Assistant creates entities at integration start, so reload it after a change. |
+| Interface | partial | A web dashboard on the daemon monitors and controls the zones, the hot water, the boiler and the devices, and manages the schedules, the profiles and the installation. The network key, the zone options and the factory reset are not in the dashboard. The installation pages did not run on a real plant. |
+| Pair a device | partial | The dashboard and the API pair a device. The API flow ran on air on one valve. A network with no paired device, a wall thermostat and the dashboard flow are not verified on air. A device can miss the first pair command: send it again. The integration opens the window and does not send the pair command. |
+| Remove a device | partial | The dashboard and the API report the effects first. The delete sends no frame. `factoryreset` alone does not detach the device at once: it leaves the network when you then hold its button. Verified on one valve. Factory reset is in the API only. |
 | Firmware version and update | partial | The daemon keeps the version of each device across restarts and reads it once after start from a device that never reported it. A transfer route exists. No block was sent on air. freedo distributes no image. |
 | Flow limit | equal | The fixed limit is verified on air through the OpenTherm reading. |
 | Weather curve and automatic flow adaptation | partial | The curve has two points. The adaptation is a local controller and not the cloud algorithm. It is off by default. Not verified on air. |
@@ -223,7 +256,7 @@ what is not verified on air. The routes are in [`docs/API.md`](docs/API.md). The
 | Energy and gas estimate | partial | Estimated from modulation and name-plate data. Not a measurement. Gas meter readings give an estimated meter value and, after two readings, a correction factor. Price and cost stay in the Home Assistant Energy panel. |
 | History and reports | partial | Home Assistant records the history. The daemon keeps no time series. |
 | Notifications | partial | Binary sensors raise the alerts. Push notifications are Home Assistant automations. |
-| Several users | not implemented | One bearer token. |
+| Several users | not implemented | One bearer token. Under Home Assistant ingress every Home Assistant user can use the dashboard. |
 | HomeKit | not implemented | |
 | Duration of a change made on a valve | equal | The rule is applied by the daemon. No capture holds the thermostat buttons. |
 | Offline schedule on the devices | extra | Devices run the program alone after 25 minutes without a coordinator. The 25 minute test on a real plant is open. |

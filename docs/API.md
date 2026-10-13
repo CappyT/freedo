@@ -21,7 +21,7 @@ the routes. For the radio facts behind a rule, see [PROTOCOL.md](PROTOCOL.md).
 - `--health-public` makes `GET /api/health` readable without a token, for a container
   health check. The default is off.
 - `--ingress` makes the daemon accept the calls of the dashboard from the connection address
-  `172.30.32.2`, the Home Assistant ingress gateway, without a token. It covers 18 method and path
+  `172.30.32.2`, the Home Assistant ingress gateway, without a token. It covers 25 method and path
   pairs only. Only the add-on start script sets it, and it has no effect unless `SUPERVISOR_TOKEN` is
   set. Every other request needs the token. See [Access](OPERATION.md#access).
 - With no token, the daemon accepts a loopback address only and warns at start. An address
@@ -64,6 +64,23 @@ Every write under `/api/install` answers `{"rev": N, "warnings": [...], <object>
 write accepts `rev` as an optimistic concurrency token. The label of a device is unique:
 a write that repeats the label of another device gets `409` and names that device.
 A delete that breaks a reference gets `409` and names the row that holds the reference.
+
+`GET /api/install/devices/{ref}/removal` answers `{"rev", "device", "effects", "forceable"}`. It shows
+what `DELETE` on the same device changes. Each entry of `effects` is `{"effect", "zone"}` or
+`{"effect", "circuit"}`:
+
+| Effect | Meaning |
+|---|---|
+| `member` | The zone loses the device as a member. One entry for each zone of the device. |
+| `hot_water` | The zone is the hot water zone. |
+| `last_member` | The zone has no member left. |
+| `reporter` | The zone loses its demand reporter. |
+| `measuring_device` | The zone loses the device that gives its temperature. |
+| `heat_source` | The circuit loses its heat source. |
+
+`DELETE` without `?force=true` gets `409` with the same `effects` while the list is not empty.
+`force=true` releases the zone memberships. It never releases a heat source: `forceable` is `false`
+then, and the circuit must change first. An empty list means that the delete needs no force.
 
 ### Credentials in answers
 
@@ -144,7 +161,7 @@ banner.
 | `POST /api/nodes/{id}/netcmd` | Send a non-destructive network command. |
 | `POST /api/nodes/{id}/config` | Write chosen `d/config` tags. |
 | `DELETE /api/nodes/{id}/config/offlineScheduleEnabled` | Remove the per-device offline schedule value. |
-| `POST /api/nodes/{id}/factoryreset` | Make a device leave the network. |
+| `POST /api/nodes/{id}/factoryreset` | Send the network command that makes a device leave the network. |
 | `PUT /api/nodes/{id}/schedule` | Write the home program of the heating zone of a device, or the document of a device in no heating zone. |
 | `GET`, `POST`, `DELETE /api/nodes/{id}/fw` | Read the firmware state, start or cancel a transfer. |
 | `GET /api/nodes/{id}/currentlog` | Read the device log. |
@@ -729,8 +746,11 @@ report adds a sample with `4060`, `40a0`, `4160` and the fresh outdoor temperatu
   `d/<serial>/mnt` report: `Telemetry` shows `calib_state` (1 started, 2 done, 3 failed),
   `calib_error`, `ctrl_1b5` and `ctrl_1b6`.
 - `POST /api/nodes/{id}/factoryreset` with `{"confirm": true}` queues the network command 1007.
-  The device leaves the network. It keeps its token. The physical button wipes its storage.
-  The call changes nothing in the installation.
+  The command alone does not detach the device at once: one valve sent a report under the network
+  key 17 seconds after it acknowledged the command, and the daemon accepted it. The valve left the
+  network when its button was held. It is not measured whether the command erases the stored key.
+  The device keeps its token. The physical button wipes its storage. The call changes nothing in
+  the installation.
 
 ### Display
 
@@ -1034,8 +1054,11 @@ daemon writes the serial into the installation when the prefix fits the kind (`V
 valve, `RU` for a wall thermostat) and no other device holds it. A declared serial never
 changes this way.
 
-The full procedure is in [OPERATION.md](OPERATION.md#pairing-a-device). Pairing has not been
-verified on air with the current firmware.
+`POST /api/install/devices` needs the `eui` of the device and answers `400` without it. A new
+device shows its EUI in `joiners`, so open the window before you declare the device.
+
+The full procedure is in [OPERATION.md](OPERATION.md#pairing-a-device). It ran on air on one valve,
+through the API. A network with no paired device and a wall thermostat are not verified on air.
 
 ## Unhandled log
 

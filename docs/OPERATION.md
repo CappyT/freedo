@@ -155,9 +155,44 @@ The daemon serves a web interface at the root of its HTTP address. It shows the 
 water, the boiler and the devices. It sets temperatures with the four end rules, switches a zone off,
 returns it to its program, switches the home between home and away, edits the weekly schedules of the
 home and away programs, and chooses and manages the program presets. It
-calls the routes of [API.md](API.md) and no other. Installation management stays in the API.
+calls the routes of [API.md](API.md) and no other.
 Settings shows the health summary of the daemon. It marks `serialErrors` above zero with a warning:
 see [Serial link faults](#serial-link-faults).
+
+The page Devices manages the installation. It lists the devices room by room and does these tasks:
+
+- Add a room, rename it, delete it. A delete leaves the devices of the room in the installation, in no
+  room.
+- Add a device: it opens the pair window for 600 seconds and shows the time left, lists the devices the
+  window hears, declares the chosen one with a type, a name and a room, and sends the pair command. It then
+  shows the pairing as in progress, and as done only when the daemon served the device a session or learned
+  its serial number. Send again repeats the pair command while the window is open: a device can miss the
+  first one. The page closes the window when the device joined. See [Pairing a device](#pairing-a-device).
+- Move a device to another room, or to no room.
+- Remove a device. The page shows the effects that the daemon reports and asks before the delete. A
+  device that is the heat source of a circuit cannot be removed. The delete sends no frame, and the
+  device keeps talking on the network.
+- Add a heating circuit, change its heat source, delete it.
+- In the settings of a room: choose the circuit, the measuring device and the demand reporter, and add a
+  device that the installation already holds. This is how the wall thermostat joins the hot water room
+  and a heated room.
+
+The dashboard chooses the number of a new room: 0 for hot water, else the lowest free number from 1. It
+declares a device without a serial number, and the daemon takes the serial from the first request of the
+device. Every other installation option stays in the API: see
+[Installation options](API.md#installation-options) and [Zone options](API.md#zone-options).
+
+The page First setup takes a new daemon to a working plant. Devices and Settings link to it, and the home
+page does while the installation has no room. It shows six steps with their live state:
+
+| Step | Where | Done when |
+|---|---|---|
+| Radio | Outside: connect the bridge, pass `--port`, [calibrate](#radio-calibration) | `mode` is `live` and `calibrated` is not `false` |
+| Time zone | On the page: it writes `timezone` | `timezone.fallback` is `false` |
+| Rooms | On the page | The installation has a heating zone |
+| Transmit | Outside: switch the commercial bridge off, pass `--tx` | `transmitAllowed` is `true` and `bridgePresent` is `false` |
+| Devices | On the page: the same flow as Add a device | The installation has a device |
+| Heating circuits | On the page | Every heating zone has a circuit |
 
 A `go build` on a machine without Node has no dashboard. The daemon then answers every page request
 with `404`, and the API works as before. To build the dashboard, see
@@ -185,9 +220,10 @@ fixed address `172.30.32.2`. The developer documentation for apps tells an app t
 connections from that address only and to treat the user as authenticated. The daemon follows it:
 
 - The flag `--ingress` makes the daemon accept the calls of the dashboard from the connection address
-  `172.30.32.2` without a token. Only the 24 method and path pairs of
+  `172.30.32.2` without a token. Only the 25 method and path pairs of
   [`internal/daemon/ingress_routes.json`](../internal/daemon/ingress_routes.json) qualify. Every other
-  request from that address needs the token. [SECURITY.md](../SECURITY.md#home-assistant-ingress) lists
+  request from that address needs the token. The installation and the pairing are among those: the pages
+  Devices and First setup ask for the API token before their first change, and the browser keeps it. [SECURITY.md](../SECURITY.md#home-assistant-ingress) lists
   the pairs and what a user can do with them.
 - Only `addon/run.sh` sets the flag. The bootstrap file and the environment have no such setting, and
   the container image does not set it. The daemon ignores the flag and logs a warning unless the
@@ -304,25 +340,41 @@ the frame, and every valve shares that key. Anyone who listens to the band at th
 read the network key. Keep the window short and the band quiet: no other coordinator on, no
 test in parallel.
 
-This procedure has not been verified on air with the current bridge firmware.
+The steps below ran on air once, on one valve, through the API. The valve was in the installation
+before: it was removed, then paired as a device that the installation did not hold. Not verified on air:
+a network with no paired device, a wall thermostat, and the same flow from the dashboard.
+
+The page Devices of the [dashboard](#dashboard) does steps 5 and 7 to 9. The steps below do the same
+through the API.
 
 1. Switch the commercial bridge off.
 2. Start freedo with `--tx` and the beacon on (`--beacon 10m`, the default), on bridge firmware
    v2.9 or later.
 3. Make the device leave its previous network: `POST /api/nodes/{id}/factoryreset` with
-   `{"confirm": true}`. The command sends network command 1007. The device leaves the network
-   and keeps its token.
-4. Open the pair window: `POST /api/pair/window` with `{"seconds": 120}`. The maximum is
-   600 seconds. Check that the answer has `"responder": true`. The bridge then answers the
+   `{"confirm": true}`. The command sends network command 1007. The device keeps its token. The
+   command alone does not detach the device at once: in the test, the valve sent a report under the
+   network key 17 seconds after it acknowledged the command. It left the network at the button press
+   of step 6. It is not measured whether the command erases the stored key.
+4. A device that moves out of an installation of freedo: remove it from its zone and delete it from the
+   installation. See [Installation writes](API.md#installation-writes).
+5. Open the pair window: `POST /api/pair/window` with `{"seconds": 600}`, the maximum. Check that
+   the answer has `"responder": true`. The bridge then answers the
    Enhanced Beacon Requests by itself, and each Router Advertisement goes out twice. With
    `false` the firmware is older than v2.9. At the close, the log reports how many Enhanced
    Beacons the bridge sent.
-5. Hold the button of the device to open its commissioning window. It lasts two minutes.
-6. Check with `GET /api/pair/window` that the device appears in `joiners`. freedo registers a
+6. Hold the button of the device to open its commissioning window. It lasts two minutes.
+7. Check with `GET /api/pair/window` that the device appears in `joiners`. freedo registers a
    device when it receives an encrypted frame under the pairing key from it: an Enhanced
-   Beacon Request or a Router Solicitation.
-7. Call `POST /api/pair` with `{}` inside both windows. freedo picks the single device in
-   `joiners`. With several devices, or without an open window, pass `{"target": "<short>"}`.
+   Beacon Request or a Router Solicitation. In the test the valve appeared about one minute after the
+   window opened.
+8. Declare the device: `POST /api/install/devices` with the `eui` from `joiners`, the `kind`, a
+   `label` and no `serial`. A body without `eui` gets `400`, so the declaration comes after step 7.
+   Then add the device to its zone: `POST /api/install/zones/{number}/members`.
+9. Call `POST /api/pair` with `{}` inside both windows. freedo picks the single device in
+   `joiners`. With several devices, or without an open window, pass `{"target": "<short>"}`. When no
+   `2.04` arrives, call it again while both windows are open. In the test the first call got no answer
+   in four attempts, and a second call about 90 seconds later got `2.04` at the first attempt. The
+   cause is not measured.
 
 Without an open window, `d/pair` always uses the pairing key. With an open window it uses the
 network key only for a device that the window heard under the network key after its last
@@ -337,5 +389,7 @@ a fresh anchor first and uses the long train after one miss.
 
 The device answers `2.04` and continues by itself: it sends a Router Solicitation, takes the
 Router Advertisement, authenticates with `auth/token`, reads the time and the configuration
-and starts to report. Then set a safe first setpoint, for example `POST /api/nodes/{id}/setpoint`
+and starts to report. The daemon takes the serial of a device declared without one from the first
+requests of the device. A valve that is not mounted on a radiator reports a fault until it is mounted.
+Then set a safe first setpoint, for example `POST /api/nodes/{id}/setpoint`
 with `{"tempC": 18, "mode": "manual"}`.
