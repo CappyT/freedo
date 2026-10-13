@@ -4383,9 +4383,13 @@ flags:
 			die("state database %s: %v", dbPath, err)
 		}
 		if left := importWaitLeft(at, time.Now()); left > 0 {
-			fmt.Printf("import: the state was imported less than %s ago: waiting %s before the start, so that no device still holds a Message ID of the replaced state\n",
-				midWait, left.Round(time.Second))
-			time.Sleep(left)
+			fmt.Printf("import: the state was imported less than %s ago: waiting %s before the start, so that no device still holds a Message ID of the replaced state. Until then the API on %s answers 503\n",
+				midWait, left.Round(time.Second), *addr)
+			until := time.Now().Add(left)
+			if err := serveImportWait(*addr, serverHandler(token, *healthPublic, *ingress, importWaitHandler(until)), until); err != nil {
+				closeStore(store)
+				die("http: %v", err)
+			}
 		}
 	}
 	switch {

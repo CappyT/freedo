@@ -14,6 +14,8 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -371,6 +373,52 @@ func pruneImportBackups(backups string) error {
 func importWaitLeft(importedAt uint64, now time.Time) time.Duration {
 	left := time.Unix(int64(importedAt), 0).Add(midWait).Sub(now)
 	return max(0, min(left, midWait))
+}
+
+// importWaitHandler is the API of a daemon that waits after an import. It holds
+// no engine, no database and no radio, so no request changes the state or
+// queues a frame. GET /api/health says how long the wait still lasts, and every
+// other route answers 503.
+func importWaitHandler(until time.Time) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		left := max(1, int(math.Ceil(time.Until(until).Seconds())))
+		if r.URL.Path == "/api/health" && (r.Method == http.MethodGet || r.Method == http.MethodHead) {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"ok": true, "mode": "live", "tx": true, "txArmed": false, "transmitAllowed": false,
+				"importWait": map[string]int{"leftSec": left},
+			})
+			return
+		}
+		msg := fmt.Sprintf("freedo starts in %d s: it waits after the import of a state, so that no device still holds a Message ID of the replaced state", left)
+		if strings.HasPrefix(r.URL.Path, "/api/state/") {
+			msg += ". The export and the import are refused until the start: the daemon does not serve its database during the wait"
+		}
+		w.Header().Set("Retry-After", strconv.Itoa(left))
+		writeErr(w, http.StatusServiceUnavailable, msg)
+	})
+}
+
+// serveImportWait serves h on addr until the time until, then closes the
+// listener and returns, so the start can listen on addr again.
+func serveImportWait(addr string, h http.Handler, until time.Time) error {
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+	srv := newAPIServer(addr, h)
+	failed := make(chan error, 1)
+	go func() { failed <- srv.Serve(ln) }()
+	select {
+	case err := <-failed:
+		return err
+	case <-time.After(time.Until(until)):
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), httpDrainBudget)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		return srv.Close()
+	}
+	return nil
 }
 
 // reexec replaces the process with a new start of the same command line. The
