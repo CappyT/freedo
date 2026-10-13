@@ -177,6 +177,8 @@ export function createClient(options: ClientOptions = {}) {
 		childLock: (device: string, on: boolean) =>
 			request<Command>('POST', 'nodes/' + encodeURIComponent(device) + '/childlock', { on }),
 		identify: (device: string) => request<Command>('POST', 'nodes/' + encodeURIComponent(device) + '/identify', {}),
+		/** Queues the restart of a valve or of the wall thermostat. The device keeps its key and joins again. */
+		reboot: (device: string) => request<Command>('POST', 'nodes/' + encodeURIComponent(device) + '/reboot', {}),
 
 		// The installation and the pairing.
 		installInfo: () => request<InstallInfo>('GET', 'install'),

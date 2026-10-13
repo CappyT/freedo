@@ -5,23 +5,26 @@
 	import Icon from './Icon.svelte';
 	import { t } from './i18n.svelte.ts';
 	import { manage } from './install.svelte.ts';
-	import { countdown, joinedSince, joinerPaired, wireEui } from './install.ts';
+	import { canJoin, countdown, joinedSince, joinerPaired, nodeMark, wireEui, type NodeMark } from './install.ts';
 	import { api } from './session.ts';
 	import { toasts } from './toast.svelte.ts';
-	import type { PairJoiner, PairWindow } from './types.ts';
+	import type { PairJoiner, PairWindow, ZoneKind } from './types.ts';
 	import { zoneName } from './zones.ts';
 
 	// The longest window the daemon accepts. The page closes it when the pairing ends.
 	const WINDOW_SEC = 600;
 	const POLL_MS = 2000;
+	// The value of the room field for a device that goes in no room. Empty means no choice yet.
+	const NO_ROOM = 'none';
 
 	/** A device that got the pair command and has not joined yet. */
 	interface Pending {
 		eui: string;
 		short: string;
 		name: string;
-		/** What the daemon knew of the device before the command. */
-		before: { serial: string; sessionUnix: number };
+		/** The room the person chose in this run, null for none. */
+		room: number | null;
+		before: NodeMark;
 	}
 
 	interface Props {
@@ -40,7 +43,7 @@
 	let busy = $state(false);
 	let pending = $state<Pending | null>(null);
 	/** The device whose pairing ended. While it is set, the flow shows the end and no step. */
-	let done = $state<{ short: string; name: string } | null>(null);
+	let done = $state<{ eui: string; short: string; name: string; room: number | null } | null>(null);
 	let now = $state(Date.now());
 
 	const health = $derived(data.health);
@@ -50,16 +53,26 @@
 	// The daemon lists a declared device in the health view, by its short address.
 	const declared = (short: string) => health?.devices.find((d) => d.short === short);
 	const paired = (joiner: PairJoiner) => joinerPaired(joiner, data.nodes.find((n) => n.Short === joiner.short));
-	const doneRooms = $derived(
-		data.models.filter((m) => done !== null && m.zone.members.includes(done.short)).map((m) => zoneName(m.zone, t('zone.hotWaterName')))
-	);
+	const roomName = (z: { kind: ZoneKind; name: string }) => zoneName(z, t('zone.hotWaterName'));
+	// The end shows the rooms that the daemon reports, not the room of the form.
+	const doneRooms = $derived(zones.filter((z) => done !== null && z.members.includes(done.short)));
+	const lostRoom = $derived.by(() => {
+		const chosen = done?.room ?? null;
+		if (chosen === null || doneRooms.some((z) => z.number === chosen)) return null;
+		const zone = zones.find((z) => z.number === chosen);
+		return { number: chosen, name: zone ? roomName(zone) : String(chosen) };
+	});
 	const known = $derived.by(() => {
 		const joiner = joiners.find((j) => j.eui === target);
 		return joiner ? declared(joiner.short) : undefined;
 	});
-	// Hot water takes the wall thermostat only.
-	const rooms = $derived(zones.filter((z) => z.kind === 'heating' || kind === 'thermostat'));
-	const ready = $derived(target !== null && (known !== undefined || label.trim() !== ''));
+	// A declared device in no room gets the room field too: an earlier run can stop after the declaration.
+	const placing = $derived(known === undefined || !zones.some((z) => z.members.includes(known.short)));
+	const rooms = $derived(zones.filter((z) => canJoin(known?.kind ?? kind, [], z)));
+	const chosenRoom = $derived(rooms.find((z) => String(z.number) === room));
+	const ready = $derived(
+		target !== null && (known !== undefined || label.trim() !== '') && (!placing || room === NO_ROOM || chosenRoom !== undefined)
+	);
 	const left = $derived(pairWindow?.open && pairWindow.until ? countdown((Date.parse(pairWindow.until) - now) / 1000) : null);
 
 	async function read() {
@@ -92,7 +105,7 @@
 		if (!waiting) return;
 		if (!joinedSince(data.nodes.find((n) => n.Short === waiting.short), waiting.before)) return;
 		pending = null;
-		done = { short: waiting.short, name: waiting.name };
+		done = { eui: waiting.eui, short: waiting.short, name: waiting.name, room: waiting.room };
 		toasts.push('ok', t('pair.joined', { name: waiting.name }));
 		void api.openPairWindow(0).then((view) => (pairWindow = view), () => undefined);
 	});
@@ -108,24 +121,31 @@
 		event.preventDefault();
 		if (target === null || !ready) return;
 		const name = known ? known.label || known.device : label.trim();
-		const zone = room === '' ? null : Number(room);
+		const zone = placing ? (chosenRoom?.number ?? null) : null;
 		const existing = known;
 		busy = true;
+		// The room goes before the pair command: a refused room stops the run, and no device pairs into no room.
 		const short = await manage(async () => {
-			let address = existing?.short;
-			if (address === undefined) {
-				address = (await api.createDevice({ eui: target, kind, label: name })).device.short;
-				if (zone !== null) await api.addMember(zone, target);
-			}
+			const address = existing?.short ?? (await api.createDevice({ eui: target, kind, label: name })).device.short;
+			if (zone !== null) await api.addMember(zone, target);
 			await api.pair(target);
 			return address;
 		}, t('pair.sent', { name }));
 		busy = false;
 		if (short === undefined) return;
-		const node = data.nodes.find((n) => n.Short === short);
-		pending = { eui: target, short, name, before: { serial: node?.Serial ?? '', sessionUnix: node?.SessionIssuedUnix ?? 0 } };
+		pending = { eui: target, short, name, room: zone, before: nodeMark(data.nodes.find((n) => n.Short === short)) };
 		eui = '';
 		label = '';
+		room = '';
+	}
+
+	async function placeDone() {
+		const device = done;
+		const zone = lostRoom;
+		if (!device || !zone) return;
+		busy = true;
+		await manage(() => api.addMember(zone.number, device.eui), t('devices.moved'));
+		busy = false;
 	}
 
 	async function retry() {
@@ -157,10 +177,22 @@
 		<div class="end" role="status" data-testid="pair-done">
 			<h3><Icon name="check" />{t('pair.done.title', { name: done.name })}</h3>
 			<p>{t('pair.done.body')}</p>
-			<p>{doneRooms.length > 0 ? t('pair.done.room', { room: doneRooms.join(', ') }) : t('pair.done.noRoom')}</p>
+			<p data-testid="pair-done-room">
+				{doneRooms.length > 0 ? t('pair.done.room', { room: doneRooms.map(roomName).join(', ') }) : t('pair.done.noRoom')}
+			</p>
+			{#if lostRoom}
+				<p class="notice tone-warning" data-testid="pair-room-lost">
+					<Icon name="warning" /><span>{t('pair.done.roomLost', { room: lostRoom.name })}</span>
+				</p>
+			{/if}
 			<div class="row fill">
-				{#if onclose}<button class="btn primary" type="button" onclick={onclose}>{t('setup.done')}</button>{/if}
-				<button class="btn" class:primary={!onclose} type="button" onclick={() => (done = null)}>
+				{#if lostRoom}
+					<button class="btn primary" type="button" disabled={busy} onclick={placeDone}>
+						<Icon name="check" size={18} />{t('pair.done.place', { room: lostRoom.name })}
+					</button>
+				{/if}
+				{#if onclose}<button class="btn" class:primary={!lostRoom} type="button" onclick={onclose}>{t('setup.done')}</button>{/if}
+				<button class="btn" class:primary={!onclose && !lostRoom} type="button" onclick={() => (done = null)}>
 					<Icon name="plus" size={18} />{t('pair.another')}
 				</button>
 			</div>
@@ -240,11 +272,14 @@
 							<span>{t('devices.name')}</span>
 							<input class="input" bind:value={label} placeholder={t('pair.nameHint')} autocomplete="off" />
 						</label>
+					{/if}
+					{#if placing}
 						<label class="field">
 							<span>{t('devices.zone')}</span>
-							<select class="input" bind:value={room}>
-								<option value="">{t('devices.noRoom')}</option>
-								{#each rooms as z (z.number)}<option value={String(z.number)}>{zoneName(z, t('zone.hotWaterName'))}</option>{/each}
+							<select class="input" bind:value={room} data-testid="pair-room">
+								<option value="" disabled>{t('pair.room.pick')}</option>
+								{#each rooms as z (z.number)}<option value={String(z.number)}>{roomName(z)}</option>{/each}
+								<option value={NO_ROOM}>{t('devices.noRoom')}</option>
 							</select>
 						</label>
 					{/if}
@@ -252,7 +287,7 @@
 						<Icon name="check" size={18} />{known ? t('pair.again') : t('pair.add')}
 					</button>
 				</form>
-				{#if known}<p class="note">{t('pair.known', { name: known.label || known.device })}</p>{/if}
+				{#if known}<p class="note">{t('pair.known', { name: known.label || known.device })}{placing ? ' ' + t('pair.known.noRoom') : ''}</p>{/if}
 			</li>
 		</ol>
 	{/if}

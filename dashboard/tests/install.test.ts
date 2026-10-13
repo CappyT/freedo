@@ -10,6 +10,7 @@ import {
 	moveTargets,
 	nextCircuitId,
 	nextZoneNumber,
+	nodeMark,
 	setupState,
 	shortOf,
 	wireEui
@@ -96,46 +97,67 @@ describe('a removal effect', () => {
 	});
 });
 
-describe('a device after the pair command', () => {
-	const before = { serial: '', sessionUnix: 100 };
+// The times of one pairing on a plant, 2026-10-13, local time +02:00. The daemon reported the
+// session of 18:21:21 for the device after the pairing: the time did not move at the join.
+const plant = {
+	sessionIssuedUnix: 1791908481,
+	joinerLastSeen: '2026-10-13T18:21:35.75+02:00',
+	pairCommandUnix: 1791908505,
+	serialLearnedUnix: 1791908507
+};
 
-	it('has not joined while the daemon reports nothing new', () => {
+describe('a device that got the pair command', () => {
+	const before = nodeMark({ Serial: '', RxCounter: 4100 });
+
+	it('has not joined while the daemon reads no frame of it', () => {
 		expect(joinedSince(undefined, before)).toBe(false);
-		expect(joinedSince({ Serial: '', SessionIssuedUnix: 100 }, before)).toBe(false);
-		expect(joinedSince({ Serial: '' }, { serial: '', sessionUnix: 0 })).toBe(false);
+		expect(joinedSince({ Serial: '', RxCounter: 4100 }, before)).toBe(false);
+		expect(joinedSince({ Serial: '', RxCounter: 0 }, nodeMark(undefined))).toBe(false);
 	});
 
-	it('has joined when the daemon served it a session after the command', () => {
-		expect(joinedSince({ Serial: '', SessionIssuedUnix: 101 }, before)).toBe(true);
+	it('has joined when its frame counter moved', () => {
+		expect(joinedSince({ Serial: '', RxCounter: 4101 }, before)).toBe(true);
+		// A device that the button reset starts its counter again.
+		expect(joinedSince({ Serial: '', RxCounter: 3 }, before)).toBe(true);
 	});
 
 	it('has joined when the daemon learned its serial number', () => {
-		expect(joinedSince({ Serial: 'VA9000000001', SessionIssuedUnix: 100 }, before)).toBe(true);
+		expect(joinedSince({ Serial: 'VA9000000001', RxCounter: 4100 }, before)).toBe(true);
 	});
 
 	it('has not joined on a serial number that the daemon knew before', () => {
-		expect(joinedSince({ Serial: 'VA9000000001', SessionIssuedUnix: 100 }, { serial: 'VA9000000001', sessionUnix: 100 })).toBe(false);
+		const known = nodeMark({ Serial: 'VA9000000001', RxCounter: 4100 });
+		expect(joinedSince({ Serial: 'VA9000000001', RxCounter: 4100 }, known)).toBe(false);
+	});
+
+	it('joins with a session time that is older than the command, as on the plant', () => {
+		expect(plant.sessionIssuedUnix).toBeLessThan(plant.pairCommandUnix);
+		expect(joinedSince({ Serial: 'VA9000000001', RxCounter: 7 }, before)).toBe(true);
 	});
 });
 
 describe('a device that the pair window heard', () => {
-	const joiner = { lastSeen: '2026-01-10T17:18:49.4Z' };
-	const heard = Date.parse(joiner.lastSeen) / 1000;
+	const joiner = { lastSeen: plant.joinerLastSeen };
+	const heard = Math.floor(Date.parse(joiner.lastSeen) / 1000);
 
-	it('is paired when the daemon served it a session after its last request to join', () => {
-		expect(joinerPaired(joiner, { SessionIssuedUnix: Math.floor(heard) + 17 })).toBe(true);
-		expect(joinerPaired(joiner, { SessionIssuedUnix: Math.floor(heard) })).toBe(true);
+	it('is paired when the daemon heard it after its last request to join and it adopted the session', () => {
+		expect(heard).toBeGreaterThan(plant.sessionIssuedUnix);
+		expect(joinerPaired(joiner, { LastSeenUnix: plant.serialLearnedUnix, SessionAdopted: true })).toBe(true);
 	});
 
-	it('waits while its last session is older than its request, as a declared device that joins again', () => {
-		expect(joinerPaired(joiner, { SessionIssuedUnix: Math.floor(heard) - 3600 })).toBe(false);
-		expect(joinerPaired(joiner, { SessionIssuedUnix: 0 })).toBe(false);
-		expect(joinerPaired(joiner, {})).toBe(false);
+	it('waits while the daemon heard it last before its request to join, as a declared device that joins again', () => {
+		expect(joinerPaired(joiner, { LastSeenUnix: plant.sessionIssuedUnix, SessionAdopted: true })).toBe(false);
+		expect(joinerPaired(joiner, { LastSeenUnix: heard, SessionAdopted: true })).toBe(false);
+		expect(joinerPaired(joiner, { LastSeenUnix: 0, SessionAdopted: false })).toBe(false);
+	});
+
+	it('waits while no request carried the session: an acknowledgement alone moves the last seen time', () => {
+		expect(joinerPaired(joiner, { LastSeenUnix: plant.pairCommandUnix, SessionAdopted: false })).toBe(false);
 	});
 
 	it('waits while the daemon holds no node for it or no time for the request', () => {
 		expect(joinerPaired(joiner, undefined)).toBe(false);
-		expect(joinerPaired({ lastSeen: '' }, { SessionIssuedUnix: Math.floor(heard) + 17 })).toBe(false);
+		expect(joinerPaired({ lastSeen: '' }, { LastSeenUnix: plant.serialLearnedUnix, SessionAdopted: true })).toBe(false);
 	});
 });
 

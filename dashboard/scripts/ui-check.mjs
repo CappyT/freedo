@@ -14,14 +14,15 @@
 // - The buttons of a form row sit on the line of the controls, not of the labels.
 // - The Programs screen creates a profile, edits one that is not active and activates it.
 // - Rooms and devices adds a room and pairs a device that the pair window heard. A pairing in progress
-//   and a pairing that ended each replace the steps, and a device that joined is not offered again. The settings of a
-//   room move a device, show the effects of a removal before the delete, offer only free devices,
+//   and a pairing that ended each replace the steps, and a device that joined is not offered again. A refused
+//   room stops the run before the pair command, and the end follows the room that the daemon holds. The settings of a
+//   room restart a device after a confirm, move a device, show the effects of a removal before the delete, offer only free devices,
 //   and rename and delete the room. No room is the group of the devices in no room.
 // - The settings of a heated room save its options in one request and keep the ranges of the daemon.
 // - The burner badge of the boiler page follows the burner flag, also while no room asks for heat.
 //   A boiler fault code shows on the boiler page and as a banner.
 // - The first setup takes a daemon with an empty database to a room, a paired thermostat and a circuit.
-//   The device that the pair window hears and the session of the joined device are put into the
+//   The device that the pair window hears and the frames of the joined device are put into the
 //   answers here: the daemon has no radio. As the daemon does, the answers keep the device in the
 //   list after the window closes.
 //
@@ -59,6 +60,8 @@ try {
 
 	// Requests the page made, and the rules that fail a request or change an answer.
 	const requests = [];
+	// The body of each request that carried one, by method and path.
+	const bodies = new Map();
 	const failing = new Set();
 	let zonesPatch = null;
 	// While holdHealth is set, the answers of GET /api/health wait in held: a poll stays in flight.
@@ -70,8 +73,10 @@ try {
 		const at = new Date().toISOString();
 		joiner = { ...device, label: '', firstSeen: at, lastSeen: at, frames: 3, lastClass: 'BeaconReq' };
 	};
-	// The short address of a device that the node view reports as joined: the daemon served it a session.
+	// The short address of a device that the node view reports as joined. As on a plant, the daemon read
+	// a frame of it and a request carried the session, and the time of the session is older than the join.
 	let joinedShort = null;
+	const sessionBefore = Math.floor(Date.now() / 1000) - 3600;
 	// Fields put into the answer of GET /api/boiler, as if the boiler reported them. Null changes nothing.
 	let boilerPatch = null;
 	const fulfill = (p, json) =>
@@ -101,6 +106,7 @@ try {
 		try {
 			if (p.responseStatusCode === undefined) {
 				requests.push(`${method} ${path}`);
+				if (p.request.postData !== undefined) bodies.set(`${method} ${path}`, p.request.postData);
 				const apiPath = path.slice(path.indexOf('/api/')).replace(/^\/api\/nodes\/[^/]+\//, '/api/nodes/*/');
 				if (failing.has(`${method} ${apiPath}`)) {
 					await tab.call('Fetch.fulfillRequest', {
@@ -129,8 +135,11 @@ try {
 				const nodes = await bodyOf(p);
 				for (const node of nodes) {
 					if (node.Short !== joinedShort) continue;
-					node.SessionIssuedUnix = Math.floor(Date.now() / 1000);
-					node.Serial ||= 'VA1000000099';
+					node.RxCounter = 7;
+					node.LastSeenUnix = Math.floor(Date.now() / 1000);
+					node.SessionIssued = true;
+					node.SessionAdopted = true;
+					node.SessionIssuedUnix = sessionBefore;
 				}
 				await fulfill(p, nodes);
 				return;
@@ -472,7 +481,10 @@ try {
 	await click('button.joiner');
 	check((await valueOf('[data-testid=add-device] .eui')) === valve.eui, 'the device that the window heard fills the address');
 	await typeInto('[data-testid=add-device] form .field.grow input', 'Attic valve');
-	await choose('[data-testid=add-device] form .field:last-of-type select', '4');
+	const addDisabled = () => tab.evaluate(`document.querySelector('[data-testid=add-device] form button[type=submit]').disabled`);
+	check((await valueOf('[data-testid=pair-room]')) === '' && (await addDisabled()), 'the room has no default: the flow waits for a room or for No room');
+	await choose('[data-testid=pair-room]', '4');
+	check(!(await addDisabled()), 'a chosen room opens Add and pair');
 	const offPair = await tab.evaluate(misaligned);
 	check(offPair.length === 0, `the buttons of the device form sit on the line of their controls (${offPair})`);
 	await sleep(6500);
@@ -481,11 +493,25 @@ try {
 		'the add device flow keeps its fields across a data poll'
 	);
 	check(!requests.some((r) => r.startsWith('POST /api/pair/devices/') || r === 'POST /api/install/devices'), 'nothing is declared or paired before the person asks');
+	// The daemon refuses the room: the run stops before the pair command, and the next run places the device.
+	failing.add('POST /api/install/zones/4/members');
 	await clickIn('[data-testid=add-device]', 'Add and pair');
-	check(await toast('Pair command queued for Attic valve'), 'the device is declared and the pair command is queued');
+	check(await toast('refused for the check'), 'the refusal of the room is shown');
+	await tab.waitFor(`[...document.querySelectorAll('[data-testid=add-device] button')].some((b) => b.textContent.trim() === 'Pair again')`, 8000);
 	const declaredValve = (await api(daemon.base, 'install/devices')).devices.find((d) => d.eui === valve.eui);
 	check(declaredValve?.label === 'Attic valve' && declaredValve?.kind === 'valve', 'the daemon declares the device');
-	check((await api(daemon.base, 'install/zones/4')).zone.members.includes(valve.eui), 'the device is a member of its room');
+	check(
+		!requests.some((r) => r.startsWith('POST /api/pair/devices/')) && !(await tab.evaluate(`!!document.querySelector('[data-testid=pair-progress], [data-testid=pair-done]')`)),
+		'a refused room sends no pair command and starts no pairing'
+	);
+	check(
+		(await valueOf('[data-testid=pair-room]')) === '4' && (await tab.evaluate(`/is in no room/.test(document.querySelector('[data-testid=add-device]').innerText)`)),
+		'a declared device in no room keeps the room field and the chosen room'
+	);
+	failing.clear();
+	await clickIn('[data-testid=add-device]', 'Pair again');
+	check(await toast('Pair command queued for Attic valve'), 'the device is declared and the pair command is queued');
+	check((await api(daemon.base, 'install/zones/4')).zone.members.includes(valve.eui), 'the device is a member of its room before the pairing ends');
 	await tab.waitFor(`document.querySelector('[data-testid=pair-progress]')`);
 	await sleep(6500);
 	check(
@@ -503,8 +529,26 @@ try {
 	joinedShort = valve.short;
 	const doneText = await tab.waitFor(`document.querySelector('[data-testid=pair-done]')?.innerText`, 8000).catch(() => '');
 	check(/Attic valve is paired/.test(doneText) && /Room: Attic/.test(doneText), `the flow ends on the name and the room of the paired device (${doneText})`);
+	check(
+		(await api(daemon.base, 'install/zones/4')).zone.members.includes(valve.eui) && !(await tab.evaluate(`!!document.querySelector('[data-testid=pair-room-lost]')`)),
+		'after the flow the daemon holds the device in the chosen room, and the end shows no warning'
+	);
 	await sleep(500);
 	check((await api(daemon.base, 'pair/window')).open === false, 'the pair window closes when the pairing ends');
+	// The room leaves the daemon behind the page: the end follows the daemon and offers the repair.
+	await fetch(`${daemon.base}/api/install/zones/4/members/${valve.eui}`, { method: 'DELETE' });
+	const lost = await tab.waitFor(`document.querySelector('[data-testid=pair-room-lost]')?.innerText`, 8000).catch(() => '');
+	check(
+		/You chose the room Attic/.test(lost) && /in no room/.test(await tab.evaluate(`document.querySelector('[data-testid=pair-done-room]').innerText`)),
+		`the end says that the device is in no room although a room was chosen (${lost})`
+	);
+	await clickIn('[data-testid=pair-done]', 'Put it in Attic');
+	check(await toast('Device moved'), 'the end puts the device in the chosen room');
+	check((await api(daemon.base, 'install/zones/4')).zone.members.includes(valve.eui), 'the daemon holds the device in the room again');
+	check(
+		await tab.waitFor(`!document.querySelector('[data-testid=pair-room-lost]') && /Room: Attic/.test(document.querySelector('[data-testid=pair-done-room]').innerText)`, 8000).then(() => true, () => false),
+		'the end shows the room of the daemon again, with no warning'
+	);
 	// The daemon keeps the device in the list of the closed window. Wait for a poll that reads it.
 	await sleep(6500);
 	const ended = await tab.evaluate(`(() => {
@@ -525,7 +569,7 @@ try {
 		await tab.evaluate(`!document.querySelector('[data-testid=add-device] button.joiner') && /Paired: Attic valve/.test(document.querySelector('[data-testid=add-device] .joiner').innerText)`),
 		'a heard device that joined shows as paired and cannot be selected'
 	);
-	// A declared device that asks to join again: the daemon served it no session since.
+	// A declared device that asks to join again: the daemon did not hear it since.
 	joinedShort = null;
 	hear({ eui: '04a3defa07c51b00', short: 'a304' });
 	await clickIn('[data-testid=add-device]', 'Open the pair window');
@@ -622,6 +666,29 @@ try {
 	check((await tab.evaluate(`${member('bath')}.querySelector('select').value`)) === '2', 'the room of the device returns to what the daemon says after a refused move');
 	failing.clear();
 
+	// Restart a device: the dialog first, one command after the confirm.
+	const reboot = 'POST /api/nodes/04a3defa07c51b00/reboot';
+	requests.length = 0;
+	await memberButton('bath', 'Restart');
+	await tab.waitFor(`document.querySelector('dialog[open]')`);
+	const restartText = await dialogText();
+	check(
+		/Restart bath\?/.test(restartText) && /about 5 seconds/.test(restartText) && /about a minute/.test(restartText) && /keeps its pairing/.test(restartText),
+		`the restart dialog names the device and says what happens (${restartText})`
+	);
+	await closeDialog();
+	await sleep(300);
+	check(!requests.includes(reboot), 'Cancel sends no restart');
+	await memberButton('bath', 'Restart');
+	await tab.waitFor(`document.querySelector('dialog[open]')`);
+	check(!requests.includes(reboot), 'Restart sends nothing before the person confirms');
+	await tab.evaluate(`document.querySelector('dialog[open] button.primary').click()`);
+	check(await toast('Messages waiting for the device'), 'the confirmed restart shows as queued, not as done');
+	check(
+		requests.filter((r) => r === reboot).length === 1 && bodies.get(reboot) === '{}',
+		`the confirm sends one restart with an empty body (${requests.filter((r) => r === reboot).length}, ${bodies.get(reboot)})`
+	);
+
 	// Remove a device: the effects first.
 	await open('#/rooms/1', member('Hall wall unit'));
 	requests.length = 0;
@@ -692,8 +759,8 @@ try {
 	await click('[data-room="none"] header a');
 	await tab.waitFor(`location.hash === '#/rooms/none' && document.querySelector('main h1')?.textContent === 'No room' && ${member('office')}`);
 	check(
-		await tab.evaluate(`[...${member('office')}.querySelectorAll('button')].map((b) => b.textContent.trim()).join() === 'Rename,Remove from the installation'`),
-		'the settings of No room offer rename and removal for a free device'
+		await tab.evaluate(`[...${member('office')}.querySelectorAll('button')].map((b) => b.textContent.trim()).join() === 'Rename,Restart,Remove from the installation'`),
+		'the settings of No room offer rename, restart and removal for a free device'
 	);
 	const roomOptions = await tab.evaluate(`[...${member('office')}.querySelectorAll('option')].map((o) => o.textContent).join()`);
 	check(roomOptions === 'No room,Hall,Bath,Office,Kitchen,Living room,Bedroom', `a free valve can go to every heated room (${roomOptions})`);

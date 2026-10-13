@@ -24,6 +24,7 @@
 	"POST /api/boiler/flow",
 	"POST /api/nodes/{id}/childlock",
 	"POST /api/nodes/{id}/identify",
+	"POST /api/nodes/{id}/reboot",
 	"PUT /api/install/devices/{ref}/label",
 	"GET /api/install",
 	"PUT /api/install/timezone",

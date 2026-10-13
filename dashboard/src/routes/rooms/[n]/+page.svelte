@@ -3,7 +3,7 @@
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import { tick } from 'svelte';
-	import { errorText } from '#lib/actions.ts';
+	import { act, errorText } from '#lib/actions.ts';
 	import ConfirmDialog from '#lib/ConfirmDialog.svelte';
 	import { t } from '#lib/i18n.svelte.ts';
 	import Icon from '#lib/Icon.svelte';
@@ -43,12 +43,14 @@
 	let draft = $state('');
 	let removal = $state<Removal | null>(null);
 	let removing = $state<InstallDevice | null>(null);
+	let restarting = $state<InstallDevice | null>(null);
 	// The options in the form. They follow the room until the person changes one.
 	let options = $state<RoomOptions | null>(null);
 	let offsetText = $state('');
 	let optionsDirty = $state(false);
 	let confirmDelete: ConfirmDialog | undefined = $state();
 	let confirmRemove: ConfirmDialog | undefined = $state();
+	let confirmRestart: ConfirmDialog | undefined = $state();
 
 	const zone = $derived(zones.find((z) => z.number === number) ?? null);
 	const hotWater = $derived(t('zone.hotWaterName'));
@@ -206,6 +208,21 @@
 		void run(() => api.deleteDevice(device.eui, true), t('devices.removed'));
 	}
 
+	async function askRestart(device: InstallDevice) {
+		restarting = device;
+		await tick();
+		confirmRestart?.show();
+	}
+
+	async function restart() {
+		const device = restarting;
+		if (!device) return;
+		busy = true;
+		// The answer says that the command waits for the device, not that the device restarted.
+		await act(() => api.reboot(device.eui));
+		busy = false;
+	}
+
 	async function deleteRoom() {
 		if (number === null) return;
 		if ((await manage(() => api.deleteZone(number), t('rooms.deleted'))) !== undefined) await goto(resolve('/devices'));
@@ -295,6 +312,11 @@
 										{#each targets(device) as z (z.number)}<option value={String(z.number)}>{zoneName(z, hotWater)}</option>{/each}
 									</select>
 								</label>
+								{#if device.kind !== 'bridge'}
+									<button class="btn" disabled={busy} onclick={() => askRestart(device)}>
+										<Icon name="power" size={18} />{t('devices.restart')}
+									</button>
+								{/if}
 								<button class="btn danger" disabled={busy} onclick={() => askRemove(device)}>
 									<Icon name="trash" size={18} />{t('devices.remove')}
 								</button>
@@ -492,6 +514,14 @@
 	items={members.map(labelOf)}
 	confirm={t('rooms.delete')}
 	onconfirm={deleteRoom}
+/>
+
+<ConfirmDialog
+	bind:this={confirmRestart}
+	title={t('restart.title', { name: restarting ? labelOf(restarting) : '' })}
+	body={t('restart.body')}
+	confirm={t('devices.restart')}
+	onconfirm={restart}
 />
 
 <ConfirmDialog

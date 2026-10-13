@@ -35,6 +35,7 @@ const calls: Record<string, Call> = {
 	flow: (c) => c.flow(55, 1),
 	childLock: (c) => c.childLock('0201', true),
 	identify: (c) => c.identify('0201'),
+	reboot: (c) => c.reboot('0201'),
 	installInfo: (c) => c.installInfo(),
 	setTimezone: (c) => c.setTimezone('Europe/Rome'),
 	installDevices: (c) => c.installDevices(),
@@ -92,6 +93,7 @@ const ALLOWED = [
 	'POST /api/boiler/flow',
 	'POST /api/nodes/{id}/childlock',
 	'POST /api/nodes/{id}/identify',
+	'POST /api/nodes/{id}/reboot',
 	'PUT /api/install/devices/{ref}/label',
 	'GET /api/install',
 	'PUT /api/install/timezone',
@@ -120,14 +122,14 @@ const ALLOWED = [
 ];
 
 // What stays behind the token under ingress, whatever the client does: the identity of the network,
-// the network key, a pairing with a key of the caller, reboot, firmware and the debug routes.
+// the network key, a pairing with a key of the caller, calibration, firmware and the debug routes.
 const TOKEN_ONLY = [
 	'PATCH /api/install',
 	'PUT /api/install/network_key',
 	'PATCH /api/install/devices/0201',
 	'PUT /api/install/zones/3/members',
 	'POST /api/pair',
-	'POST /api/nodes/0201/reboot',
+	'POST /api/nodes/0201/calibrate',
 	'POST /api/nodes/0201/fw',
 	'POST /api/nodes/0201/config',
 	'GET /api/debug/rx',
@@ -177,7 +179,7 @@ describe('the routes that need no token under ingress', () => {
 		expect([...routes].sort()).toEqual([...ALLOWED].sort());
 	});
 
-	it('leave the identity, the network key, reset, firmware and debug behind the token', () => {
+	it('leave the identity, the network key, calibration, firmware and debug behind the token', () => {
 		for (const pair of TOKEN_ONLY) {
 			const [method, path] = pair.split(' ') as [string, string];
 			expect(routes.filter((r) => matches(r, method, path)), pair).toEqual([]);

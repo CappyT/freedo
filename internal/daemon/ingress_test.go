@@ -114,7 +114,7 @@ func TestIngressPassesEveryListedRoute(t *testing.T) {
 
 // Everything else from the gateway needs the token like any other request. These are the
 // routes that write the identity of the network or the network key, pair with a key of the
-// caller, reset, flash or reconfigure a device, plus the reads of raw device data.
+// caller, calibrate, flash or reconfigure a device, plus the reads of raw device data.
 func TestIngressRefusesEveryOtherRoute(t *testing.T) {
 	h := accessHandler(testAPIToken, false, true, okHandler())
 	bearer := "Bearer " + testAPIToken
@@ -130,7 +130,6 @@ func TestIngressRefusesEveryOtherRoute(t *testing.T) {
 		{"POST", "/api/nodes/x/fw"},
 		{"GET", "/api/nodes/x/fw"},
 		{"DELETE", "/api/nodes/x/fw"},
-		{"POST", "/api/nodes/x/reboot"},
 		{"POST", "/api/nodes/x/calibrate"},
 		{"POST", "/api/nodes/x/setpoint"},
 		{"POST", "/api/nodes/x/config"},

@@ -143,9 +143,12 @@ export interface NodeView {
 	Telemetry: Record<string, string> | null;
 	BatteryMV: number;
 	BatteryPct: number;
+	/** When the daemon last read a frame or an acknowledgement of the device, in Unix seconds. 0 before the first one. */
 	LastSeenUnix: number;
-	/** When the daemon last served the device a session, in Unix seconds. 0 before the first one. */
-	SessionIssuedUnix?: number;
+	/** The frame counter of the last frame of the device that the daemon read under the network key. */
+	RxCounter: number;
+	/** A request of the device carried the session that the daemon served it. */
+	SessionAdopted: boolean;
 	LowBattery: boolean;
 	Fault: boolean;
 	Faults: string[] | null;

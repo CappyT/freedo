@@ -110,27 +110,41 @@ export function shortOf(devices: { short: string; device: string }[], ref: strin
 	return devices.find((d) => d.short === ref || d.device === ref)?.short ?? '';
 }
 
-/**
- * A device joined after a pair command when the daemon served it a session since the command, or
- * learned its serial number. The answer of the pair command itself only says that it is queued.
- */
-export function joinedSince(
-	node: { Serial: string; SessionIssuedUnix?: number } | undefined,
-	before: { serial: string; sessionUnix: number }
-): boolean {
-	if (!node) return false;
-	return (node.SessionIssuedUnix ?? 0) > before.sessionUnix || (before.serial === '' && node.Serial !== '');
+/** What the daemon reports of a device when the pair command goes out. */
+export interface NodeMark {
+	serial: string;
+	rxCounter: number;
+}
+
+export function nodeMark(node: { Serial: string; RxCounter: number } | undefined): NodeMark {
+	return { serial: node?.Serial ?? '', rxCounter: node?.RxCounter ?? 0 };
 }
 
 /**
- * A device that the pair window heard is paired when the daemon served it a session after its last
- * request to join. The daemon keeps the device in the list of the window after the device joins and
- * after the window closes, so the list alone does not tell a waiting device from a paired one.
+ * A device joined after a pair command when the daemon read a frame of it under the network key
+ * since: the frame counter of the device moved, or the daemon learned its serial number. The answer
+ * of the pair command only says that it is queued. The time of the last session does not tell: the
+ * daemon answers a repeated request of the device with the session it holds, and the time stays.
  */
-export function joinerPaired(joiner: { lastSeen: string }, node: { SessionIssuedUnix?: number } | undefined): boolean {
+export function joinedSince(node: { Serial: string; RxCounter: number } | undefined, before: NodeMark): boolean {
+	if (!node) return false;
+	return node.RxCounter !== before.rxCounter || (before.serial === '' && node.Serial !== '');
+}
+
+/**
+ * A device that the pair window heard is paired when the daemon heard it again after its last
+ * request to join, and a request of it carried the session of the daemon. The daemon keeps the
+ * device in the list of the window after the device joins and after the window closes, so the list
+ * alone does not tell a waiting device from a paired one. An acknowledgement of the pair command
+ * also moves the last seen time, so that time alone is no proof.
+ */
+export function joinerPaired(
+	joiner: { lastSeen: string },
+	node: { LastSeenUnix: number; SessionAdopted: boolean } | undefined
+): boolean {
 	const heard = Date.parse(joiner.lastSeen);
 	if (!node || Number.isNaN(heard)) return false;
-	return (node.SessionIssuedUnix ?? 0) >= Math.floor(heard / 1000);
+	return node.SessionAdopted && node.LastSeenUnix > Math.floor(heard / 1000);
 }
 
 /** Seconds as m:ss, for the time a pair window stays open. */

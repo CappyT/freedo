@@ -91,6 +91,13 @@ describe('commands', () => {
 		]);
 	});
 
+	it('send the restart of a device with an empty body: the daemon refuses every other field', async () => {
+		const { calls, fetch } = stub(200, { queued: true, pending: 1 });
+		const answer = await createClient({ base: 'http://h/', fetch }).reboot('0201');
+		expect(calls.map((c) => [c.method, c.url, c.body])).toEqual([['POST', 'http://h/api/nodes/0201/reboot', {}]]);
+		expect(answer.pending).toBe(1);
+	});
+
 	it('use the routes of docs/API.md', async () => {
 		const { calls, fetch } = stub(200, {});
 		const client = createClient({ base: 'http://h/', fetch });

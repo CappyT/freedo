@@ -90,6 +90,8 @@ describe('zone view model', () => {
 		BatteryMV: 2500,
 		BatteryPct: 61,
 		LastSeenUnix: 1_700_000_000,
+		RxCounter: 0,
+		SessionAdopted: false,
 		LowBattery: false,
 		Fault: false,
 		Faults: null,
