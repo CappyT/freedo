@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.1
+
+- Home Assistant: the list of rooms in Configure follows the language of the user. A table shows
+  the area, the temperature source and the number of window sensors of each room, and the choices
+  are the room names. A window sensor that another room uses shows that room in square brackets.
+- Home Assistant: a sensor that is the only temperature sensor of its device shows the name of
+  the device. The options of the select Temperature source change their text for such sensors.
+
 ## 0.6.0
 
 - Add-on freedo beta: a second add-on of the repository runs the pre-releases. It has its own data
