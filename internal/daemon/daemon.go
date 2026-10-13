@@ -4175,7 +4175,7 @@ func Main(args []string) {
 	tokenFile := fs.String("api-token-file", "", "file holding the bearer token of the API, surrounding whitespace trimmed (overrides "+apiTokenEnv+" and api_token_file)")
 	healthPublic := fs.Bool("health-public", false, "serve GET /api/health without the API token, for a container health check")
 	insecureNoAuth := fs.Bool("insecure-no-auth", false, "serve the API with no token on a non-loopback --addr: every host that reaches the port controls the installation")
-	ingress := fs.Bool("ingress", false, "serve the calls of the dashboard without a token to the Home Assistant ingress gateway (172.30.32.2); every other request keeps the token. Only the add-on start script sets it, and it has no effect unless "+supervisorTokenEnv+" is set")
+	ingress := fs.Bool("ingress", false, "serve the calls of the dashboard without a token to the Home Assistant ingress gateway (172.30.32.2), and the export and the import of the state to a Home Assistant administrator; every other request keeps the token. Only the add-on start script sets it, and it has no effect unless "+supervisorTokenEnv+" is set")
 	port := fs.String("port", "", "serial port of the ESP32 bridge (overrides serial_port; empty: no live radio)")
 	replay := fs.String("replay", "", "feed this capture file instead of a radio")
 	doTx := fs.Bool("tx", false, "transmit the decided frames (default: dry-run, transmit nothing)")
@@ -4216,7 +4216,8 @@ bootstrap api_token_file. With no token the API is open and binds a loopback
 address alone; --insecure-no-auth lifts that limit. --health-public leaves
 GET /api/health open for a container health check. --ingress, set by the Home
 Assistant add-on, lets the gateway of Home Assistant make the calls of the
-dashboard without a token.
+dashboard without a token, and the export and the import of the state for a
+Home Assistant administrator.
 
 The bench and development tools are the freedo-dev binary.
 

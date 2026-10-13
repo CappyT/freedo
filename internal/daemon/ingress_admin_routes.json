@@ -1,0 +1,4 @@
+[
+	"GET /api/state/export",
+	"POST /api/state/import"
+]

@@ -62,8 +62,7 @@ func requireToken(token string, healthPublic bool, next http.Handler) http.Handl
 	if token == "" {
 		return next
 	}
-	// Comparing digests keeps the comparison constant-time in the token length.
-	want := sha256.Sum256([]byte(token))
+	accepts := tokenMatcher(token)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if healthPublic && r.URL.Path == "/api/health" &&
 			(r.Method == http.MethodGet || r.Method == http.MethodHead) {
@@ -76,14 +75,23 @@ func requireToken(token string, healthPublic bool, next http.Handler) http.Handl
 			writeErr(w, http.StatusUnauthorized, "missing bearer token")
 			return
 		}
-		sum := sha256.Sum256([]byte(got))
-		if subtle.ConstantTimeCompare(sum[:], want[:]) != 1 {
+		if !accepts(got) {
 			w.Header().Set("WWW-Authenticate", "Bearer")
 			writeErr(w, http.StatusUnauthorized, "invalid bearer token")
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// tokenMatcher compares a presented token with token. Comparing digests keeps
+// the comparison constant-time in the token length.
+func tokenMatcher(token string) func(got string) bool {
+	want := sha256.Sum256([]byte(token))
+	return func(got string) bool {
+		sum := sha256.Sum256([]byte(got))
+		return subtle.ConstantTimeCompare(sum[:], want[:]) == 1
+	}
 }
 
 // bearerToken reads "Authorization: Bearer <token>". The scheme is

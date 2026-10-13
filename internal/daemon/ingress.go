@@ -17,6 +17,13 @@ package daemon
 //     carries one field.
 //   - The decision reads the address of the TCP connection and nothing else. A header such
 //     as X-Forwarded-For or X-Ingress-Path is under the control of the caller.
+//
+// A third class sits between the two: the pairs in ingress_admin_routes.json, the export
+// and the import of the state. The export holds the network key and the import replaces the
+// identity of the network, so a request from the gateway passes without the token only when
+// Home Assistant says that the user is an administrator. The Supervisor names the user of
+// the ingress session in X-Remote-User-Id and removes a copy that the browser sent. The
+// header counts only on a connection from the gateway address.
 
 import (
 	_ "embed"
@@ -24,6 +31,7 @@ import (
 	"log"
 	"net/http"
 	"net/netip"
+	"os"
 	"path"
 	"strings"
 )
@@ -43,6 +51,17 @@ var ingressRoutesJSON []byte
 
 var ingressRoutes = mustRoutes(ingressRoutesJSON)
 
+// ingressAdminRoutesJSON lists the pairs that the gateway may call without a token for a
+// Home Assistant administrator only.
+//
+//go:embed ingress_admin_routes.json
+var ingressAdminRoutesJSON []byte
+
+var ingressAdminRoutes = mustRoutes(ingressAdminRoutesJSON)
+
+// remoteUserHeader carries the id of the Home Assistant user of an ingress session.
+const remoteUserHeader = "X-Remote-User-Id"
+
 // ingressEnabled reports whether the trust of the gateway applies. The flag alone is not
 // enough: the process must run under the Supervisor. The log line tells the operator why a
 // requested flag has no effect.
@@ -60,12 +79,20 @@ func ingressEnabled(requested bool, lookupEnv func(string) (string, bool)) bool 
 // accessHandler puts the API behind its access rules: the bearer token, and with ingress
 // the gateway of Home Assistant as a second way in for the routes of the dashboard.
 func accessHandler(token string, healthPublic, ingress bool, mux http.Handler) http.Handler {
+	admins := coreAdmins{addr: supervisorAddr, token: os.Getenv(supervisorTokenEnv)}
+	return accessHandlerWith(token, healthPublic, ingress, admins, mux)
+}
+
+func accessHandlerWith(token string, healthPublic, ingress bool, admins adminChecker, mux http.Handler) http.Handler {
 	checked := requireToken(token, healthPublic, mux)
-	if !ingress {
+	// With no token every request passes already.
+	if !ingress || token == "" {
 		return checked
 	}
 	log.Printf("API: the dashboard routes need no token from the Home Assistant ingress gateway %s", ingressGateway)
-	return trustGateway(ingressGateway, ingressRoutes, mux, checked)
+	adminOnly := requireAdmin(token, admins, mux)
+	return trustGateway(ingressGateway, ingressRoutes, mux,
+		trustGateway(ingressGateway, ingressAdminRoutes, adminOnly, checked))
 }
 
 // trustGateway serves a request with trusted when it comes from the gateway address and
@@ -77,6 +104,37 @@ func trustGateway(gateway netip.Addr, routes []route, trusted, checked http.Hand
 			return
 		}
 		checked.ServeHTTP(w, r)
+	})
+}
+
+// requireAdmin serves a request of the gateway that carries the API token, or whose Home
+// Assistant user is an active administrator. Everything else is refused: no user id, a user
+// that Home Assistant does not know, and a question that got no answer.
+func requireAdmin(token string, admins adminChecker, next http.Handler) http.Handler {
+	accepts := tokenMatcher(token)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got, ok := bearerToken(r); ok && accepts(got) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		const who = "only a Home Assistant administrator can export or import the state"
+		id := r.Header.Get(remoteUserHeader)
+		if id == "" {
+			writeErr(w, http.StatusForbidden, who+": the request names no Home Assistant user")
+			return
+		}
+		admin, err := admins.IsAdmin(r.Context(), id)
+		if err != nil {
+			log.Printf("ingress: cannot ask Home Assistant about the user of %s %s: %v", r.Method, r.URL.Path, err)
+			writeErr(w, http.StatusServiceUnavailable,
+				"Home Assistant did not say whether the user is an administrator: "+err.Error())
+			return
+		}
+		if !admin {
+			writeErr(w, http.StatusForbidden, who)
+			return
+		}
+		next.ServeHTTP(w, r)
 	})
 }
 
