@@ -56,10 +56,23 @@ Tested on a real plant (one plant, one ESP32 development board with one CC1101 m
 - The motor calibration, on one valve.
 - The temperature correction in the modes `config` and `dbg2`, on one valve.
 - A window state that the coordinator sets, on one valve.
+- A window that the wall thermostat detected: its report, the block that reaches the thermostat and the
+  valve of the same room, the close after the window time, and a reset that ends the window before that
+  time. No window that a valve detected was seen: with one sample each 10 to 16 minutes, a valve did not
+  report an open window in 40 minutes.
+- The warning for a valve that is not mounted. It raised no fault alert, and it cleared after the valve
+  was mounted.
 - Pairing one valve through the API: the button press that makes the valve leave, the removal from the
   installation, the pair window of the bridge firmware, the declaration of a device that the installation
   did not hold, the `d/pair` command and the serial that the daemon learns from the device. The valve
   works in its zone again. A remote leave command was tried on that valve and had no effect.
+- Pairing the same valve from the dashboard, two times. The last version of the page Add device, with no
+  default room and with the end state, did not run on the plant.
+- On the page Rooms and devices: a room created, its options saved and the room deleted, a device moved
+  from No room to a room, a device removed, and a valve restarted. The valve joined again by itself about
+  40 seconds after the command.
+- The add-on freedo beta: the move from the add-on freedo with the import of its state. Every device
+  talked to the beta add-on in three minutes. The return to the add-on freedo did not run.
 - The read of the firmware version of each device.
 - freedo runs as the only coordinator of that plant, as a Home Assistant add-on with the integration.
   The devices of that plant were not paired from scratch, apart from one valve.
@@ -69,7 +82,7 @@ Tested only with automated tests and synthetic fixtures:
 
 - Away temperatures, away programs and the end rule `until_auto_change`.
 - A network that starts with no paired device, and the pairing of a wall thermostat.
-- A window that a valve detects, and the reset that ends it.
+- A window that a valve detects.
 - The Router Advertisement gateway and DNS addresses (`router_gateway`, `router_dns`) and the zone
   configuration of a heating zone with no circuit.
 - A schedule document with several day programs, the program profiles and the offline schedule
@@ -77,17 +90,19 @@ Tested only with automated tests and synthetic fixtures:
 - Firmware transfer to a device. No block was ever sent on air.
 - Early start, the weather curves (your own and the default curve), automatic flow adaptation, the
   external room temperature, the automatic correction and the controller gain suggestion.
-- The energy and gas estimate. No comparison with a gas meter exists.
+- The energy and gas estimate. One comparison with a gas meter exists, over 0.28 m3: the estimate was
+  about 6 % low. That volume is too small for the correction factor, which needs 1 m3.
 - The web dashboard. `npm test` covers the API client and the schedule editor logic. `npm run prefix-check`
   and `npm run ui-check` start the daemon with no radio and a seeded synthetic installation. They open each
   page in headless Chrome under a path prefix, and drive the schedule editor, the presence switch, the
   child lock, Turn off, the profiles, the rename of a device, the page Rooms and devices (a room, a
-  pairing, a move, a removal, a circuit), the options of a room, the boiler fault codes and the first
-  setup on an empty database. The pages Rooms and devices and First setup did not run on the plant.
+  pairing, a move, a removal, a restart, a circuit), the options of a room, the boiler fault codes and the
+  first setup on an empty database. The page First setup did not run on a plant that starts empty.
 - The boiler fault codes in the dashboard and in Home Assistant. No real boiler fault was seen.
 - In the integration: the reload after a change of the installation, the service `freedo.pair` and the
   event entity Alert.
-- The five blueprints: presence, season profile, alert notification, distance setback and auxiliary heat.
+- The six blueprints: presence, season profile, alert notification, distance setback, auxiliary heat and
+  valve exercise.
 
 No record covers a long run or a long outage of the coordinator.
 
@@ -266,7 +281,7 @@ what is not verified on air. The routes are in [`docs/API.md`](docs/API.md). The
 | Preheat before arrival | partial | Two blueprints. One ends away when a person enters an approach zone. One sets the away temperature of each room in steps with the distance of the nearest person. Both read a distance and no travel time, and every room gets the same steps. They need Home Assistant. |
 | Early start | equal | The daemon learns the heating rate of each zone. No firmware does this. Not verified on air. |
 | Geofencing | equal | A blueprint uses the presence of Home Assistant for the whole home, and a second one uses the distance of the nearest person. Needs Home Assistant: the daemon has no geofencing code. |
-| Open window detection | equal | The valves detect the window. The detection and its time are room options. A reset from the dashboard or from Home Assistant ends a window of any source. A contact sensor that closes ends only its own hold. No valve detection was observed on a plant. |
+| Open window detection | equal | The valves detect the window. The detection and its time are room options. A reset from the dashboard or from Home Assistant ends a window of any source. A contact sensor that closes ends only its own hold. On one plant the wall thermostat detected a window and a reset ended it. No detection by a valve was observed. |
 | Hot water: on, temperature, program | equal | The daemon keeps the program and writes the thermostat at each block change. |
 | Child lock | equal | Valves only. The wall thermostat firmware has no child lock. In use on one plant. |
 | Identify a device | equal | Valves and the wall thermostat in a zone. The thermostat shows "Hi!" on its display. |
@@ -275,10 +290,10 @@ what is not verified on air. The routes are in [`docs/API.md`](docs/API.md). The
 | Temperature correction | equal | Three modes. `config` homes the motor. `dbg2` ran on one valve and is in no capture. |
 | Automatic correction from an outside sensor | extra | In modes `config` and `dbg2`, at most once per settable interval, with a deadband. Each write in mode `config` homes the motor. Not verified on air. |
 | Room temperature from an outside sensor | extra | Mode `setpoint` shifts the setpoints. With the automatic correction the learners read the sensor. Home Assistant chooses for each room a device of the room or the sensor. Filter and limits are design estimates. Not verified on air. |
-| Manage rooms and devices | equal | The dashboard creates, renames and deletes rooms, creates and deletes circuits, moves and renames devices, and sets the measuring device, the demand reporter and the room options. Home Assistant has the same room options and maps each room to an area. The controller gains, the network key and the identity of the network are in the API only. No device reports the offset that it holds, so the dashboard shows the offset only in the mode `setpoint`. A device declared without a serial takes it from its first request. Home Assistant follows a change within one poll. The installation pages did not run on a real plant. |
-| Interface | partial | A web dashboard on the daemon monitors and controls the zones, the hot water, the boiler and the devices, and manages the schedules, the profiles and the installation. The control pages are in use on one plant. Missing: a run of the pages Rooms and devices and First setup on a real plant. |
-| Pair a device | partial | The dashboard and the API pair a device. The API flow ran on air on one valve. A device can miss the first pair command: send it again. The integration opens the window, lists the waiting devices and sends the pair command to a device that freedo holds (service `freedo.pair`). Missing: the integration cannot add a new device, and its hub device links to the dashboard for that. Not verified on air: the dashboard flow, a wall thermostat and a network with no paired device. |
-| Remove a device | partial | The dashboard and the API report the effects first. The delete sends no frame. freedo has no remote detach: a device leaves its network only when you hold its button. |
+| Manage rooms and devices | equal | The dashboard creates, renames and deletes rooms, creates and deletes circuits, moves and renames devices, and sets the measuring device, the demand reporter and the room options. Home Assistant has the same room options and maps each room to an area. The controller gains, the network key and the identity of the network are in the API only. No device reports the offset that it holds, so the dashboard shows the offset only in the mode `setpoint`. A device declared without a serial takes it from its first request. Home Assistant follows a change within one poll. The page Rooms and devices is in use on one plant. |
+| Interface | equal | A web dashboard on the daemon monitors and controls the zones, the hot water, the boiler and the devices, and manages the schedules, the profiles and the installation. The control pages and the page Rooms and devices are in use on one plant. The page First setup did not run on a plant that starts empty. |
+| Pair a device | partial | The dashboard and the API pair a device. Both flows ran on air on one valve. A device can miss the first pair command: send it again. The integration opens the window, lists the waiting devices and sends the pair command to a device that freedo holds (service `freedo.pair`). Missing: the integration cannot add a new device, and its hub device links to the dashboard for that. Not verified on air: a wall thermostat and a network with no paired device. |
+| Remove a device | partial | The dashboard and the API report the effects first. The removal from the dashboard ran on one plant. The delete sends no frame. freedo has no remote detach: a device leaves its network only when you hold its button. |
 | Firmware version and update | partial | The daemon keeps the version of each device across restarts and reads it once after start from a device that never reported it. A transfer route exists. No block was sent on air. freedo distributes no image. |
 | Flow limit | equal | The fixed limit is verified on air through the OpenTherm reading. |
 | Weather curve and automatic flow adaptation | partial | The curve has two points. The adaptation is a local controller and not the cloud algorithm. It is off by default. Not verified on air. |
