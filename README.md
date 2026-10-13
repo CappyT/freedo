@@ -6,6 +6,25 @@ A local coordinator for tado V3+ 868 MHz heating devices, with a Home Assistant 
 
 This is heavily AI-assisted work. The code and the documentation were written largely with AI assistance, under the direction of the project owner. Behavior was checked with automated tests, and on a real plant only where the [Status](#status) section says so.
 
+## Contents
+
+- [What it is](#what-it-is)
+- [Status](#status)
+- [Scope and limits](#scope-and-limits)
+  - [Supported devices](#supported-devices)
+- [Requirements](#requirements)
+- [Install](#install)
+  - [Home Assistant: add-on and integration](#home-assistant-add-on-and-integration)
+  - [Container](#container)
+- [First setup](#first-setup)
+- [Dashboard](#dashboard)
+- [Features](#features)
+- [Safety](#safety)
+- [Community](#community)
+- [Documentation](#documentation)
+- [Development](#development)
+- [Licence](#licence)
+
 ## What it is
 
 freedo replaces the tado internet bridge for the radiator valves and wall thermostats that it
@@ -90,7 +109,7 @@ No record covers a long run or a long outage of the coordinator.
   scratch. It is not available.
 - Supported hardware: the valves and the wall thermostats of the V3+ line. Other device types
   (wireless receiver, extension kit, wireless sensor) are not supported, because no capture of
-  them exists. See [Device lines](#device-lines) for the other tado lines.
+  them exists. See [Supported devices](#supported-devices) for the other tado lines.
 - A circuit needs a wall thermostat as its heat source. A heating zone with no circuit gets a zone
   configuration without the circuit tag and without the heat source among the members. No device has
   run this configuration, and the install check warns about such a zone. A plant of valves without a
@@ -100,7 +119,7 @@ No record covers a long run or a long outage of the coordinator.
 - Geofencing, history reports, push notifications and multiple users are not part of the daemon. Home
   Assistant provides them. HomeKit is not implemented.
 
-### Device lines
+### Supported devices
 
 freedo replaces the tado Internet Bridge IB01 and pairs each device to its own network. The device
 models come from the tado article
