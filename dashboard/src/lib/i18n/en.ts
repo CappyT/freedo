@@ -184,7 +184,7 @@ export const en = {
 	'window.until': 'Until {time}',
 	'window.markOpen': 'Mark window open',
 	'window.markClosed': 'Mark window closed',
-	'window.note': 'This tells freedo about a window it cannot see. A window that a valve detected stays open until its time ends.',
+	'window.note': 'This tells freedo about a window it cannot see. Mark window closed also ends a window that a valve detected.',
 
 	'schedule.title': 'Weekly schedule',
 	'schedule.mode': 'Schedule',

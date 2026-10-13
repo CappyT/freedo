@@ -117,6 +117,8 @@ describe('commands', () => {
 		expect(calls[5]?.body).toEqual({ label: 'bath' });
 		expect(calls[6]?.body).toEqual({ tempC: 55, id: 1 });
 		expect(calls[4]?.body).toEqual({ away: true });
+		// A close from the page is a reset: it also ends a window that a valve detected.
+		expect(calls[3]?.body).toEqual({ open: false, reset: true });
 	});
 
 	it('write the schedule with one request', async () => {

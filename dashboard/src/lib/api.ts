@@ -154,7 +154,8 @@ export function createClient(options: ClientOptions = {}) {
 		off: (n: number, end: EndSpec) => request<Command>('POST', zone(n) + '/off', endBody(end)),
 		auto: (n: number) => request<Command>('POST', zone(n) + '/auto', {}),
 		boost: (n: number, on: boolean) => request<Command>('POST', zone(n) + '/boost', { on }),
-		window: (n: number, open: boolean) => request<WindowView>('POST', zone(n) + '/window', { open }),
+		/** A close is a reset by a person: it also ends a window that a valve detected. */
+		window: (n: number, open: boolean) => request<WindowView>('POST', zone(n) + '/window', open ? { open } : { open, reset: true }),
 		setAway: (away: boolean) => request<Home & { queued: number }>('PATCH', 'home', { away }),
 		/** The program presets, in creation order. Exactly one carries active. */
 		presets: () => request<{ presets: Preset[] }>('GET', 'presets'),

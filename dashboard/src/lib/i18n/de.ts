@@ -184,7 +184,7 @@ export const de: Record<Key, string> = {
 	'window.until': 'Bis {time}',
 	'window.markOpen': 'Fenster als offen markieren',
 	'window.markClosed': 'Fenster als geschlossen markieren',
-	'window.note': 'Damit erfährt freedo von einem Fenster, das es nicht sehen kann. Ein Fenster, das ein Ventil erkannt hat, bleibt offen, bis seine Zeit endet.',
+	'window.note': 'Damit erfährt freedo von einem Fenster, das es nicht sehen kann. Fenster als geschlossen markieren beendet auch ein Fenster, das ein Ventil erkannt hat.',
 
 	'schedule.title': 'Wochenzeitplan',
 	'schedule.mode': 'Zeitplan',

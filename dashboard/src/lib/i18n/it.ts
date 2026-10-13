@@ -184,7 +184,7 @@ export const it: Record<Key, string> = {
 	'window.until': 'Fino alle {time}',
 	'window.markOpen': 'Segna la finestra come aperta',
 	'window.markClosed': 'Segna la finestra come chiusa',
-	'window.note': 'Così freedo sa di una finestra che non può vedere. Una finestra rilevata da una valvola resta aperta fino alla fine del suo tempo.',
+	'window.note': 'Così freedo sa di una finestra che non può vedere. Segna la finestra come chiusa termina anche una finestra rilevata da una valvola.',
 
 	'schedule.title': 'Programma settimanale',
 	'schedule.mode': 'Programma',

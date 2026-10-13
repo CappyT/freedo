@@ -184,7 +184,7 @@ export const fr: Record<Key, string> = {
 	'window.until': 'Jusqu’à {time}',
 	'window.markOpen': 'Marquer la fenêtre ouverte',
 	'window.markClosed': 'Marquer la fenêtre fermée',
-	'window.note': 'Cela informe freedo d’une fenêtre qu’il ne voit pas. Une fenêtre détectée par une vanne reste ouverte jusqu’à la fin de son délai.',
+	'window.note': 'Cela informe freedo d’une fenêtre qu’il ne voit pas. Marquer la fenêtre fermée met aussi fin à une fenêtre détectée par une vanne.',
 
 	'schedule.title': 'Planification hebdomadaire',
 	'schedule.mode': 'Planification',
