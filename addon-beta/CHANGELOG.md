@@ -20,3 +20,12 @@ pre-release has its notes here.
   in steps with the distance from home; auxiliary heat for a room from another appliance; a monthly
   valve exercise.
 - Not run on a real plant yet: this pre-release is the first run.
+
+## 0.7.0-beta.2
+
+- Dashboard: Add device ends with one state that names the paired device and its room. While the
+  pairing runs, the page shows only the progress. A device that is already paired shows as paired
+  in the list of heard devices and cannot be selected.
+- Run on a real plant with 0.7.0-beta.1: the move from the add-on freedo to freedo beta, the
+  room options and a room created and deleted from the dashboard, a window that the wall
+  thermostat detected and its reset, and a valve paired from the dashboard.
