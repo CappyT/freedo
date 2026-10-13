@@ -1,5 +1,5 @@
 name: freedo
-version: "0.6.1"
+version: "0.7.0"
 slug: freedo
 description: Local coordinator for tado 868 MHz heating devices
 url: https://github.com/CappyT/freedo

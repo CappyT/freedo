@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.7.0
+
+- Daemon: a user reset ends an open window of any source, also one that a device detected. A window
+  sensor that closes ends only the hold that Home Assistant set.
+- Dashboard: the room settings hold the room options: open window detection and its time, the away
+  temperature, the end rule of a change made on a device, early start, the offset mode, the offset
+  and the valve calibration. The page names the options that cost a motor stroke.
+- Dashboard: the room settings have a Restart action for a valve and for the wall thermostat, with
+  a confirmation. The restart command is open to Home Assistant ingress: every Home Assistant user
+  who can open the page can restart a device.
+- Dashboard: Add device has no default room. The page declares the device, adds it to the room and
+  then pairs it. It shows only the progress while the pairing runs, and it ends with one state that
+  names the paired device and the room that the daemon holds.
+- Dashboard: the Boiler page and a banner show the fault codes of the boiler, as numbers.
+- Dashboard and Home Assistant use the same words for the end rules, the alerts and the heating
+  demand. No entity id and no state value changed.
+- Home Assistant: binary sensor Boiler fault, event entity Alert, service `freedo.pair` and switch
+  Pairing mode. The integration reloads by itself after a change of the installation.
+- Blueprints: notifications for alerts, an open window and a warmer outside temperature; a setback
+  in steps with the distance from home; auxiliary heat for a room from another appliance; a monthly
+  valve exercise.
+- Run on one plant with the pre-releases of freedo beta: the room options, a room created and
+  deleted, a device moved, removed, paired and restarted from the dashboard, and a window that the
+  wall thermostat detected with its reset.
+- The add-on freedo does not read the state of freedo beta. After a stay on freedo beta, the add-on
+  freedo starts from its own state: a room, a device or a schedule that changed on freedo beta is
+  not in it.
+
 ## 0.6.1
 
 - Home Assistant: the list of rooms in Configure follows the language of the user. A table shows
