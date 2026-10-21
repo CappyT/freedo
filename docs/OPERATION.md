@@ -262,6 +262,23 @@ A room screen judges the air comfort from the temperature and the humidity of th
 the heating-season values of EN 16798-1 category II: 20 to 24 C and 30 to 60 % humidity. From 70 % the
 page warns of a mould risk.
 
+The [statistics](API.md#statistics) are off by default. Settings turns them on in the section
+Statistics, which says what they store, since when and how much space they take. Off asks first and
+keeps the data; a separate row then deletes it after a confirm. With the statistics on:
+
+- A room screen links to the report of the room. The report shows one local day: the heating time,
+  the average, lowest and highest temperature, the average humidity and the time with the window open
+  or away; a chart of the temperature over the target, the heating demand and the humidity; a table of
+  the values every hour; and the heat-ups of the day with the time to reach the target. Arrows move to
+  the day before or after, back to the first day with a sample.
+- The page Consumption, from the Boiler page and from Settings, shows the fuel, the cost, the heat and
+  the burner time per day of a month and per month over 13 months, with a table of the same values. It
+  writes the price of one fuel unit and the currency.
+
+The statistics live in `freedo-state-history.db` beside the state database. A backup does not include
+them, and a restore keeps them. To remove them by hand, stop the daemon and delete the file and its
+`-wal` and `-shm` files.
+
 The dashboard chooses the number of a new room: 0 for hot water, else the lowest free number from 1. It
 declares a device without a serial number, and the daemon takes the serial from the first request of the
 device. The controller gains of a room and every installation option other than the time zone and the
@@ -306,7 +323,7 @@ fixed address `172.30.32.2`. The developer documentation for apps tells an app t
 connections from that address only and to treat the user as authenticated. The daemon follows it:
 
 - The flag `--ingress` makes the daemon accept the calls of the dashboard from the connection address
-  `172.30.32.2` without a token. Only the 51 method and path pairs of
+  `172.30.32.2` without a token. Only the 55 method and path pairs of
   [`internal/daemon/ingress_routes.json`](../internal/daemon/ingress_routes.json) qualify. They include
   the installation and pairing calls of the pages Rooms and devices and First setup, so those pages need no token
   under the add-on. Every other request from that address needs the token. [SECURITY.md](../SECURITY.md#home-assistant-ingress) lists
@@ -325,7 +342,7 @@ connections from that address only and to treat the user as authenticated. The d
   header such as `X-Forwarded-For` or `X-Ingress-Path` has no effect. `X-Remote-User-Id` counts for the
   2 backup pairs only, and only on a connection from the gateway address.
 
-For the 51 pairs the daemon does not tell the Home Assistant users apart. Every user who can open the panel can use those
+For the 55 pairs the daemon does not tell the Home Assistant users apart. Every user who can open the panel can use those
 calls, and the project accepts this. Home Assistant lets every user open an ingress session, so the
 add-on option `panel_admin` (default `true`) hides only the sidebar entry. The Supervisor adds the
 headers `X-Remote-User-Id`, `X-Remote-User-Name` and `X-Remote-User-Display-Name`, and none of them

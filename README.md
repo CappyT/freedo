@@ -141,8 +141,8 @@ No record covers a long run or a long outage of the coordinator.
   wall thermostat is not supported yet.
 - The boiler energy estimate needs a boiler that reports its modulation over OpenTherm. A boiler on a
   relay has no estimate yet.
-- Geofencing, history reports, push notifications and multiple users are not part of the daemon. Home
-  Assistant provides them. HomeKit is not implemented.
+- Geofencing, push notifications and multiple users are not part of the daemon. Home Assistant provides
+  them. HomeKit is not implemented.
 
 ### Supported devices
 
@@ -313,9 +313,9 @@ what is not verified on air. The routes are in [`docs/API.md`](docs/API.md). The
 | Weather curve and automatic flow adaptation | partial | The curve has two points. The adaptation is a local controller and not the cloud algorithm. It is off by default. Not verified on air. |
 | Default weather curve for the flow limit | partial | A built-in curve under `flow_limit_c`, fitted on one plant and one season of monthly means. It is not the cloud algorithm. Home Assistant must feed the outdoor temperature. It is off by default. The page Boiler setup switches it and draws it. On one plant since 2026-10-21; the check over a range of outdoor temperatures is open. |
 | Boiler telemetry and faults | equal | The dashboard shows the boiler fault codes on the page Boiler and in a banner on every page. Home Assistant has the binary sensor Boiler fault with the codes. A code is a number of the boiler maker, and freedo gives it no meaning. Not seen on a real boiler fault. |
-| Energy and gas estimate | partial | Estimated from modulation and name-plate data. Not a measurement. The page Boiler setup holds the name-plate data, with a guide to the manual of the boiler. Gas meter readings, from the page Boiler or from Home Assistant, give an estimated meter value and, after two readings, a correction factor: 0.958 on one plant over 7 m3. Price and cost stay in the Home Assistant Energy panel. |
+| Energy and gas estimate | partial | Estimated from modulation and name-plate data. Not a measurement. The page Boiler setup holds the name-plate data, with a guide to the manual of the boiler. Gas meter readings, from the page Boiler or from Home Assistant, give an estimated meter value and, after two readings, a correction factor: 0.958 on one plant over 7 m3. With the statistics on, the page Consumption shows the fuel, the heat and the cost per day and per month from a price per unit. |
 | Air comfort | partial | The room screen judges the room from its temperature and humidity, with the ranges of EN 16798-1 category II, and warns of a mould risk from 70 %. The outdoor air freshness of the cloud needs outdoor data and is missing. |
-| History and reports | equal | Home Assistant records the history of every entity. Needs Home Assistant: the daemon keeps no time series. |
+| History and reports | partial | Optional statistics in the daemon, off by default: a sample of each room and of the boiler every 5 minutes for 90 days, daily totals for 13 months, and the heat-ups of each room. The room report shows one day with the temperature, the target, the heating demand, the humidity and the heat-ups. Ran on a daemon with synthetic data only. Home Assistant records the history of every entity as well. |
 | Notifications | equal | In Home Assistant, the event entity Alert raises one event when an alert starts, and the blueprint `alert_notification.yaml` sends a notification for a low battery, a device fault, a valve warning, an offline device, a boiler fault and a window that stays open. The texts are English. Needs Home Assistant: the daemon sends no notification. Not run on a real plant. |
 | Several users | not implemented | One bearer token. Under Home Assistant ingress every Home Assistant user can use the dashboard. |
 | HomeKit | not implemented | |

@@ -21,7 +21,7 @@ the routes. For the radio facts behind a rule, see [PROTOCOL.md](PROTOCOL.md).
 - `--health-public` makes `GET /api/health` readable without a token, for a container
   health check. The default is off.
 - `--ingress` makes the daemon accept the calls of the dashboard from the connection address
-  `172.30.32.2`, the Home Assistant ingress gateway, without a token. It covers 51 method and path
+  `172.30.32.2`, the Home Assistant ingress gateway, without a token. It covers 55 method and path
   pairs only. Only the add-on start script sets it, and it has no effect unless `SUPERVISOR_TOKEN` is
   set. With the flag, the gateway also reaches the two routes of the
   [state export and import](#state-export-and-import) for a Home Assistant administrator. Every other
@@ -196,6 +196,16 @@ banner.
 | `GET`, `POST /api/pair/window` | Read, open or close the pair window. |
 | `POST /api/pair` | Send the `d/pair` command to a device. |
 | `POST /api/pair/devices/{ref}` | Send the `d/pair` command to the named device, under the network key of the installation. No body. |
+
+### Statistics
+
+| Route | Purpose |
+|---|---|
+| `GET`, `PUT /api/history` | Read or change the statistics: the switch, the fuel price and the currency. |
+| `GET /api/history/zones/{number}?date=` | The samples and the heat-ups of one zone over one local day. |
+| `GET /api/history/energy?from=&to=` | The fuel, heat and burner totals of each day. |
+
+See [Statistics](#statistics).
 
 ### Installation
 
@@ -1093,6 +1103,64 @@ The factor corrects the meter value only. `totalM3` and `flowM3H` stay the raw e
 nothing that already reads them changes. The meter differs from the estimate for reasons the
 estimate cannot see: other gas users on the same meter such as a hob, the efficiency the fuel
 counter does not model, and the modulation the counter references.
+
+## Statistics
+
+The statistics are optional and off by default. While they are on, the daemon keeps a short
+history of each zone and of the boiler, so the dashboard can draw the day of a room and the fuel of
+each day without Home Assistant.
+
+The rows live in their own SQLite file beside the state database: `freedo-state.db` gives
+`freedo-state-history.db`. The [state export](#state-export-and-import) copies the state database
+only, so a backup stays small and holds no history. The history file holds no network key. The
+switch, the price and the currency live in the state database, so they survive a deleted history
+and travel with a backup.
+
+What the daemon records:
+
+- Every 5 minutes on the wall clock, one sample per zone and one of the boiler. A heating zone
+  records the room temperature of a zone report younger than `offline_after_sec` (the measuring
+  device while the zone never reported), the target, on, the humidity of the measuring device or
+  of the first member that reports one, the heating demand `40a0`, the open window and away. The hot
+  water zone records the hot water temperature `DHWC`, the target and on. The boiler sample holds
+  the flow temperature, the modulation, the burner flag and the heat and fuel counters.
+- The total of each local day, in the time zone of the programs: the fuel (the counter step times
+  the [meter factor](#gas-meter) in force at that step), the fuel estimate (the raw counter step),
+  the heat in kWh and the burner minutes (5 for each sample that found the burner on). A step
+  across more than one hour without a sample adds nothing: the counters run while the statistics
+  are off.
+- The summary of each finished heat-up episode (see
+  [Plant episodes](#plant-episodes-and-controller-suggestion)): start, end, start temperature,
+  target, crossing, dead time, overshoot, settling time and end reason.
+
+Samples and episodes stay 90 days. Daily totals stay 13 calendar months: the current month and the
+12 before it. The daemon drops older rows when the local day changes.
+
+`GET /api/history` answers `available` (false without a state database), `enabled`, `error` (why
+an enabled history has no file, else `null`), `since` (the oldest sample, RFC3339, or `null`),
+`sizeBytes`, `intervalSec` (300), `sampleDays` (90), `dayMonths` (13), `fuelPrice` (`null` while
+unset) and `currency` (`EUR` by default).
+
+`PUT /api/history` takes any of `enabled`, `delete`, `fuelPrice` and `currency`, and answers the
+same view. `delete: true` removes the history file and needs `enabled: false` in the same body or
+already stored: on is `400`. `fuelPrice` is the price of one `fuel_unit`, from 0 to 1000, or
+`null` to remove it. `currency` is an ISO 4217 code of three capital letters. Without a state
+database the route is `409`.
+
+`GET /api/history/zones/{number}?date=YYYY-MM-DD` returns one local day of a zone, today by default:
+`zone`, `date`, `from` and `to` (the bounds of the day, RFC3339), `intervalSec`, `first` (the local
+date of the oldest sample of the zone, or `null`), `samples` and `episodes`. A sample has `atMs`,
+`tempC`, `targetC`, `on`, `humidityPct`, `demandPct`, `window` and `away`; a field with no value is
+`null`. An episode has `startedMs`, `endedMs`, `startC`, `targetC`, `crossedMs`, `deadTimeSec`,
+`overshootC`, `settlingSec` and `endReason`.
+
+`GET /api/history/energy?from=YYYY-MM-DD&to=YYYY-MM-DD` returns the days from `from` to `to`, both
+included, by default the 13 months kept: `from`, `to`, `unit` (`fuel_unit`), `fuelPrice`,
+`currency` and `days`. A day has `day`, `fuel`, `fuelEstimate`, `heatKWh` and `burnerMin`. A day
+with no sample has no row.
+
+The three read routes answer `409` while the statistics are off, `400` for a date that is not
+`YYYY-MM-DD` or a `from` after `to`, and `404` for a zone that is not declared.
 
 ## Pairing
 

@@ -314,6 +314,15 @@ A weather curve drawn as one 2 px line in the text colour over hairline grid lin
 ### Comfort Map
 Temperature from 14 to 30 C across, humidity from 10 to 90 % up. The comfort zone (20 to 24 C, 30 to 60 %) is the idle tint with an idle-text hairline and an 8 px radius. The 70 % mould line is a fault-text hairline. The room is a text-colour dot in a 2 px surface ring. The row above pairs a status dot with the verdict word and a hint.
 
+### Day Chart
+The day of a room in three panels on one time axis, drawn at the width of its box so the 11 px text keeps its size. The top panel is the temperature: the room as a 2 px line in the text colour over the target as a 1.5 px muted dashed step line (4 on, 3 off) with a 5 % text-colour wash under it, so the two stay apart where they run close, on hairline grid lines every 2 or 4 C. Open-window and away periods are bands of the warning and away tints behind the lines. The middle panel is the heating demand from 0 to 100 % as a stepped area in the heating base, with a percent unit on its ticks. The bottom panel is the humidity line, only when a sensor reports one. A pointer or the arrow keys move a crosshair across the three panels and a readout under the chart. The chart is a slider for assistive technology, with the readout as its value text, and a folded table of the values every hour is its table twin. A line breaks where a sample is missing.
+
+### Bar Chart
+One bar per day of a month or per month of the year: at most 24 px wide, a 4 px rounded top, a 2 px gap, in the accent colour, and the text colour under the pointer, which keeps its contrast on the navy card of the dark theme. The axis steps at 1, 2, 2.5 or 5 times a power of ten. Day labels mark day 1 and every fifth day; month labels skip one that would sit closer than 28 px to the last. A day with no data has no bar. Like the Day Chart, it is a slider with a readout and a folded table twin.
+
+### Stat Tiles
+A row of small panels above a chart: a muted 14 px label over a Sora 600 value at 1.25rem. Auto-fit columns of at least 9.5rem, so the row spans the content width. On a phone an odd last tile takes the whole row. The chart under the tiles sits in a panel, with the inset of every other panel.
+
 ### Guide
 A `<details>` block inside a panel: the panel tint at half strength, a hairline border, a 14 px radius. The summary is a link-coloured semibold line; the body is a numbered list at 13.5 px. A guide explains where a value comes from; it never holds a control.
 
