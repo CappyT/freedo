@@ -96,8 +96,9 @@ Tested only with automated tests and synthetic fixtures:
 - Firmware transfer to a device. No block was ever sent on air.
 - Early start, the weather curves (your own and the default curve), automatic flow adaptation, the
   external room temperature, the automatic correction and the controller gain suggestion.
-- The energy and gas estimate. One comparison with a gas meter exists, over 0.28 m3: the estimate was
-  about 6 % low. That volume is too small for the correction factor, which needs 1 m3.
+- The energy and gas estimate against the gas meter of the plant, over 8 days: the meter counted
+  7.07 m3 and the estimate 7.38 m3, 4.4 % high. The daemon learned a correction factor of 0.958. The
+  meter also counts any other gas user on it. A third reading checks that the factor holds.
 - The web dashboard. `npm test` covers the API client and the schedule editor logic. `npm run prefix-check`
   and `npm run ui-check` start the daemon with no radio and a seeded synthetic installation. They open each
   page in headless Chrome under a path prefix, and drive the schedule editor, the presence switch, the
@@ -310,9 +311,10 @@ what is not verified on air. The routes are in [`docs/API.md`](docs/API.md). The
 | Firmware version and update | partial | The daemon keeps the version of each device across restarts and reads it once after start from a device that never reported it. A transfer route exists. No block was sent on air. freedo distributes no image. |
 | Flow limit | equal | The fixed limit is verified on air through the OpenTherm reading. |
 | Weather curve and automatic flow adaptation | partial | The curve has two points. The adaptation is a local controller and not the cloud algorithm. It is off by default. Not verified on air. |
-| Default weather curve for the flow limit | partial | A built-in curve under `flow_limit_c`, fitted on one plant and one season of monthly means. It is not the cloud algorithm. Home Assistant must feed the outdoor temperature. It is off by default. Not verified on air. |
+| Default weather curve for the flow limit | partial | A built-in curve under `flow_limit_c`, fitted on one plant and one season of monthly means. It is not the cloud algorithm. Home Assistant must feed the outdoor temperature. It is off by default. The page Boiler setup switches it and draws it. On one plant since 2026-10-21; the check over a range of outdoor temperatures is open. |
 | Boiler telemetry and faults | equal | The dashboard shows the boiler fault codes on the page Boiler and in a banner on every page. Home Assistant has the binary sensor Boiler fault with the codes. A code is a number of the boiler maker, and freedo gives it no meaning. Not seen on a real boiler fault. |
-| Energy and gas estimate | partial | Estimated from modulation and name-plate data. Not a measurement. Gas meter readings give an estimated meter value and, after two readings, a correction factor. Price and cost stay in the Home Assistant Energy panel. |
+| Energy and gas estimate | partial | Estimated from modulation and name-plate data. Not a measurement. The page Boiler setup holds the name-plate data, with a guide to the manual of the boiler. Gas meter readings, from the page Boiler or from Home Assistant, give an estimated meter value and, after two readings, a correction factor: 0.958 on one plant over 7 m3. Price and cost stay in the Home Assistant Energy panel. |
+| Air comfort | partial | The room screen judges the room from its temperature and humidity, with the ranges of EN 16798-1 category II, and warns of a mould risk from 70 %. The outdoor air freshness of the cloud needs outdoor data and is missing. |
 | History and reports | equal | Home Assistant records the history of every entity. Needs Home Assistant: the daemon keeps no time series. |
 | Notifications | equal | In Home Assistant, the event entity Alert raises one event when an alert starts, and the blueprint `alert_notification.yaml` sends a notification for a low battery, a device fault, a valve warning, an offline device, a boiler fault and a window that stays open. The texts are English. Needs Home Assistant: the daemon sends no notification. Not run on a real plant. |
 | Several users | not implemented | One bearer token. Under Home Assistant ingress every Home Assistant user can use the dashboard. |
