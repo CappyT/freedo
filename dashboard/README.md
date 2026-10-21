@@ -32,7 +32,7 @@ and every page request gets `404`. The API works as before.
 ## Layout
 
 - `src/routes`: the pages. `/` is the home page, then `zones/[n]`, `hot-water`, `programs`, `boiler`,
-  `devices`, `rooms/[n]`, `setup` and `settings`. `programs` holds the profiles and the home and away
+  `boiler/setup`, `devices`, `rooms/[n]`, `setup` and `settings`. `programs` holds the profiles and the home and away
   schedule of every zone in each profile. The home page shows one tile per room, in the colour of its
   state, and the tiles of the presence, the active profile, the hot water and the boiler. The hot water
   page and the boiler page have no navigation item: their tiles on the home page lead there. A room,
@@ -45,6 +45,11 @@ and every page request gets `404`. The API works as before.
   `rooms/none` is the same page for the devices in no room. `setup` is the first
   setup: one card for each step, with the state that `GET /api/health` reports. Rooms and devices and Settings link to it,
   and so does the home page while the installation has no room.
+- `boiler` shows the live values, the flow limit, the energy and fuel estimate and the gas meter readings
+  (`GasMeter.svelte`, rules in `meter.ts`). `boiler/setup` writes the boiler data, the flow limit, the
+  weather curves and the adaptation; `boileroptions.ts` holds the ranges, builds the patch and mirrors the
+  curves of the daemon for the preview in `CurveChart.svelte`. The room screen judges the air comfort from
+  the temperature and the humidity (`AirComfort.svelte`, ranges in `comfort.ts`).
 - `src/lib/api.ts`: the client of the HTTP API. `data.svelte.ts` polls the views every 5 seconds.
 - `src/lib/install.ts`: the rules of the installation pages: the number of a new zone, the writes of a move,
   the state of each setup step. `install.svelte.ts` runs a change and reads the state again.
@@ -98,7 +103,8 @@ calibration, firmware and debug. A new client call needs a line in the JSON file
 line widens what a Home Assistant user can do without the token. The list holds the installation and
 pairing calls, so the pages Rooms and devices and First setup work under the add-on. Where the wider route also
 writes a field that ingress must not reach, the client calls a route that carries one field:
-`PUT /api/install/timezone`, `PUT /api/install/devices/{ref}/zone` and `POST /api/pair/devices/{ref}`.
+`PUT /api/install/timezone`, `PUT /api/install/boiler`, `PUT /api/install/devices/{ref}/zone` and
+`POST /api/pair/devices/{ref}`.
 
 The backup is a class of its own. `src/lib/backup.ts` calls `GET /api/state/export` and
 `POST /api/state/import`, which are not in that list and are not methods of the client in `api.ts`. They

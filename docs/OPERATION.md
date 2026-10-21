@@ -247,10 +247,26 @@ room form the last group, No room. The page and the settings of a room do these 
 The page Boiler shows the fault codes that the boiler reports, as numbers, and every page shows them in
 a banner while there is one. A code is a number of the boiler maker: freedo gives it no meaning.
 
+The page Boiler also takes the gas meter readings: Add a reading sends the value and the time it was
+read, with an option for a new or replaced meter. The page lists the stored readings with what the
+meter and the estimate counted between two of them, shows the learned factor, and removes the last
+reading after a confirm. See [Gas meter](API.md#gas-meter).
+
+The page Boiler setup, from the button at the top of the Boiler page, writes the boiler options in one
+`PUT /api/install/boiler`: the fuel, the output and the fuel flow at full and at no modulation, the
+highest flow temperature, the default weather curve, a curve per circuit, the adaptation and the
+timing of the flow limit. Each section says where the manual of the boiler lists the values. The page
+draws the curve that the daemon serves, with the outdoor temperature of now.
+
+A room screen judges the air comfort from the temperature and the humidity of the room. The ranges are
+the heating-season values of EN 16798-1 category II: 20 to 24 C and 30 to 60 % humidity. From 70 % the
+page warns of a mould risk.
+
 The dashboard chooses the number of a new room: 0 for hot water, else the lowest free number from 1. It
 declares a device without a serial number, and the daemon takes the serial from the first request of the
-device. The controller gains of a room and every installation option other than the time zone stay in
-the API: see [Installation options](API.md#installation-options) and [Zone options](API.md#zone-options).
+device. The controller gains of a room and every installation option other than the time zone and the
+boiler options stay in the API: see [Installation options](API.md#installation-options) and
+[Zone options](API.md#zone-options).
 
 The page First setup takes a new daemon to a working plant. Rooms and devices and Settings link to it, and the home
 page does while the installation has no room. It shows six steps with their live state:

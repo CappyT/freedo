@@ -21,6 +21,9 @@
 // - The settings of a heated room save its options in one request and keep the ranges of the daemon.
 // - The burner badge of the boiler page follows the burner flag, also while no room asks for heat.
 //   A boiler fault code shows on the boiler page and as a banner.
+// - The boiler setup saves the energy data and the flow options, with a comma as the decimal separator,
+//   and refuses the default curve without a highest flow temperature. With a fuel flow set, the boiler
+//   page saves a meter reading, refuses a lower one before it is sent and undoes the last after a confirm.
 // - The first setup takes a daemon with an empty database to a room, a paired thermostat and a circuit.
 //   The device that the pair window hears and the frames of the joined device are put into the
 //   answers here: the daemon has no radio. As the daemon does, the answers keep the device in the
@@ -853,6 +856,65 @@ try {
 		'a boiler with no fault code shows None and no banner'
 	);
 	boilerPatch = null;
+
+	// The boiler setup writes the energy data and the flow options through PUT /api/install/boiler.
+	// Once the fuel flow is set, the boiler page takes a meter reading, refuses a lower one and undoes the last.
+	const typeAt = (selector, index, value) =>
+		tab.evaluate(
+			`(() => { const i = document.querySelectorAll(${JSON.stringify(selector)})[${index}]; i.value = ${JSON.stringify(value)}; i.dispatchEvent(new Event('input', { bubbles: true })); })()`
+		);
+	await open('#/boiler', `document.querySelector('[data-testid=boiler-setup]')`);
+	check(await tab.evaluate(`!!document.querySelector('[data-testid=meter-off]')`), 'without a fuel flow the boiler page sends the meter readings to the setup');
+	await click('[data-testid=boiler-setup]');
+	await tab.waitFor(`document.querySelectorAll('[data-testid=boiler-energy] .pair .input').length === 4`, 8000);
+	for (const [i, v] of ['24', '3,5', '2,63', '0.3'].entries()) await typeAt('[data-testid=boiler-energy] .pair .input', i, v);
+	await click('[data-testid=boiler-energy] button[type=submit]');
+	check(await toast('Setup saved'), 'the energy data of the boiler are saved');
+	const energyOptions = await api(daemon.base, 'install');
+	check(
+		energyOptions.boiler_max_power_kw === 24 && energyOptions.boiler_min_power_kw === 3.5 && energyOptions.boiler_max_gas_m3h === 2.63 && energyOptions.boiler_min_gas_m3h === 0.3,
+		`the daemon holds the energy data, with a comma read as the decimal separator (${energyOptions.boiler_max_power_kw}, ${energyOptions.boiler_min_power_kw}, ${energyOptions.boiler_max_gas_m3h}, ${energyOptions.boiler_min_gas_m3h})`
+	);
+	await typeAt('[data-testid=flow-limit]', 0, '56');
+	await tab.evaluate(`(() => { const c = document.querySelector('[data-testid=default-curve]'); if (!c.checked) c.click(); })()`);
+	await tab.waitFor(`document.querySelector('[data-testid=boiler-flow] svg[role=img]')`, 4000).catch(() => {});
+	check(await tab.evaluate(`!!document.querySelector('[data-testid=boiler-flow] svg[role=img]')`), 'the default curve shows its preview');
+	await typeAt('[data-testid=flow-limit]', 0, '');
+	check(
+		await tab.evaluate(`document.querySelector('[data-testid=flow-save]').disabled && /needs the highest flow/.test(document.querySelector('[data-testid=boiler-flow] .issues')?.textContent ?? '')`),
+		'the default curve without a highest flow temperature cannot be saved and says why'
+	);
+	await typeAt('[data-testid=flow-limit]', 0, '56');
+	// The toast of the first save may still show, so the check waits for the daemon to hold the values.
+	await click('[data-testid=flow-save]');
+	let flowOptions = {};
+	for (let i = 0; i < 50 && !(flowOptions.flow_limit_c === 56 && flowOptions.flow_default_curve === true); i++) {
+		await sleep(100);
+		flowOptions = await api(daemon.base, 'install');
+	}
+	check(flowOptions.flow_limit_c === 56 && flowOptions.flow_default_curve === true, `the daemon holds the flow limit and the default curve (${flowOptions.flow_limit_c}, ${flowOptions.flow_default_curve})`);
+
+	await open('#/boiler', `document.querySelector('[data-testid=meter-add]') && !document.querySelector('[data-testid=meter-add]').disabled`);
+	await click('[data-testid=meter-add]');
+	await tab.waitFor(`document.querySelector('[data-testid=meter-reading]')`, 4000);
+	await typeAt('[data-testid=meter-reading]', 0, '100,5');
+	await click('[data-testid=gas-meter] form button[type=submit]');
+	check(await toast('Reading saved'), 'a meter reading is saved');
+	await tab.waitFor(`document.querySelectorAll('[data-testid=meter-readings] .list-row').length === 1`, 8000).catch(() => {});
+	const meter = (await api(daemon.base, 'boiler')).energy.gas.meter;
+	check(meter?.lastReading === 100.5 && meter?.entries?.length === 1, `the daemon holds the reading (${JSON.stringify(meter?.entries)})`);
+	await click('[data-testid=meter-add]');
+	await tab.waitFor(`document.querySelector('[data-testid=meter-reading]')`, 4000);
+	await typeAt('[data-testid=meter-reading]', 0, '99');
+	check(
+		await tab.evaluate(`document.querySelector('[data-testid=gas-meter] form button[type=submit]').disabled && /below the last one/.test(document.querySelector('[data-testid=gas-meter] [role=alert]')?.textContent ?? '')`),
+		'a reading below the last one is refused before it is sent, and the page names the replaced meter'
+	);
+	await click('[data-testid=meter-undo]');
+	await tab.waitFor(`document.querySelector('dialog[open] button.primary')`, 4000);
+	await tab.evaluate(`document.querySelector('dialog[open] button.primary').click()`);
+	check(await toast('Reading removed'), 'the last reading is undone after a confirm');
+	check((await api(daemon.base, 'boiler')).energy.gas.meter === null, 'the daemon holds no reading after the undo');
 
 	// 13. The first setup on a daemon with an empty database.
 	fresh = await startDaemon(bin);

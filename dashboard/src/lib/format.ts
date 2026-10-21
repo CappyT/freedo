@@ -50,6 +50,18 @@ export function when(value: string | number | Date, locale: string, now: Date = 
 	return new Intl.DateTimeFormat(locale, { weekday: 'short', hour: '2-digit', minute: '2-digit' }).format(date);
 }
 
+/** The decimal separator of a language: "," in Italian, "." in English. */
+export function decimalSeparator(locale: string): string {
+	return new Intl.NumberFormat(locale).formatToParts(1.5).find((p) => p.type === 'decimal')?.value ?? '.';
+}
+
+/** A day and a time, with the year only when it is not the current one: "21 ott, 15:52". */
+export function dateTime(value: string | number | Date, locale: string, now: Date = new Date()): string {
+	const date = toDate(value);
+	const year = date.getFullYear() === now.getFullYear() ? undefined : 'numeric';
+	return new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short', year, hour: '2-digit', minute: '2-digit' }).format(date);
+}
+
 /** How long ago a Unix time was. The result is "-" for a time that never happened. */
 export function ago(unixSeconds: number, locale: string, nowMs: number = Date.now()): string {
 	if (!unixSeconds) return NONE;

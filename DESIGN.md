@@ -308,6 +308,15 @@ A 270 degree arc from 5 to 25 C, drawn in the ink of the state: a 14-unit track 
 ### Schedule Week
 One bar per day, 32 px high, 8 px radius. Blocks are separated by a 2 px white line in both themes and coloured on the schedule ramp by setpoint; off blocks take the off tint. Labels are navy at 13 px and hide when a block is too narrow. The time of now is the only dark line on the bar: a 2 px navy line across it, with a 10 px navy dot on the top edge in a 2 px white ring, so the dot also reads on the navy card of the dark theme.
 
+### Curve Preview
+A weather curve drawn as one 2 px line in the text colour over hairline grid lines every 10 C: the outdoor temperature from -15 to 25 C across, the flow limit from 30 C up. The outdoor temperature of now is an accent dot in a 2 px surface ring, and the caption under the plot names its value. A pointer over the plot shows a crosshair and the value at that degree. A row of seven values in Plex Mono under the plot is the table twin.
+
+### Comfort Map
+Temperature from 14 to 30 C across, humidity from 10 to 90 % up. The comfort zone (20 to 24 C, 30 to 60 %) is the idle tint with an idle-text hairline and an 8 px radius. The 70 % mould line is a fault-text hairline. The room is a text-colour dot in a 2 px surface ring. The row above pairs a status dot with the verdict word and a hint.
+
+### Guide
+A `<details>` block inside a panel: the panel tint at half strength, a hairline border, a 14 px radius. The summary is a link-coloured semibold line; the body is a numbered list at 13.5 px. A guide explains where a value comes from; it never holds a control.
+
 ## Do's and Don'ts
 
 ### Do:

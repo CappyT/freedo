@@ -632,22 +632,6 @@
 		width: 8rem;
 	}
 
-	.check {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.5rem;
-		min-height: 2.75rem;
-		font-size: var(--text-small-size);
-		font-weight: var(--weight-medium);
-		cursor: pointer;
-	}
-
-	.check input {
-		width: 1.1rem;
-		height: 1.1rem;
-		accent-color: var(--action);
-	}
-
 	.issues {
 		margin: 0;
 		padding-left: 1.25rem;

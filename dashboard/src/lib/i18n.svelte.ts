@@ -31,6 +31,8 @@ export const fmt = {
 	pct: (v: number | null | undefined) => format.pct(v, prefs.locale),
 	clock: (v: string | number | Date) => format.clock(v, prefs.locale),
 	when: (v: string | number | Date) => format.when(v, prefs.locale),
+	dateTime: (v: string | number | Date) => format.dateTime(v, prefs.locale),
+	decimal: () => format.decimalSeparator(prefs.locale),
 	ago: (unixSeconds: number) => format.ago(unixSeconds, prefs.locale),
 	duration: format.duration,
 	uptime: format.uptime,

@@ -4,6 +4,7 @@
 	import { boilerFaults, burnerHours, burnerState, canSetFlow, flowDrivers, flowInRange } from '#lib/boiler.ts';
 	import { data } from '#lib/data.svelte.ts';
 	import { fmt, t, type Key } from '#lib/i18n.svelte.ts';
+	import GasMeter from '#lib/GasMeter.svelte';
 	import Icon from '#lib/Icon.svelte';
 	import { typedNumber } from '#lib/numeric.ts';
 	import { api } from '#lib/session.ts';
@@ -15,6 +16,7 @@
 	// The screen takes the colour of what the boiler does: fault first, then a running burner.
 	const fill = $derived(faults.state === 'fault' ? 'fault' : burner === 'on' ? 'heating' : 'off');
 	const circuits = $derived(boiler?.flowLimit.circuits ?? []);
+	const fuelUnit = $derived(boiler?.energy.gas.unit === 'm3' ? 'm³' : (boiler?.energy.gas.unit ?? ''));
 	const names = $derived(new Map(data.circuits.map((c) => [c.ID, c.Name])));
 	let wanted = $state<Record<number, number | undefined>>({});
 	let busy = $state(false);
@@ -51,7 +53,7 @@
 				<div class="hero-bar">
 					<a class="round" href={resolve('/')} aria-label={t('nav.home')}><Icon name="back" size={22} /></a>
 					<h1 id="boiler-title">{t('boiler.title')}</h1>
-					<span></span>
+					<a class="round" href={resolve('/boiler/setup')} aria-label={t('boilerSetup.title')} title={t('boilerSetup.title')} data-testid="boiler-setup"><Icon name="sliders" size={20} /></a>
 				</div>
 				<div class="pills">
 					<span class="hero-state" data-testid="burner">
@@ -201,11 +203,28 @@
 							<span class="list-main"><span class="list-label">{t('boiler.gas')}</span>{#if boiler.energy.gas.reason}<span class="list-sub">{t(reasonKey('reason', boiler.energy.gas.reason))}</span>{/if}</span>
 							<span class="list-value"><span class="dot" style:--dot={boiler.energy.gas.running ? 'var(--status-idle-text)' : 'var(--status-off-text)'}></span>{boiler.energy.gas.running ? t('boiler.counting') : t('boiler.notCounting')}</span>
 						</li>
-						<li class="list-row"><span class="list-main list-label">{t('boiler.flowRate')}</span><span class="list-value num">{fmt.number(boiler.energy.gas.flowM3H, 2)} {boiler.energy.gas.unit}/h</span></li>
-						<li class="list-row"><span class="list-main list-label">{t('boiler.total')}</span><span class="list-value num">{fmt.number(boiler.energy.gas.totalM3, 1)} {boiler.energy.gas.unit}</span></li>
+						<li class="list-row"><span class="list-main list-label">{t('boiler.flowRate')}</span><span class="list-value num">{fmt.number(boiler.energy.gas.flowM3H, 2)} {fuelUnit}/h</span></li>
+						<li class="list-row"><span class="list-main list-label">{t('boiler.total')}</span><span class="list-value num">{fmt.number(boiler.energy.gas.totalM3, 1)} {fuelUnit}</span></li>
 					</ul>
 					<p class="note">{t('boiler.estimateNote')}</p>
 				</section>
+
+				<section class="section" aria-labelledby="meter-title">
+					<div class="section-head"><h2 id="meter-title">{t('meter.title')}</h2></div>
+					<GasMeter gas={boiler.energy.gas} />
+					<p class="note">{t('meter.note')}</p>
+				</section>
+
+				<a class="list setup-link" href={resolve('/boiler/setup')}>
+					<span class="list-row">
+						<span class="disc"><Icon name="sliders" size={18} /></span>
+						<span class="list-main">
+							<span class="list-label">{t('boilerSetup.title')}</span>
+							<span class="list-sub">{t('boilerSetup.sub')}</span>
+						</span>
+						<span class="chevron"><Icon name="chevron" size={18} /></span>
+					</span>
+				</a>
 			</div>
 		</div>
 	{/if}
@@ -350,6 +369,15 @@
 		.set .btn.primary {
 			flex: 1 1 100%;
 		}
+	}
+
+	.setup-link {
+		color: var(--text);
+		text-decoration: none;
+	}
+
+	.setup-link:hover .list-row {
+		background: color-mix(in srgb, var(--panel) 60%, transparent);
 	}
 
 	.none {

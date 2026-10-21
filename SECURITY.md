@@ -43,12 +43,14 @@ and `{ref}` stand for a zone number, a device and a device reference:
 - Preset: `POST /api/presets`, `PATCH` and `DELETE /api/presets/{id}`, and
   `POST /api/presets/{id}/activate`.
 - Home: `PATCH /api/home` (home or away).
-- Boiler: `POST /api/boiler/flow` (the flow limit).
+- Boiler: `POST /api/boiler/flow` (the flow limit), and `POST` and `DELETE /api/boiler/gas/meter` (a
+  gas meter reading).
 - Device: `POST /api/nodes/{id}/childlock`, `/identify` and `/reboot`, and
   `PUT /api/install/devices/{ref}/label` (the label alone, no other field).
 - Installation, read: `GET /api/install`, `/api/install/devices`,
   `/api/install/devices/{ref}/removal`, `/api/install/zones` and `/api/install/circuits`.
-- Installation, write: `PUT /api/install/timezone` (the time zone alone), `POST /api/install/devices`,
+- Installation, write: `PUT /api/install/timezone` (the time zone alone), `PUT /api/install/boiler` (the
+  boiler and flow limit options alone), `POST /api/install/devices`,
   `PUT /api/install/devices/{ref}/zone` (the zone claim alone), `DELETE /api/install/devices/{ref}`,
   `POST /api/install/zones`, `PATCH` and `DELETE /api/install/zones/{n}`,
   `POST /api/install/zones/{n}/members`, `DELETE /api/install/zones/{n}/members/{ref}`,

@@ -1,7 +1,9 @@
 import type {
 	Boiler,
+	BoilerPatch,
 	Circuit,
 	EndRule,
+	GasMeter,
 	Health,
 	Home,
 	InstallCircuit,
@@ -174,6 +176,11 @@ export function createClient(options: ClientOptions = {}) {
 			request<{ rev: number; device: unknown }>('PUT', device(ref) + '/label', { label }),
 		flow: (tempC: number, circuit?: number) =>
 			request<Command>('POST', 'boiler/flow', circuit === undefined ? { tempC } : { tempC, id: circuit }),
+		/** Records a gas meter reading in the fuel unit. at defaults to now; replaced starts a new meter. */
+		gasReading: (body: { reading: number; at?: string; replaced?: boolean }) =>
+			request<GasMeter>('POST', 'boiler/gas/meter', body),
+		/** Removes the last meter reading. The answer is null once no reading is left. */
+		undoGasReading: () => request<GasMeter | null>('DELETE', 'boiler/gas/meter'),
 		childLock: (device: string, on: boolean) =>
 			request<Command>('POST', 'nodes/' + encodeURIComponent(device) + '/childlock', { on }),
 		identify: (device: string) => request<Command>('POST', 'nodes/' + encodeURIComponent(device) + '/identify', {}),
@@ -184,6 +191,8 @@ export function createClient(options: ClientOptions = {}) {
 		installInfo: () => request<InstallInfo>('GET', 'install'),
 		/** An IANA name such as Europe/Rome. */
 		setTimezone: (timezone: string) => request<{ rev: number }>('PUT', 'install/timezone', { timezone }),
+		/** The boiler and flow limit options alone. The daemon checks them as PATCH /api/install does. */
+		setBoiler: (patch: BoilerPatch) => request<{ rev: number; install: InstallInfo }>('PUT', 'install/boiler', patch),
 		installDevices: async () => (await request<{ devices: InstallDevice[] }>('GET', 'install/devices')).devices,
 		createDevice: (body: { eui: string; kind: 'valve' | 'thermostat'; label: string }) =>
 			request<{ device: InstallDevice }>('POST', 'install/devices', body),

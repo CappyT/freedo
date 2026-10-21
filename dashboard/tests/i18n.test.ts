@@ -43,6 +43,12 @@ describe('formats', () => {
 		expect(format.numberParts(-2.5, 'de')).toEqual({ whole: '-2', fraction: ',5' });
 	});
 
+	it('write a day and a time, with the year only for another year', () => {
+		const now = new Date(2026, 9, 21, 16, 0);
+		expect(format.dateTime(new Date(2026, 9, 21, 15, 52), 'en', now)).toBe('Oct 21, 03:52 PM');
+		expect(format.dateTime(new Date(2025, 0, 2, 9, 5), 'en', now)).toBe('Jan 2, 2025, 09:05 AM');
+	});
+
 	it('write a duration', () => {
 		expect(format.duration(5400)).toBe('1 h 30 min');
 		expect(format.duration(1800)).toBe('30 min');

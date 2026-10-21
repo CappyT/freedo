@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import { act } from '#lib/actions.ts';
+	import AirComfort from '#lib/AirComfort.svelte';
 	import { alertKeys, modeLine } from '#lib/describe.ts';
 	import Dial from '#lib/Dial.svelte';
 	import { buildDevices } from '#lib/devices.ts';
@@ -234,6 +235,13 @@
 						{/if}
 					</ul>
 				</section>
+
+				{#if model.tempC !== null || model.humidityPct !== null}
+					<section class="section" aria-labelledby="comfort-title">
+						<div class="section-head"><h2 id="comfort-title">{t('comfort.title')}</h2></div>
+						<AirComfort tempC={model.tempC} humidityPct={model.humidityPct} />
+					</section>
+				{/if}
 
 				<section class="section" aria-labelledby="devices-title">
 					<div class="section-head"><h2 id="devices-title">{t('zone.devices')}</h2></div>

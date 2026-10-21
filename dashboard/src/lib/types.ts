@@ -193,12 +193,35 @@ export interface FlowCircuit {
 	reductionC: number | null;
 }
 
+export interface GasMeterEntry {
+	/** RFC3339, the time the user took the reading. */
+	at: string;
+	reading: number;
+	/** The fuel counter when the reading was taken. */
+	estimate: number;
+}
+
+/** The real meter the user reads, with the value the daemon extrapolates between readings. */
+export interface GasMeter {
+	value: number;
+	lastReading: number;
+	lastReadingAt: string;
+	readings: number;
+	factor: number;
+	/** 2 when a factor was learned, else 0. */
+	factorReadings: number;
+	/** Oldest first. */
+	entries: GasMeterEntry[];
+}
+
 export interface GasEstimate {
 	running: boolean;
 	reason: string | null;
 	flowM3H: number;
 	totalM3: number;
 	unit: string;
+	/** Null while no reading is stored. */
+	meter: GasMeter | null;
 }
 
 export interface EnergyEstimate {
@@ -292,7 +315,40 @@ export interface Queued {
 }
 
 /** GET /api/install: the fields the dashboard reads. */
-export interface InstallInfo {
+export type FuelUnit = 'm3' | 'l' | 'kg';
+
+/** A weather curve of one circuit: two points from outdoor temperature to flow limit, clamped to min_c and max_c. */
+export interface FlowCurve {
+	enabled: boolean;
+	points: [{ outdoor_c: number; flow_c: number }, { outdoor_c: number; flow_c: number }];
+	min_c: number;
+	max_c: number;
+}
+
+/** The options of the boiler and of its flow limit. PUT /api/install/boiler writes them; null removes a value. */
+export interface BoilerOptions {
+	boiler_max_power_kw: number | null;
+	boiler_min_power_kw: number;
+	boiler_max_gas_m3h: number | null;
+	boiler_min_gas_m3h: number | null;
+	fuel_unit: FuelUnit;
+	flow_limit_c: number | null;
+	flow_default_curve: boolean;
+	flow_auto_adapt: boolean;
+	/** Keyed by circuit id. */
+	flow_curves: Record<string, FlowCurve>;
+	outdoor_max_age_sec: number;
+	flow_hysteresis_c: number;
+	flow_min_interval_sec: number;
+}
+
+/** What PUT /api/install/boiler accepts. A curve set to null removes it. */
+export type BoilerPatch = Partial<Omit<BoilerOptions, 'boiler_min_power_kw' | 'flow_curves'>> & {
+	boiler_min_power_kw?: number | null;
+	flow_curves?: Record<string, FlowCurve | null>;
+};
+
+export interface InstallInfo extends BoilerOptions {
 	rev: number;
 	/** The IANA zone of the installation, empty while the daemon follows its host. */
 	timezone: string;
