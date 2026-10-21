@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.10.0
+
+- Statistics, off by default: Settings turns them on. The daemon then keeps a sample of each room and of
+  the boiler every 5 minutes for 90 days, the fuel, heat and burner time of each day for 13 months, and
+  the heat-ups of each room. The data lives in its own file beside the state database, and a backup does
+  not include it. Off keeps the data until a delete.
+- Dashboard: a room screen links to the day report of the room: the heating time, the average, lowest and
+  highest temperature, a chart of the temperature over the target, the heating demand and the humidity,
+  the open-window and away periods, a table of the values every hour and the heat-ups of the day.
+- Dashboard: the page Consumption, from the Boiler page, shows the fuel, the cost, the heat and the burner
+  time per day of a month and per month over 13 months, and takes the price of one fuel unit.
+- Daemon: `GET` and `PUT /api/history`, `GET /api/history/zones/{n}` and `GET /api/history/energy`.
+  Home Assistant ingress reaches them without the token.
+- Dashboard: on a phone the profile menu of the Home tile opens from the right edge of the tile, so it
+  stays on the screen.
+- Dashboard: an amount of fuel always shows two decimals, so the columns of a table line up.
+- Run on a daemon with synthetic data in headless Chrome. The statistics did not run on a plant.
+
 ## 0.9.0
 
 - Dashboard: the page Boiler takes the gas meter readings: a reading with the time it was read and an
