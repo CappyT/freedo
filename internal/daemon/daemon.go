@@ -193,8 +193,16 @@ type daemon struct {
 	plant map[int]*plantRun
 	// energy integrates the boiler heat output. It belongs to the engine
 	// goroutine; see boiler_energy.go.
-	energy  energyMeter
-	started time.Time
+	energy energyMeter
+	// history is the open statistics file, nil while they are off. It and the
+	// fields after it belong to the engine goroutine; see history.go.
+	history     *historyStore
+	historyCfg  historySettings
+	historyErr  string
+	historySlot time.Time
+	historyDay  string
+	historyPrev historyCounters
+	started     time.Time
 	// calibrated says whether the database held a passive receiver calibration
 	// when the radio opened, and calPort is the serial port health names in the
 	// command that stores one.
@@ -449,6 +457,7 @@ func (d *daemon) run(ctx context.Context) {
 			d.tickWindows(d.emu)
 			d.tickPairWindow(d.emu)
 			d.tickEnergy()
+			d.tickHistory(d.emu)
 			flowChanged := d.tickFlowLimits(d.emu)
 			utcChanged := d.tickUTCOffset(d.emu)
 			d.tickFwRead(d.emu)
@@ -1894,6 +1903,10 @@ func (d *daemon) mux() *http.ServeMux {
 	m.HandleFunc("POST /api/boiler/flow", d.postBoilerFlow)
 	m.HandleFunc("POST /api/boiler/gas/meter", d.postGasMeter)
 	m.HandleFunc("DELETE /api/boiler/gas/meter", d.deleteGasMeter)
+	m.HandleFunc("GET /api/history", d.getHistory)
+	m.HandleFunc("PUT /api/history", d.putHistory)
+	m.HandleFunc("GET /api/history/zones/{number}", d.getHistoryZone)
+	m.HandleFunc("GET /api/history/energy", d.getHistoryEnergy)
 	m.HandleFunc("POST /api/outdoor", d.postOutdoor)
 	m.HandleFunc("POST /api/pair", d.postPair)
 	m.HandleFunc("POST /api/pair/devices/{ref}", d.postPairDevice)
@@ -4443,6 +4456,10 @@ flags:
 		closeStore(store)
 		die("boiler energy: %v", err)
 	}
+	if err := d.restoreHistory(); err != nil {
+		closeStore(store)
+		die("statistics: %v", err)
+	}
 	d.applyHomeState(emu)
 	unknownModules := emu.UnknownInterfaceModules()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -4522,6 +4539,9 @@ flags:
 	}
 	if err := d.saveEnergyBefore(time.Now().Add(stateSaveBudget)); err != nil {
 		fmt.Fprintf(os.Stderr, "WARNING: persist boiler energy on shutdown: %v\n", err)
+	}
+	if err := d.closeHistoryBefore(time.Now().Add(stateCloseBudget)); err != nil {
+		fmt.Fprintf(os.Stderr, "WARNING: close the statistics on shutdown: %v\n", err)
 	}
 	cancel()
 	closeWithin("the radio", radioCloseBudget, link.Close)

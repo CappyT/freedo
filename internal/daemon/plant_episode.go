@@ -204,6 +204,7 @@ func (d *daemon) endPlant(zone int, reason string, now time.Time) {
 	}
 	if ep.Kind == plantHeat {
 		run.derive(&ep)
+		d.historyEpisode(zone, &ep)
 	}
 	log.Printf("zone %d %s episode recorded: %d samples, %s", zone, ep.Kind, len(ep.Samples), reason)
 	if d.state != nil {

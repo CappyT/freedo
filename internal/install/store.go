@@ -95,7 +95,7 @@ func Open(path string) (*Store, error) {
 	// cut the way the fsync-then-rename of the previous JSON writer did.
 	// foreign_keys is off per connection by default, and the installation tables
 	// rest on it: a zone member has to name a device that exists.
-	dsn := "file:" + stateDSNPath(path) +
+	dsn := "file:" + DSNPath(path) +
 		"?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=synchronous(FULL)" +
 		"&_pragma=journal_size_limit(1048576)&_pragma=foreign_keys(1)"
 	db, err := sql.Open("sqlite", dsn)
@@ -127,9 +127,9 @@ func Open(path string) (*Store, error) {
 	return &Store{db: db}, nil
 }
 
-// stateDSNPath percent-encodes path for the file: URI. A raw ? or # would start
+// DSNPath percent-encodes path for the file: URI. A raw ? or # would start
 // the query or the fragment and open a different file.
-func stateDSNPath(path string) string {
+func DSNPath(path string) string {
 	parts := strings.Split(path, "/")
 	for i, part := range parts {
 		parts[i] = url.PathEscape(part)
@@ -296,7 +296,7 @@ func InspectSchema(path string) (SchemaStatus, string, error) {
 		}
 		return SchemaMissing, "", err
 	}
-	db, err := sql.Open("sqlite", "file:"+stateDSNPath(path)+"?mode=ro")
+	db, err := sql.Open("sqlite", "file:"+DSNPath(path)+"?mode=ro")
 	if err != nil {
 		return SchemaMissing, "", err
 	}
