@@ -15,6 +15,7 @@
 </script>
 
 <script lang="ts">
+	import { NONE } from './format.ts';
 	import { fmt } from './i18n.svelte.ts';
 	import Icon from './Icon.svelte';
 
@@ -88,7 +89,8 @@
 	{:else if word}
 		<span class="word" aria-hidden="true">{word}</span>
 	{:else}
-		<span class="spacer"></span>
+		<!-- No reading yet: the dash of the dial, so the tile keeps its number line. -->
+		<span class="value" aria-hidden="true"><span class="whole">{NONE}</span></span>
 	{/if}
 	<span class="name" aria-hidden="true">{name}</span>
 	<span class="line" aria-hidden="true">{#if lineIcon}<Icon name={lineIcon} size={14} />{/if}{line}</span>
@@ -288,10 +290,6 @@
 		line-height: 1.05;
 		letter-spacing: -0.02em;
 		overflow-wrap: anywhere;
-	}
-
-	.spacer {
-		margin-top: auto;
 	}
 
 	.name {
