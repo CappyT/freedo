@@ -33,10 +33,13 @@ and every page request gets `404`. The API works as before.
 
 - `src/routes`: the pages. `/` is the home page, then `zones/[n]`, `hot-water`, `programs`, `boiler`,
   `devices`, `rooms/[n]`, `setup` and `settings`. `programs` holds the profiles and the home and away
-  schedule of every zone in each profile. The hot water page has no navigation item: its card on the home
-  page leads there.
-- `devices` lists the devices room by room, with No room as the last group. It adds a room, pairs a device
-  and manages the heating circuits. `rooms/[n]` holds the settings of one room: the name, the members
+  schedule of every zone in each profile. The home page shows one tile per room, in the colour of its
+  state, and the tiles of the presence, the active profile, the hot water and the boiler. The hot water
+  page and the boiler page have no navigation item: their tiles on the home page lead there. A room,
+  the hot water and the boiler open on a screen in the colour of their state, and the tile grows into
+  that screen through a view transition (`onNavigate` in `+layout.svelte`, the name `hero` in `app.css`).
+- `devices` lists the devices room by room, with No room as the last group. A device line opens in place
+  on a tap. The page adds a room, pairs a device and manages the heating circuits. `rooms/[n]` holds the settings of one room: the name, the members
   with rename, move and removal, the circuit, the measuring device, the demand reporter, the room options
   and the delete. `src/lib/roomoptions.ts` holds the ranges and builds the patch of the room options.
   `rooms/none` is the same page for the devices in no room. `setup` is the first
@@ -45,7 +48,8 @@ and every page request gets `404`. The API works as before.
 - `src/lib/api.ts`: the client of the HTTP API. `data.svelte.ts` polls the views every 5 seconds.
 - `src/lib/install.ts`: the rules of the installation pages: the number of a new zone, the writes of a move,
   the state of each setup step. `install.svelte.ts` runs a change and reads the state again.
-- `src/lib/schedule.ts`: the rules and the operations of the schedule editor.
+- `src/lib/schedule.ts`: the rules and the operations of the schedule editor. `today.svelte.ts` reads the
+  program of today on the clock of the installation and names its next change.
 - `src/lib/backup.ts`: the download and the upload of a backup, and the wait for the restart of the
   daemon. The section Backup of `settings` uses it.
 - `src/lib/importwait.ts`: the countdown of a daemon that waits after an import. Such a daemon

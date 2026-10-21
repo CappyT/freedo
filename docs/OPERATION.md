@@ -185,12 +185,13 @@ water, the boiler and the devices. It sets temperatures with the four end rules,
 returns it to its program, switches the home between home and away, edits the weekly schedules of the
 home and away programs, and chooses and manages the program presets. It
 calls the routes of [API.md](API.md) and no other.
-Settings shows the health summary of the daemon. It marks `serialErrors` above zero with a warning:
-see [Serial link faults](#serial-link-faults).
+Settings shows the health summary of the daemon: radio mode, transmit, calibration and frames, with
+every other counter behind All counters. It marks `serialErrors` above zero with a warning: see
+[Serial link faults](#serial-link-faults). The foot of the page names the version of the daemon.
 
 Settings also has the section Backup. Download backup saves the [state export](#backup) as a file,
-and the section warns that the file holds the network key. Restore backup takes a file, asks first
-with the list of what the backup replaces, and sends it. The page then shows that freedo restarts
+and the section warns that the file holds the network key. Restore backup opens the file picker,
+asks first with the list of what the chosen backup replaces, and sends it. The page then shows that freedo restarts
 and reconnects by itself: a missing answer during the restart is not shown as a fault. While a
 transmitting daemon waits its 250 seconds, every page shows one banner with the seconds that are
 left, keeps its last data and takes no command. A page that opens during the wait shows the banner
@@ -199,9 +200,10 @@ work for an administrator with no token, and another user reads in the section t
 Assistant administrator can download or restore a backup. Outside the add-on both actions need the
 API token of the page. A refusal stays in the section, and every other page keeps working.
 
-The page Rooms and devices manages the installation. It lists the devices room by room, with the state
-of each device, identify and the child lock. The devices in no room form a last group, No room, while
-there is one. The page and the settings of a room do these tasks:
+The page Rooms and devices manages the installation. It lists the devices room by room, one line per
+device with its state and serial number. A tap opens the line in place: the type, the firmware, the
+last contact, the battery, the child lock, Identify and a link to the room settings. The devices in no
+room form the last group, No room. The page and the settings of a room do these tasks:
 
 - Add a room, rename it, delete it. A delete leaves the devices of the room in the installation, in No
   room.
