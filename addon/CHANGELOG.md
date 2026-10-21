@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.9.0
+
+- Dashboard: the page Boiler takes the gas meter readings: a reading with the time it was read and an
+  option for a new or replaced meter, the list of the readings with what the meter and the estimate
+  counted between two of them, the learned correction factor, and an undo of the last reading.
+- Dashboard: the page Boiler setup, from the button at the top of the page Boiler, writes the fuel,
+  the output and the fuel flow of the boiler, the highest flow temperature, the default weather curve,
+  a curve per circuit, the adaptation and the timing of the flow limit. Each section says where the
+  manual of the boiler lists the values. The page draws the curve with the outdoor temperature of now.
+- Dashboard: a room screen judges the air comfort from the temperature and the humidity, with the
+  ranges of EN 16798-1, and warns of a mould risk from 70 %.
+- Daemon: `PUT /api/install/boiler` writes the boiler and flow limit options alone. Home Assistant
+  ingress reaches it and the gas meter routes without the token.
+- Daemon: `energy.gas.meter` in `GET /api/boiler` lists the stored readings in `entries`.
+- Run on a daemon with synthetic data in headless Chrome. The new pages did not run on a plant. The
+  default weather curve is switched on on one plant; its check over a range of outdoor temperatures is
+  open.
+
 ## 0.8.1
 
 - Dashboard: a tile with no temperature shows a dash in place of the number, like the dial of the
