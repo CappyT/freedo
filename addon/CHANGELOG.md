@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.8.0
+
+- Dashboard: a new design on the model of the tado app. The home page shows one tile per room, in
+  the colour of its state: heating, idle, window open, off, away or fault. A tile shows the
+  temperature, the humidity and one line of state. The tiles of the presence, the active profile,
+  the hot water and the boiler follow the rooms. The alert strip names the devices.
+- Dashboard: a room opens on a screen in the colour of its tile, with the dial, and the tile grows
+  into that screen. The screen shows how long a manual change lasts, the schedule of today with the
+  next change, the state and the devices of the room. The hot water and the boiler open the same
+  way.
+- Dashboard: the navigation has four items: Home, Programs, Devices and Settings. The boiler has no
+  item: its tile on the home page opens it.
+- Dashboard: Programs shows the profiles, home and away, one day at a time and one bar per room. The
+  editor opens under the room.
+- Dashboard: Rooms and devices shows one line per device, and a tap opens the line with the detail,
+  the child lock and Identify. The group No room always shows. Rename, move, restart and removal
+  stay in the room settings.
+- Dashboard: Settings groups the installation, the appearance, the system, the backup and the
+  access. Restore backup opens the file picker. The foot of the page names the version of freedo.
+- Dashboard: selects, radios and checkboxes look the same in the light and the dark theme.
+- The status colours in `assets/brand/tokens.css` are a tonal set at equal lightness. Text on a
+  coloured surface takes the dark step of the same hue.
+- Daemon: `GET /api/health` reports `version`.
+- Run on a daemon with synthetic data and a replay, in headless Chrome. The new dashboard did not
+  run on a plant.
+
 ## 0.7.2
 
 - Daemon: with Transmit on, during the wait after an import the daemon serves the web interface.
