@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
+	import icon from '../../../../assets/brand/svg/icon.svg?inline';
 	import { auth } from '#lib/auth.svelte.ts';
 	import { exportState, importState, refusal, uptimeOf, waitForRestart } from '#lib/backup.ts';
 	import ConfirmDialog from '#lib/ConfirmDialog.svelte';
@@ -7,6 +8,7 @@
 	import { serialLink } from '#lib/health.ts';
 	import { fmt, t } from '#lib/i18n.svelte.ts';
 	import Icon from '#lib/Icon.svelte';
+	import { setupState } from '#lib/install.ts';
 	import { api } from '#lib/session.ts';
 	import { LOCALES, prefs, type LocalePref, type Theme } from '#lib/prefs.svelte.ts';
 	import { toasts } from '#lib/toast.svelte.ts';
@@ -14,9 +16,16 @@
 	const health = $derived(data.health);
 	const link = $derived(serialLink(health));
 	let token = $state('');
+	let tokenOpen = $state(false);
 
 	const themes: Theme[] = ['system', 'light', 'dark'];
 	const languages: Record<string, string> = { en: 'English', it: 'Italiano', de: 'Deutsch', fr: 'Français' };
+
+	const declared = $derived(data.zones?.declared ?? []);
+	const steps = $derived(setupState(health, declared));
+	const openSteps = $derived(
+		[steps.radio, steps.timezone, steps.rooms, steps.transmit, steps.devices, steps.circuits].filter((s) => s !== 'done').length
+	);
 
 	// The daemon names a set utc_offset_min "fixed offset", in English.
 	const zoneLabel = (name: string) => (name === 'fixed offset' ? t('settings.timezone.fixed') : name);
@@ -28,11 +37,14 @@
 		return `UTC${sign}${String(Math.floor(abs / 60)).padStart(2, '0')}:${String(abs % 60).padStart(2, '0')}`;
 	}
 
+	const transmitTone = $derived(health?.transmitAllowed ? 'idle' : health?.tx ? 'fault' : 'off');
+
 	function saveToken(event: SubmitEvent) {
 		event.preventDefault();
 		if (token.trim() === '') return;
 		auth.set(token);
 		token = '';
+		tokenOpen = false;
 		toasts.push('ok', t('settings.token.saved'));
 		void data.refresh();
 	}
@@ -45,8 +57,8 @@
 	const backupOptions = { token: () => auth.token };
 	// After the wait of a transmitting daemon, the start itself takes a few seconds more.
 	const RESTART_MARGIN_MS = 60_000;
-	let backupFiles = $state<FileList | undefined>();
-	const backupFile = $derived(backupFiles?.[0]);
+	let fileInput: HTMLInputElement | undefined = $state();
+	let backupFile = $state<File | null>(null);
 	let backupBusy = $state(false);
 	let backupState = $state<'idle' | 'restarting' | 'restored' | 'timeout'>('idle');
 	let backupWaitSec = $state(0);
@@ -87,6 +99,18 @@
 		}
 	}
 
+	/**
+	 * The chosen file opens the confirmation. The input is emptied at once, so the same file picked
+	 * again after a cancel is a change too.
+	 */
+	function picked(input: HTMLInputElement) {
+		const file = input.files?.[0];
+		input.value = '';
+		if (!file) return;
+		backupFile = file;
+		restoreDialog?.show();
+	}
+
 	async function restoreBackup() {
 		const file = backupFile;
 		if (!file) return;
@@ -104,7 +128,7 @@
 				limitMs: result.waitSec * 1000 + RESTART_MARGIN_MS
 			});
 			backupState = back ? 'restored' : 'timeout';
-			backupFiles = undefined;
+			backupFile = null;
 		} catch (error) {
 			backupFailed(error);
 		} finally {
@@ -113,150 +137,260 @@
 			void data.refresh();
 		}
 	}
-
 </script>
 
+{#snippet chevron()}
+	<span class="chevron"><Icon name="chevron" size={18} /></span>
+{/snippet}
+
 <section class="page">
-	<div class="page-head"><h1>{t('settings.title')}</h1></div>
+	<h1>{t('settings.title')}</h1>
 
-	<section class="panel" aria-labelledby="look-title">
-		<header><h2 id="look-title">{t('settings.look')}</h2></header>
-		<fieldset class="group">
-			<legend class="small muted">{t('settings.theme')}</legend>
-			<div class="segmented">
-				{#each themes as theme (theme)}
-					<label>
-						<input type="radio" name="theme" checked={prefs.theme === theme} onchange={() => prefs.setTheme(theme)} />
-						{t(`theme.${theme}`)}
-					</label>
-				{/each}
-			</div>
-		</fieldset>
-		<label class="field select">
-			<span>{t('settings.language')}</span>
-			<select class="input" value={prefs.localePref} onchange={(e) => prefs.setLocale(e.currentTarget.value as LocalePref)}>
-				<option value="auto">{t('settings.language.auto')}</option>
-				{#each LOCALES as locale (locale)}
-					<option value={locale}>{languages[locale]}</option>
-				{/each}
-			</select>
-		</label>
-	</section>
-
-	<section class="panel" aria-labelledby="token-title">
-		<header>
-			<h2 id="token-title">{t('settings.token')}</h2>
-			<span class="badge" class:tone-idle={auth.token} class:tone-off={!auth.token}>
-				{auth.token ? t('settings.token.set') : t('settings.token.none')}
-			</span>
-		</header>
-		<p class="note">{t('settings.token.note')}</p>
-		<form class="row fill" onsubmit={saveToken}>
-			<label class="field grow">
-				<span>{t('token.label')}</span>
-				<input class="input mono" type="password" autocomplete="off" spellcheck="false" bind:value={token} />
-			</label>
-			<button class="btn primary" type="submit" disabled={token.trim() === ''}><Icon name="key" size={18} />{t('token.save')}</button>
-			<button class="btn danger" type="button" onclick={removeToken} disabled={!auth.token}><Icon name="trash" size={18} />{t('settings.token.remove')}</button>
-		</form>
-	</section>
-
-	<section class="panel" aria-labelledby="backup-title" data-testid="backup">
-		<header><h2 id="backup-title">{t('settings.backup')}</h2></header>
-		<p class="note">{t('settings.backup.note')}</p>
-		<p class="notice tone-warning" role="note"><Icon name="key" /><span>{t('settings.backup.secret')}</span></p>
-		{#if backupError}
-			<p class="notice tone-fault" role="alert" data-testid="backup-error"><Icon name="fault" /><span>{backupError}</span></p>
-		{/if}
-		{#if backupState === 'restarting'}
-			<p class="notice tone-warning" role="status" data-testid="backup-restarting">
-				<Icon name="refresh" />
-				<span>
-					{data.waitSec !== null
-						? data.waitSec > 0
-							? t('banner.importWait', { seconds: data.waitSec })
-							: t('banner.restarting')
-						: backupWaitSec > 0
-							? t('settings.backup.waiting', { seconds: backupWaitSec })
-							: t('settings.backup.restarting')}
-				</span>
-			</p>
-		{:else if backupState === 'restored'}
-			<p class="notice tone-idle" role="status" data-testid="backup-restored"><Icon name="check" /><span>{t('settings.backup.restored')}</span></p>
-		{:else if backupState === 'timeout'}
-			<p class="notice tone-fault" role="alert" data-testid="backup-timeout"><Icon name="fault" /><span>{t('settings.backup.timeout')}</span></p>
-		{/if}
-		<div class="row fill">
-			<button class="btn" type="button" onclick={downloadBackup} disabled={backupBusy}><Icon name="key" size={18} />{t('settings.backup.download')}</button>
-		</div>
-		<div class="row fill">
-			<label class="field grow">
-				<span>{t('settings.backup.file')}</span>
-				<input class="input" type="file" accept=".db,application/vnd.sqlite3,application/octet-stream" bind:files={backupFiles} disabled={backupBusy} />
-			</label>
-			<button class="btn danger" type="button" onclick={() => restoreDialog?.show()} disabled={backupBusy || !backupFile}>
-				<Icon name="refresh" size={18} />{t('settings.backup.restore')}
-			</button>
-		</div>
-	</section>
-
-	<section class="panel" aria-labelledby="install-title">
-		<header><h2 id="install-title">{t('settings.install')}</h2></header>
-		<p class="note">{t('settings.install.note')}</p>
-		<div class="row fill">
-			<a class="btn" href={resolve('/setup')}><Icon name="check" size={18} />{t('setup.title')}</a>
-			<a class="btn" href={resolve('/devices')}><Icon name="devices" size={18} />{t('devices.title')}</a>
-		</div>
-	</section>
-
-	<section class="panel" aria-labelledby="daemon-title">
-		<header><h2 id="daemon-title">{t('settings.daemon')}</h2></header>
-		{#if !health}
-			<p class="muted">{t('state.loading')}</p>
-		{:else}
-			{#if health.warning}
-				<p class="notice tone-warning" role="status"><Icon name="warning" /><span>{health.warning}</span></p>
-			{/if}
-			{#if link === 'warning'}
-				<p class="notice tone-warning" role="status">
-					<Icon name="warning" /><span>{t('settings.serialErrors.notice', { n: fmt.number(health.serialErrors, 0) })}</span>
-				</p>
-			{/if}
-			{#if health.timezone?.fallback}
+	<div class="columns">
+		<section class="section" aria-labelledby="install-title">
+			<div class="section-head"><h2 id="install-title">{t('settings.install')}</h2></div>
+			<ul class="list">
+				<li>
+					<a class="list-row" href={resolve('/devices')}>
+						<span class="disc"><Icon name="devices" size={18} /></span>
+						<span class="list-main">
+							<span class="list-label">{t('devices.title')}</span>
+							<span class="list-sub">{t('settings.install.count', { rooms: declared.length, devices: health?.devices.length ?? 0 })}</span>
+						</span>
+						{@render chevron()}
+					</a>
+				</li>
+				<li>
+					<a class="list-row" href={resolve('/setup')}>
+						<span class="disc"><Icon name="check" size={18} /></span>
+						<span class="list-main">
+							<span class="list-label">{t('setup.title')}</span>
+							<span class="list-sub">{openSteps === 0 ? t('settings.setup.done') : t('settings.setup.open', { n: openSteps })}</span>
+						</span>
+						{@render chevron()}
+					</a>
+				</li>
+				<li>
+					<a class="list-row" href={resolve('/setup')}>
+						<span class="disc"><Icon name="clock" size={18} /></span>
+						<span class="list-main">
+							<span class="list-label">{t('settings.timezone')}</span>
+							{#if health?.timezone}<span class="list-sub num">{offset(health.timezone.offsetMin)}</span>{/if}
+						</span>
+						<span class="list-value value">{health?.timezone ? zoneLabel(health.timezone.name) : '-'}</span>
+						{@render chevron()}
+					</a>
+				</li>
+			</ul>
+			{#if health?.timezone?.fallback}
 				<p class="notice tone-warning" role="status"><Icon name="warning" /><span>{t('settings.timezoneFallback')}</span></p>
 			{/if}
-			<dl class="facts">
-				<div><dt>{t('settings.mode')}</dt><dd class="text">{t(`mode.${health.mode}`)}</dd></div>
-				<div><dt>{t('settings.transmit')}</dt><dd class="text">{health.transmitAllowed ? t('settings.transmit.on') : health.tx ? t('settings.transmit.blocked') : t('settings.transmit.dryRun')}</dd></div>
-				<div><dt>{t('settings.radio')}</dt><dd class="text">{health.radioError ?? t('settings.radio.ok')}</dd></div>
-				{#if link !== 'none'}
-					<div>
-						<dt>{t('settings.serialErrors')}</dt>
-						<dd class="text">
-							<span class="mono">{fmt.number(health.serialErrors, 0)}</span>
-							<span class="badge tone-{link === 'warning' ? 'warning' : 'idle'}">
-								{link === 'warning' ? t('settings.serialErrors.warn') : t('settings.serialErrors.ok')}
+		</section>
+
+		<section class="section" aria-labelledby="look-title">
+			<div class="section-head"><h2 id="look-title">{t('settings.look')}</h2></div>
+			<ul class="list">
+				<li>
+					<fieldset class="theme">
+						<legend class="sr-only">{t('settings.theme')}</legend>
+						<div class="list-row" aria-hidden="true">
+							<span class="disc"><Icon name="sliders" size={18} /></span>
+							<span class="list-label">{t('settings.theme')}</span>
+						</div>
+						<div class="segmented">
+							{#each themes as theme (theme)}
+								<label>
+									<input type="radio" name="theme" checked={prefs.theme === theme} onchange={() => prefs.setTheme(theme)} />
+									{t(`theme.${theme}`)}
+								</label>
+							{/each}
+						</div>
+					</fieldset>
+				</li>
+				<li>
+					<!-- The select covers the row, so the whole row opens the list of the system. -->
+					<label class="list-row language">
+						<span class="disc"><Icon name="globe" size={18} /></span>
+						<span class="list-main">
+							<span class="list-label">{t('settings.language')}</span>
+							{#if prefs.localePref === 'auto'}<span class="list-sub">{t('settings.language.auto')}</span>{/if}
+						</span>
+						<span class="list-value value">{languages[prefs.locale]}</span>
+						{@render chevron()}
+						<select value={prefs.localePref} onchange={(e) => prefs.setLocale(e.currentTarget.value as LocalePref)}>
+							<option value="auto">{t('settings.language.auto')}</option>
+							{#each LOCALES as locale (locale)}
+								<option value={locale}>{languages[locale]}</option>
+							{/each}
+						</select>
+					</label>
+				</li>
+			</ul>
+		</section>
+
+		<section class="section" aria-labelledby="daemon-title">
+			<div class="section-head"><h2 id="daemon-title">{t('settings.daemon')}</h2></div>
+			{#if !health}
+				<p class="muted">{t('state.loading')}</p>
+			{:else}
+				{#if health.warning}
+					<p class="notice tone-warning" role="status"><Icon name="warning" /><span>{health.warning}</span></p>
+				{/if}
+				{#if link === 'warning'}
+					<p class="notice tone-warning" role="status">
+						<Icon name="warning" /><span>{t('settings.serialErrors.notice', { n: fmt.number(health.serialErrors, 0) })}</span>
+					</p>
+				{/if}
+				<ul class="list">
+					<li class="list-row">
+						<span class="disc"><Icon name="radio" size={18} /></span>
+						<span class="list-main"><span class="list-label">{t('settings.mode')}</span></span>
+						<span class="list-value value"><span class="dot tone-{health.mode === 'live' ? 'idle' : 'off'}"></span>{t(`mode.${health.mode}`)}</span>
+					</li>
+					<li class="list-row">
+						<span class="disc"><Icon name="bolt" size={18} /></span>
+						<span class="list-main"><span class="list-label">{t('settings.transmit')}</span></span>
+						<span class="list-value value">
+							<span class="dot tone-{transmitTone}"></span>
+							{health.transmitAllowed ? t('settings.transmit.on') : health.tx ? t('settings.transmit.blocked') : t('settings.transmit.dryRun')}
+						</span>
+					</li>
+					<!-- A live radio reports its calibration, with the radio error and the serial link under it. -->
+					<li class="list-row">
+						<span class="disc"><Icon name="check" size={18} /></span>
+						{#if health.calibrated !== undefined}
+							<span class="list-main">
+								<span class="list-label">{t('settings.calibrated')}</span>
+								<span class="list-sub">
+									{t('settings.radio')}: {health.radioError ?? t('settings.radio.ok')}{#if link !== 'none'}&nbsp;· {t('settings.serialErrors')}:
+										<span class="num">{fmt.number(health.serialErrors, 0)}</span>{/if}
+								</span>
 							</span>
-						</dd>
-					</div>
+							<span class="list-value value">{health.calibrated ? t('state.yes') : t('state.no')}</span>
+						{:else}
+							<span class="list-main"><span class="list-label">{t('settings.radio')}</span></span>
+							<span class="list-value value">{health.radioError ?? t('settings.radio.ok')}</span>
+						{/if}
+					</li>
+					<li class="list-row">
+						<span class="disc"><Icon name="pulse" size={18} /></span>
+						<span class="list-main">
+							<span class="list-label">{t('settings.frames')}</span>
+							<span class="list-sub">{t('settings.uptime')}: <span class="num">{fmt.uptime(health.uptimeSec)}</span></span>
+						</span>
+						<span class="list-value num">{fmt.number(health.frames, 0)}</span>
+					</li>
+					<li>
+						<details>
+							<summary class="list-row">
+								<span class="list-main"><span class="list-label more">{t('settings.details')}</span></span>
+								{@render chevron()}
+							</summary>
+							<dl class="facts-list">
+								<div><dt>{t('settings.bridge')}</dt><dd>{health.bridgePresent ? t('state.yes') : t('state.no')}</dd></div>
+								{#if health.fsctrl0 !== undefined}<div><dt>FSCTRL0</dt><dd class="num">{health.fsctrl0}</dd></div>{/if}
+								<div><dt>{t('settings.micFails')}</dt><dd class="num">{fmt.number(health.micFails, 0)}</dd></div>
+								<div><dt>{t('settings.queue')}</dt><dd class="num">{fmt.number(health.queue.pending, 0)}</dd></div>
+								<div><dt>{t('settings.downlink')}</dt><dd class="num">{health.downlink.delivered} / {health.downlink.sent} / {health.downlink.dropped}</dd></div>
+								<div><dt>{t('settings.unhandled')}</dt><dd class="num">{fmt.number(health.unhandled, 0)}</dd></div>
+							</dl>
+						</details>
+					</li>
+				</ul>
+			{/if}
+		</section>
+
+		<section class="section" aria-labelledby="backup-title" data-testid="backup">
+			<div class="section-head"><h2 id="backup-title">{t('settings.backup')}</h2></div>
+			{#if backupError}
+				<p class="notice tone-fault" role="alert" data-testid="backup-error"><Icon name="fault" /><span>{backupError}</span></p>
+			{/if}
+			{#if backupState === 'restarting'}
+				<p class="notice tone-warning" role="status" data-testid="backup-restarting">
+					<Icon name="refresh" />
+					<span>
+						{data.waitSec !== null
+							? data.waitSec > 0
+								? t('banner.importWait', { seconds: data.waitSec })
+								: t('banner.restarting')
+							: backupWaitSec > 0
+								? t('settings.backup.waiting', { seconds: backupWaitSec })
+								: t('settings.backup.restarting')}
+					</span>
+				</p>
+			{:else if backupState === 'restored'}
+				<p class="notice tone-idle" role="status" data-testid="backup-restored"><Icon name="check" /><span>{t('settings.backup.restored')}</span></p>
+			{:else if backupState === 'timeout'}
+				<p class="notice tone-fault" role="alert" data-testid="backup-timeout"><Icon name="fault" /><span>{t('settings.backup.timeout')}</span></p>
+			{/if}
+			<ul class="list">
+				<li>
+					<button class="list-row" type="button" onclick={downloadBackup} disabled={backupBusy}>
+						<span class="disc"><Icon name="download" size={18} /></span>
+						<span class="list-main">
+							<span class="list-label">{t('settings.backup.download')}</span>
+							<span class="list-sub">{t('settings.backup.download.sub')}</span>
+						</span>
+						{@render chevron()}
+					</button>
+				</li>
+				<li>
+					<button class="list-row" type="button" onclick={() => fileInput?.click()} disabled={backupBusy}>
+						<span class="disc"><Icon name="upload" size={18} /></span>
+						<span class="list-main">
+							<span class="list-label">{t('settings.backup.restore')}</span>
+							<span class="list-sub">{t('settings.backup.restore.sub')}</span>
+						</span>
+						{@render chevron()}
+					</button>
+				</li>
+			</ul>
+			<input
+				class="sr-only"
+				type="file"
+				tabindex="-1"
+				aria-label={t('settings.backup.file')}
+				accept=".db,application/vnd.sqlite3,application/octet-stream"
+				bind:this={fileInput}
+				onchange={(e) => picked(e.currentTarget)}
+			/>
+			<p class="note secret" data-testid="backup-secret"><Icon name="lock" size={14} /><span>{t('settings.backup.secret')}</span></p>
+		</section>
+
+		<section class="section" aria-labelledby="token-title">
+			<div class="section-head"><h2 id="token-title">{t('settings.access')}</h2></div>
+			<ul class="list">
+				<li>
+					<button class="list-row" aria-expanded={tokenOpen} data-testid="token-row" onclick={() => (tokenOpen = !tokenOpen)}>
+						<span class="disc"><Icon name="key" size={18} /></span>
+						<span class="list-main">
+							<span class="list-label">{t('settings.token')}</span>
+							<span class="list-sub">{t('settings.token.sub')}</span>
+						</span>
+						<span class="list-value value">{auth.token ? t('settings.token.set') : t('settings.token.none')}</span>
+						{@render chevron()}
+					</button>
+				</li>
+				{#if tokenOpen}
+					<li class="token">
+						<form class="row fill" onsubmit={saveToken}>
+							<label class="field grow">
+								<span>{t('token.label')}</span>
+								<input class="input mono" type="password" autocomplete="off" spellcheck="false" bind:value={token} />
+							</label>
+							<button class="btn primary" type="submit" disabled={token.trim() === ''}><Icon name="key" size={18} />{t('token.save')}</button>
+							<button class="btn danger" type="button" onclick={removeToken} disabled={!auth.token}><Icon name="trash" size={18} />{t('settings.token.remove')}</button>
+						</form>
+						<p class="note">{t('settings.token.note')}</p>
+					</li>
 				{/if}
-				<div><dt>{t('settings.bridge')}</dt><dd class="text">{health.bridgePresent ? t('state.yes') : t('state.no')}</dd></div>
-				{#if health.calibrated !== undefined}
-					<div><dt>{t('settings.calibrated')}</dt><dd class="text">{health.calibrated ? t('state.yes') : t('state.no')} ({health.fsctrl0})</dd></div>
-				{/if}
-				<div>
-					<dt>{t('settings.timezone')}</dt>
-					<dd class="text">{health.timezone ? `${zoneLabel(health.timezone.name)}, ${offset(health.timezone.offsetMin)}` : '-'}</dd>
-				</div>
-				<div><dt>{t('settings.uptime')}</dt><dd>{fmt.uptime(health.uptimeSec)}</dd></div>
-				<div><dt>{t('settings.frames')}</dt><dd>{fmt.number(health.frames, 0)}</dd></div>
-				<div><dt>{t('settings.micFails')}</dt><dd>{fmt.number(health.micFails, 0)}</dd></div>
-				<div><dt>{t('settings.queue')}</dt><dd>{fmt.number(health.queue.pending, 0)}</dd></div>
-				<div><dt>{t('settings.downlink')}</dt><dd>{health.downlink.delivered} / {health.downlink.sent} / {health.downlink.dropped}</dd></div>
-				<div><dt>{t('settings.unhandled')}</dt><dd>{fmt.number(health.unhandled, 0)}</dd></div>
-			</dl>
-		{/if}
-	</section>
+			</ul>
+		</section>
+	</div>
+
+	{#if health?.version}
+		<footer class="version"><img src={icon} alt="" width="28" height="28" />freedo <span class="num">{health.version}</span></footer>
+	{/if}
 </section>
 
 <ConfirmDialog
@@ -275,25 +409,144 @@
 />
 
 <style>
-	.group {
+	.columns {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(min(100%, 28rem), 1fr));
+		gap: 1.5rem 1.25rem;
+		align-items: start;
+	}
+
+	.value {
+		color: var(--text-muted);
+		font-weight: var(--weight-regular);
+	}
+
+	.chevron {
+		flex: none;
+		color: var(--text-muted);
+	}
+
+	.theme {
+		display: grid;
 		margin: 0;
-		padding: 0;
+		padding: 0 0 0.875rem;
 		border: 0;
+	}
+
+	.theme .segmented {
+		display: grid;
+		margin-inline: 0.875rem;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		justify-self: stretch;
+	}
+
+	.language {
+		position: relative;
+		cursor: pointer;
+	}
+
+	.language select {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		opacity: 0;
+		cursor: pointer;
+	}
+
+	.language:has(select:focus-visible) {
+		outline: 3px solid var(--accent);
+		outline-offset: -3px;
+	}
+
+	.dot.tone-idle {
+		--dot: var(--status-idle-text);
+	}
+
+	.dot.tone-off {
+		--dot: var(--status-off-text);
+	}
+
+	.dot.tone-fault {
+		--dot: var(--status-fault-text);
+	}
+
+	details summary {
+		list-style: none;
+		cursor: pointer;
+	}
+
+	details summary::-webkit-details-marker {
+		display: none;
+	}
+
+	details[open] .chevron {
+		rotate: 90deg;
+	}
+
+	.more {
+		color: var(--link);
+	}
+
+	.facts-list {
 		display: grid;
 		gap: 0.4rem;
+		margin: 0;
+		padding: 0 0.875rem 0.875rem;
+		font-size: var(--text-small-size);
 	}
 
-	.group legend {
-		padding: 0;
-		margin-bottom: 0.35rem;
-		font-weight: var(--weight-medium);
+	.facts-list div {
+		display: flex;
+		justify-content: space-between;
+		gap: 1rem;
 	}
 
-	.select {
-		max-width: 20rem;
+	.facts-list dt {
+		color: var(--text-muted);
+	}
+
+	.facts-list dd {
+		margin: 0;
+		text-align: right;
+		overflow-wrap: anywhere;
+	}
+
+	.secret {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.4rem;
+		margin: 0 0.25rem;
+	}
+
+	.secret :global(svg) {
+		flex: none;
+		margin-top: 0.2rem;
+	}
+
+	.token {
+		display: grid;
+		gap: 0.5rem;
+		padding: 0.875rem;
 	}
 
 	.grow {
-		flex: 1 1 16rem;
+		flex: 1 1 14rem;
+	}
+
+	.version {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+		color: var(--text-muted);
+		font-size: var(--text-small-size);
+	}
+
+	.version img {
+		border-radius: 7px;
+	}
+
+	.version .num {
+		color: var(--text);
 	}
 </style>

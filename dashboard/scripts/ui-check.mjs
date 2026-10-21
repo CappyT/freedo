@@ -6,7 +6,7 @@
 //
 // - Typing "21.5" into a temperature field of the schedule editor keeps every digit, and the
 //   daemon stores the schedule.
-// - A failed command puts the presence switch and the child lock back to what the daemon says.
+// - A failed command leaves the presence tile and the child lock at what the daemon says.
 // - A zone with no program starts on "until I end it" and shows a hint. Turn off asks first.
 // - The schedule panel keeps the away program and an open editor across a data poll.
 // - A device renamed in the settings of its room shows its new name right after the save, also when
@@ -229,25 +229,29 @@ try {
 	const saved = await (await fetch(daemon.base + '/api/zones/8/schedule')).json();
 	check(saved.programs?.[0]?.entries?.[0]?.setpoint_c === 21.5, `the daemon stores 21.5 (${JSON.stringify(saved.programs?.[0]?.entries?.[0])})`);
 
-	// 2. The presence switch after a refused command.
-	await open('#/', `document.querySelectorAll('.card').length >= 6 && document.querySelector('input[name=presence]')`);
-	const presence = () => tab.evaluate(`[...document.querySelectorAll('input[name=presence]')].map((r) => r.checked)`);
-	check(JSON.stringify(await presence()) === '[true,false]', 'the switch starts at home');
+	// 2. The presence tile after a refused command. The tile is pressed while the home is away.
+	const homeReady = `document.querySelectorAll('.tile').length >= 6 && document.querySelector('[data-testid=presence]')`;
+	await open('#/', homeReady);
+	const presence = () => tab.evaluate(`document.querySelector('[data-testid=presence]').getAttribute('aria-pressed')`);
+	check((await presence()) === 'false', 'the presence tile starts at home');
 	failing.add('PATCH /api/home');
-	await tab.evaluate(`document.querySelectorAll('input[name=presence]')[1].click()`);
+	await click('[data-testid=presence]');
 	check(await toast('refused for the check'), 'the refusal is shown');
 	await sleep(300);
-	check(JSON.stringify(await presence()) === '[true,false]', 'the switch returns to home after a refused command');
+	check((await presence()) === 'false', 'the presence tile stays at home after a refused command');
 	failing.clear();
-	await tab.evaluate(`document.querySelectorAll('input[name=presence]')[1].click()`);
+	await click('[data-testid=presence]');
 	await sleep(1200);
-	check(JSON.stringify(await presence()) === '[false,true]', 'the switch keeps away after an accepted command');
+	check((await presence()) === 'true', 'the presence tile shows away after an accepted command');
 	check((await (await fetch(daemon.base + '/api/home')).json()).away === true, 'the daemon is away');
-	await tab.evaluate(`document.querySelectorAll('input[name=presence]')[0].click()`);
+	await click('[data-testid=presence]');
 	await sleep(800);
 
 	// 3. The child lock after a refused command.
-	await open('#/devices', `document.querySelector('.switch input')`);
+	// A device row opens on a tap: open them all, so the switch of the first valve shows.
+	await open('#/devices', `document.querySelector('.device .head')`);
+	await tab.evaluate(`document.querySelectorAll('.device .head[aria-expanded=false]').forEach((b) => b.click())`);
+	await tab.waitFor(`document.querySelector('.switch input')`);
 	failing.add('POST /api/nodes/*/childlock');
 	await tab.evaluate(`document.querySelector('.switch input').click()`);
 	check(await toast('refused for the check'), 'the refusal of the child lock is shown');
@@ -314,7 +318,7 @@ try {
 			body: JSON.stringify({ name: 'Check preset' })
 		})
 	).json();
-	await open('#/', `document.querySelectorAll('.card').length >= 6 && document.querySelector('input[name=presence]')`);
+	await open('#/', homeReady);
 	await click('.profile-menu .menu-button');
 	await tab.waitFor(
 		`[...document.querySelectorAll('.menu [role=menuitemradio]')].some((o) => o.textContent.includes('Check preset'))`,
@@ -410,13 +414,15 @@ try {
 			.filter((el) => Math.abs(el.getBoundingClientRect().bottom - control.bottom) > 1)
 			.map((el) => el.textContent.trim() || el.className);
 	})`;
-	await open('#/', `document.querySelector('.actions .menu-button')`);
+	await open('#/', `document.querySelector('.profile-menu .menu-button')`);
 	const homeRow = await tab.evaluate(`(() => {
-		const tops = [...document.querySelectorAll('.page-head .actions > .btn, .page-head .actions > .segmented, .page-head .actions .menu-button')].map((el) => Math.round(el.getBoundingClientRect().top));
+		const tops = [...document.querySelectorAll('.home .actions > .qa')].map((el) => Math.round(el.getBoundingClientRect().top));
 		return { tops, lines: tops.filter((top, i) => tops.findIndex((other) => Math.abs(other - top) <= 2) === i).length };
 	})()`);
-	check(homeRow.lines === 1, `the profile menu and the buttons of the home page share one line (${homeRow.tops})`);
+	check(homeRow.tops.length === 2 && homeRow.lines === 1, `the two quick actions of the home page share one line (${homeRow.tops})`);
 	await open('#/settings', `document.querySelector('#token-title')`);
+	await click('[data-testid=token-row]');
+	await tab.waitFor(`document.querySelector('.token form')`);
 	const offSettings = await tab.evaluate(misaligned);
 	check(offSettings.length === 0, `the buttons of the settings forms sit on the line of their controls (${offSettings})`);
 	await open('#/programs', `document.querySelector('.matrix')`);
@@ -431,7 +437,7 @@ try {
 	// and the activation, which names the rooms that change now.
 	const typeInto = (selector, value) =>
 		tab.evaluate(`(() => { const i = document.querySelector(${JSON.stringify(selector)}); i.value = ${JSON.stringify(value)}; i.dispatchEvent(new Event('input', { bubbles: true })); })()`);
-	await open('#/', `document.querySelector('.actions .menu-button')`);
+	await open('#/', `document.querySelector('.profile-menu .menu-button')`);
 	await click('.profile-menu .menu-button');
 	await tab.waitFor(`document.querySelector('.menu a[href*="new"]')`);
 	await click('.menu a[href*="new"]');
@@ -484,10 +490,10 @@ try {
 
 	await open('#/devices', `document.querySelector('[data-room="3"] .device')`);
 	check(
-		(await tab.evaluate(`[...document.querySelectorAll('[data-room] > header h2')].map((h) => h.textContent)`)).join() === 'Hot water,Hall,Bath,Office,Kitchen,Living room,Bedroom',
+		(await tab.evaluate(`[...document.querySelectorAll('[data-room] > header h2')].map((h) => h.textContent)`)).join() === 'Hot water,Hall,Bath,Office,Kitchen,Living room,Bedroom,No room',
 		'the devices are grouped by room'
 	);
-	await clickIn('.page-head', 'Add room');
+	await clickIn('.page > .actions', 'Add room');
 	await tab.waitFor(`document.querySelector('[data-testid=room-form]')`);
 	await typeInto('[data-testid=room-form] input', 'Attic');
 	const offRoom = await tab.evaluate(misaligned);
@@ -501,7 +507,7 @@ try {
 
 	// Add a device: the window, the device it hears, the description and the pair command.
 	const valve = { eui: '0ba9cefa07c51b00', short: 'a90b' };
-	await clickIn('.page-head', 'Add device');
+	await clickIn('.page > .actions', 'Add device');
 	await tab.waitFor(`document.querySelector('[data-testid=add-device]')`);
 	requests.length = 0;
 	await clickIn('[data-testid=add-device]', 'Open the pair window');
@@ -598,7 +604,7 @@ try {
 	check(await tab.waitFor(`!document.querySelector('#add-device-title')`, 3000).then(() => true, () => false), 'Done closes the flow');
 
 	// The device that joined stays in the answer of the closed window. The flow does not offer it again.
-	await clickIn('.page-head', 'Add device');
+	await clickIn('.page > .actions', 'Add device');
 	await tab.waitFor(`document.querySelector('[data-testid=add-device] .joiner')`, 8000);
 	check(
 		await tab.evaluate(`!document.querySelector('[data-testid=add-device] button.joiner') && /Paired: Attic valve/.test(document.querySelector('[data-testid=add-device] .joiner').innerText)`),
@@ -810,7 +816,10 @@ try {
 	check(await toast('Device removed'), 'a free device is removed from the installation');
 	check(!(await api(daemon.base, 'install/devices')).devices.some((d) => d.eui === valve.eui), 'the daemon removed the free device');
 	await open('#/devices', `document.querySelector('[data-room="3"] .device')`);
-	check(!(await tab.evaluate(`!!document.querySelector('[data-room="none"]')`)), 'the group No room is gone while every device has a room');
+	check(
+		await tab.evaluate(`!document.querySelector('[data-room="none"] .device') && /Every device is in a room/.test(document.querySelector('[data-room="none"]')?.innerText ?? '')`),
+		'the group No room says that every device has a room'
+	);
 
 	// The burner badge follows the burner flag of the boiler, not the call of the heating circuit.
 	const burner = async (patch) => {

@@ -49,6 +49,15 @@ export const stateTone: Record<StateKey, Tone> = {
 	fault: 'fault'
 };
 
+/** The test for each alert that one device raises. The other alerts belong to the zone. */
+export const deviceAlerts: Partial<Record<AlertKey, (h: HealthDevice) => boolean>> = {
+	deviceOffline: (h) => h.offline,
+	deviceFault: (h) => h.fault,
+	deviceWarning: (h) => (h.deviceWarnings?.length ?? 0) > 0,
+	lowBattery: (h) => h.lowBattery,
+	commsWarning: (h) => (h.commsWarnings?.length ?? 0) > 0
+};
+
 /**
  * One state per zone, by priority: unreachable, faulty, window open, off, heating,
  * away, idle. Other problems stay as alerts next to the state.
@@ -63,11 +72,10 @@ export function zoneStatus(
 	const alerts: AlertKey[] = [];
 	const healths = members.map((m) => m.health).filter((h): h is HealthDevice => h !== undefined);
 	const allOffline = healths.length > 0 && healths.length === members.length && healths.every((h) => h.offline);
-	if (!allOffline && healths.some((h) => h.offline)) alerts.push('deviceOffline');
-	if (healths.some((h) => h.fault)) alerts.push('deviceFault');
-	if (healths.some((h) => (h.deviceWarnings?.length ?? 0) > 0)) alerts.push('deviceWarning');
-	if (healths.some((h) => h.lowBattery)) alerts.push('lowBattery');
-	if (healths.some((h) => (h.commsWarnings?.length ?? 0) > 0)) alerts.push('commsWarning');
+	for (const [alert, raised] of Object.entries(deviceAlerts) as [AlertKey, (h: HealthDevice) => boolean][]) {
+		if (alert === 'deviceOffline' && allOffline) continue;
+		if (healths.some(raised)) alerts.push(alert);
+	}
 	if (fallbacks.some((f) => f.zone === zone.number)) alerts.push('fallback');
 	if ((zone.window?.undelivered.length ?? 0) > 0) alerts.push('windowUndelivered');
 

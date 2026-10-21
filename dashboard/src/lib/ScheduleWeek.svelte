@@ -1,16 +1,30 @@
 <script lang="ts">
 	import { fmt, t } from './i18n.svelte.ts';
-	import { DAYS, formatTime, weekSegments, type Group, type Range } from './schedule.ts';
+	import { DAYS, formatTime, weekSegments, type Day, type Group, type Range } from './schedule.ts';
 
-	// compact draws a small week with one row per program and no hour axis, for a list of schedules.
-	let { groups, range, compact = false }: { groups: Group[]; range: Range; compact?: boolean } = $props();
+	interface Props {
+		groups: Group[];
+		range: Range;
+		/** A small week with one row per program and no hour axis, for a list of schedules. */
+		compact?: boolean;
+		/** One day only, with no day name: the day of a room screen. */
+		only?: Day;
+		/** The minute of the day to mark on the row of only. */
+		now?: number;
+		/** The hour axis under the rows. A list of single days draws one axis of its own. */
+		axis?: boolean;
+	}
+
+	let { groups, range, compact = false, only, now, axis = true }: Props = $props();
 
 	const week = $derived(weekSegments(groups));
 	// A compact week draws one row per program: the days that share it carry the same blocks.
 	const rows = $derived(
-		compact
-			? groups.filter((g) => g.days.length > 0).map((g) => ({ key: String(g.key), day: g.days[0]!, label: dayRange(g.days) }))
-			: DAYS.map((day) => ({ key: day, day, label: fmt.day(day) }))
+		only
+			? [{ key: only, day: only, label: fmt.day(only) }]
+			: compact
+				? groups.filter((g) => g.days.length > 0).map((g) => ({ key: String(g.key), day: g.days[0]!, label: dayRange(g.days) }))
+				: DAYS.map((day) => ({ key: day, day, label: fmt.day(day) }))
 	);
 
 	/** mon, tue, wed reads "mon-wed"; days that do not follow each other are listed. */
@@ -27,10 +41,10 @@
 	const low = $derived(temps.length > 0 ? Math.min(...temps) : range.min);
 	const span = $derived(Math.max((temps.length > 0 ? Math.max(...temps) : range.max) - low, (range.max - range.min) / 5));
 
-	/** The warmer the block, the more of the heating hue it carries. The theme sets the ends of the ramp. */
+	/** The warmer the block, the further along the warm ramp of the tokens. */
 	function shade(setpointC: number): string {
 		const fraction = Math.min(1, Math.max(0, (setpointC - low) / span));
-		return `color-mix(in srgb, var(--status-heating) calc(var(--ramp-low) + var(--ramp-span) * ${fraction.toFixed(3)}), var(--surface))`;
+		return `color-mix(in oklab, var(--schedule-high) ${(fraction * 100).toFixed(1)}%, var(--schedule-low))`;
 	}
 
 	function summary(day: (typeof DAYS)[number], label: string): string {
@@ -40,37 +54,41 @@
 		return `${label}: ${parts.join(', ')}`;
 	}
 
-	// The shortest block that fits its temperature label.
-	const labelMin = $derived(compact ? 240 : 150);
+	/** The label of the block under the line of now moves to the side away from the line. */
+	function side(segment: { from: number; to: number }, day: Day): 'start' | 'end' | null {
+		if (now === undefined || only !== day || now < segment.from || now >= segment.to) return null;
+		return now - segment.from < (segment.to - segment.from) / 2 ? 'end' : 'start';
+	}
 </script>
 
-<div class="week" class:compact>
+<div class="week" class:compact class:single={only !== undefined}>
 	{#each rows as { key, day, label } (key)}
 		<div class="day">
-			<span class="name">{label}</span>
+			{#if only === undefined}<span class="name">{label}</span>{/if}
 			<div class="bar" role="img" aria-label={summary(day, compact ? label : fmt.day(day, 'long'))} title={summary(day, compact ? label : fmt.day(day, 'long'))}>
 				{#each week[day] as segment (segment.from)}
 					<span
-						class="segment"
+						class="segment {side(segment, day) ?? ''}"
 						class:off={!segment.enabled}
 						style:left="{(segment.from / 1440) * 100}%"
 						style:width="{((segment.to - segment.from) / 1440) * 100}%"
 						style:background={segment.enabled ? shade(segment.setpointC) : undefined}
 					>
-						{#if segment.to - segment.from >= labelMin}
-							<span class="label" class:mono={segment.enabled}>{segment.enabled ? fmt.number(segment.setpointC, 1) : t('schedule.off')}</span>
-						{/if}
+						<span class="label" class:mono={segment.enabled}>{segment.enabled ? fmt.degrees(segment.setpointC) : t('schedule.off')}</span>
 					</span>
 				{/each}
+				{#if now !== undefined && only !== undefined}
+					<i class="now" style:left="{(now / 1440) * 100}%"></i>
+				{/if}
 			</div>
 		</div>
 	{/each}
-	{#if !compact}
+	{#if !compact && axis}
 		<div class="day axis" aria-hidden="true">
-			<span class="name"></span>
+			{#if only === undefined}<span class="name"></span>{/if}
 			<div class="ticks mono">
 				{#each [0, 6, 12, 18, 24] as hour (hour)}
-					<span style:left="{(hour / 24) * 100}%">{hour}</span>
+					<span style:left="{(hour / 24) * 100}%">{String(hour).padStart(2, '0')}</span>
 				{/each}
 			</div>
 		</div>
@@ -78,24 +96,9 @@
 </div>
 
 <style>
-	/* Above 56 percent of the hue the label on the dark theme falls under 4.5:1. */
 	.week {
-		--ramp-low: 14%;
-		--ramp-span: 58%;
 		display: grid;
 		gap: 0.4rem;
-	}
-
-	@media (prefers-color-scheme: dark) {
-		:global(:root:not([data-theme='light'])) .week {
-			--ramp-low: 20%;
-			--ramp-span: 36%;
-		}
-	}
-
-	:global(:root[data-theme='dark']) .week {
-		--ramp-low: 20%;
-		--ramp-span: 36%;
 	}
 
 	.day {
@@ -105,19 +108,26 @@
 		gap: 0.6rem;
 	}
 
+	.single .day {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
 	.name {
 		font-size: var(--text-small-size);
 		font-weight: var(--weight-medium);
 		color: var(--text-muted);
 	}
 
+	/* The ramp is light in both themes, so the labels on it are navy. */
 	.bar {
 		position: relative;
 		height: 2rem;
 		border-radius: var(--radius-xs);
-		border: 1px solid var(--border);
-		overflow: hidden;
-		background: var(--panel);
+		background: var(--schedule-low);
+	}
+
+	.single .bar {
+		height: 2.25rem;
 	}
 
 	.segment {
@@ -126,21 +136,74 @@
 		bottom: 0;
 		display: grid;
 		place-items: center;
-		border-left: 1px solid var(--surface);
+		border-left: 2px solid var(--surface);
+		overflow: hidden;
+		/* A block shows its label whenever the label fits in it. */
+		container-type: inline-size;
+	}
+
+	.segment.start {
+		justify-items: start;
+		padding-left: 0.375rem;
+	}
+
+	.segment.end {
+		justify-items: end;
+		padding-right: 0.375rem;
+	}
+
+	.segment:first-child {
+		border-left: 0;
+		border-radius: var(--radius-xs) 0 0 var(--radius-xs);
+	}
+
+	.segment:last-of-type {
+		border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
 	}
 
 	.segment.off {
-		background: repeating-linear-gradient(
-			135deg,
-			var(--status-off-tint) 0 6px,
-			var(--border-strong) 6px 8px
-		);
+		background: var(--status-off-tint);
 	}
 
 	.label {
 		font-size: var(--text-caption-size);
-		color: var(--text);
+		color: var(--navy);
 		font-weight: var(--weight-medium);
+		white-space: nowrap;
+	}
+
+	@container (width < 1.75rem) {
+		.label {
+			visibility: hidden;
+		}
+	}
+
+	.off .label {
+		color: var(--status-off-text);
+	}
+
+	/* The time of now: a navy line past the edges of the bar, with a dot on top. */
+	.now {
+		position: absolute;
+		top: -4px;
+		bottom: -4px;
+		width: 2px;
+		margin-left: -1px;
+		border-radius: 2px;
+		background: var(--navy);
+		pointer-events: none;
+	}
+
+	.now::before {
+		content: '';
+		position: absolute;
+		top: -4px;
+		left: 50%;
+		width: 8px;
+		height: 8px;
+		margin-left: -4px;
+		border-radius: 50%;
+		background: var(--navy);
 	}
 
 	.compact {

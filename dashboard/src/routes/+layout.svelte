@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onNavigate } from '$app/navigation';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
@@ -11,6 +12,7 @@
 	import Icon, { type IconName } from '#lib/Icon.svelte';
 	import { t, type Key } from '#lib/i18n.svelte.ts';
 	import { prefs } from '#lib/prefs.svelte.ts';
+	import RadioChip from '#lib/RadioChip.svelte';
 	import Toasts from '#lib/Toasts.svelte';
 	import TokenGate from '#lib/TokenGate.svelte';
 
@@ -25,13 +27,18 @@
 
 	const route = $derived(page.route.id ?? '/');
 	const items = $derived.by<Item[]>(() => {
-		// Hot water has no item: its card on the home page leads to its page. First setup has none
-		// either: the home page, Rooms and devices and Settings lead to it, so no item is active there.
+		// Hot water and the boiler have no item: their tiles on the home page lead to their pages, so
+		// Home stays active there. First setup has none either: the home page, Rooms and devices and
+		// Settings lead to it, so no item is active there.
 		return [
-			{ href: resolve('/'), label: 'nav.home', icon: 'home', active: route === '/' || route.startsWith('/zones') || route === '/hot-water' },
+			{
+				href: resolve('/'),
+				label: 'nav.home',
+				icon: 'home',
+				active: route === '/' || route.startsWith('/zones') || route === '/hot-water' || route === '/boiler'
+			},
 			{ href: resolve('/programs'), label: 'nav.programs', icon: 'calendar', active: route === '/programs' },
-			{ href: resolve('/boiler'), label: 'nav.boiler', icon: 'flame', active: route === '/boiler' },
-			{ href: resolve('/devices'), label: 'devices.title', icon: 'devices', active: route === '/devices' || route.startsWith('/rooms') },
+			{ href: resolve('/devices'), label: 'nav.devices', icon: 'devices', active: route === '/devices' || route.startsWith('/rooms') },
 			{ href: resolve('/settings'), label: 'nav.settings', icon: 'sliders', active: route === '/settings' }
 		];
 	});
@@ -41,6 +48,18 @@
 	onMount(() => {
 		data.start();
 		return () => data.stop();
+	});
+
+	// A view transition on every navigation: the tile and the screen it opens share the name hero
+	// (app.css), and the rest of the page crossfades.
+	onNavigate((navigation) => {
+		if (!document.startViewTransition || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+		return new Promise((done) => {
+			document.startViewTransition(async () => {
+				done();
+				await navigation.complete;
+			});
+		});
 	});
 
 	$effect(() => {
@@ -68,12 +87,13 @@
 			{#each items as item (item.href)}
 				<li>
 					<a href={item.href} aria-current={item.active ? 'page' : undefined} class:active={item.active}>
-						<Icon name={item.icon} size={22} />
+						<span class="pill"><Icon name={item.icon} size={22} /></span>
 						<span>{t(item.label)}</span>
 					</a>
 				</li>
 			{/each}
 		</ul>
+		<div class="radio"><RadioChip /></div>
 	</nav>
 	<main id="main-content" tabindex="-1">
 		{#if auth.blocked}
@@ -106,6 +126,7 @@
 		top: 0.5rem;
 	}
 
+	/* Wide screen: a rail on the left with the logo, the items and the state of the radio. */
 	.shell {
 		display: grid;
 		grid-template-columns: 15rem minmax(0, 1fr);
@@ -115,7 +136,10 @@
 
 	.brand {
 		grid-column: 1;
-		padding: 1.5rem 1.25rem 1rem;
+		grid-row: 1;
+		padding: 1.5rem 1.25rem 1.25rem;
+		background: var(--surface);
+		border-right: 1px solid var(--border);
 	}
 
 	.logo {
@@ -130,10 +154,13 @@
 
 	nav {
 		grid-column: 1;
+		grid-row: 2;
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
 		padding: 0 0.75rem 1.5rem;
-		position: sticky;
-		top: 0;
-		align-self: start;
+		background: var(--surface);
+		border-right: 1px solid var(--border);
 	}
 
 	nav ul {
@@ -142,20 +169,21 @@
 		padding: 0;
 		display: grid;
 		gap: 0.25rem;
+		position: sticky;
+		top: 1rem;
 	}
 
 	nav a {
-		position: relative;
 		display: flex;
 		align-items: center;
 		gap: 0.75rem;
-		min-height: 2.75rem;
-		padding: 0.5rem 0.9rem;
+		min-height: 2.875rem;
+		padding: 0 0.75rem;
 		border-radius: var(--radius-md);
 		color: var(--text-muted);
 		text-decoration: none;
 		font-weight: var(--weight-medium);
-		font-size: var(--text-small-size);
+		font-size: 0.9375rem;
 	}
 
 	nav a:hover {
@@ -165,18 +193,22 @@
 
 	nav a.active {
 		color: var(--text);
-		background: var(--panel);
+		font-weight: var(--weight-semibold);
+		background: light-dark(var(--ice), var(--navy-border));
 	}
 
-	nav a.active::before {
-		content: '';
-		position: absolute;
-		left: 0;
-		top: 0.65rem;
-		bottom: 0.65rem;
-		width: 3px;
-		border-radius: var(--radius-pill);
-		background: var(--accent);
+	nav a.active .pill {
+		color: var(--link);
+	}
+
+	.pill {
+		display: grid;
+		place-items: center;
+	}
+
+	.radio {
+		margin-top: auto;
+		padding: 0 0.25rem;
 	}
 
 	main {
@@ -200,38 +232,38 @@
 		opacity: 0.5;
 	}
 
-	/* Phone and tablet: the logo sits on top and the navigation moves to the bottom edge. */
+	/* Phone and tablet: no logo, and four items at the bottom edge, like the apps people know. */
 	@media (max-width: 899px) {
 		.shell {
 			grid-template-columns: minmax(0, 1fr);
-			grid-template-rows: auto 1fr auto;
+			grid-template-rows: 1fr auto;
 		}
 
 		.brand {
-			padding: 1rem 1rem 0;
+			display: none;
 		}
 
 		main {
 			grid-column: 1;
-			grid-row: 2;
+			grid-row: 1;
 			padding: 1rem 1rem 2rem;
 		}
 
 		/* The bar is a row of the page that sticks to the bottom edge, so a label on two lines makes the bar higher and hides no content. */
 		nav {
 			grid-column: 1;
-			grid-row: 3;
+			grid-row: 2;
 			position: sticky;
 			z-index: 20;
-			top: auto;
 			bottom: 0;
 			align-self: end;
-			padding: 0;
-			background: var(--surface);
+			padding: 0.375rem 0.375rem calc(0.5rem + env(safe-area-inset-bottom));
+			border-right: 0;
 			border-top: 1px solid var(--border);
 		}
 
 		nav ul {
+			position: static;
 			grid-auto-flow: column;
 			grid-auto-columns: minmax(0, 1fr);
 			gap: 0;
@@ -245,22 +277,32 @@
 		nav a {
 			flex-direction: column;
 			justify-content: center;
-			gap: 0.15rem;
-			min-height: 3.75rem;
-			padding: 0.4rem 0.15rem;
+			gap: 0.2rem;
+			min-height: 3.5rem;
+			padding: 0.25rem 0.15rem;
 			border-radius: 0;
 			font-size: 0.75rem;
 			line-height: 1.2;
 			text-align: center;
 		}
 
-		nav a.active::before {
-			left: 28%;
-			right: 28%;
-			top: 0;
-			bottom: auto;
-			width: auto;
-			height: 3px;
+		nav a:hover,
+		nav a.active {
+			background: none;
+		}
+
+		.pill {
+			width: 3.625rem;
+			height: 1.875rem;
+			border-radius: var(--radius-pill);
+		}
+
+		nav a.active .pill {
+			background: light-dark(var(--ice), var(--navy-border));
+		}
+
+		.radio {
+			display: none;
 		}
 	}
 

@@ -9,6 +9,8 @@ import {
 	defaultDraft,
 	formatTime,
 	fromView,
+	localNow,
+	nextChange,
 	parseTime,
 	programBytes,
 	programInForce,
@@ -218,6 +220,32 @@ describe('the week view', () => {
 		}
 		expect(segments.mon[2]).toMatchObject({ from: 1320, to: 1440, enabled: false });
 		expect(segments.sat).toHaveLength(1);
+	});
+});
+
+describe('the next change', () => {
+	it('reads the clock of the installation, not the clock of the browser', () => {
+		// 2024-01-01 is a Monday. 23:30 UTC is 00:30 on Tuesday at UTC+1.
+		const at = localNow(Date.UTC(2024, 0, 1, 23, 30), 60);
+		expect(at).toEqual({ day: 'tue', minute: 30 });
+	});
+
+	it('finds the next block of today that changes the value', () => {
+		expect(nextChange(week(), { day: 'mon', minute: 100 })).toEqual({ tomorrow: false, minute: 390, setpointC: 20.5, enabled: true });
+		expect(nextChange(week(), { day: 'mon', minute: 400 })).toEqual({ tomorrow: false, minute: 1320, setpointC: 17, enabled: false });
+	});
+
+	it('looks at tomorrow when today holds no change, and skips a block with the same value', () => {
+		expect(nextChange(week(), { day: 'mon', minute: 1400 })).toEqual({ tomorrow: true, minute: 0, setpointC: 17, enabled: true });
+		const same: Group[] = [
+			{ key: 1, days: [...DAYS], blocks: [{ minute: 0, setpointC: 18, enabled: true }, { minute: 600, setpointC: 18, enabled: true }, { minute: 1200, setpointC: 21, enabled: true }] }
+		];
+		expect(nextChange(same, { day: 'wed', minute: 300 })).toEqual({ tomorrow: false, minute: 1200, setpointC: 21, enabled: true });
+	});
+
+	it('is null when the program holds one value through tomorrow', () => {
+		expect(nextChange(week(), { day: 'sat', minute: 600 })).toBeNull();
+		expect(nextChange([], { day: 'sat', minute: 600 })).toBeNull();
 	});
 });
 

@@ -39,6 +39,8 @@ export interface ZoneFallback {
 
 export interface Health {
 	ok: boolean;
+	/** The version of the daemon, "dev" on a build with no release stamp. */
+	version?: string;
 	engine?: string;
 	mode: 'live' | 'replay' | 'mock';
 	tx: boolean;

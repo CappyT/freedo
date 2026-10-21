@@ -33,6 +33,16 @@ describe('formats', () => {
 		expect(format.percent(43, 'en')).toBe('43 %');
 	});
 
+	it('write the short forms of a tile and a room screen', () => {
+		expect(format.degrees(21, 'it')).toBe('21°');
+		expect(format.degrees(20.5, 'en')).toBe('20.5°');
+		expect(format.degrees(null, 'en')).toBe('-');
+		expect(format.pct(64, 'it')).toBe('64%');
+		expect(format.numberParts(20.4, 'it')).toEqual({ whole: '20', fraction: ',4' });
+		expect(format.numberParts(19, 'en')).toEqual({ whole: '19', fraction: '.0' });
+		expect(format.numberParts(-2.5, 'de')).toEqual({ whole: '-2', fraction: ',5' });
+	});
+
 	it('write a duration', () => {
 		expect(format.duration(5400)).toBe('1 h 30 min');
 		expect(format.duration(1800)).toBe('30 min');

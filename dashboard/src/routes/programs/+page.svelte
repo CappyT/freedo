@@ -9,8 +9,9 @@
 	import { changedZones } from '#lib/programs.ts';
 	import SchedulePanel from '#lib/SchedulePanel.svelte';
 	import ScheduleWeek from '#lib/ScheduleWeek.svelte';
-	import { fromPrograms, HEATING_RANGE, HOT_WATER_RANGE } from '#lib/schedule.ts';
+	import { DAYS, fromPrograms, HEATING_RANGE, HOT_WATER_RANGE, type Day, type Mode } from '#lib/schedule.ts';
 	import { api } from '#lib/session.ts';
+	import { clockNow } from '#lib/today.svelte.ts';
 	import type { PresetSchedules, PresetZoneSchedules } from '#lib/types.ts';
 	import { zoneName } from '#lib/zones.ts';
 
@@ -28,6 +29,11 @@
 	let failure = $state<string | null>(null);
 	let editingZone = $state<number | null>(null);
 	let busy = $state(false);
+	// The program and the day the rooms show. The day starts on today of the installation.
+	let mode = $state<Mode>('home');
+	let pickedDay = $state<Day | null>(null);
+	const now = $derived(clockNow());
+	const day = $derived(pickedDay ?? now.day);
 
 	let form = $state<'new' | 'rename' | null>(query.has('new') ? 'new' : null);
 	let name = $state('');
@@ -137,128 +143,124 @@
 </script>
 
 <section class="page" aria-labelledby="programs-title">
-	<div class="page-head">
-		<h1 id="programs-title">{t('programs.title')}</h1>
-		<button class="btn" onclick={() => openNew()}><Icon name="plus" size={18} />{t('programs.new')}</button>
-	</div>
+	<h1 id="programs-title">{t('programs.title')}</h1>
 
 	{#if !data.loaded}
 		<p class="muted">{t('state.loading')}</p>
 	{:else}
-		<div class="layout">
-			<section class="panel list" aria-labelledby="profiles-title">
-				<h2 id="profiles-title">{t('programs.profiles')}</h2>
-				<ul class="profiles">
-					{#each profiles as profile (profile.id)}
-						<li>
-							<button class="profile" class:selected={profile.id === selectedId} aria-pressed={profile.id === selectedId} onclick={() => choose(profile.id)}>
-								<span class="name">{profile.name}</span>
-								{#if profile.active}<span class="badge tone-heating">{t('presets.activeBadge')}</span>{/if}
-							</button>
-						</li>
-					{/each}
-				</ul>
-				<p class="note">{t('presets.note')}</p>
+		<div class="chips" role="group" aria-label={t('programs.profiles')}>
+			{#each profiles as profile (profile.id)}
+				<button class="chip" class:selected={profile.id === selectedId} aria-pressed={profile.id === selectedId} onclick={() => choose(profile.id)}>
+					{profile.name}
+					{#if profile.active}<span class="active"><Icon name="check" size={14} />{t('presets.activeBadge')}</span>{/if}
+				</button>
+			{/each}
+			<button class="chip add" onclick={() => openNew()}><Icon name="plus" size={16} />{t('programs.new')}</button>
+		</div>
+		<p class="note">{t('presets.note')}</p>
+
+		{#if form}
+			<section class="panel" aria-labelledby="form-title">
+				<h2 id="form-title">{form === 'new' ? t('programs.new') : t('presets.rename')}</h2>
+				<form class="row fill" onsubmit={submit}>
+					<label class="field grow">
+						<span>{t('presets.name')}</span>
+						<input class="input" bind:value={name} placeholder={t('presets.nameHint')} autocomplete="off" spellcheck="false" />
+					</label>
+					{#if form === 'new'}
+						<label class="field">
+							<span>{t('presets.copyFrom')}</span>
+							<select class="input" bind:value={copyFrom}>
+								<option value="">{t('presets.copyActive')}</option>
+								{#each profiles as profile (profile.id)}<option value={String(profile.id)}>{profile.name}</option>{/each}
+							</select>
+						</label>
+					{/if}
+					<button class="btn primary" type="submit" disabled={busy || name.trim() === ''}>
+						<Icon name="check" size={18} />{form === 'new' ? t('presets.create') : t('presets.save')}
+					</button>
+					<button class="btn" type="button" onclick={() => (form = null)}>{t('action.cancel')}</button>
+				</form>
 			</section>
+		{/if}
 
-			<div class="main">
-				{#if form}
-					<section class="panel" aria-labelledby="form-title">
-						<h2 id="form-title">{form === 'new' ? t('programs.new') : t('presets.rename')}</h2>
-						<form class="row fill" onsubmit={submit}>
-							<label class="field grow">
-								<span>{t('presets.name')}</span>
-								<input class="input" bind:value={name} placeholder={t('presets.nameHint')} autocomplete="off" spellcheck="false" />
-							</label>
-							{#if form === 'new'}
-								<label class="field">
-									<span>{t('presets.copyFrom')}</span>
-									<select class="input" bind:value={copyFrom}>
-										<option value="">{t('presets.copyActive')}</option>
-										{#each profiles as profile (profile.id)}<option value={String(profile.id)}>{profile.name}</option>{/each}
-									</select>
-								</label>
-							{/if}
-							<button class="btn primary" type="submit" disabled={busy || name.trim() === ''}>
-								<Icon name="check" size={18} />{form === 'new' ? t('presets.create') : t('presets.save')}
-							</button>
-							<button class="btn" type="button" onclick={() => (form = null)}>{t('action.cancel')}</button>
-						</form>
-					</section>
-				{/if}
-
-				{#if selected}
-					<section class="panel" aria-labelledby="selected-title">
-						<header>
-							<div class="row">
-								<h2 id="selected-title">{selected.name}</h2>
-								<span class="badge" class:tone-heating={selected.active} class:tone-off={!selected.active}>
-									{selected.active ? t('presets.activeBadge') : t('programs.inactive')}
-								</span>
-							</div>
-						</header>
+		{#if selected}
+			{#if !selected.active && active}
+				<div class="notice tone-away editing">
+					<Icon name="calendar" />
+					<div class="editing-body">
+						<span>{t('programs.editing', { name: selected.name, active: active.name })}</span>
 						<div class="profile-actions">
-							{#if !selected.active}
-								<button class="btn primary" disabled={busy} onclick={askActivate}><Icon name="check" size={18} />{t('programs.activate')}</button>
-							{/if}
+							<button class="btn primary" disabled={busy} onclick={askActivate}><Icon name="check" size={18} />{t('programs.activate')}</button>
 							<button class="btn" onclick={openRename}><Icon name="edit" size={18} />{t('presets.rename')}</button>
 							<button class="btn" onclick={() => selected && openNew(selected)}><Icon name="plus" size={18} />{t('programs.duplicate')}</button>
-							{#if !selected.active}
-								<button class="btn danger end" onclick={() => confirmDelete?.show()}><Icon name="trash" size={18} />{t('presets.delete')}</button>
-							{/if}
+							<button class="btn danger" onclick={() => confirmDelete?.show()}><Icon name="trash" size={18} />{t('presets.delete')}</button>
 						</div>
-						{#if !selected.active && active}
-							<p class="notice tone-away"><Icon name="calendar" /><span>{t('programs.editing', { name: selected.name, active: active.name })}</span></p>
-						{/if}
+					</div>
+				</div>
+			{:else}
+				<div class="links">
+					<button class="link" onclick={openRename}><Icon name="edit" size={16} />{t('presets.rename')}</button>
+					<button class="link" onclick={() => selected && openNew(selected)}><Icon name="plus" size={16} />{t('programs.duplicate')}</button>
+				</div>
+			{/if}
 
-						{#if loading && !view}
-							<p class="muted">{t('state.loading')}</p>
-						{:else if failure}
-							<p class="notice tone-fault" role="alert"><Icon name="fault" /><span>{failure}</span></p>
-						{:else if view}
-							<div class="matrix" role="table" aria-label={selected.name}>
-								<div class="head" role="row">
-									<span role="columnheader">{t('programs.room')}</span>
-									<span role="columnheader">{t('programs.homeSchedule')}</span>
-									<span role="columnheader">{t('programs.awaySchedule')}</span>
-								</div>
-								{#each view.zones as z (z.zone)}
-									<div class="zone" role="row">
-										<div class="room" role="cell">
-											<strong>{zoneName(z, t('zone.hotWaterName'))}</strong>
-											<button class="btn ghost" aria-expanded={editingZone === z.zone} onclick={() => (editingZone = editingZone === z.zone ? null : z.zone)}>
-												<Icon name={editingZone === z.zone ? 'close' : 'edit'} size={16} />{editingZone === z.zone ? t('programs.close') : t('programs.edit')}
-											</button>
-										</div>
-										<div role="cell">
-											<span class="label">{t('programs.homeSchedule')}</span>
-											{#if z.home}
-												<ScheduleWeek groups={fromPrograms(z.home)} range={rangeOf(z)} compact />
-											{:else}
-												<span class="small muted">{t('programs.noSchedule')}</span>
-											{/if}
-										</div>
-										<div role="cell">
-											<span class="label">{t('programs.awaySchedule')}</span>
-											{#if z.away}
-												<ScheduleWeek groups={fromPrograms(z.away)} range={rangeOf(z)} compact />
-											{:else}
-												<span class="small muted">{z.kind === 'hotwater' ? t('programs.awayOffHotWater') : t('programs.awayFallback')}</span>
-											{/if}
-										</div>
-									</div>
-									{#if editingZone === z.zone && selectedId !== null}
-										<div class="editor">
-											<SchedulePanel zone={z.zone} range={rangeOf(z)} hotWater={z.kind === 'hotwater'} preset={selectedId} onsaved={reload} />
-										</div>
-									{/if}
-								{/each}
-							</div>
-						{/if}
-					</section>
-				{/if}
+			<fieldset class="segmented wide">
+				<legend class="sr-only">{t('schedule.mode')}</legend>
+				<label><input type="radio" name="programs-mode" checked={mode === 'home'} onchange={() => (mode = 'home')} /><Icon name="home" size={16} />{t('schedule.home')}</label>
+				<label><input type="radio" name="programs-mode" checked={mode === 'away'} onchange={() => (mode = 'away')} /><Icon name="away" size={16} />{t('schedule.away')}</label>
+			</fieldset>
+
+			<div class="days" role="group" aria-label={t('programs.day')}>
+				{#each DAYS as d (d)}
+					<button class="day" class:today={d === now.day} aria-pressed={d === day} onclick={() => (pickedDay = d)}>
+						<span aria-hidden="true">{fmt.day(d).slice(0, 1).toUpperCase()}</span>
+						<span class="sr-only">{fmt.day(d, 'long')}{d === now.day ? `, ${t('programs.today')}` : ''}</span>
+					</button>
+				{/each}
 			</div>
-		</div>
+
+			<section class="section" aria-labelledby="selected-title">
+				<div class="section-head">
+					<h2 id="selected-title">{selected.name}</h2>
+					<span class="badge" class:tone-idle={selected.active} class:tone-off={!selected.active}>
+						{selected.active ? t('presets.activeBadge') : t('programs.inactive')}
+					</span>
+				</div>
+				{#if loading && !view}
+					<p class="muted">{t('state.loading')}</p>
+				{:else if failure}
+					<p class="notice tone-fault" role="alert"><Icon name="fault" /><span>{failure}</span></p>
+				{:else if view}
+					<div class="matrix list" aria-label={selected.name}>
+						<div class="axis" aria-hidden="true"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></div>
+						{#each view.zones as z (z.zone)}
+							{@const program = mode === 'home' ? z.home : z.away}
+							<div class="zone">
+								<div class="room">
+									<strong>{zoneName(z, t('zone.hotWaterName'))}</strong>
+									<button class="link" aria-expanded={editingZone === z.zone} onclick={() => (editingZone = editingZone === z.zone ? null : z.zone)}>
+										<Icon name={editingZone === z.zone ? 'close' : 'edit'} size={16} />{editingZone === z.zone ? t('programs.close') : t('programs.edit')}
+									</button>
+								</div>
+								{#if program}
+									<ScheduleWeek groups={fromPrograms(program)} range={rangeOf(z)} only={day} now={day === now.day ? now.minute : undefined} axis={false} />
+								{:else}
+									<p class="small muted">
+										{mode === 'home' ? t('programs.noSchedule') : z.kind === 'hotwater' ? t('programs.awayOffHotWater') : t('programs.awayFallback')}
+									</p>
+								{/if}
+								{#if editingZone === z.zone && selectedId !== null}
+									<div class="editor">
+										<SchedulePanel zone={z.zone} range={rangeOf(z)} hotWater={z.kind === 'hotwater'} preset={selectedId} initialMode={mode} onsaved={reload} />
+									</div>
+								{/if}
+							</div>
+						{/each}
+					</div>
+				{/if}
+			</section>
+		{/if}
 	{/if}
 </section>
 
@@ -280,172 +282,204 @@
 />
 
 <style>
-	.layout {
-		display: grid;
-		grid-template-columns: 15rem minmax(0, 1fr);
-		gap: 1.25rem;
-		align-items: start;
-	}
-
-	.main {
-		display: grid;
-		gap: 1.25rem;
-		min-width: 0;
-	}
-
-	.profiles {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-		display: grid;
-		gap: 0.25rem;
-	}
-
-	.profile {
+	.chips {
 		display: flex;
-		align-items: center;
+		flex-wrap: wrap;
 		gap: 0.5rem;
-		width: 100%;
+	}
+
+	.chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
 		min-height: 2.75rem;
-		padding: 0.4rem 0.75rem;
-		border: 1px solid transparent;
-		border-radius: var(--radius-md);
-		background: none;
-		text-align: left;
+		padding: 0 1rem;
+		border: 1px solid var(--border-strong);
+		border-radius: var(--radius-pill);
+		background: var(--surface);
+		color: var(--text);
+		font-size: var(--text-small-size);
+		font-weight: var(--weight-semibold);
 		cursor: pointer;
 	}
 
-	.profile:hover {
-		background: var(--panel);
-	}
-
-	.profile.selected {
-		background: var(--panel);
+	.chip:hover {
 		border-color: var(--accent);
 	}
 
-	.profile .name {
-		flex: 1 1 auto;
-		font-weight: var(--weight-medium);
+	.chip.selected {
+		background: var(--action);
+		border-color: var(--action);
+		color: var(--action-text);
+	}
+
+	.chip.add {
+		border-style: dashed;
+		color: var(--link);
+	}
+
+	.active {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.2rem;
+		height: 1.375rem;
+		padding: 0 0.5rem;
+		border-radius: var(--radius-pill);
+		background: var(--status-idle-tint);
+		color: var(--status-idle-text);
+		font-size: 0.75rem;
+	}
+
+	.selected .active {
+		background: color-mix(in srgb, var(--white) 22%, transparent);
+		color: var(--white);
+	}
+
+	.page > .note {
+		margin-top: -0.5rem;
 	}
 
 	.grow {
 		flex: 1 1 14rem;
 	}
 
-	/* One row of buttons at their own width; delete stands apart at the end. */
+	.editing {
+		align-items: flex-start;
+	}
+
+	.editing-body {
+		display: grid;
+		gap: 0.75rem;
+	}
+
 	.profile-actions {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 0.5rem 0.75rem;
+		gap: 0.5rem;
 	}
 
-	.profile-actions .end {
-		margin-left: auto;
+	.links {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.25rem;
+		margin: -0.5rem 0 -0.25rem;
+	}
+
+	.link {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.35rem;
+		min-height: 2.75rem;
+		padding: 0 0.5rem;
+		border: 0;
+		border-radius: var(--radius-md);
+		background: none;
+		color: var(--link);
+		font-size: var(--text-small-size);
+		font-weight: var(--weight-semibold);
+		cursor: pointer;
+	}
+
+	.link:hover {
+		background: var(--panel);
+	}
+
+	.segmented.wide {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		width: 100%;
+		max-width: 24rem;
+	}
+
+	.days {
+		display: grid;
+		grid-template-columns: repeat(7, minmax(0, 2.75rem));
+		justify-content: space-between;
+		gap: 0.25rem;
+		max-width: 24rem;
+	}
+
+	.day {
+		position: relative;
+		display: grid;
+		place-items: center;
+		height: 2.75rem;
+		border: 0;
+		border-radius: 50%;
+		background: none;
+		color: var(--text);
+		font-family: var(--font-display);
+		font-size: 0.9375rem;
+		font-weight: var(--weight-semibold);
+		cursor: pointer;
+	}
+
+	.day:hover {
+		background: var(--panel);
+	}
+
+	.day[aria-pressed='true'] {
+		background: var(--text);
+		color: var(--ground);
+	}
+
+	.day.today::after {
+		content: '';
+		position: absolute;
+		bottom: 3px;
+		width: 5px;
+		height: 5px;
+		border-radius: 50%;
+		background: var(--accent);
 	}
 
 	.matrix {
-		display: grid;
+		padding-top: 0.5rem;
 	}
 
-	.head,
-	.zone {
-		display: grid;
-		grid-template-columns: minmax(9rem, 0.8fr) minmax(0, 1.5fr) minmax(0, 1.5fr);
-		gap: 1rem;
-		align-items: start;
-	}
-
-	.head {
-		padding-bottom: 0.5rem;
-		font-size: var(--text-small-size);
-		font-weight: var(--weight-medium);
+	.axis {
+		display: flex;
+		justify-content: space-between;
+		padding: 0 0.875rem;
+		font-family: var(--font-mono);
+		font-size: var(--text-caption-size);
 		color: var(--text-muted);
 	}
 
-	.zone {
-		padding: 0.85rem 0;
-		border-top: 1px solid var(--border);
+	.matrix > .axis::before {
+		display: none;
 	}
 
-	.zone > div {
+	.zone {
 		display: grid;
-		gap: 0.35rem;
-		min-width: 0;
+		gap: 0.5rem;
+		padding: 0.625rem 0.875rem 0.875rem;
 	}
 
 	.room {
-		justify-items: start;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.75rem;
 	}
 
-	.label {
-		display: none;
-		font-size: var(--text-small-size);
-		color: var(--text-muted);
+	.room strong {
+		font-family: var(--font-display);
+		font-weight: var(--weight-semibold);
 	}
 
-	.btn.ghost {
-		min-height: 2.25rem;
-		padding: 0.25rem 0.5rem;
-		border-color: transparent;
-		background: none;
-		color: var(--link);
+	.room .link {
+		margin: -0.5rem -0.5rem -0.5rem 0;
 	}
 
 	.editor {
-		padding-bottom: 1rem;
-	}
-
-	@media (max-width: 899px) {
-		.layout {
-			grid-template-columns: minmax(0, 1fr);
-		}
-
-		.profiles {
-			display: flex;
-			flex-wrap: wrap;
-		}
-
-		.profile {
-			width: auto;
-			border-color: var(--border-strong);
-		}
-	}
-
-	@media (max-width: 559px) {
-		.profile-actions {
-			display: grid;
-			grid-template-columns: repeat(2, minmax(0, 1fr));
-		}
-
-		.profile-actions .end {
-			margin-left: 0;
-		}
+		padding-top: 0.5rem;
 	}
 
 	@media (max-width: 639px) {
 		/* The fields take whole lines, so the two buttons of the form share the last one. */
 		form .field {
 			flex: 1 1 100%;
-		}
-
-		.head {
-			display: none;
-		}
-
-		.zone {
-			grid-template-columns: minmax(0, 1fr);
-			gap: 0.6rem;
-		}
-
-		.zone > .room {
-			display: flex;
-			justify-content: space-between;
-			align-items: center;
-		}
-
-		.label {
-			display: block;
 		}
 	}
 </style>

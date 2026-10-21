@@ -31,9 +31,11 @@
 		initialMode?: Mode;
 		/** Called after a save or a delete, so a parent can read the profile again. */
 		onsaved?: () => void;
+		/** Called with the home and the away program each time the panel reads or writes them. */
+		onprograms?: (programs: Record<Mode, Group[] | null>) => void;
 	}
 
-	let { zone, range, hotWater = false, preset, initialMode = 'home', onsaved }: Props = $props();
+	let { zone, range, hotWater = false, preset, initialMode = 'home', onsaved, onprograms }: Props = $props();
 
 	/** The home program and the away program of the profile. Null while the zone holds none. */
 	let stored = $state<Record<Mode, Group[] | null>>({ home: null, away: null });
@@ -61,6 +63,7 @@
 				api.schedule(zone, { mode: 'away', preset })
 			]);
 			stored = { home: home ? fromView(home) : null, away: away ? fromView(away) : null };
+			onprograms?.(stored);
 		} catch (error) {
 			failure = errorText(error);
 		}
@@ -98,6 +101,7 @@
 		if (view) {
 			stored = { ...stored, [mode]: fromView(view) };
 			editing = false;
+			onprograms?.(stored);
 			onsaved?.();
 		}
 	}
@@ -106,6 +110,7 @@
 		const view = await act(() => api.deleteSchedule(zone, { ...query, mode: 'away' }), t('schedule.awayDeleted'));
 		if (view) {
 			stored = { ...stored, away: null };
+			onprograms?.(stored);
 			onsaved?.();
 		}
 	}
@@ -128,7 +133,7 @@
 	<div class="toolbar row">
 		{#if profile}
 			<span class="profile row small">
-				<span class="badge" class:tone-heating={profile.active} class:tone-off={!profile.active}>
+				<span class="badge" class:tone-idle={profile.active} class:tone-off={!profile.active}>
 					{t('schedule.profile', { name: profile.name })}{profile.active ? `, ${t('schedule.profileActive')}` : ''}
 				</span>
 				{#if preset === undefined}

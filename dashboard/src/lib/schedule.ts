@@ -243,6 +243,34 @@ export function weekSegments(groups: Group[]): Record<Day, Segment[]> {
 	return week;
 }
 
+/** The weekday and the minute of the day on the clock of the installation. */
+export function localNow(nowMs: number, offsetMin: number): { day: Day; minute: number } {
+	const d = new Date(nowMs + offsetMin * 60_000);
+	return { day: DAYS[(d.getUTCDay() + 6) % 7]!, minute: d.getUTCHours() * 60 + d.getUTCMinutes() };
+}
+
+export interface Change {
+	tomorrow: boolean;
+	minute: number;
+	setpointC: number;
+	enabled: boolean;
+}
+
+/**
+ * The next block that changes what the zone does, today or tomorrow. A block with the value of the
+ * block in force is no change. Null when the program holds one value through tomorrow.
+ */
+export function nextChange(groups: Group[], at: { day: Day; minute: number }): Change | null {
+	const week = weekSegments(groups);
+	const current = week[at.day].find((s) => s.from <= at.minute && at.minute < s.to);
+	if (!current) return null;
+	const differs = (s: Segment) => s.enabled !== current.enabled || (s.enabled && s.setpointC !== current.setpointC);
+	const today = week[at.day].find((s) => s.from > at.minute && differs(s));
+	if (today) return { tomorrow: false, minute: today.from, setpointC: today.setpointC, enabled: today.enabled };
+	const next = week[DAYS[(DAYS.indexOf(at.day) + 1) % 7]!].find(differs);
+	return next ? { tomorrow: true, minute: next.from, setpointC: next.setpointC, enabled: next.enabled } : null;
+}
+
 /** Whether two drafts send the same request. */
 export function sameSchedule(a: Group[], b: Group[]): boolean {
 	return JSON.stringify(toPrograms(a)) === JSON.stringify(toPrograms(b));

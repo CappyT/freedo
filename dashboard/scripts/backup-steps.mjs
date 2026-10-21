@@ -16,7 +16,7 @@ export async function downloadBackup(tab, check, where) {
 	await tab.call('Page.setDownloadBehavior', { behavior: 'allow', downloadPath: dir });
 	await tab.waitFor(`document.querySelector('${section}') && !${button('Download backup')}.disabled`);
 	check(
-		await tab.evaluate(`/network key/.test(document.querySelector('${section} .notice.tone-warning')?.innerText ?? '')`),
+		await tab.evaluate(`/network key/.test(document.querySelector('${section} [data-testid=backup-secret]')?.innerText ?? '')`),
 		`${where}: the section warns that the backup holds the network key`
 	);
 	await tab.evaluate(`${button('Download backup')}.click()`);
@@ -35,11 +35,12 @@ export async function downloadBackup(tab, check, where) {
 	return file;
 }
 
+// Restore backup opens the file picker, and the chosen file opens the dialog. The check sets the file
+// of the hidden input directly, as the picker would.
 async function pick(tab, file) {
+	await tab.waitFor(`!${button('Restore backup')}.disabled`);
 	const { result } = await tab.call('Runtime.evaluate', { expression: `document.querySelector('${section} input[type=file]')` });
 	await tab.call('DOM.setFileInputFiles', { files: [file], objectId: result.objectId });
-	await tab.waitFor(`!${button('Restore backup')}.disabled`);
-	await tab.evaluate(`${button('Restore backup')}.click()`);
 	await tab.waitFor(dialogButton('ok'));
 }
 

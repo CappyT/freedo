@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { START, SPAN, arcPath, clamp, pointToValue, polar, snap, valueToAngle } from './dial.ts';
 	import { fmt } from './i18n.svelte.ts';
-	import type { Tone } from './zones.ts';
 
 	interface Props {
 		/** The measured temperature, shown in the middle and as a notch on the arc. */
@@ -11,7 +10,6 @@
 		min: number;
 		max: number;
 		step: number;
-		tone?: Tone | null;
 		/** A dial that can be set. A read-only dial is decoration for the text next to it. */
 		interactive?: boolean;
 		label?: string;
@@ -29,7 +27,6 @@
 		min,
 		max,
 		step,
-		tone = null,
 		interactive = false,
 		label = '',
 		caption = '',
@@ -47,6 +44,8 @@
 	const angle = $derived(target === null ? START : valueToAngle(target, min, max));
 	const progress = $derived(target === null ? '' : arcPath(C, C, R, START, Math.max(angle, START + 0.1)));
 	const knob = $derived(polar(C, C, R, angle));
+	const low = polar(C, C, R, START);
+	const high = polar(C, C, R, START + SPAN);
 	const notch = $derived.by(() => {
 		if (current === null || current < min || current > max) return null;
 		const a = valueToAngle(current, min, max);
@@ -99,7 +98,8 @@
 	}
 </script>
 
-<div class="dial tone-{tone ?? 'none'}" style:max-width={size}>
+<!-- The dial draws in the colour of the text around it: the ink of the room screen it sits on. -->
+<div class="dial" style:max-width={size}>
 	<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 	<svg
 		bind:this={svg}
@@ -139,38 +139,16 @@
 		<span class="now">{shown === null ? '-' : fmt.number(shown, 1)}{#if shown !== null}<small>°</small>{/if}</span>
 		{#if caption}<span class="caption">{caption}</span>{/if}
 	</div>
+	<span class="end" aria-hidden="true" style:left="{(low.x / 200) * 100}%">{fmt.number(min, 0)}°</span>
+	<span class="end" aria-hidden="true" style:left="{(high.x / 200) * 100}%">{fmt.number(max, 0)}°</span>
 </div>
 
 <style>
-	/* Idle is the normal state, so it keeps the accent of the mark. Only the other states
-	   colour the arc, and heating stays the one warm arc on the page. */
 	.dial {
-		--arc: var(--accent);
 		position: relative;
 		width: 100%;
 		aspect-ratio: 200 / 176;
 		container-type: inline-size;
-	}
-
-	.tone-heating {
-		--arc: var(--status-heating);
-	}
-
-	.tone-away {
-		--arc: var(--status-away);
-	}
-
-	.tone-off,
-	.tone-offline {
-		--arc: var(--status-off);
-	}
-
-	.tone-warning {
-		--arc: var(--status-warning);
-	}
-
-	.tone-fault {
-		--arc: var(--status-fault);
 	}
 
 	svg {
@@ -190,12 +168,12 @@
 	}
 
 	.track {
-		stroke: var(--border-strong);
+		stroke: color-mix(in srgb, currentColor 16%, transparent);
 		stroke-width: 14;
 	}
 
 	.progress {
-		stroke: var(--arc);
+		stroke: currentColor;
 		stroke-width: 14;
 	}
 
@@ -206,13 +184,13 @@
 	}
 
 	.notch {
-		stroke: var(--text);
+		stroke: currentColor;
 		stroke-width: 3;
 		stroke-linecap: round;
 	}
 
 	.knob {
-		fill: var(--navy);
+		fill: currentColor;
 		stroke: var(--white);
 		stroke-width: 4;
 		touch-action: none;
@@ -227,7 +205,7 @@
 	}
 
 	svg:focus-visible .knob {
-		stroke: var(--accent);
+		stroke: var(--navy);
 		stroke-width: 6;
 	}
 
@@ -247,21 +225,31 @@
 	.now {
 		font-family: var(--font-display);
 		font-weight: var(--weight-bold);
-		font-size: min(3.75rem, 17cqi);
-		letter-spacing: -0.03em;
+		font-size: min(3rem, 17cqi);
+		letter-spacing: -0.035em;
 		line-height: 1;
 	}
 
 	.now small {
-		font-size: 0.5em;
+		font-size: 0.45em;
 		font-weight: var(--weight-semibold);
-		color: var(--text-muted);
 		margin-left: 0.05em;
-		vertical-align: 0.5em;
+		vertical-align: 1em;
 	}
 
 	.caption {
 		font-size: var(--text-small-size);
-		color: var(--text-muted);
+		font-weight: var(--weight-semibold);
+	}
+
+	.end {
+		position: absolute;
+		bottom: -0.25rem;
+		width: 2.5rem;
+		margin-left: -1.25rem;
+		text-align: center;
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+		font-weight: var(--weight-medium);
 	}
 </style>

@@ -25,7 +25,10 @@ export function t(key: Key, params?: Record<string, string | number>): string {
 export const fmt = {
 	number: (v: number | null | undefined, digits = 1) => format.number(v, prefs.locale, digits),
 	temp: (v: number | null | undefined) => format.temp(v, prefs.locale),
+	degrees: (v: number | null | undefined) => format.degrees(v, prefs.locale),
+	parts: (v: number) => format.numberParts(v, prefs.locale),
 	percent: (v: number | null | undefined) => format.percent(v, prefs.locale),
+	pct: (v: number | null | undefined) => format.pct(v, prefs.locale),
 	clock: (v: string | number | Date) => format.clock(v, prefs.locale),
 	when: (v: string | number | Date) => format.when(v, prefs.locale),
 	ago: (unixSeconds: number) => format.ago(unixSeconds, prefs.locale),

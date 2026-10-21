@@ -20,8 +20,9 @@ body {
 	background: var(--ground);
 	color: var(--text);
 	font-family: var(--font-body);
-	font-size: var(--text-body-size);
-	line-height: var(--text-body-leading);
+	/* A dashboard reads closer than the brand pages: 15 px body. */
+	font-size: 0.9375rem;
+	line-height: 1.5;
 	font-weight: var(--weight-regular);
 }
 
@@ -35,16 +36,20 @@ h3 {
 	line-height: var(--text-heading-leading);
 }
 
+/* Steps of 1.25: body 14, h3 16, h2 17.5, h1 32. */
 h1 {
-	font-size: clamp(1.5rem, 1.1rem + 1.6vw, 2rem);
+	font-size: 2rem;
+	font-weight: var(--weight-bold);
+	letter-spacing: -0.025em;
+	line-height: 1.1;
 }
 
 h2 {
-	font-size: var(--text-card-title-size);
+	font-size: 1.09375rem;
 }
 
 h3 {
-	font-size: 1.0625rem;
+	font-size: 1rem;
 }
 
 p {
@@ -71,6 +76,11 @@ textarea {
 	outline: 3px solid var(--accent);
 	outline-offset: 2px;
 	border-radius: var(--radius-xs);
+}
+
+::selection {
+	background: var(--sky);
+	color: var(--navy);
 }
 
 .mono {
@@ -102,7 +112,7 @@ textarea {
 
 .page {
 	display: grid;
-	gap: 1.5rem;
+	gap: 1.25rem;
 	max-width: 70rem;
 }
 
@@ -162,14 +172,14 @@ textarea {
 	align-items: center;
 	justify-content: center;
 	gap: 0.5rem;
-	min-height: 2.75rem;
+	min-height: 2.875rem;
 	padding: 0.5rem 1.1rem;
 	border-radius: var(--radius-md);
 	border: 1px solid var(--border-strong);
 	background: var(--surface);
 	color: var(--text);
-	font-weight: var(--weight-medium);
-	font-size: var(--text-small-size);
+	font-weight: var(--weight-semibold);
+	font-size: 0.9375rem;
 	cursor: pointer;
 	text-decoration: none;
 }
@@ -250,12 +260,14 @@ textarea {
 }
 
 .input {
-	min-height: 2.75rem;
+	/* The height of a button, so a field and the buttons of its row line up. */
+	min-height: 2.875rem;
 	padding: 0.4rem 0.75rem;
 	background: var(--ground);
 	border: 1px solid var(--border-strong);
 	border-radius: var(--radius-md);
-	font-size: var(--text-body-size);
+	/* 16 px: a smaller field makes a phone zoom the page on focus. */
+	font-size: 1rem;
 	min-width: 0;
 }
 
@@ -267,47 +279,151 @@ textarea {
 	border-color: var(--status-fault);
 }
 
+/* A select draws the chevron of the icon set, in the muted text colour of each theme (--slate and
+   --navy-text-muted: an image cannot take a custom property). */
+:root {
+	--select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234A5B78' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+}
+
+@media (prefers-color-scheme: dark) {
+	:root:not([data-theme='light']) {
+		--select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239FB3D6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+	}
+}
+
+:root[data-theme='dark'] {
+	--select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239FB3D6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+}
+
+select.input {
+	appearance: none;
+	padding-right: 2.5rem;
+	background-image: var(--select-chevron);
+	background-position: right 0.75rem center;
+	background-size: 1.125rem;
+	background-repeat: no-repeat;
+}
+
+/* Radios and checkboxes: an outline that fills with the action colour, the same in both themes.
+   The browser draws them grey on a dark ground otherwise. */
+input[type='radio'],
+input[type='checkbox']:not([role='switch']) {
+	appearance: none;
+	flex: none;
+	display: inline-grid;
+	place-content: center;
+	width: 1.15rem;
+	height: 1.15rem;
+	margin: 0;
+	border: 2px solid var(--text-muted);
+	background: var(--surface);
+	cursor: pointer;
+}
+
+input[type='radio'] {
+	border-radius: 50%;
+}
+
+input[type='checkbox']:not([role='switch']) {
+	border-radius: 5px;
+}
+
+input[type='radio']::before {
+	content: '';
+	width: 0.5rem;
+	height: 0.5rem;
+	border-radius: 50%;
+	background: var(--action);
+	scale: 0;
+	transition: scale 0.15s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+input[type='checkbox']:not([role='switch'])::before {
+	content: '';
+	width: 0.6rem;
+	height: 0.6rem;
+	background: var(--action-text);
+	clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0, 43% 62%);
+	scale: 0;
+	transition: scale 0.15s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+input[type='radio']:checked {
+	border-color: var(--action);
+}
+
+input[type='checkbox']:not([role='switch']):checked {
+	border-color: var(--action);
+	background: var(--action);
+}
+
+input[type='radio']:checked::before,
+input[type='checkbox']:not([role='switch']):checked::before {
+	scale: 1;
+}
+
+input[type='radio']:focus-visible,
+input[type='checkbox']:not([role='switch']):focus-visible {
+	outline: 3px solid var(--accent);
+	outline-offset: 2px;
+}
+
+input[type='radio']:disabled,
+input[type='checkbox']:disabled {
+	opacity: 0.55;
+	cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	input[type='radio']::before,
+	input[type='checkbox']::before {
+		transition: none;
+	}
+}
+
 /* Segmented choice: radios that look like a row of buttons */
 
 .segmented {
 	justify-self: start;
 	display: inline-flex;
-	/* A fieldset keeps its default padding otherwise, and the labels do not fill the group. */
+	gap: 2px;
+	/* A fieldset keeps its default margin otherwise. */
 	margin: 0;
-	padding: 0;
-	border: 1px solid var(--border-strong);
+	padding: 3px;
+	border: 1px solid var(--border);
 	border-radius: var(--radius-md);
-	overflow: hidden;
-	background: var(--surface);
+	background: light-dark(var(--ice), var(--navy));
 }
 
 .segmented label {
 	position: relative;
 	display: inline-flex;
 	align-items: center;
+	justify-content: center;
 	gap: 0.4rem;
-	/* With the 1 px border of the group, the control is 44 px high, like a button and a field. */
-	min-height: calc(2.75rem - 2px);
-	padding: 0.4rem 1rem;
+	/* With the padding and the border of the group, the control is 46 px high, like a button. */
+	min-height: 2.375rem;
+	padding: 0.35rem 1rem;
+	border-radius: 11px;
+	color: var(--text-muted);
 	font-size: var(--text-small-size);
-	font-weight: var(--weight-medium);
+	font-weight: var(--weight-semibold);
 	cursor: pointer;
-}
-
-.segmented label + label {
-	border-left: 1px solid var(--border-strong);
 }
 
 .segmented input {
 	position: absolute;
 	opacity: 0;
 	inset: 0;
+	width: auto;
+	height: auto;
 	cursor: pointer;
 }
 
 .segmented label:has(input:checked) {
-	background: var(--action);
-	color: var(--action-text);
+	background: var(--surface);
+	color: var(--text);
+	box-shadow: 0 2px 6px -2px color-mix(in srgb, var(--navy) 35%, transparent);
 }
 
 .segmented label:has(input:focus-visible) {
@@ -444,6 +560,428 @@ dl.facts dd {
 dl.facts dd.text {
 	font-family: var(--font-body);
 	letter-spacing: normal;
+}
+
+/* A coloured surface of one status family: a tile or a room screen. Text and icons on it use the ink,
+   the dark step of the same hue, so the surface stays monochrome. */
+
+.fill-heating {
+	--fill: var(--status-heating);
+	--fill-top: var(--status-heating-top);
+	--fill-ink: var(--status-heating-ink);
+}
+
+.fill-cooling {
+	--fill: var(--status-cooling);
+	--fill-top: var(--status-cooling-top);
+	--fill-ink: var(--status-cooling-ink);
+}
+
+.fill-idle {
+	--fill: var(--status-idle);
+	--fill-top: var(--status-idle-top);
+	--fill-ink: var(--status-idle-ink);
+}
+
+.fill-away {
+	--fill: var(--status-away);
+	--fill-top: var(--status-away-top);
+	--fill-ink: var(--status-away-ink);
+}
+
+.fill-off,
+.fill-offline {
+	--fill: var(--status-off);
+	--fill-top: var(--status-off-top);
+	--fill-ink: var(--status-off-ink);
+}
+
+.fill-warning {
+	--fill: var(--status-warning);
+	--fill-top: var(--status-warning-top);
+	--fill-ink: var(--status-warning-ink);
+}
+
+.fill-fault {
+	--fill: var(--status-fault);
+	--fill-top: var(--status-fault-top);
+	--fill-ink: var(--status-fault-ink);
+}
+
+/* A section of a page: a heading outside its list, like a settings screen of a phone. */
+
+.section {
+	display: grid;
+	gap: 0.5rem;
+	align-content: start;
+	min-width: 0;
+}
+
+.section-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.25rem 0.75rem;
+	min-height: 1.75rem;
+	margin: 0 0.25rem;
+}
+
+.section-link {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.25rem;
+	min-height: 2.75rem;
+	margin-block: -0.5rem;
+	color: var(--link);
+	font-size: var(--text-small-size);
+	font-weight: var(--weight-semibold);
+	text-decoration: none;
+}
+
+.section > .note {
+	margin: 0 0.25rem;
+}
+
+/* A grouped list: rows in one card, a hairline between them. */
+
+.list {
+	display: grid;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: var(--radius-lg);
+	overflow: hidden;
+}
+
+.list-row {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	width: 100%;
+	min-height: 3.25rem;
+	padding: 0.6rem 0.875rem;
+	border: 0;
+	background: none;
+	color: var(--text);
+	font-size: var(--text-small-size);
+	text-align: left;
+	text-decoration: none;
+}
+
+.list > * + *::before,
+.list-row + .list-row::before {
+	content: '';
+	position: absolute;
+	top: 0;
+	left: 0.875rem;
+	right: 0;
+	border-top: 1px solid var(--border);
+}
+
+.list > * {
+	position: relative;
+}
+
+a.list-row:hover,
+button.list-row:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--panel) 60%, transparent);
+	color: var(--text);
+	cursor: pointer;
+}
+
+.list-main {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: grid;
+	gap: 0.1rem;
+}
+
+.list-label {
+	font-size: 0.9375rem;
+	font-weight: var(--weight-semibold);
+	line-height: 1.3;
+}
+
+.list-sub {
+	font-size: 0.8125rem;
+	line-height: 1.35;
+	color: var(--text-muted);
+}
+
+.list-value {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4rem;
+	font-weight: var(--weight-semibold);
+	white-space: nowrap;
+}
+
+/* Numbers, units and identifiers take the data face. Words stay in the body face. */
+.num {
+	font-family: var(--font-mono);
+	font-weight: var(--weight-medium);
+	letter-spacing: var(--text-data-tracking);
+}
+
+.list-row > .chevron {
+	flex: none;
+	color: var(--text-muted);
+}
+
+.dot {
+	flex: none;
+	width: 0.5rem;
+	height: 0.5rem;
+	border-radius: 50%;
+	background: var(--dot, currentColor);
+}
+
+/* An icon in a soft disc, at the start of a row. */
+.disc {
+	flex: none;
+	display: grid;
+	place-items: center;
+	width: 2.25rem;
+	height: 2.25rem;
+	border-radius: 50%;
+	background: light-dark(var(--ice), var(--navy-border));
+	color: var(--link);
+}
+
+/* The screen of one zone or of the boiler: the colour of its state, edge to edge on a phone and a card
+   beside its sections on a wide screen. Everything on it uses the ink of the state. */
+
+/* The tile that opened the screen grows into it: see onNavigate in +layout.svelte. */
+::view-transition-group(hero) {
+	animation-duration: 0.28s;
+	animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+	animation-duration: 0.18s;
+}
+
+.hero {
+	view-transition-name: hero;
+	display: grid;
+	justify-items: center;
+	align-content: start;
+	gap: 0.75rem;
+	padding: 0.875rem 1rem 2.75rem;
+	background: linear-gradient(180deg, var(--fill-top), var(--fill) 70%);
+	color: var(--fill-ink);
+}
+
+.hero-bar {
+	display: grid;
+	grid-template-columns: 2.75rem minmax(0, 1fr) 2.75rem;
+	align-items: center;
+	width: 100%;
+}
+
+.hero-bar h1 {
+	text-align: center;
+	font-size: 1.375rem;
+	font-weight: var(--weight-semibold);
+	letter-spacing: -0.01em;
+	overflow-wrap: anywhere;
+}
+
+.round {
+	display: grid;
+	place-items: center;
+	width: 2.75rem;
+	height: 2.75rem;
+	padding: 0;
+	border: 0;
+	border-radius: 50%;
+	background: color-mix(in srgb, var(--fill-ink, var(--text)) 13%, transparent);
+	color: var(--fill-ink, var(--text));
+	text-decoration: none;
+	cursor: pointer;
+}
+
+a.round:hover {
+	color: var(--fill-ink, var(--text));
+}
+
+.round:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.hero-state {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.375rem;
+	min-height: 1.75rem;
+	padding: 0 0.75rem 0 0.625rem;
+	border-radius: var(--radius-pill);
+	background: color-mix(in srgb, var(--fill-ink) 13%, transparent);
+	font-size: 0.8125rem;
+	font-weight: var(--weight-semibold);
+}
+
+.hero-facts {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: 0.25rem 1.125rem;
+	margin: 0;
+	font-size: var(--text-small-size);
+	font-weight: var(--weight-medium);
+}
+
+.hero-facts b {
+	font-family: var(--font-mono);
+	font-weight: var(--weight-medium);
+}
+
+.hero-nudge {
+	display: flex;
+	align-items: center;
+	gap: 1.375rem;
+}
+
+.hero-nudge .round {
+	width: 3.375rem;
+	height: 3.375rem;
+	background: var(--white);
+	color: var(--fill-ink);
+	box-shadow: 0 6px 14px -8px color-mix(in srgb, var(--fill-ink) 60%, transparent);
+}
+
+.hero-target {
+	display: grid;
+	justify-items: center;
+	min-width: 6rem;
+}
+
+.hero-target output {
+	font-family: var(--font-display);
+	font-size: 1.875rem;
+	font-weight: var(--weight-bold);
+	line-height: 1.05;
+	letter-spacing: -0.02em;
+}
+
+.hero-target span {
+	font-size: 0.8125rem;
+	font-weight: var(--weight-semibold);
+}
+
+.hero-mode {
+	max-width: 24rem;
+	text-align: center;
+	text-wrap: balance;
+	font-size: var(--text-small-size);
+	font-weight: var(--weight-medium);
+}
+
+.hero-mode svg {
+	display: inline-block;
+	vertical-align: -3px;
+	margin-right: 0.375rem;
+}
+
+.hero-commands {
+	display: grid;
+	grid-auto-flow: column;
+	grid-auto-columns: minmax(0, 1fr);
+	gap: 0.5rem;
+	width: 100%;
+	max-width: 24rem;
+	margin-top: 0.25rem;
+}
+
+.hero-command {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 0.375rem;
+	padding: 0;
+	border: 0;
+	background: none;
+	color: var(--fill-ink);
+	font-size: 0.8125rem;
+	font-weight: var(--weight-semibold);
+	line-height: 1.25;
+	text-align: center;
+	cursor: pointer;
+}
+
+.hero-command .round {
+	width: 3.25rem;
+	height: 3.25rem;
+}
+
+.hero-command:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+/* The pending change: a light card on the colour, with the primary button of the screen. */
+.hero-apply {
+	display: grid;
+	gap: 0.5rem;
+	width: 100%;
+	max-width: 24rem;
+	padding: 0.75rem;
+	border-radius: var(--radius-lg);
+	background: var(--surface);
+	color: var(--text);
+	box-shadow: 0 14px 30px -16px color-mix(in srgb, var(--navy) 70%, transparent);
+}
+
+.hero-apply .note {
+	text-align: center;
+}
+
+/* The sections under a hero. On a phone they slide over its bottom edge like a sheet. */
+.sheet {
+	display: grid;
+	gap: 1.375rem;
+	align-content: start;
+	min-width: 0;
+}
+
+.screen {
+	display: grid;
+	min-width: 0;
+}
+
+@media (max-width: 899px) {
+	.screen > .hero {
+		margin: -1rem -1rem 0;
+	}
+
+	.screen > .sheet {
+		position: relative;
+		margin: -1.5rem -1rem 0;
+		padding: 1.375rem 1rem 0;
+		border-radius: 24px 24px 0 0;
+		background: var(--ground);
+	}
+}
+
+@media (min-width: 900px) {
+	.screen {
+		grid-template-columns: minmax(20rem, 26rem) minmax(0, 1fr);
+		gap: 1.5rem;
+		align-items: start;
+	}
+
+	.screen > .hero {
+		position: sticky;
+		top: 1.5rem;
+		padding-bottom: 1.5rem;
+		border-radius: 28px;
+	}
 }
 
 @media (prefers-reduced-motion: reduce) {

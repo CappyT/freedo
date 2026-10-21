@@ -13,6 +13,24 @@ export function temp(value: number | null | undefined, locale: string): string {
 	return value === null || value === undefined ? NONE : number(value, locale, 1) + ' °C';
 }
 
+/** A short temperature with no unit letter, for a line under a large number: 21 gives "21°". */
+export function degrees(value: number | null | undefined, locale: string): string {
+	return value === null || value === undefined ? NONE : number(value, locale, 1) + '°';
+}
+
+/** The whole part and the decimal part with its separator, always with one decimal: 20 gives "20" and ",0" in Italian. */
+export function numberParts(value: number, locale: string): { whole: string; fraction: string } {
+	const parts = new Intl.NumberFormat(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).formatToParts(value);
+	const at = parts.findIndex((p) => p.type === 'decimal');
+	const text = (list: Intl.NumberFormatPart[]) => list.map((p) => p.value).join('');
+	return at < 0 ? { whole: text(parts), fraction: '' } : { whole: text(parts.slice(0, at)), fraction: text(parts.slice(at)) };
+}
+
+/** A percentage with no space, for a short fact beside a label: 64 gives "64%". */
+export function pct(value: number | null | undefined, locale: string): string {
+	return value === null || value === undefined ? NONE : number(value, locale, 0) + '%';
+}
+
 export function percent(value: number | null | undefined, locale: string): string {
 	return value === null || value === undefined ? NONE : number(value, locale, 0) + ' %';
 }
