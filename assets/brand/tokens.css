@@ -54,35 +54,60 @@
   --link-hover: light-dark(var(--navy), var(--white));
   --icon-gradient: linear-gradient(135deg, var(--icon-gradient-from), var(--icon-gradient-to)); /* icon only */
 
-  /* ---- Status: base = dots, icons, charts; text = labels; tint = badge
-         ground. Pair with an icon or a label. ------------------------------ */
-  --status-heating: light-dark(#F2671F, #FF7A33); /* valve open, zone calling for heat */
-  --status-heating-text: light-dark(#B4430B, #FFA26B);
-  --status-heating-tint: light-dark(#FFEDE3, #413038);
+  /* ---- Status: one tonal family per state, every base at the same OKLCH
+         lightness, so a mosaic of states reads as one set.
+         base = the fill of a tile or a room screen, and dots, icons, charts;
+         top = the light end of the gradient of a room screen;
+         ink = text and icons on the base or the top, the dark step of the hue;
+         text = labels on a neutral surface; tint = badge ground.
+         The base and its ink are the same in both themes. Pair a status
+         colour with an icon or a label. ---------------------------------- */
+  --status-heating: #FEA668; /* valve open, zone calling for heat */
+  --status-heating-top: #FDC7A4;
+  --status-heating-ink: #512500;
+  --status-heating-text: light-dark(#8C4400, #FEA668);
+  --status-heating-tint: light-dark(#FFEBDA, #462C19);
 
-  --status-cooling: light-dark(#14B8D4, #2BD2EE); /* AC running towards the setpoint */
-  --status-cooling-text: light-dark(#0B7487, #6FE3F5);
-  --status-cooling-tint: light-dark(#E0F7FB, #11405E);
+  --status-cooling: #58D1E5; /* AC running towards the setpoint */
+  --status-cooling-top: #A1E1EC;
+  --status-cooling-ink: #003C46;
+  --status-cooling-text: light-dark(#00697A, #58D1E5);
+  --status-cooling-tint: light-dark(#DAF6FB, #11393F);
 
-  --status-idle: light-dark(#22A06B, #3DD68C); /* on, setpoint reached, no demand */
-  --status-idle-text: light-dark(#146C48, #7BE8B0);
-  --status-idle-tint: light-dark(#E3F6EC, #15404A);
+  --status-idle: #6CD79D; /* on, setpoint reached, no demand */
+  --status-idle-top: #A9E4C1;
+  --status-idle-ink: #003F22;
+  --status-idle-text: light-dark(#006E40, #6CD79D);
+  --status-idle-tint: light-dark(#DEF8E7, #1A3B29);
 
-  --status-away: light-dark(#7C5CFA, #9B85FF); /* away and eco: reduced setpoint */
-  --status-away-text: light-dark(#5B3FD6, #BDB0FF);
-  --status-away-tint: light-dark(#EFEBFF, #2B3265);
+  --status-away: #C4ACFF; /* away and eco: reduced setpoint */
+  --status-away-top: #D7CBFF;
+  --status-away-ink: #362957;
+  --status-away-text: light-dark(#614A96, #C4ACFF);
+  --status-away-tint: light-dark(#F1ECFF, #352E4A);
 
-  --status-off: light-dark(#A7B3C8, #5A6B8A); /* zone off or frost protection */
-  --status-off-text: light-dark(#4A5B78, #B4C2DA);
-  --status-off-tint: light-dark(#EEF2F8, #1C2C4A);
+  --status-off: #B5BFCB; /* zone off or frost protection */
+  --status-off-top: #CFD5DC;
+  --status-off-ink: #293442;
+  --status-off-text: light-dark(#4C5C71, #B5BFCB);
+  --status-off-tint: light-dark(#ECF1F7, #2C333D);
 
-  --status-warning: light-dark(#F5A623, #FFB938); /* low battery, weak signal, window open, rate limit */
-  --status-warning-text: light-dark(#8A5A00, #FFCB66);
-  --status-warning-tint: light-dark(#FFF4DB, #3D3527);
+  --status-warning: #F8C655; /* low battery, weak signal, window open, rate limit */
+  --status-warning-top: #FEE1A4;
+  --status-warning-ink: #452E00;
+  --status-warning-text: light-dark(#795300, #F8C655);
+  --status-warning-tint: light-dark(#FBEFD6, #3F3112);
 
-  --status-fault: light-dark(#D9363E, #FF5A61); /* device error, failed command, auth failure */
-  --status-fault-text: light-dark(#B4232A, #FF8A8F);
-  --status-fault-tint: light-dark(#FDECEC, #412943);
+  --status-fault: #FB817A; /* device error, failed command, auth failure */
+  --status-fault-top: #F6AAA4;
+  --status-fault-ink: #551F1D;
+  --status-fault-text: light-dark(#923A37, #FB817A);
+  --status-fault-tint: light-dark(#FFE8E4, #492826);
+
+  /* Schedule blocks: the low and the high end of a warm ramp, light in both
+     themes. Labels on the ramp use navy. */
+  --schedule-low: #FBEBDE;
+  --schedule-high: #EC9D53;
 
   /* Offline: dashed border and a hollow dot. No tint on dark. */
   --status-offline: light-dark(#3A4660, #C9D3E6); /* bridge or device unreachable */

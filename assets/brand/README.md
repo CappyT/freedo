@@ -102,31 +102,39 @@ the icon only.
 
 ### Status
 
-Each status has three values. Base is for dots, icons and charts. Text is for labels. Tint is the
-badge ground. The badge is a pill (radius 999 px) with an 8 px dot.
+Each status is one tonal family. Every base has the same OKLCH lightness (0.80, warning 0.85, fault
+0.74), so a grid of rooms in different states reads as one set and no state shouts over another.
 
-| Status | Meaning | Light base / text / tint | Dark base / text / tint |
-| --- | --- | --- | --- |
-| Heating | Valve open, zone calling for heat | `#F2671F` `#B4430B` `#FFEDE3` | `#FF7A33` `#FFA26B` `#413038` |
-| Cooling | AC running towards the setpoint | `#14B8D4` `#0B7487` `#E0F7FB` | `#2BD2EE` `#6FE3F5` `#11405E` |
-| Idle | On, setpoint reached, no demand | `#22A06B` `#146C48` `#E3F6EC` | `#3DD68C` `#7BE8B0` `#15404A` |
-| Away, Eco | Nobody home, reduced setpoint | `#7C5CFA` `#5B3FD6` `#EFEBFF` | `#9B85FF` `#BDB0FF` `#2B3265` |
-| Off | Zone off or frost protection | `#A7B3C8` `#4A5B78` `#EEF2F8` | `#5A6B8A` `#B4C2DA` `#1C2C4A` |
-| Warning | Low battery, weak signal, window open, rate limit | `#F5A623` `#8A5A00` `#FFF4DB` | `#FFB938` `#FFCB66` `#3D3527` |
-| Fault | Device error, failed command, auth failure | `#D9363E` `#B4232A` `#FDECEC` | `#FF5A61` `#FF8A8F` `#412943` |
-| Offline | Bridge or device unreachable | `#3A4660` `#3A4660` `#E4E8F0` | `#C9D3E6` `#C9D3E6` none |
+- Base: the fill of a room tile and of a room screen, and dots, icons and charts.
+- Top: the light end of the gradient of a room screen.
+- Ink: text and icons on the base or the top. It is the dark step of the same hue, never navy, so a
+  coloured surface stays monochrome. Contrast at least 5.3:1 on the base and 7:1 on the top.
+- Text: labels on a neutral surface. Contrast at least 6.3:1 on white and on the tint.
+- Tint: the badge ground. The badge is a pill (radius 999 px) with an 8 px dot.
 
-Offline has a dashed border and a hollow dot. Its border is `#3A4660` on light and `#8A9BBB` on
-dark. freedo has no cooling zone today. The Cooling colours stay in the tokens.
+Base, top and ink are the same in both themes. Text and tint change with the theme.
 
-The dark values use the same hues as light, raised in lightness. Each dark tint is its hue mixed
-about 20 percent into Navy. Each dark text value has a contrast of at least 5.7:1 on Surface
-and on its own tint.
+| Status | Meaning | Base / top / ink | Light text / tint | Dark text / tint |
+| --- | --- | --- | --- | --- |
+| Heating | Valve open, zone calling for heat | `#FEA668` `#FDC7A4` `#512500` | `#8C4400` `#FFEBDA` | `#FEA668` `#462C19` |
+| Cooling | AC running towards the setpoint | `#58D1E5` `#A1E1EC` `#003C46` | `#00697A` `#DAF6FB` | `#58D1E5` `#11393F` |
+| Idle | On, setpoint reached, no demand | `#6CD79D` `#A9E4C1` `#003F22` | `#006E40` `#DEF8E7` | `#6CD79D` `#1A3B29` |
+| Away, Eco | Nobody home, reduced setpoint | `#C4ACFF` `#D7CBFF` `#362957` | `#614A96` `#F1ECFF` | `#C4ACFF` `#352E4A` |
+| Off | Zone off or frost protection | `#B5BFCB` `#CFD5DC` `#293442` | `#4C5C71` `#ECF1F7` | `#B5BFCB` `#2C333D` |
+| Warning | Low battery, weak signal, window open, rate limit | `#F8C655` `#FEE1A4` `#452E00` | `#795300` `#FBEFD6` | `#F8C655` `#3F3112` |
+| Fault | Device error, failed command, auth failure | `#FB817A` `#F6AAA4` `#551F1D` | `#923A37` `#FFE8E4` | `#FB817A` `#492826` |
+| Offline | Bridge or device unreachable | none | `#3A4660` `#E4E8F0` | `#C9D3E6` none |
+
+Offline has no fill: a dashed border and a hollow dot. Its border is `#3A4660` on light and
+`#8A9BBB` on dark. freedo has no cooling zone today. The Cooling colours stay in the tokens.
+
+Schedule blocks use a warm ramp from `#FBEBDE` to `#EC9D53`, light in both themes, with navy labels.
 
 ### Rules
 
-- The brand colours are cool blues only. Status colours are the only other hues. Heating is the
-  only warm hue, so it stands out against the blue brand.
+- The brand colours are cool blues only, for the ground, actions and navigation. Status colours are
+  the only other hues.
+- A coloured surface uses one status family only: its base, its top and its ink.
 - Always pair a status colour with an icon or a label.
 - The gradient is for the icon only.
 - The wordmark is lowercase.
