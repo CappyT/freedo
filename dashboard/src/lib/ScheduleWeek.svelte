@@ -136,7 +136,8 @@
 		bottom: 0;
 		display: grid;
 		place-items: center;
-		border-left: 2px solid var(--surface);
+		/* White in both themes: the ramp is light in both, and the navy of now must stay the only dark line. */
+		border-left: 2px solid var(--white);
 		overflow: hidden;
 		/* A block shows its label whenever the label fits in it. */
 		container-type: inline-size;
@@ -182,14 +183,14 @@
 		color: var(--status-off-text);
 	}
 
-	/* The time of now: a navy line past the edges of the bar, with a dot on top. */
+	/* The time of now: a navy line across the bar with a pin head on the top edge. The white ring
+	   keeps the head visible on the navy card of the dark theme. */
 	.now {
 		position: absolute;
-		top: -4px;
-		bottom: -4px;
+		top: 0;
+		bottom: 0;
 		width: 2px;
 		margin-left: -1px;
-		border-radius: 2px;
 		background: var(--navy);
 		pointer-events: none;
 	}
@@ -197,12 +198,13 @@
 	.now::before {
 		content: '';
 		position: absolute;
-		top: -4px;
+		top: -6px;
 		left: 50%;
-		width: 8px;
-		height: 8px;
-		margin-left: -4px;
+		width: 10px;
+		height: 10px;
+		margin-left: -5px;
 		border-radius: 50%;
+		box-shadow: 0 0 0 2px var(--white);
 		background: var(--navy);
 	}
 

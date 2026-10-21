@@ -306,7 +306,7 @@ The tile grown into a screen. A vertical gradient from the top step to the base 
 A 270 degree arc from 5 to 25 C, drawn in the ink of the state: a 14-unit track at 16% ink, the progress in full ink, a notch at the current temperature, and a knob in ink with a white stroke at the target. The current temperature sits in the centre in Sora with a caption. The end values sit under the arc in Plex Mono.
 
 ### Schedule Week
-One bar per day, 32 px high, 8 px radius. Blocks are separated by a 2 px surface line and coloured on the schedule ramp by setpoint; off blocks take the off tint. Labels are navy at 13 px and hide when a block is too narrow. The time of now is a navy line with a dot that passes the edges of the bar.
+One bar per day, 32 px high, 8 px radius. Blocks are separated by a 2 px white line in both themes and coloured on the schedule ramp by setpoint; off blocks take the off tint. Labels are navy at 13 px and hide when a block is too narrow. The time of now is the only dark line on the bar: a 2 px navy line across it, with a 10 px navy dot on the top edge in a 2 px white ring, so the dot also reads on the navy card of the dark theme.
 
 ## Do's and Don'ts
 
