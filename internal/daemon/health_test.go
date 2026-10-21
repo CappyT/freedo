@@ -31,6 +31,7 @@ type healthResp struct {
 	SerialErrors    *int   `json:"serialErrors"`
 	Calibrated      *bool  `json:"calibrated"`
 	Warning         string `json:"warning"`
+	Version         string `json:"version"`
 	StartedAt       string `json:"startedAt"`
 	UptimeSec       *int   `json:"uptimeSec"`
 	Unhandled       *int   `json:"unhandled"`
@@ -88,7 +89,7 @@ func TestHealthReportsBusyEngine(t *testing.T) {
 	if health.OK || health.Engine != "busy" {
 		t.Fatalf("health=%+v", health)
 	}
-	if health.Mode != "mock" || health.UptimeSec == nil || health.Unhandled == nil ||
+	if health.Mode != "mock" || health.Version == "" || health.UptimeSec == nil || health.Unhandled == nil ||
 		health.RXQueue == nil || health.Taps == nil {
 		t.Fatalf("the non-engine fields are missing: %+v", health)
 	}

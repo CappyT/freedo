@@ -767,6 +767,8 @@ at least one alarm. `/api/nodes` shows the same data as `LowBattery`, `Fault`, `
   then logs `options.timezone is unset and the host zone is UTC` at start. Set `timezone`
   or `utc_offset_min` with `PATCH /api/install`, or start the daemon with `TZ` set. The
   field exists while the daemon holds an installation.
+- `version` in `GET /api/health` is the version of the daemon: the release tag, or `dev`
+  for a build without one.
 - `GET /api/health` answers within three seconds. It answers `503` with `"ok": false` when
   the engine is busy (`"engine": "busy"`) or when the live radio loop ended (`radioError`).
   It reports `fsctrl0` and `calibrated` in live mode, and a `warning` that names the

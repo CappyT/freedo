@@ -2014,6 +2014,7 @@ func (d *daemon) healthBase() (map[string]any, bool) {
 	}
 	health := map[string]any{
 		"ok": true, "mode": d.mode, "tx": !d.dryRun,
+		"version":   buildinfo.Version,
 		"txArmed":   txArmed,
 		"startedAt": d.started.Format(time.RFC3339),
 		"uptimeSec": int(time.Since(d.started).Seconds()),
