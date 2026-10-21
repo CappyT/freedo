@@ -23,7 +23,7 @@ export function t(key: Key, params?: Record<string, string | number>): string {
 
 /** The formats of the language of the page. */
 export const fmt = {
-	number: (v: number | null | undefined, digits = 1) => format.number(v, prefs.locale, digits),
+	number: (v: number | null | undefined, digits = 1, minDigits = 0) => format.number(v, prefs.locale, digits, minDigits),
 	temp: (v: number | null | undefined) => format.temp(v, prefs.locale),
 	degrees: (v: number | null | undefined) => format.degrees(v, prefs.locale),
 	parts: (v: number) => format.numberParts(v, prefs.locale),
@@ -36,5 +36,12 @@ export const fmt = {
 	ago: (unixSeconds: number) => format.ago(unixSeconds, prefs.locale),
 	duration: format.duration,
 	uptime: format.uptime,
-	day: (d: Day, width: 'short' | 'long' = 'short') => format.dayName(d, prefs.locale, width)
+	day: (d: Day, width: 'short' | 'long' = 'short') => format.dayName(d, prefs.locale, width),
+	longDay: (day: string) => format.longDay(day, prefs.locale),
+	shortDay: (day: string) => format.shortDay(day, prefs.locale),
+	month: (month: string, width: 'long' | 'short' = 'long') => format.monthName(month, prefs.locale, width),
+	money: (v: number | null, currency: string) => format.money(v, currency, prefs.locale),
+	fuel: (v: number | null, unit: string) => format.fuel(v, unit, prefs.locale),
+	fuelUnit: format.fuelUnit,
+	size: (bytes: number) => format.size(bytes, prefs.locale)
 };

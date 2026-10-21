@@ -24,6 +24,8 @@
 // - The boiler setup saves the energy data and the flow options, with a comma as the decimal separator,
 //   and refuses the default curve without a highest flow temperature. With a fuel flow set, the boiler
 //   page saves a meter reading, refuses a lower one before it is sent and undoes the last after a confirm.
+// - The statistics are off by default. Settings turns them on; the room report and the consumption page draw
+//   a sample, the price takes a comma, and off asks first and keeps the data until a delete.
 // - The first setup takes a daemon with an empty database to a room, a paired thermostat and a circuit.
 //   The device that the pair window hears and the frames of the joined device are put into the
 //   answers here: the daemon has no radio. As the daemon does, the answers keep the device in the
@@ -926,6 +928,62 @@ try {
 	await tab.evaluate(`document.querySelector('dialog[open] button.primary').click()`);
 	check(await toast('Reading removed'), 'the last reading is undone after a confirm');
 	check((await api(daemon.base, 'boiler')).energy.gas.meter === null, 'the daemon holds no reading after the undo');
+
+	// The statistics: on from Settings, read by the room report and the consumption page, off after a confirm.
+	await open('#/settings', `document.querySelector('[data-testid=history-switch]')`);
+	check(await tab.evaluate(`!document.querySelector('[data-testid=history-switch]').checked`), 'the statistics are off by default');
+	await open('#/zones/8/report', `/Turn on the statistics/.test(document.querySelector('main')?.innerText ?? '')`);
+	check(true, 'the room report offers to turn the statistics on while they are off');
+	await open('#/settings', `document.querySelector('[data-testid=history-switch]')`);
+	await click('[data-testid=history-switch]');
+	check(await toast('Statistics on'), 'the switch turns the statistics on');
+	check((await api(daemon.base, 'history')).enabled === true, 'the daemon records the statistics');
+	// The engine samples the current slot within a second of the switch.
+	let zoneDay = { samples: [] };
+	for (let i = 0; i < 40 && zoneDay.samples.length === 0; i++) {
+		await sleep(100);
+		zoneDay = await api(daemon.base, 'history/zones/8');
+	}
+	check(zoneDay.samples.length === 1, `the daemon holds a sample of the room (${zoneDay.samples.length})`);
+	await open('#/zones/8', `document.querySelector('[data-testid=report-link]')`);
+	check(await tab.evaluate(`document.querySelector('[data-testid=report-link]').getAttribute('href') === '#/zones/8/report'`), 'a room screen links to its report');
+	await open('#/zones/8/report', `document.querySelector('main svg[role=slider]')`);
+	check(await tab.evaluate(`document.querySelectorAll('main .stats > div').length >= 3`), 'the room report shows the stats and the chart of today');
+	check(await tab.evaluate(`[...document.querySelectorAll('main .day-nav button')].slice(0, 2).every((b) => b.disabled)`), 'the report of the first day offers no other day');
+	await tab.evaluate(`document.querySelector('main svg[role=slider]').focus()`);
+	await tab.call('Input.dispatchKeyEvent', { type: 'keyDown', key: 'End', code: 'End', windowsVirtualKeyCode: 35 });
+	check(await tab.evaluate(`/target/.test(document.querySelector('main svg[role=slider]').getAttribute('aria-valuetext') ?? '')`), 'the keyboard reads a sample of the chart');
+	await open('#/boiler', `document.querySelector('[data-testid=energy-link]')`);
+	check(await tab.evaluate(`document.querySelector('[data-testid=energy-link]').getAttribute('href') === '#/boiler/energy'`), 'the boiler page links to the consumption page');
+	await open('#/boiler/energy', `document.querySelector('main svg[role=slider]')`);
+	check(true, 'the consumption page shows the chart of the month');
+	await typeAt('main form.price input', 0, '1,05');
+	await click('main form.price button[type=submit]');
+	check(await toast('Price saved'), 'the fuel price is saved');
+	const priced = await api(daemon.base, 'history');
+	check(priced.fuelPrice === 1.05 && priced.currency === 'EUR', `the daemon holds the price, with a comma read as the decimal separator (${priced.fuelPrice} ${priced.currency})`);
+
+	// On a phone the open table scrolls inside its block instead of widening the page.
+	await tab.viewport(390, 844, true);
+	await open('#/boiler/energy', `document.querySelector('details.table-twin')`);
+	await tab.evaluate(`document.querySelector('details.table-twin').open = true`);
+	await tab.waitFor(`document.querySelector('details.table-twin tbody tr')`, 4000);
+	check(await tab.evaluate(`document.documentElement.scrollWidth <= window.innerWidth`), 'on a phone the open table of the consumption page keeps the page width');
+	await tab.viewport(1280, 900);
+	await open('#/settings', `document.querySelector('[data-testid=history-switch]')?.checked`);
+	await click('[data-testid=history-switch]');
+	await tab.waitFor(`document.querySelector('dialog[open] button.primary')`, 4000);
+	check(await tab.evaluate(`document.querySelector('[data-testid=history-switch]').checked`), 'the switch stays on while the page asks');
+	await tab.evaluate(`document.querySelector('dialog[open] button.primary').click()`);
+	check(await toast('Statistics off'), 'the statistics turn off after a confirm');
+	const historyOff = await api(daemon.base, 'history');
+	check(historyOff.enabled === false && historyOff.sizeBytes > 0, `off keeps the stored data (${historyOff.sizeBytes} bytes)`);
+	await tab.waitFor(`document.querySelector('[data-testid=history-delete]')`, 4000);
+	await click('[data-testid=history-delete]');
+	await tab.waitFor(`document.querySelector('dialog[open] button.primary')`, 4000);
+	await tab.evaluate(`document.querySelector('dialog[open] button.primary').click()`);
+	check(await toast('Statistics deleted'), 'the stored statistics are deleted after a confirm');
+	check((await api(daemon.base, 'history')).sizeBytes === 0, 'the daemon holds no statistics after the delete');
 
 	// 13. The first setup on a daemon with an empty database.
 	fresh = await startDaemon(bin);

@@ -55,6 +55,21 @@ describe('formats', () => {
 		expect(format.duration(7200)).toBe('2 h');
 	});
 
+	it('write a date, a month, money, fuel and a size', () => {
+		const now = new Date(2026, 9, 21);
+		expect(format.longDay('2026-10-21', 'it', now)).toBe('mercoledì 21 ottobre');
+		expect(format.longDay('2025-10-21', 'en', now)).toBe('Tuesday, October 21, 2025');
+		expect(format.shortDay('2026-10-21', 'it')).toBe('21 ott');
+		expect(format.monthName('2026-10', 'it', 'long')).toBe('ottobre 2026');
+		expect(format.monthName('2026-10', 'en', 'short')).toBe('Oct');
+		expect(format.money(4.1, 'EUR', 'it')).toBe('4,10\u00a0€');
+		expect(format.money(null, 'EUR', 'it')).toBe('-');
+		expect(format.fuel(3.254, 'm3', 'it')).toBe('3,25 m³');
+		expect(format.fuel(12, 'l', 'en')).toBe('12.00 l');
+		expect(format.size(1_310_720, 'it')).toBe('1,3 MB');
+		expect(format.size(2048, 'en')).toBe('2 kB');
+	});
+
 	it('name the days from Monday', () => {
 		expect(format.dayName('mon', 'en')).toBe('Mon');
 		expect(format.dayName('sun', 'en', 'long')).toBe('Sunday');

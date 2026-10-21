@@ -243,6 +243,22 @@
 					</section>
 				{/if}
 
+				<section class="section" aria-labelledby="report-title">
+					<div class="section-head"><h2 id="report-title">{t('report.title')}</h2></div>
+					<ul class="list">
+						<li>
+							<a class="list-row" href={resolve('/zones/[n]/report', { n: String(number) })} data-testid="report-link">
+								<span class="disc"><Icon name="pulse" size={18} /></span>
+								<span class="list-main">
+									<span class="list-label">{t('report.open')}</span>
+									<span class="list-sub">{t('report.openSub')}</span>
+								</span>
+								<span class="chevron"><Icon name="chevron" size={18} /></span>
+							</a>
+						</li>
+					</ul>
+				</section>
+
 				<section class="section" aria-labelledby="devices-title">
 					<div class="section-head"><h2 id="devices-title">{t('zone.devices')}</h2></div>
 					<DeviceList {devices} room={number} compact settings={resolve('/rooms/[n]', { n: String(number) })} />

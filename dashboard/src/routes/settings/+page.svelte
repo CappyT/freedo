@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import icon from '../../../../assets/brand/svg/icon.svg?inline';
+	import { act } from '#lib/actions.ts';
 	import { auth } from '#lib/auth.svelte.ts';
 	import { exportState, importState, refusal, uptimeOf, waitForRestart } from '#lib/backup.ts';
 	import ConfirmDialog from '#lib/ConfirmDialog.svelte';
@@ -12,6 +13,7 @@
 	import { api } from '#lib/session.ts';
 	import { LOCALES, prefs, type LocalePref, type Theme } from '#lib/prefs.svelte.ts';
 	import { toasts } from '#lib/toast.svelte.ts';
+	import type { HistoryInfo } from '#lib/types.ts';
 
 	const health = $derived(data.health);
 	const link = $derived(serialLink(health));
@@ -52,6 +54,40 @@
 	function removeToken() {
 		auth.clear();
 		toasts.push('ok', t('settings.token.removed'));
+	}
+
+	let history = $state<HistoryInfo | null>(null);
+	let historyBusy = $state(false);
+	let historyOff: ConfirmDialog | undefined = $state();
+	let historyDelete: ConfirmDialog | undefined = $state();
+
+	async function loadHistory() {
+		try {
+			history = await api.history();
+		} catch {
+			history = null;
+		}
+	}
+
+	$effect(() => {
+		void loadHistory();
+	});
+
+	async function setHistory(patch: { enabled: boolean; delete?: boolean }, done: string) {
+		historyBusy = true;
+		const result = await act(() => api.setHistory(patch), done);
+		if (result) history = result;
+		historyBusy = false;
+	}
+
+	/** On is one tap. Off asks first, and the switch shows the stored state until the answer. */
+	function toggleHistory(box: HTMLInputElement) {
+		if (box.checked) {
+			void setHistory({ enabled: true }, t('history.enabled'));
+			return;
+		}
+		box.checked = true;
+		historyOff?.show();
 	}
 
 	const backupOptions = { token: () => auth.token };
@@ -300,6 +336,71 @@
 			{/if}
 		</section>
 
+		<section class="section" aria-labelledby="history-title" data-testid="history">
+			<div class="section-head"><h2 id="history-title">{t('history.title')}</h2></div>
+			{#if !history}
+				<p class="muted">{t('state.loading')}</p>
+			{:else if !history.available}
+				<p class="notice tone-off"><Icon name="warning" /><span>{t('history.noDatabase')}</span></p>
+			{:else}
+				{#if history.error}
+					<p class="notice tone-fault" role="alert"><Icon name="fault" /><span>{history.error}</span></p>
+				{/if}
+				<ul class="list">
+					<li>
+						<label class="list-row">
+							<span class="disc"><Icon name="pulse" size={18} /></span>
+							<span class="list-main">
+								<span class="list-label">{t('history.record')}</span>
+								<span class="list-sub">{t('history.what', { days: history.sampleDays, months: history.dayMonths })}</span>
+							</span>
+							<input
+								type="checkbox"
+								role="switch"
+								data-testid="history-switch"
+								checked={history.enabled}
+								disabled={historyBusy}
+								onchange={(e) => toggleHistory(e.currentTarget)}
+							/>
+						</label>
+					</li>
+					{#if history.enabled || history.sizeBytes > 0}
+						<li class="list-row">
+							<span class="disc"><Icon name="clock" size={18} /></span>
+							<span class="list-main">
+								<span class="list-label">{t('history.stored')}</span>
+								{#if history.since}<span class="list-sub">{t('history.since', { date: fmt.dateTime(history.since) })}</span>{/if}
+							</span>
+							<span class="list-value num">{fmt.size(history.sizeBytes)}</span>
+						</li>
+					{/if}
+					{#if history.enabled}
+						<li>
+							<a class="list-row" href={resolve('/boiler/energy')}>
+								<span class="disc"><Icon name="flame" size={18} /></span>
+								<span class="list-main">
+									<span class="list-label">{t('energy.title')}</span>
+									<span class="list-sub">{t('history.energySub')}</span>
+								</span>
+								{@render chevron()}
+							</a>
+						</li>
+					{:else if history.sizeBytes > 0}
+						<li>
+							<button class="list-row" type="button" data-testid="history-delete" disabled={historyBusy} onclick={() => historyDelete?.show()}>
+								<span class="disc"><Icon name="trash" size={18} /></span>
+								<span class="list-main">
+									<span class="list-label danger">{t('history.delete')}</span>
+									<span class="list-sub">{t('history.deleteSub')}</span>
+								</span>
+							</button>
+						</li>
+					{/if}
+				</ul>
+				<p class="note">{t('history.local')}</p>
+			{/if}
+		</section>
+
 		<section class="section" aria-labelledby="backup-title" data-testid="backup">
 			<div class="section-head"><h2 id="backup-title">{t('settings.backup')}</h2></div>
 			{#if backupError}
@@ -394,6 +495,22 @@
 </section>
 
 <ConfirmDialog
+	bind:this={historyOff}
+	title={t('history.off.title')}
+	body={t('history.off.body')}
+	confirm={t('history.off.confirm')}
+	onconfirm={() => void setHistory({ enabled: false }, t('history.disabled'))}
+/>
+
+<ConfirmDialog
+	bind:this={historyDelete}
+	title={t('history.delete.title')}
+	body={t('history.delete.body')}
+	confirm={t('history.delete')}
+	onconfirm={() => void setHistory({ enabled: false, delete: true }, t('history.deleted'))}
+/>
+
+<ConfirmDialog
 	bind:this={restoreDialog}
 	title={t('settings.backup.confirm.title')}
 	body={t('settings.backup.confirm.body', { name: backupFile?.name ?? '' })}
@@ -424,6 +541,10 @@
 	.chevron {
 		flex: none;
 		color: var(--text-muted);
+	}
+
+	.danger {
+		color: var(--status-fault-text);
 	}
 
 	.theme {

@@ -3,8 +3,11 @@ import type {
 	BoilerPatch,
 	Circuit,
 	EndRule,
+	EnergyHistory,
 	GasMeter,
 	Health,
+	HistoryInfo,
+	HistoryPatch,
 	Home,
 	InstallCircuit,
 	InstallDevice,
@@ -20,6 +23,7 @@ import type {
 	WindowView,
 	ZoneKind,
 	ZoneOptionsPatch,
+	ZoneHistory,
 	Zones
 } from './types.ts';
 
@@ -181,6 +185,20 @@ export function createClient(options: ClientOptions = {}) {
 			request<GasMeter>('POST', 'boiler/gas/meter', body),
 		/** Removes the last meter reading. The answer is null once no reading is left. */
 		undoGasReading: () => request<GasMeter | null>('DELETE', 'boiler/gas/meter'),
+		// The statistics.
+		history: () => request<HistoryInfo>('GET', 'history'),
+		setHistory: (patch: HistoryPatch) => request<HistoryInfo>('PUT', 'history', patch),
+		/** One local day of a zone, YYYY-MM-DD; today by default. */
+		zoneHistory: (n: number, date?: string) =>
+			request<ZoneHistory>('GET', 'history/zones/' + n + (date ? '?date=' + encodeURIComponent(date) : '')),
+		/** The daily totals from from to to, both YYYY-MM-DD and included; the kept months by default. */
+		energyHistory: (from?: string, to?: string) => {
+			const query = new URLSearchParams();
+			if (from) query.set('from', from);
+			if (to) query.set('to', to);
+			const qs = query.toString();
+			return request<EnergyHistory>('GET', 'history/energy' + (qs ? '?' + qs : ''));
+		},
 		childLock: (device: string, on: boolean) =>
 			request<Command>('POST', 'nodes/' + encodeURIComponent(device) + '/childlock', { on }),
 		identify: (device: string) => request<Command>('POST', 'nodes/' + encodeURIComponent(device) + '/identify', {}),

@@ -35,7 +35,7 @@
 				href: resolve('/'),
 				label: 'nav.home',
 				icon: 'home',
-				active: route === '/' || route.startsWith('/zones') || route === '/hot-water' || route === '/boiler'
+				active: route === '/' || route.startsWith('/zones') || route === '/hot-water' || route.startsWith('/boiler')
 			},
 			{ href: resolve('/programs'), label: 'nav.programs', icon: 'calendar', active: route === '/programs' },
 			{ href: resolve('/devices'), label: 'nav.devices', icon: 'devices', active: route === '/devices' || route.startsWith('/rooms') },

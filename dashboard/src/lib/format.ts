@@ -4,9 +4,9 @@ import type { Day } from './schedule.ts';
 
 export const NONE = '-';
 
-export function number(value: number | null | undefined, locale: string, maxDigits = 1): string {
+export function number(value: number | null | undefined, locale: string, maxDigits = 1, minDigits = 0): string {
 	if (value === null || value === undefined || Number.isNaN(value)) return NONE;
-	return new Intl.NumberFormat(locale, { maximumFractionDigits: maxDigits, minimumFractionDigits: 0 }).format(value);
+	return new Intl.NumberFormat(locale, { maximumFractionDigits: maxDigits, minimumFractionDigits: minDigits }).format(value);
 }
 
 export function temp(value: number | null | undefined, locale: string): string {
@@ -96,4 +96,49 @@ export function uptime(seconds: number): string {
 	const d = Math.floor(seconds / 86400);
 	const rest = seconds % 86400;
 	return d > 0 ? `${d} d ${duration(rest)}` : duration(rest) === '0 min' ? '<1 min' : duration(rest);
+}
+
+/** A local date YYYY-MM-DD as a long day: "martedì 21 ottobre", with the year only for another year. */
+export function longDay(day: string, locale: string, now: Date = new Date()): string {
+	const [y = 0, m = 1, d = 1] = day.split('-').map(Number);
+	const year = y === now.getFullYear() ? undefined : 'numeric';
+	return new Intl.DateTimeFormat(locale, { weekday: 'long', day: 'numeric', month: 'long', year, timeZone: 'UTC' }).format(
+		Date.UTC(y, m - 1, d)
+	);
+}
+
+/** A local date YYYY-MM-DD as a short day: "21 ott". */
+export function shortDay(day: string, locale: string): string {
+	const [y = 0, m = 1, d = 1] = day.split('-').map(Number);
+	return new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(Date.UTC(y, m - 1, d));
+}
+
+/** A month YYYY-MM: "ottobre 2026" long, "ott" short. */
+export function monthName(month: string, locale: string, width: 'long' | 'short'): string {
+	const [y = 0, m = 1] = month.split('-').map(Number);
+	const options: Intl.DateTimeFormatOptions = width === 'long' ? { month: 'long', year: 'numeric' } : { month: 'short' };
+	return new Intl.DateTimeFormat(locale, { ...options, timeZone: 'UTC' }).format(Date.UTC(y, m - 1, 1));
+}
+
+/** An amount of money in an ISO 4217 currency: 4.1 EUR gives "4,10 €" in Italian. */
+export function money(value: number | null, currency: string, locale: string): string {
+	if (value === null) return NONE;
+	return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(value);
+}
+
+/** The fuel unit of the daemon as text: m3 gives m³. */
+export function fuelUnit(unit: string): string {
+	return unit === 'm3' ? 'm³' : unit;
+}
+
+/** An amount of fuel with its unit, to two decimals: "3,25 m³". */
+export function fuel(value: number | null, unit: string, locale: string): string {
+	return value === null ? NONE : `${number(value, locale, 2, 2)} ${fuelUnit(unit)}`;
+}
+
+/** A file size: "1,2 MB". */
+export function size(bytes: number, locale: string): string {
+	if (bytes < 1024) return `${number(bytes, locale, 0)} B`;
+	if (bytes < 1024 * 1024) return `${number(bytes / 1024, locale, 0)} kB`;
+	return `${number(bytes / (1024 * 1024), locale, 1)} MB`;
 }

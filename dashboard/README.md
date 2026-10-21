@@ -17,7 +17,7 @@ SvelteKit 3 needs Node 22.17 or later. Run the commands in this directory.
 | `npm run embed` | Copy `build/` to `../internal/web/dist`, the directory that the daemon embeds. |
 | `npm run dev` | Start the development server. `FREEDO_DEV_API` names the daemon (default `http://127.0.0.1:8080`). |
 | `npm run prefix-check` | Check the build under a path prefix. See below. |
-| `npm run ui-check` | Drive the controls in headless Chrome against the daemon: typing in the schedule editor, a refused command, the first end rule, Turn off, the profiles on the Programs screen, the rooms and devices, the first setup on an empty database, the download and the restore of a backup, the banner and the return to normal of a daemon that waits after an import. `FREEDO_BIN` names a daemon binary that embeds the build. |
+| `npm run ui-check` | Drive the controls in headless Chrome against the daemon: typing in the schedule editor, a refused command, the first end rule, Turn off, the profiles on the Programs screen, the rooms and devices, the first setup on an empty database, the download and the restore of a backup, the banner and the return to normal of a daemon that waits after an import, and the statistics: the switch, the report of a room, the consumption page and the price. `FREEDO_BIN` names a daemon binary that embeds the build. |
 
 To run the daemon with the dashboard:
 
@@ -31,8 +31,8 @@ and every page request gets `404`. The API works as before.
 
 ## Layout
 
-- `src/routes`: the pages. `/` is the home page, then `zones/[n]`, `hot-water`, `programs`, `boiler`,
-  `boiler/setup`, `devices`, `rooms/[n]`, `setup` and `settings`. `programs` holds the profiles and the home and away
+- `src/routes`: the pages. `/` is the home page, then `zones/[n]`, `zones/[n]/report`, `hot-water`, `programs`,
+  `boiler`, `boiler/setup`, `boiler/energy`, `devices`, `rooms/[n]`, `setup` and `settings`. `programs` holds the profiles and the home and away
   schedule of every zone in each profile. The home page shows one tile per room, in the colour of its
   state, and the tiles of the presence, the active profile, the hot water and the boiler. The hot water
   page and the boiler page have no navigation item: their tiles on the home page lead there. A room,
@@ -50,6 +50,10 @@ and every page request gets `404`. The API works as before.
   weather curves and the adaptation; `boileroptions.ts` holds the ranges, builds the patch and mirrors the
   curves of the daemon for the preview in `CurveChart.svelte`. The room screen judges the air comfort from
   the temperature and the humidity (`AirComfort.svelte`, ranges in `comfort.ts`).
+- The statistics: Settings turns them on. `zones/[n]/report` shows one day of a room (`DayChart.svelte`), and
+  `boiler/energy` the fuel, heat and cost per day and per month (`BarChart.svelte`) and writes the fuel price.
+  `history.ts` holds the spans, the runs, the totals and the axes. Each chart is a slider for the keyboard: the
+  arrow keys move the readout, which is also its value text, and a table under it holds the same values.
 - `src/lib/api.ts`: the client of the HTTP API. `data.svelte.ts` polls the views every 5 seconds.
 - `src/lib/install.ts`: the rules of the installation pages: the number of a new zone, the writes of a move,
   the state of each setup step. `install.svelte.ts` runs a change and reads the state again.

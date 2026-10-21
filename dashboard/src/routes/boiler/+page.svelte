@@ -189,7 +189,10 @@
 				</section>
 
 				<section class="section" aria-labelledby="energy-title">
-					<div class="section-head"><h2 id="energy-title">{t('boiler.energy')}</h2></div>
+					<div class="section-head">
+						<h2 id="energy-title">{t('boiler.energy')}</h2>
+						<a class="section-link" href={resolve('/boiler/energy')} data-testid="energy-link">{t('energy.open')}</a>
+					</div>
 					<ul class="list">
 						<li class="list-row">
 							<span class="list-main"><span class="list-label">{t('boiler.heat')}</span>{#if boiler.energy.reason}<span class="list-sub">{t(reasonKey('reason', boiler.energy.reason))}</span>{/if}</span>

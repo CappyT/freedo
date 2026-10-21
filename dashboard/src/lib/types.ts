@@ -443,3 +443,88 @@ export interface PairWindow {
 	responder: boolean;
 	joiners: PairJoiner[];
 }
+
+/** GET /api/history: the switch of the statistics, what they hold and the fuel price. */
+export interface HistoryInfo {
+	/** False without a state database: the statistics need one. */
+	available: boolean;
+	enabled: boolean;
+	/** Why an enabled history has no file, else null. */
+	error: string | null;
+	/** The time of the oldest sample, null before the first. */
+	since: string | null;
+	sizeBytes: number;
+	intervalSec: number;
+	sampleDays: number;
+	dayMonths: number;
+	/** The price of one fuel unit, null while unset. */
+	fuelPrice: number | null;
+	/** An ISO 4217 code. */
+	currency: string;
+}
+
+export interface HistoryPatch {
+	enabled?: boolean;
+	/** Removes the stored statistics. It needs enabled false. */
+	delete?: boolean;
+	fuelPrice?: number | null;
+	currency?: string;
+}
+
+/** One zone at one sample time. A null field had no value then. */
+export interface HistorySample {
+	atMs: number;
+	tempC: number | null;
+	targetC: number | null;
+	on: boolean;
+	humidityPct: number | null;
+	demandPct: number | null;
+	window: boolean;
+	away: boolean;
+}
+
+/** A finished heat-up: a rise of the program target, from the start to the settling. */
+export interface HeatUp {
+	startedMs: number;
+	endedMs: number;
+	startC: number;
+	targetC: number | null;
+	/** When the room reached the target, null when it never did. */
+	crossedMs: number | null;
+	deadTimeSec: number | null;
+	overshootC: number | null;
+	settlingSec: number | null;
+	endReason: string;
+}
+
+/** GET /api/history/zones/{n}: one local day of one zone. */
+export interface ZoneHistory {
+	zone: number;
+	date: string;
+	from: string;
+	to: string;
+	intervalSec: number;
+	/** The local date of the oldest sample of the zone, null before the first. */
+	first: string | null;
+	samples: HistorySample[];
+	episodes: HeatUp[];
+}
+
+/** What one local day counted. fuel is the estimate times the meter factor of that day. */
+export interface DayTotal {
+	day: string;
+	fuel: number;
+	fuelEstimate: number;
+	heatKWh: number;
+	burnerMin: number;
+}
+
+/** GET /api/history/energy. */
+export interface EnergyHistory {
+	from: string;
+	to: string;
+	unit: string;
+	fuelPrice: number | null;
+	currency: string;
+	days: DayTotal[];
+}

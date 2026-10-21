@@ -304,43 +304,6 @@
 		cursor: pointer;
 	}
 
-	/* A checkbox drawn as a switch. Off is an outline, so the control keeps 3:1 on its ground. */
-	.switch input {
-		appearance: none;
-		position: relative;
-		flex: none;
-		width: 2.875rem;
-		height: 1.75rem;
-		margin: 0;
-		border: 2px solid var(--text-muted);
-		border-radius: var(--radius-pill);
-		background: var(--surface);
-		cursor: pointer;
-		transition: background 0.2s;
-	}
-
-	.switch input::before {
-		content: '';
-		position: absolute;
-		top: 2px;
-		left: 2px;
-		width: 1.25rem;
-		height: 1.25rem;
-		border-radius: 50%;
-		background: var(--text-muted);
-		transition: translate 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
-	}
-
-	.switch input:checked {
-		border-color: var(--action);
-		background: var(--action);
-	}
-
-	.switch input:checked::before {
-		translate: 1.125rem 0;
-		background: var(--action-text);
-	}
-
 	@media (max-width: 559px) {
 		.more {
 			padding-left: 0.875rem;
@@ -348,9 +311,7 @@
 	}
 
 	@media (prefers-reduced-motion: reduce) {
-		.chevron,
-		.switch input,
-		.switch input::before {
+		.chevron {
 			transition: none;
 		}
 	}
