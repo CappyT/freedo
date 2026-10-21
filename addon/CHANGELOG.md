@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.1
+
+- Dashboard: a tile with no temperature shows a dash in place of the number, like the dial of the
+  room screen.
+- Dashboard: in a schedule bar the time of now is the only dark line, with a dot in a white ring on
+  its top edge. The lines between the blocks are white in both themes.
+
 ## 0.8.0
 
 - Dashboard: a new design on the model of the tado app. The home page shows one tile per room, in
