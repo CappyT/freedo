@@ -1,0 +1,554 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-21T12:06:25+00:00",
+  "title": "Design System: freedo dashboard",
+  "extensions": {
+    "colorMeta": {
+      "navy": {
+        "role": "neutral",
+        "displayName": "Navy",
+        "tonalRamp": [
+          "#0B1B3A",
+          "#13284F",
+          "#22365F",
+          "#1B45C6",
+          "#2E7BFF",
+          "#7CC4FF",
+          "#E6F1FF",
+          "#F5F9FF"
+        ]
+      },
+      "cobalt": {
+        "role": "primary",
+        "displayName": "Cobalt Action",
+        "tonalRamp": [
+          "#0B1B3A",
+          "#13284F",
+          "#22365F",
+          "#1B45C6",
+          "#2E7BFF",
+          "#7CC4FF",
+          "#E6F1FF",
+          "#F5F9FF"
+        ]
+      },
+      "azure": {
+        "role": "primary",
+        "displayName": "Azure Accent",
+        "tonalRamp": [
+          "#0B1B3A",
+          "#13284F",
+          "#22365F",
+          "#1B45C6",
+          "#2E7BFF",
+          "#7CC4FF",
+          "#E6F1FF",
+          "#F5F9FF"
+        ]
+      },
+      "sky": {
+        "role": "primary",
+        "displayName": "Sky",
+        "tonalRamp": [
+          "#0B1B3A",
+          "#13284F",
+          "#22365F",
+          "#1B45C6",
+          "#2E7BFF",
+          "#7CC4FF",
+          "#E6F1FF",
+          "#F5F9FF"
+        ]
+      },
+      "ice": {
+        "role": "secondary",
+        "displayName": "Ice Panel",
+        "tonalRamp": [
+          "#0B1B3A",
+          "#13284F",
+          "#22365F",
+          "#1B45C6",
+          "#2E7BFF",
+          "#7CC4FF",
+          "#E6F1FF",
+          "#F5F9FF"
+        ]
+      },
+      "frost": {
+        "role": "neutral",
+        "displayName": "Frost Ground",
+        "tonalRamp": [
+          "#0B1B3A",
+          "#13284F",
+          "#22365F",
+          "#1B45C6",
+          "#2E7BFF",
+          "#7CC4FF",
+          "#E6F1FF",
+          "#F5F9FF"
+        ]
+      },
+      "slate": {
+        "role": "neutral",
+        "displayName": "Slate"
+      },
+      "white": {
+        "role": "neutral",
+        "displayName": "White Surface"
+      },
+      "border-light": {
+        "role": "neutral",
+        "displayName": "Hairline"
+      },
+      "border-light-strong": {
+        "role": "neutral",
+        "displayName": "Strong Hairline"
+      },
+      "navy-surface": {
+        "role": "neutral",
+        "displayName": "Navy Surface",
+        "tonalRamp": [
+          "#0B1B3A",
+          "#13284F",
+          "#22365F",
+          "#1B45C6",
+          "#2E7BFF",
+          "#7CC4FF",
+          "#E6F1FF",
+          "#F5F9FF"
+        ]
+      },
+      "navy-border": {
+        "role": "neutral",
+        "displayName": "Navy Hairline",
+        "tonalRamp": [
+          "#0B1B3A",
+          "#13284F",
+          "#22365F",
+          "#1B45C6",
+          "#2E7BFF",
+          "#7CC4FF",
+          "#E6F1FF",
+          "#F5F9FF"
+        ]
+      },
+      "navy-text": {
+        "role": "neutral",
+        "displayName": "Pale Navy Text"
+      },
+      "navy-text-muted": {
+        "role": "neutral",
+        "displayName": "Navy Text Muted"
+      },
+      "status-offline-border": {
+        "role": "tertiary",
+        "displayName": "Offline Dash"
+      },
+      "schedule-low": {
+        "role": "tertiary",
+        "displayName": "Schedule Ramp Low",
+        "tonalRamp": [
+          "#EC9D53",
+          "#FBEBDE"
+        ]
+      },
+      "schedule-high": {
+        "role": "tertiary",
+        "displayName": "Schedule Ramp High",
+        "tonalRamp": [
+          "#EC9D53",
+          "#FBEBDE"
+        ]
+      },
+      "status-heating": {
+        "role": "tertiary",
+        "displayName": "Heating Apricot",
+        "tonalRamp": [
+          "#512500",
+          "#8C4400",
+          "#FEA668",
+          "#FDC7A4",
+          "#FFEBDA"
+        ],
+        "note": "Family steps from tokens.css: ink, light text, base, top, light tint."
+      },
+      "status-heating-ink": {
+        "role": "tertiary",
+        "displayName": "Heating Apricot Ink",
+        "tonalRamp": [
+          "#512500",
+          "#8C4400",
+          "#FEA668",
+          "#FDC7A4",
+          "#FFEBDA"
+        ]
+      },
+      "status-idle": {
+        "role": "tertiary",
+        "displayName": "Idle Mint",
+        "tonalRamp": [
+          "#003F22",
+          "#006E40",
+          "#6CD79D",
+          "#A9E4C1",
+          "#DEF8E7"
+        ],
+        "note": "Family steps from tokens.css: ink, light text, base, top, light tint."
+      },
+      "status-idle-ink": {
+        "role": "tertiary",
+        "displayName": "Idle Mint Ink",
+        "tonalRamp": [
+          "#003F22",
+          "#006E40",
+          "#6CD79D",
+          "#A9E4C1",
+          "#DEF8E7"
+        ]
+      },
+      "status-warning": {
+        "role": "tertiary",
+        "displayName": "Warning Honey",
+        "tonalRamp": [
+          "#452E00",
+          "#795300",
+          "#F8C655",
+          "#FEE1A4",
+          "#FBEFD6"
+        ],
+        "note": "Family steps from tokens.css: ink, light text, base, top, light tint."
+      },
+      "status-warning-ink": {
+        "role": "tertiary",
+        "displayName": "Warning Honey Ink",
+        "tonalRamp": [
+          "#452E00",
+          "#795300",
+          "#F8C655",
+          "#FEE1A4",
+          "#FBEFD6"
+        ]
+      },
+      "status-off": {
+        "role": "tertiary",
+        "displayName": "Off Pewter",
+        "tonalRamp": [
+          "#293442",
+          "#4C5C71",
+          "#B5BFCB",
+          "#CFD5DC",
+          "#ECF1F7"
+        ],
+        "note": "Family steps from tokens.css: ink, light text, base, top, light tint."
+      },
+      "status-off-ink": {
+        "role": "tertiary",
+        "displayName": "Off Pewter Ink",
+        "tonalRamp": [
+          "#293442",
+          "#4C5C71",
+          "#B5BFCB",
+          "#CFD5DC",
+          "#ECF1F7"
+        ]
+      },
+      "status-away": {
+        "role": "tertiary",
+        "displayName": "Away Lilac",
+        "tonalRamp": [
+          "#362957",
+          "#614A96",
+          "#C4ACFF",
+          "#D7CBFF",
+          "#F1ECFF"
+        ],
+        "note": "Family steps from tokens.css: ink, light text, base, top, light tint."
+      },
+      "status-away-ink": {
+        "role": "tertiary",
+        "displayName": "Away Lilac Ink",
+        "tonalRamp": [
+          "#362957",
+          "#614A96",
+          "#C4ACFF",
+          "#D7CBFF",
+          "#F1ECFF"
+        ]
+      },
+      "status-fault": {
+        "role": "tertiary",
+        "displayName": "Fault Coral",
+        "tonalRamp": [
+          "#551F1D",
+          "#923A37",
+          "#FB817A",
+          "#F6AAA4",
+          "#FFE8E4"
+        ],
+        "note": "Family steps from tokens.css: ink, light text, base, top, light tint."
+      },
+      "status-fault-ink": {
+        "role": "tertiary",
+        "displayName": "Fault Coral Ink",
+        "tonalRamp": [
+          "#551F1D",
+          "#923A37",
+          "#FB817A",
+          "#F6AAA4",
+          "#FFE8E4"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Tile temperature integer; degree and decimal stacked beside it."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Page title."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Room name in the hero bar."
+      },
+      "section": {
+        "displayName": "Section",
+        "purpose": "Heading above a grouped list."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Running text, 15 px."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Tile lines, hero commands, state pills."
+      },
+      "data": {
+        "displayName": "Data",
+        "purpose": "Numbers, units and identifiers inside text."
+      }
+    },
+    "shadows": [
+      {
+        "name": "tile-lift",
+        "value": "0 12px 24px -14px color-mix(in srgb, var(--navy) 60%, transparent)",
+        "purpose": "Tile on hover, with a 2 px lift."
+      },
+      {
+        "name": "quick-action",
+        "value": "0 1px 2px color-mix(in srgb, var(--navy) 6%, transparent), 0 8px 18px -10px color-mix(in srgb, var(--navy) 22%, transparent)",
+        "purpose": "Whole-home quick actions in light mode."
+      },
+      {
+        "name": "floating-card",
+        "value": "0 14px 30px -16px color-mix(in srgb, var(--navy) 70%, transparent)",
+        "purpose": "Pending-change card on a hero."
+      },
+      {
+        "name": "menu",
+        "value": "0 0.75rem 2rem color-mix(in srgb, var(--navy) 22%, transparent)",
+        "purpose": "Popover menus."
+      },
+      {
+        "name": "nudge",
+        "value": "0 6px 14px -8px color-mix(in srgb, var(--fill-ink) 60%, transparent)",
+        "purpose": "White plus and minus buttons on a hero."
+      },
+      {
+        "name": "segment",
+        "value": "0 2px 6px -2px color-mix(in srgb, var(--navy) 35%, transparent)",
+        "purpose": "Checked option of a segmented control."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-standard",
+        "value": "cubic-bezier(0.2, 0.8, 0.2, 1)",
+        "purpose": "State transitions: tile lift, chevron rotation, radio and checkbox fill, 0.15 to 0.2 s."
+      },
+      {
+        "name": "hero-expand",
+        "value": "0.28s cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "View transition: the tile grows into the room hero."
+      },
+      {
+        "name": "page-crossfade",
+        "value": "0.18s",
+        "purpose": "Root view transition between pages."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "0.01ms",
+        "purpose": "All animations and transitions under prefers-reduced-motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "single-command-column",
+        "value": "420px",
+        "purpose": "Commands drop to one column below it."
+      },
+      {
+        "name": "phone",
+        "value": "560px",
+        "purpose": "Below it: two tile columns, two fact columns."
+      },
+      {
+        "name": "wide",
+        "value": "900px",
+        "purpose": "From it: left rail, hero as a sticky card beside the sections."
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one action of a card or screen.",
+      "html": "<button class=\"ds-btn ds-btn-primary\">Applica</button>",
+      "css": ".ds-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:46px;padding:8px 18px;border-radius:var(--radius-md,14px);border:1px solid var(--border-strong,#C9DCF6);background:var(--surface,#fff);color:var(--text,#0B1B3A);font:600 15px 'IBM Plex Sans',sans-serif;cursor:pointer}.ds-btn-primary{background:var(--action,#1B45C6);border-color:var(--action,#1B45C6);color:var(--action-text,#fff)}.ds-btn-primary:hover{background:color-mix(in srgb,#1B45C6 80%,#0B1B3A);border-color:color-mix(in srgb,#1B45C6 80%,#0B1B3A)}.ds-btn:focus-visible{outline:3px solid var(--accent,#2E7BFF);outline-offset:2px}"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Every other command.",
+      "html": "<button class=\"ds-btn2\">Modifica il programma</button>",
+      "css": ".ds-btn2{display:inline-flex;align-items:center;min-height:46px;padding:8px 18px;border-radius:var(--radius-md,14px);border:1px solid var(--border-strong,#C9DCF6);background:var(--surface,#fff);color:var(--text,#0B1B3A);font:600 15px 'IBM Plex Sans',sans-serif;cursor:pointer}.ds-btn2:hover{border-color:var(--accent,#2E7BFF)}.ds-btn2:focus-visible{outline:3px solid var(--accent,#2E7BFF);outline-offset:2px}"
+    },
+    {
+      "name": "Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "A labelled input at button height.",
+      "html": "<label class=\"ds-field\"><span>Nome</span><input class=\"ds-input\" value=\"Living room\"></label>",
+      "css": ".ds-field{display:grid;gap:6px;font:500 14px 'IBM Plex Sans',sans-serif;color:var(--text-muted,#4A5B78)}.ds-input{min-height:46px;padding:6px 12px;background:var(--ground,#F5F9FF);border:1px solid var(--border-strong,#C9DCF6);border-radius:var(--radius-md,14px);font:400 16px 'IBM Plex Sans',sans-serif;color:var(--text,#0B1B3A)}.ds-input:focus-visible{outline:3px solid var(--accent,#2E7BFF);outline-offset:2px}"
+    },
+    {
+      "name": "Room Tile",
+      "kind": "card",
+      "refersTo": "tile-heating",
+      "description": "Signature: a room filled with its state colour, ink text, Sora temperature.",
+      "html": "<button class=\"ds-tile\"><span class=\"ds-chip\">47%</span><span class=\"ds-val\"><span class=\"ds-whole\">19</span><span class=\"ds-side\"><span>&deg;</span><span>,6</span></span></span><span class=\"ds-name\">Kitchen</span><span class=\"ds-line\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 3c1 3.5 5 5.5 5 10a5 5 0 0 1-10 0c0-2 1-3.2 2-4.2.2 1.6 1 2.4 2 2.7-.6-3 .2-6 1-8.5z\"/></svg>Scalda a 22&deg;</span></button>",
+      "css": ".ds-tile{display:flex;flex-direction:column;align-items:flex-start;gap:4px;width:180px;min-height:152px;padding:14px;border:0;border-radius:var(--radius-lg,20px);background:var(--status-heating,#FEA668);color:var(--status-heating-ink,#512500);font-family:'IBM Plex Sans',sans-serif;text-align:left;cursor:pointer;transition:translate .2s cubic-bezier(0.2, 0.8, 0.2, 1),box-shadow .2s cubic-bezier(0.2, 0.8, 0.2, 1)}.ds-tile:hover{translate:0 -2px;box-shadow:0 12px 24px -14px color-mix(in srgb,#0B1B3A 60%,transparent)}.ds-tile:focus-visible{outline:3px solid var(--accent,#2E7BFF);outline-offset:3px}.ds-chip{height:24px;display:inline-flex;align-items:center;padding:0 9px;border-radius:999px;background:color-mix(in srgb,#512500 12%,transparent);font-size:12px;font-weight:600}.ds-val{display:flex;margin-top:auto;font-family:Sora,sans-serif;line-height:1}.ds-whole{font-size:46px;font-weight:700;letter-spacing:-.04em}.ds-side{display:flex;flex-direction:column;justify-content:space-between;height:38px;margin-left:3px;font-weight:600;font-size:18px}.ds-name{font:600 16px Sora,sans-serif;letter-spacing:-.01em}.ds-line{display:flex;align-items:center;gap:5px;font-size:13px;font-weight:500}"
+    },
+    {
+      "name": "Offline Tile",
+      "kind": "card",
+      "refersTo": "tile-neutral",
+      "description": "An unreachable room: no fill, a dashed outline.",
+      "html": "<button class=\"ds-tile-off\"><span class=\"ds-word\">Offline</span><span class=\"ds-name\">Studio</span></button>",
+      "css": ".ds-tile-off{display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-end;width:180px;min-height:152px;padding:14px;border:1.5px dashed var(--status-offline-border,#3A4660);border-radius:var(--radius-lg,20px);background:transparent;color:var(--text,#0B1B3A);text-align:left;cursor:pointer}.ds-tile-off:focus-visible{outline:3px solid var(--accent,#2E7BFF);outline-offset:3px}.ds-word{font:700 24px Sora,sans-serif;letter-spacing:-.02em}.ds-name{font:600 16px Sora,sans-serif}"
+    },
+    {
+      "name": "Status Badge",
+      "kind": "chip",
+      "refersTo": "badge",
+      "description": "A state on a neutral surface: tint ground, dot, label.",
+      "html": "<span class=\"ds-badge\">In riscaldamento</span>",
+      "css": ".ds-badge{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;background:var(--status-heating-tint,#FFEBDA);color:var(--status-heating-text,#8C4400);font:500 14px 'IBM Plex Sans',sans-serif;line-height:1.2}.ds-badge::before{content:'';width:8px;height:8px;border-radius:50%;background:var(--status-heating,#FEA668)}"
+    },
+    {
+      "name": "Grouped List",
+      "kind": "custom",
+      "refersTo": "list-row",
+      "description": "Rows in one card with hairlines, an icon disc and a chevron.",
+      "html": "<ul class=\"ds-list\"><li><a class=\"ds-row\" href=\"#\"><span class=\"ds-disc\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M9 3h6v3H9z\"/><path d=\"M8 6h8v9a4 4 0 0 1-8 0z\"/><path d=\"M10 10h4\"/></svg></span><span class=\"ds-main\"><b>living valve</b><small>Valvola per radiatore</small></span><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M9 6l6 6-6 6\"/></svg></a></li><li><a class=\"ds-row\" href=\"#\"><span class=\"ds-main\"><b>Impostazioni della stanza</b></span></a></li></ul>",
+      "css": ".ds-list{list-style:none;margin:0;padding:0;background:var(--surface,#fff);border:1px solid var(--border,#D2E4FB);border-radius:var(--radius-lg,20px);overflow:hidden;width:340px}.ds-list li{position:relative}.ds-list li+li::before{content:'';position:absolute;top:0;left:14px;right:0;border-top:1px solid var(--border,#D2E4FB)}.ds-row{display:flex;align-items:center;gap:12px;min-height:52px;padding:10px 14px;color:var(--text,#0B1B3A);text-decoration:none;font:400 14px 'IBM Plex Sans',sans-serif}.ds-row:hover{background:color-mix(in srgb,#E6F1FF 60%,transparent)}.ds-row:focus-visible{outline:3px solid var(--accent,#2E7BFF);outline-offset:-3px}.ds-row>svg{color:var(--text-muted,#4A5B78)}.ds-disc{display:grid;place-items:center;width:36px;height:36px;border-radius:50%;background:var(--ice,#E6F1FF);color:var(--link,#1B45C6)}.ds-main{flex:1;display:grid}.ds-main b{font-size:15px;font-weight:600}.ds-main small{font-size:13px;color:var(--text-muted,#4A5B78)}"
+    },
+    {
+      "name": "Bottom Navigation",
+      "kind": "nav",
+      "refersTo": "nav-item-active",
+      "description": "Phone bar: four items, the active icon in an ice pill.",
+      "html": "<nav class=\"ds-nav\"><a class=\"on\" href=\"#\"><span class=\"ds-pill\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linejoin=\"round\"><path d=\"M3 11 12 4l9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z\"/></svg></span>Casa</a><a href=\"#\"><span class=\"ds-pill\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M4 6h16v14H4z\"/><path d=\"M4 10h16M8 3v4M16 3v4\"/></svg></span>Programmi</a></nav>",
+      "css": ".ds-nav{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);width:340px;padding:6px;background:var(--surface,#fff);border-top:1px solid var(--border,#D2E4FB)}.ds-nav a{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:56px;color:var(--text-muted,#4A5B78);font:500 12px 'IBM Plex Sans',sans-serif;text-decoration:none}.ds-nav a.on{color:var(--text,#0B1B3A);font-weight:600}.ds-nav a:hover{color:var(--text,#0B1B3A)}.ds-nav a:focus-visible{outline:3px solid var(--accent,#2E7BFF);outline-offset:2px}.ds-pill{display:grid;place-items:center;width:58px;height:30px;border-radius:999px}.ds-nav a.on .ds-pill{background:var(--ice,#E6F1FF);color:var(--link,#1B45C6)}"
+    },
+    {
+      "name": "Segmented Control",
+      "kind": "chip",
+      "refersTo": "badge",
+      "description": "Radios as a row of buttons.",
+      "html": "<div class=\"ds-seg\"><label class=\"on\">In casa</label><label>Fuori casa</label></div>",
+      "css": ".ds-seg{display:inline-flex;gap:2px;padding:3px;border:1px solid var(--border,#D2E4FB);border-radius:var(--radius-md,14px);background:var(--ice,#E6F1FF)}.ds-seg label{display:inline-flex;align-items:center;min-height:38px;padding:6px 16px;border-radius:11px;color:var(--text-muted,#4A5B78);font:600 14px 'IBM Plex Sans',sans-serif;cursor:pointer}.ds-seg label:hover{color:var(--text,#0B1B3A)}.ds-seg label.on{background:var(--surface,#fff);color:var(--text,#0B1B3A);box-shadow:0 2px 6px -2px color-mix(in srgb,#0B1B3A 35%,transparent)}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Room Mosaic",
+    "overview": "**Creative North Star: \"The Room Mosaic\"**\n\nThe home page is a grid of room tiles. Each tile is filled edge to edge with the colour of its zone state, so the whole house reads in one glance. A tile opens into its room, and the room screen keeps the same colour as a full-bleed hero around the dial. The interaction model follows the tado app, because its owners must migrate without relearning (see [PRODUCT.md](PRODUCT.md)). The branding stays freedo's own.\n\nTwo colour systems share the screen and never mix. The brand blues of [tokens.css](assets/brand/tokens.css) own the ground, the chrome, the actions and the navigation. The tonal status families own every coloured surface. All status bases sit at the same OKLCH lightness, so no state shouts over another, and the ink on a fill is the dark step of the same hue. The result is calm and dense: white grouped lists, soft rounded tiles, big Sora numbers, small Plex labels.\n\nThe system rejects the admin-panel default: white cards with small status badges and a dial repeated in every card.",
+    "keyCharacteristics": [
+      "State-coloured room tiles in two columns on a phone, auto-fill columns on a wide screen.",
+      "Monochrome coloured surfaces: one status family per surface (base, top, ink).",
+      "Cool blue chrome; status hues appear nowhere else.",
+      "Big Sora integers with a small degree and decimal beside them.",
+      "Grouped lists with hairline dividers, like the settings screen of a phone.",
+      "Phone-first: bottom navigation bar, sheet over the hero, 44 px touch targets."
+    ],
+    "rules": [
+      {
+        "name": "The Two Systems Rule",
+        "body": "Brand blues are for ground, chrome, actions and navigation. Status hues are for state only. A blue never encodes a state, and a status hue never decorates chrome.",
+        "section": "colors"
+      },
+      {
+        "name": "The Monochrome Surface Rule",
+        "body": "A coloured surface uses one status family: its base, its top and its ink. Text and icons on a fill take the ink, never navy or white. This keeps a tile or a hero readable (ink on base is at least 5.3:1) and calm.",
+        "section": "colors"
+      },
+      {
+        "name": "The Paired Signal Rule",
+        "body": "A status colour always comes with an icon or a word: the tile line, the hero state pill, the badge label, the radio chip word. Colour alone never carries state, because PRODUCT.md requires it for accessibility.",
+        "section": "colors"
+      },
+      {
+        "name": "The Pale Dot Rule",
+        "body": "On a white or navy surface, a status dot takes the text step of its family, not the base. The base is too pale on white to read as a signal.",
+        "section": "colors"
+      },
+      {
+        "name": "The State Not Temperature Rule",
+        "body": "A tile colour encodes the zone state, never the temperature. Only the schedule ramp maps temperature to colour.",
+        "section": "colors"
+      },
+      {
+        "name": "The Numbers Speak Sora Rule",
+        "body": "A big temperature is a Sora integer with a small degree and decimal beside it. A number inside a sentence or a list takes Plex Mono. Words stay in Plex Sans.",
+        "section": "typography"
+      },
+      {
+        "name": "The No Shouting Rule",
+        "body": "No uppercase labels and no wide tracking. Hierarchy comes from size and weight only.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat At Rest Rule",
+        "body": "Tiles, lists and panels carry no shadow at rest. A shadow appears on hover, on a popover, or on a card that floats over a coloured hero.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do fill a tile or a hero with one status family and set all text and icons in its ink.",
+      "Do pair every status colour with an icon or a word.",
+      "Do use the text step of a status family for dots and labels on a white or navy surface.",
+      "Do keep touch targets at 44 px or more and buttons, inputs and segmented controls at 46 px.",
+      "Do set big temperatures as a Sora integer with a small degree and decimal beside it, and inline numbers in Plex Mono.",
+      "Do group settings and devices into white lists with hairline dividers and a heading outside the list.",
+      "Do use the 3 px accent focus outline on every interactive element.",
+      "Do let German and Italian labels wrap instead of truncating them.",
+      "Do honour reduced motion: transitions and the view transition collapse to near zero."
+    ],
+    "donts": [
+      "Don't use a brand blue to show a state or a status hue to decorate chrome.",
+      "Don't put navy or white text on a status fill.",
+      "Don't colour a tile by temperature.",
+      "Don't give offline a fill; it is a dashed hollow outline.",
+      "Don't repeat the dial in a tile or a card; it lives on the room screen only.",
+      "Don't add uppercase labels, eyebrows or wide tracking.",
+      "Don't use the icon gradient anywhere but the app icon.",
+      "Don't use the tado name, logo or visual assets.",
+      "Don't load fonts from a CDN."
+    ]
+  }
+}

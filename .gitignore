@@ -50,6 +50,10 @@ tado_capture/*.json
 # Local working notes and recordings
 tado_capture/memory/
 
+# Impeccable: review captures and the hook cache. The surface brief and design.json stay tracked.
+.impeccable/review/
+.impeccable/hook.cache.json
+
 # Editor and tool configuration, local to each developer
 .idea/
 .vscode/
