@@ -1,0 +1,143 @@
+@import url('../../../../dashboard/src/lib/fonts/fonts.css');
+
+:root {
+	--navy: #0b1b3a;
+	--navy-surface: #13284f;
+	--navy-border: #22365f;
+	--cobalt: #1b45c6;
+	--azure: #2e7bff;
+	--sky: #7cc4ff;
+	--ice: #e6f1ff;
+	--frost: #f5f9ff;
+	--slate: #4a5b78;
+	--navy-text-muted: #9fb3d6;
+}
+
+* {
+	box-sizing: border-box;
+	margin: 0;
+}
+
+html,
+body {
+	width: 100%;
+	height: 100%;
+}
+
+body {
+	overflow: hidden;
+	font-family: 'IBM Plex Sans', sans-serif;
+	color: var(--navy);
+	-webkit-font-smoothing: antialiased;
+}
+
+/* A phone: a thin dark bezel, a status bar in the top colour of the screen, then the screenshot of
+   390 x 844 below it, as in the Home Assistant app. The screen is 390 x 891. */
+.phone {
+	position: relative;
+	flex: none;
+	width: var(--w);
+	aspect-ratio: 410 / 911;
+	/* A percentage would take the width of the page, not of the phone. */
+	padding: calc(var(--w) * 0.024);
+	border-radius: 13% / 5.9%;
+	background: linear-gradient(160deg, #2a3550, #0d1426 40%, #0d1426);
+	box-shadow:
+		0 0 0 1px rgba(255, 255, 255, 0.06) inset,
+		0 40px 70px -30px rgba(11, 27, 58, 0.55),
+		0 12px 24px -12px rgba(11, 27, 58, 0.35);
+}
+
+.screen {
+	display: flex;
+	flex-direction: column;
+	width: 100%;
+	height: 100%;
+	border-radius: 11% / 4.9%;
+	overflow: hidden;
+	background: var(--top);
+	container-type: inline-size;
+}
+
+.status {
+	position: relative;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	flex: none;
+	height: 12.05cqi;
+	padding: 1.5cqi 7cqi 0 9cqi;
+	color: var(--ink);
+	font: 600 4.1cqi/1 'IBM Plex Sans', sans-serif;
+}
+
+.status .island {
+	position: absolute;
+	left: 50%;
+	top: 2.8cqi;
+	width: 31cqi;
+	height: 8.6cqi;
+	margin-left: -15.5cqi;
+	border-radius: 999px;
+	background: #05080f;
+}
+
+.status svg {
+	height: 3.4cqi;
+	width: auto;
+	fill: currentColor;
+}
+
+.screen img {
+	display: block;
+	width: 100%;
+	flex: 1;
+	min-height: 0;
+	object-fit: cover;
+	object-position: top;
+}
+
+/* A browser window around a desktop screenshot of 1280 x 800. */
+.browser {
+	position: relative;
+	flex: none;
+	border-radius: 14px;
+	overflow: hidden;
+	background: #0d1426;
+	box-shadow:
+		0 0 0 1px rgba(255, 255, 255, 0.08),
+		0 50px 90px -40px rgba(0, 0, 0, 0.7);
+}
+
+.browser .bar {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: 38px;
+	padding: 0 14px;
+	background: #1a2440;
+}
+
+.browser .bar i {
+	width: 11px;
+	height: 11px;
+	border-radius: 50%;
+	background: #3a4766;
+}
+
+.browser .bar span {
+	flex: 1;
+	max-width: 380px;
+	margin: 0 auto;
+	padding: 5px 14px;
+	border-radius: 8px;
+	background: #0d1426;
+	color: var(--navy-text-muted);
+	font: 500 12px 'IBM Plex Mono', monospace;
+	text-align: center;
+}
+
+.browser img {
+	display: block;
+	width: 100%;
+}

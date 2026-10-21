@@ -50,6 +50,9 @@ tado_capture/*.json
 # Local working notes and recordings
 tado_capture/memory/
 
+# Captures of the README image generator. Only the composed images in docs/images are tracked.
+/docs/images/src/raw/
+
 # Impeccable: review captures and the hook cache. The surface brief and design.json stay tracked.
 .impeccable/review/
 .impeccable/hook.cache.json

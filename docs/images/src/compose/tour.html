@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="base.css" />
+<style>
+	body {
+		width: 1200px;
+		height: 680px;
+		display: flex;
+		justify-content: center;
+		align-items: flex-start;
+		gap: 48px;
+		padding-top: 44px;
+		background: linear-gradient(180deg, var(--ice), var(--frost) 70%);
+	}
+
+	figure {
+		display: grid;
+		justify-items: center;
+		gap: 20px;
+		width: 230px;
+	}
+
+	.phone {
+		--w: 230px;
+	}
+
+	figcaption {
+		display: grid;
+		gap: 5px;
+		text-align: center;
+	}
+
+	figcaption b {
+		font: 600 17px/1.2 'Sora', sans-serif;
+		letter-spacing: -0.01em;
+	}
+
+	figcaption span {
+		color: var(--slate);
+		font-size: 13.5px;
+		line-height: 1.4;
+	}
+</style>
+</head>
+<body>
+	<figure>
+		<div class="phone" data-shot="home-phone-light"></div>
+		<figcaption><b>Every room at a glance</b><span>The colour of a tile is the state of its room.</span></figcaption>
+	</figure>
+	<figure>
+		<div class="phone" data-shot="room-phone-light"></div>
+		<figcaption><b>One room, one dial</b><span>Set a temperature and choose when the change ends.</span></figcaption>
+	</figure>
+	<figure>
+		<div class="phone" data-shot="programs-phone-light"></div>
+		<figcaption><b>Schedules and profiles</b><span>A home and an away schedule for every room.</span></figcaption>
+	</figure>
+	<figure>
+		<div class="phone" data-shot="devices-phone-light"></div>
+		<figcaption><b>Rooms and devices</b><span>Pair a valve and check every device of the plant.</span></figcaption>
+	</figure>
+	<script src="phones.js"></script>
+</body>
+</html>

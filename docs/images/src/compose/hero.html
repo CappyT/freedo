@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="base.css" />
+<style>
+	body {
+		width: 1200px;
+		height: 600px;
+		background:
+			radial-gradient(circle at 78% 40%, rgba(46, 123, 255, 0.16), transparent 42%),
+			radial-gradient(circle at 70% 110%, rgba(124, 196, 255, 0.35), transparent 50%),
+			var(--frost);
+	}
+
+	.copy {
+		position: absolute;
+		left: 72px;
+		top: 0;
+		bottom: 0;
+		width: 470px;
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		gap: 22px;
+	}
+
+	.copy img {
+		width: 168px;
+		height: auto;
+	}
+
+	h1 {
+		font: 700 48px/1.04 'Sora', sans-serif;
+		letter-spacing: -0.035em;
+	}
+
+	p {
+		max-width: 440px;
+		color: var(--slate);
+		font-size: 18.5px;
+		line-height: 1.5;
+	}
+
+	ul {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		padding: 0;
+		list-style: none;
+	}
+
+	li {
+		padding: 6px 11px;
+		border: 1px solid #d2e4fb;
+		border-radius: 999px;
+		background: #fff;
+		color: var(--navy);
+		font-size: 12.5px;
+		font-weight: 600;
+	}
+
+	.phones .phone {
+		position: absolute;
+	}
+
+	.back-left {
+		left: 560px;
+		top: 118px;
+		--w: 238px;
+	}
+
+	.front {
+		left: 715px;
+		top: 52px;
+		--w: 278px;
+		z-index: 2;
+	}
+
+	.back-right {
+		left: 912px;
+		top: 118px;
+		--w: 238px;
+	}
+</style>
+</head>
+<body>
+	<div class="copy">
+		<img src="../../../../assets/brand/svg/logo.svg" alt="" />
+		<h1>Your heating, on your own network.</h1>
+		<p>freedo runs the radiator valves and the wall thermostat from a local coordinator. It works with Home Assistant and needs no cloud.</p>
+		<ul>
+			<li>Home Assistant add-on</li>
+			<li>Light and dark theme</li>
+			<li>EN · IT · DE · FR</li>
+		</ul>
+	</div>
+	<div class="phones">
+		<div class="phone back-left" data-shot="room-phone-light"></div>
+		<div class="phone front" data-shot="home-phone-light"></div>
+		<div class="phone back-right" data-shot="home-phone-dark"></div>
+	</div>
+	<script src="phones.js"></script>
+</body>
+</html>
