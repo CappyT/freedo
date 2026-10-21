@@ -16,6 +16,16 @@
 	let confirmBoost = $state(false);
 	let menuOpen = $state(false);
 	let menuRoot: HTMLDivElement | undefined = $state();
+	let menuEl: HTMLDivElement | undefined = $state();
+	// The menu opens from the left edge of its tile. A tile in the right column of a phone leaves too
+	// little room, so the menu then opens from the right edge.
+	let menuEnd = $state(false);
+
+	$effect(() => {
+		if (!menuEl || !menuRoot) return;
+		const room = document.documentElement.clientWidth - menuRoot.getBoundingClientRect().left;
+		menuEnd = menuEl.offsetWidth > room - 16;
+	});
 
 	const zones = $derived(data.models);
 	const rooms = $derived(data.heating);
@@ -269,7 +279,7 @@
 							extraClass="menu-button"
 						/>
 						{#if menuOpen}
-							<div class="menu" role="menu" aria-label={t('home.profileMenu')}>
+							<div class="menu" class:end={menuEnd} role="menu" aria-label={t('home.profileMenu')} bind:this={menuEl}>
 								{#each presets as preset (preset.id)}
 									<button class="item" role="menuitemradio" aria-checked={preset.active} onclick={() => activate(preset.id)}>
 										<span class="radio" aria-hidden="true"></span>
@@ -453,6 +463,7 @@
 		top: calc(100% + 0.4rem);
 		left: 0;
 		min-width: max(100%, 17rem);
+		max-width: calc(100vw - 2rem);
 		display: grid;
 		gap: 0.15rem;
 		padding: 0.4rem;
@@ -460,6 +471,11 @@
 		border: 1px solid var(--border-strong);
 		border-radius: var(--radius-lg);
 		box-shadow: 0 0.75rem 2rem color-mix(in srgb, var(--navy) 22%, transparent);
+	}
+
+	.menu.end {
+		left: auto;
+		right: 0;
 	}
 
 	.menu hr {

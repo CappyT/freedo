@@ -334,6 +334,17 @@ try {
 	const active = (await (await fetch(daemon.base + '/api/home')).json()).preset;
 	check(active?.name === 'Check preset', `the daemon switched the active preset (${active?.name})`);
 
+	// On a phone the profile tile sits in the right column, so its menu opens from the right edge.
+	await tab.viewport(390, 844, true);
+	await open('#/', homeReady);
+	await click('.profile-menu .menu-button');
+	await tab.waitFor(`document.querySelector('.profile-menu .menu')`, 4000);
+	const menuBox = await tab.evaluate(
+		`(() => { const r = document.querySelector('.profile-menu .menu').getBoundingClientRect(); return [Math.round(r.left), Math.round(r.right), window.innerWidth, document.documentElement.scrollWidth]; })()`
+	);
+	check(menuBox[0] >= 0 && menuBox[1] <= menuBox[2] && menuBox[3] <= menuBox[2], `on a phone the profile menu stays on the screen (${menuBox[0]} to ${menuBox[1]} of ${menuBox[2]})`);
+	await tab.viewport(1280, 900);
+
 	// 7. The away program of a zone.
 	await open('#/zones/8', `document.querySelector('main h1')?.textContent === 'Living room'`);
 	await tab.waitFor(`document.querySelector('[name=schedule-mode-8]')`);
