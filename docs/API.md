@@ -67,9 +67,13 @@ write accepts `rev` as an optimistic concurrency token. The label of a device is
 a write that repeats the label of another device gets `409` and names that device.
 A delete that breaks a reference gets `409` and names the row that holds the reference.
 
-Three routes carry one field of a wider route: `PUT /api/install/timezone`,
+Four routes carry a part of a wider route: `PUT /api/install/timezone`, `PUT /api/install/boiler`,
 `PUT /api/install/devices/{ref}/label` and `PUT /api/install/devices/{ref}/zone`. They follow the rules
-of the wider route and refuse every other field. `POST /api/pair/devices/{ref}` is `POST /api/pair`
+of the wider route and refuse every other field. `PUT /api/install/boiler` carries the options of the
+boiler and of its flow limit: `boiler_max_power_kw`, `boiler_min_power_kw`, `boiler_max_gas_m3h`,
+`boiler_min_gas_m3h`, `fuel_unit`, `flow_limit_c`, `flow_default_curve`, `flow_auto_adapt`,
+`flow_curves`, `outdoor_max_age_sec`, `flow_hysteresis_c` and `flow_min_interval_sec`. A body with none
+of them is `400`. `POST /api/pair/devices/{ref}` is `POST /api/pair`
 with the target in the path and no `networkKeyHex`. The dashboard calls these, so
 [Home Assistant ingress](../SECURITY.md#home-assistant-ingress) reaches them without a token and
 does not reach the identity of the network or another network key.
@@ -200,6 +204,7 @@ banner.
 | `GET`, `PATCH /api/install` | Read or change the installation and its options. |
 | `PUT /api/install/network_key` | Write the network key (only while no device is declared). |
 | `PUT /api/install/timezone` | Write the time zone alone: `{"timezone": "Europe/Rome"}`, `null` to follow the host. |
+| `PUT /api/install/boiler` | Write the boiler and flow limit options alone: see [Installation writes](#installation-writes). |
 | `GET`, `POST /api/install/devices` | List or declare devices. |
 | `GET`, `PATCH`, `DELETE /api/install/devices/{ref}` | Read, change or delete a device. |
 | `PUT /api/install/devices/{ref}/label` | Rename a device: write the label alone. |

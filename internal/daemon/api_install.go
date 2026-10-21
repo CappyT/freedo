@@ -125,6 +125,31 @@ type timezonePut struct {
 	Timezone optString `json:"timezone"`
 }
 
+// boilerPut is the body of PUT /api/install/boiler: the options of the boiler
+// and of its flow limit, a subset of installPatch. The route carries no field of
+// the network identity, so the ingress route that reaches it cannot change it.
+type boilerPut struct {
+	BoilerMaxPowerKW   optFloat                `json:"boiler_max_power_kw"`
+	BoilerMinPowerKW   optFloat                `json:"boiler_min_power_kw"`
+	BoilerMaxGasM3H    optFloat                `json:"boiler_max_gas_m3h"`
+	BoilerMinGasM3H    optFloat                `json:"boiler_min_gas_m3h"`
+	FuelUnit           optString               `json:"fuel_unit"`
+	FlowLimitC         optInt                  `json:"flow_limit_c"`
+	FlowDefaultCurve   *bool                   `json:"flow_default_curve"`
+	FlowAutoAdapt      *bool                   `json:"flow_auto_adapt"`
+	FlowCurves         map[int]*tado.FlowCurve `json:"flow_curves"`
+	OutdoorMaxAgeSec   *int                    `json:"outdoor_max_age_sec"`
+	FlowHysteresisC    *int                    `json:"flow_hysteresis_c"`
+	FlowMinIntervalSec *int                    `json:"flow_min_interval_sec"`
+}
+
+func (p boilerPut) empty() bool {
+	return !p.BoilerMaxPowerKW.set && !p.BoilerMinPowerKW.set && !p.BoilerMaxGasM3H.set &&
+		!p.BoilerMinGasM3H.set && !p.FuelUnit.set && !p.FlowLimitC.set && p.FlowDefaultCurve == nil &&
+		p.FlowAutoAdapt == nil && p.FlowCurves == nil && p.OutdoorMaxAgeSec == nil &&
+		p.FlowHysteresisC == nil && p.FlowMinIntervalSec == nil
+}
+
 type zoneCreate struct {
 	Rev     *uint64 `json:"rev"`
 	Number  *int    `json:"number"`
@@ -730,6 +755,30 @@ func (d *daemon) putInstallTimezone(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (d *daemon) putInstallBoiler(w http.ResponseWriter, r *http.Request) {
+	var p boilerPut
+	if !decodeBody(w, r, &p) {
+		return
+	}
+	if p.empty() {
+		writeErr(w, http.StatusBadRequest, "no boiler option given")
+		return
+	}
+	d.mutateInstall(w, "install", func(store *stateStore) (installResult, any, error) {
+		res, err := store.PatchInstall(r.Context(), installPatch{
+			BoilerMaxPowerKW: p.BoilerMaxPowerKW, BoilerMinPowerKW: p.BoilerMinPowerKW,
+			BoilerMaxGasM3H: p.BoilerMaxGasM3H, BoilerMinGasM3H: p.BoilerMinGasM3H, FuelUnit: p.FuelUnit,
+			FlowLimitC: p.FlowLimitC, FlowDefaultCurve: p.FlowDefaultCurve, FlowAutoAdapt: p.FlowAutoAdapt,
+			FlowCurves: p.FlowCurves, OutdoorMaxAgeSec: p.OutdoorMaxAgeSec, FlowHysteresisC: p.FlowHysteresisC,
+			FlowMinIntervalSec: p.FlowMinIntervalSec,
+		})
+		if err != nil {
+			return res, nil, err
+		}
+		return res, installView(res.Install, res.Rev), nil
+	})
+}
+
 // viewDeviceOf renders the device a mutation left behind. A reference the new
 // installation cannot resolve renders as nothing rather than failing the answer
 // to a mutation that already committed.
@@ -1025,6 +1074,7 @@ func (d *daemon) installRoutes(m *http.ServeMux) {
 	m.HandleFunc("PATCH /api/install", d.patchInstall)
 	m.HandleFunc("PUT /api/install/network_key", d.putInstallNetworkKey)
 	m.HandleFunc("PUT /api/install/timezone", d.putInstallTimezone)
+	m.HandleFunc("PUT /api/install/boiler", d.putInstallBoiler)
 	m.HandleFunc("GET /api/install/devices", d.getInstallDevices)
 	m.HandleFunc("POST /api/install/devices", d.postInstallDevice)
 	m.HandleFunc("GET /api/install/devices/{ref}", d.getInstallDevice)

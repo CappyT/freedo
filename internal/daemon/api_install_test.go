@@ -701,6 +701,49 @@ func TestInstallAPIWritesTheTimezoneThroughItsRoute(t *testing.T) {
 	}
 }
 
+// TestInstallAPIWritesTheBoilerThroughItsRoute: the ingress route carries the
+// boiler and flow options alone, with the checks of PATCH /api/install, and
+// never reaches the identity of the network.
+func TestInstallAPIWritesTheBoilerThroughItsRoute(t *testing.T) {
+	a := newInstallAPI(t)
+	before := a.get("/api/install")
+
+	view := a.mutate(http.MethodPut, "/api/install/boiler", map[string]any{
+		"boiler_max_power_kw": 24, "boiler_min_power_kw": 3.5,
+		"boiler_max_gas_m3h": 2.63, "boiler_min_gas_m3h": 0.3, "fuel_unit": "m3",
+		"flow_limit_c": 56, "flow_default_curve": true, "flow_hysteresis_c": 2,
+	})["install"].(map[string]any)
+	for k, want := range map[string]any{
+		"boiler_max_power_kw": 24.0, "boiler_min_power_kw": 3.5, "boiler_max_gas_m3h": 2.63,
+		"boiler_min_gas_m3h": 0.3, "flow_limit_c": 56.0, "flow_default_curve": true, "flow_hysteresis_c": 2.0,
+	} {
+		if view[k] != want {
+			t.Errorf("%s = %v, want %v", k, view[k], want)
+		}
+	}
+	if view["home_id"] != before["home_id"] {
+		t.Errorf("home_id moved: %v, want %v", view["home_id"], before["home_id"])
+	}
+	for name, body := range map[string]map[string]any{
+		"home_id":          {"flow_limit_c": 50, "home_id": 7},
+		"coordinator":      {"flow_limit_c": 50, "coordinator": map[string]any{"eui": "0102030405060708"}},
+		"the time zone":    {"flow_limit_c": 50, "timezone": "Europe/Rome"},
+		"no option":        {},
+		"a flow above 75":  {"flow_limit_c": 80},
+		"min above max":    {"boiler_min_power_kw": 30},
+		"a curve, no flow": {"flow_limit_c": nil},
+	} {
+		if code, res := a.call(http.MethodPut, "/api/install/boiler", body); code != http.StatusBadRequest {
+			t.Errorf("a boiler route with %s: got %d %v, want 400", name, code, res)
+		}
+	}
+	view = a.mutate(http.MethodPut, "/api/install/boiler",
+		map[string]any{"flow_default_curve": false, "boiler_max_gas_m3h": nil, "boiler_min_gas_m3h": nil})["install"].(map[string]any)
+	if view["flow_default_curve"] != false || view["boiler_max_gas_m3h"] != nil || view["flow_limit_c"] != 56.0 {
+		t.Errorf("install = %v, want the curve off, no gas flow and the flow limit kept", view)
+	}
+}
+
 // TestInstallAPIServesADuplicateLabelFromTheRows: an installation seeded before
 // the label rule keeps its duplicates. The daemon serves it and reports the
 // finding, because refusing to start would leave nothing to rename it with.
