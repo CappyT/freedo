@@ -1,6 +1,6 @@
 # freedo
 
-![freedo icon](https://raw.githubusercontent.com/CappyT/freedo/main/addon/icon.png)
+![The freedo dashboard on a phone, in the light and the dark theme](https://raw.githubusercontent.com/CappyT/freedo/main/docs/images/hero.png)
 
 A local coordinator for tado V3+ 868 MHz heating devices, with a Home Assistant integration.
 
@@ -248,6 +248,12 @@ the home between home and away. It edits the home and away schedules, and it cre
 activates the program profiles. It sets the flow limit, renames a device, locks a valve and identifies a
 device. It resets an open window of a room, also one that a valve detected. It shows the fault codes of
 the boiler on the page Boiler and in a banner on every page. It has English, Italian, German and French texts and a light and a dark theme.
+
+![The home page, a room, the programs and the devices on a phone](https://raw.githubusercontent.com/CappyT/freedo/main/docs/images/dashboard-tour.png)
+
+![The home page on a wide screen in the dark theme, with a room on a phone](https://raw.githubusercontent.com/CappyT/freedo/main/docs/images/dashboard-desktop.png)
+
+The screenshots show a test installation with invented data.
 
 - Container: open `http://<host>:8080/` and enter the API token once.
 - Home Assistant add-on: select Open Web UI, or the entry freedo in the sidebar. The page needs no token.
