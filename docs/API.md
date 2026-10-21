@@ -1074,7 +1074,8 @@ counter's minute.
 
 `GET /api/boiler` reports the meter in `energy.gas.meter`, `null` while no reading is stored:
 `value`, the estimated meter value; `lastReading` and `lastReadingAt`; `readings`, the count kept;
-`factor`; and `factorReadings`.
+`factor`; `factorReadings`; and `entries`, the stored readings oldest first, each with `at`,
+`reading` and `estimate`.
 
 The value is `lastReading + factor x (totalM3 - lastEstimate)`, rounded to 0.001. `totalM3` is
 the raw fuel counter, so the value follows it between readings. The factor comes from the two most

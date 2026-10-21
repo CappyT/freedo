@@ -244,6 +244,34 @@ func TestGasMeterLearnsTheFactor(t *testing.T) {
 	nearMeter(t, "value with the factor", meterOf(t, url)["value"], 122)
 }
 
+// TestGasMeterListsTheEntries: the view lists every stored reading, oldest
+// first, with the time, the reading and the estimate it was taken against.
+func TestGasMeterListsTheEntries(t *testing.T) {
+	clock := newTestClock(energyStart)
+	d, url := newMeterDaemon(t, installWithGas(t, 2.7, 0.3), clock, nil)
+	setGasCounter(t, d, 10)
+	postReading(t, url, map[string]any{"reading": 100})
+	clock.advance(time.Hour)
+	setGasCounter(t, d, 20)
+	postReading(t, url, map[string]any{"reading": 111})
+	entries, ok := meterOf(t, url)["entries"].([]any)
+	if !ok || len(entries) != 2 {
+		t.Fatalf("entries = %v, want two", meterOf(t, url)["entries"])
+	}
+	want := []map[string]any{
+		{"at": energyStart.Format(time.RFC3339), "reading": 100.0, "estimate": 10.0},
+		{"at": energyStart.Add(time.Hour).Format(time.RFC3339), "reading": 111.0, "estimate": 20.0},
+	}
+	for i, w := range want {
+		got, _ := entries[i].(map[string]any)
+		for k, v := range w {
+			if got[k] != v {
+				t.Errorf("entries[%d].%s = %v, want %v", i, k, got[k], v)
+			}
+		}
+	}
+}
+
 // TestGasMeterRefusesAnImplausibleFactor: a meter delta that does not match the
 // estimate delta leaves the factor at 1.
 func TestGasMeterRefusesAnImplausibleFactor(t *testing.T) {

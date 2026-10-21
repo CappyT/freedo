@@ -96,8 +96,8 @@ func gasFactor(rs []gasReading) (float64, int) {
 
 // gasMeterView renders energy.gas.meter: the estimated meter value that follows
 // the fuel counter from the last reading, the last reading and its time, the
-// count of readings kept, and the learned factor. It is null while no reading
-// is stored.
+// count of readings kept, the learned factor and the stored readings, oldest
+// first. It is null while no reading is stored.
 func (d *daemon) gasMeterView() map[string]any {
 	rs := d.energy.gasReadings
 	if len(rs) == 0 {
@@ -105,6 +105,10 @@ func (d *daemon) gasMeterView() map[string]any {
 	}
 	last := rs[len(rs)-1]
 	factor, n := gasFactor(rs)
+	entries := make([]map[string]any, len(rs))
+	for i, r := range rs {
+		entries[i] = map[string]any{"at": r.At.UTC().Format(time.RFC3339), "reading": r.Reading, "estimate": round3(r.Estimate)}
+	}
 	return map[string]any{
 		"value":          round3(last.Reading + factor*(d.energy.shownM3-last.Estimate)),
 		"lastReading":    last.Reading,
@@ -112,6 +116,7 @@ func (d *daemon) gasMeterView() map[string]any {
 		"readings":       len(rs),
 		"factor":         factor,
 		"factorReadings": n,
+		"entries":        entries,
 	}
 }
 
