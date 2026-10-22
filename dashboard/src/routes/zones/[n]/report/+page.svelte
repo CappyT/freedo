@@ -125,7 +125,7 @@
 			{#if day.samples.length === 0}
 				<p class="notice tone-off"><Icon name="clock" /><span>{t('report.empty')}</span></p>
 			{:else}
-				<dl class="stats">
+				<dl class="stat-tiles">
 					<div><dt>{t('report.heating')}</dt><dd>{fmt.duration(summary.heatingMin * 60)}</dd></div>
 					<div><dt>{t('report.mean')}</dt><dd>{fmt.degrees(summary.meanC)}</dd></div>
 					<div><dt>{t('report.range')}</dt><dd>{fmt.degrees(summary.minC)} / {fmt.degrees(summary.maxC)}</dd></div>

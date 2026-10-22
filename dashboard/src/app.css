@@ -1054,14 +1054,14 @@ input[role='switch']:disabled {
 }
 
 /* Small stat tiles above a chart: a muted label over a Sora value. */
-.stats {
+.stat-tiles {
 	display: grid;
 	grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
 	gap: 0.75rem;
 	margin: 0;
 }
 
-.stats > div {
+.stat-tiles > div {
 	display: grid;
 	gap: 0.25rem;
 	padding: 0.75rem 0.875rem;
@@ -1070,12 +1070,12 @@ input[role='switch']:disabled {
 	border-radius: var(--radius-lg);
 }
 
-.stats dt {
+.stat-tiles dt {
 	color: var(--text-muted);
 	font-size: var(--text-small-size);
 }
 
-.stats dd {
+.stat-tiles dd {
 	margin: 0;
 	font-family: var(--font-display);
 	font-weight: var(--weight-semibold);
@@ -1084,7 +1084,7 @@ input[role='switch']:disabled {
 
 /* An odd last tile takes the whole row on a phone, like an odd last command. */
 @media (max-width: 559px) {
-	.stats > div:last-child:nth-child(odd) {
+	.stat-tiles > div:last-child:nth-child(odd) {
 		grid-column: 1 / -1;
 	}
 }

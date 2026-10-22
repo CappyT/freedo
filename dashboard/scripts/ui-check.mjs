@@ -868,6 +868,11 @@ try {
 		!(await tab.evaluate(`[...document.querySelectorAll('main .notice')].some((n) => /fault codes/.test(n.textContent))`)),
 		'a boiler with no fault code shows None and no banner'
 	);
+	// The readings under the flow temperature sit on the colour of the hero, not on a tile of the page.
+	check(
+		await tab.evaluate(`((cells) => cells.length === 3 && cells.every((d) => getComputedStyle(d).backgroundColor === 'rgba(0, 0, 0, 0)'))([...document.querySelectorAll('.hero dl > div')])`),
+		'the return, hot water and outside readings of the boiler page have no tile background'
+	);
 	boilerPatch = null;
 
 	// The boiler setup writes the energy data and the flow options through PUT /api/install/boiler.
@@ -948,7 +953,7 @@ try {
 	await open('#/zones/8', `document.querySelector('[data-testid=report-link]')`);
 	check(await tab.evaluate(`document.querySelector('[data-testid=report-link]').getAttribute('href') === '#/zones/8/report'`), 'a room screen links to its report');
 	await open('#/zones/8/report', `document.querySelector('main svg[role=slider]')`);
-	check(await tab.evaluate(`document.querySelectorAll('main .stats > div').length >= 3`), 'the room report shows the stats and the chart of today');
+	check(await tab.evaluate(`document.querySelectorAll('main .stat-tiles > div').length >= 3`), 'the room report shows the stats and the chart of today');
 	check(await tab.evaluate(`[...document.querySelectorAll('main .day-nav button')].slice(0, 2).every((b) => b.disabled)`), 'the report of the first day offers no other day');
 	await tab.evaluate(`document.querySelector('main svg[role=slider]').focus()`);
 	await tab.call('Input.dispatchKeyEvent', { type: 'keyDown', key: 'End', code: 'End', windowsVirtualKeyCode: 35 });

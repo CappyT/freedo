@@ -69,6 +69,8 @@ and every page request gets `404`. The API works as before.
 - `src/lib/i18n`: the texts. `en.ts` is the reference. `it.ts`, `de.ts` and `fr.ts` must define the
   same keys, and the type checker enforces it. The page picks the language from the browser.
 - `src/lib/fonts`: the fonts, with their licences. See the README in that directory.
+- `src/app.css`: the classes that pages share. A Svelte page scopes its own classes, but a global class of
+  the same name still applies to its elements. A shared class therefore takes a specific name (`stat-tiles`).
 - `../assets/brand/tokens.css`: the colours, the type and the themes. The dashboard imports it and
   defines none of them. `scripts/brand.mjs` copies the web icons from `../assets/brand` into `static/`.
 

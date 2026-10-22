@@ -134,7 +134,7 @@
 			{/if}
 		</div>
 
-		<dl class="stats">
+		<dl class="stat-tiles">
 			<div><dt>{t('energy.fuel')}</dt><dd>{fmt.fuel(sum.fuel, unit)}</dd></div>
 			<div>
 				<dt>{t('energy.cost')}</dt>
@@ -237,7 +237,7 @@
 	}
 
 
-	.stats .set {
+	.stat-tiles .set {
 		font-family: var(--font-body);
 		font-size: var(--text-small-size);
 		color: var(--link);
