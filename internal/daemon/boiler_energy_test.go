@@ -251,10 +251,11 @@ func TestEnergyFromFrames(t *testing.T) {
 		t.Errorf("view with the burner off = %v, want 0.4 kWh at 0 kW and running", v)
 	}
 
-	// Ten silent minutes: the view says stale, and the stretch adds nothing.
+	// Ten silent minutes with the burner off: the thermostat reports seldom then,
+	// and the meter still runs at 0 kW.
 	clock.advance(10 * time.Minute)
-	if v := d.energyView(clock.now()); v["running"] != false || v["reason"] != energyStale || v["powerKW"] != 0.0 {
-		t.Errorf("view after a silence = %v, want not running with %q", v, energyStale)
+	if v := d.energyView(clock.now()); v["running"] != true || v["reason"] != nil || v["powerKW"] != 0.0 {
+		t.Errorf("view after a silence with the burner off = %v, want running at 0 kW", v)
 	}
 	boilerReport(t, d, 4, modFlag(100, 1)...)
 	d.tickEnergy()
@@ -266,6 +267,17 @@ func TestEnergyFromFrames(t *testing.T) {
 	d.tickEnergy()
 	if got := d.energyView(clock.now())["totalKWh"]; got != 0.6 {
 		t.Errorf("total after 30 s at 24 kW = %v, want 0.6", got)
+	}
+
+	// Ten silent minutes with the burner on: the view says stale, and the stretch adds nothing.
+	clock.advance(10 * time.Minute)
+	if v := d.energyView(clock.now()); v["running"] != false || v["reason"] != energyStale || v["powerKW"] != 0.0 {
+		t.Errorf("view after a silence with the burner on = %v, want not running with %q", v, energyStale)
+	}
+	boilerReport(t, d, 6, modFlag(0, 0)...)
+	d.tickEnergy()
+	if got := d.energyView(clock.now())["totalKWh"]; got != 0.6 {
+		t.Errorf("total after the gap = %v, want 0.6", got)
 	}
 }
 
@@ -763,8 +775,14 @@ func TestGasFromFrames(t *testing.T) {
 	}
 
 	clock.advance(10 * time.Minute)
+	if g := gasView(d, clock.now()); g["running"] != true || g["reason"] != nil || g["flowM3H"] != 0.0 || g["totalM3"] != 0.05 {
+		t.Errorf("gas after a silence with the burner off = %v, want running at 0 m3/h and the total kept", g)
+	}
+
+	boilerReport(t, d, 4, modFlag(100, 1)...)
+	clock.advance(10 * time.Minute)
 	if g := gasView(d, clock.now()); g["running"] != false || g["reason"] != energyStale || g["flowM3H"] != 0.0 || g["totalM3"] != 0.05 {
-		t.Errorf("gas after a silence = %v, want not running with %q and the total kept", g, energyStale)
+		t.Errorf("gas after a silence with the burner on = %v, want not running with %q and the total kept", g, energyStale)
 	}
 }
 

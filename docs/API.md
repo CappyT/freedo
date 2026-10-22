@@ -1022,8 +1022,9 @@ The daemon estimates the heat that the boiler delivers. Home Assistant holds the
   Without the maximum the estimate stays off.
 - The thermostat sends only changed attributes. The daemon holds the two values until the
   next report. Each interval between two reports counts at the power of the first. An
-  interval over 300 s adds no energy, because a longer silence means a lost link or a stopped
-  thermostat.
+  interval over 300 s adds no energy, because a longer silence with the burner on means a lost
+  link or a stopped thermostat. `reason` is `stale` only in that case: with the burner off the
+  thermostat reports seldom, and the counter runs at 0.
 - The counter is in kWh and never decreases. It is stored in `meta.boiler_energy_kwh`, at
   most once per minute and at shutdown. Downtime adds no energy.
 - The counter is a total. The thermostat does not report whether the burner heats rooms or

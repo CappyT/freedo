@@ -199,14 +199,16 @@ func (d *daemon) saveEnergyBefore(deadline time.Time) error {
 
 // rateAt returns the rate the meter shows at now: the rate of the last sample,
 // or why it is unknown. unset is the reason of: an option the rate needs is
-// missing, which outranks the state of the reports.
+// missing, which outranks the state of the reports. Only a burner that was on
+// goes stale: with the burner off the thermostat reports seldom, and the silent
+// stretch is worth 0 whatever its length.
 func (m *energyMeter) rateAt(now time.Time, o tado.Options, of func(tado.Options, tado.BoilerSample) (float64, string), unset string) (float64, string) {
 	rate, why := of(o, m.prev)
 	switch {
 	case why == unset:
 	case m.prev.At.IsZero():
 		return 0, energyNoReport
-	case now.Sub(m.prev.At) > energyHold:
+	case now.Sub(m.prev.At) > energyHold && (m.prev.Burner == nil || *m.prev.Burner):
 		return 0, energyStale
 	}
 	return rate, why
