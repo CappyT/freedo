@@ -53,3 +53,13 @@ export function boilerFaults(boiler: Pick<Boiler, 'FaultCodes' | 'FaultCode'> | 
 	if (codes.length > 0) return { state: 'fault', codes };
 	return { state: boiler.FaultCodes === null ? 'unknown' : 'none', codes: [] };
 }
+
+/**
+ * The outdoor temperature. Many boilers have no outdoor sensor on OpenTherm, so the reading that
+ * Home Assistant gives the daemon stands in for it while it is fresh.
+ */
+export function outsideTemp(boiler: Pick<Boiler, 'OutsideC' | 'flowLimit'>): number | null {
+	if (boiler.OutsideC !== null) return boiler.OutsideC;
+	const fed = boiler.flowLimit.outdoor;
+	return fed && !fed.stale ? fed.tempC : null;
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { boilerFaults, burnerHours, burnerState, canSetFlow, flowDrivers, flowInRange } from '../src/lib/boiler.ts';
-import type { FlowCircuit } from '../src/lib/types.ts';
+import { boilerFaults, burnerHours, burnerState, canSetFlow, flowDrivers, flowInRange, outsideTemp } from '../src/lib/boiler.ts';
+import type { Boiler, FlowCircuit } from '../src/lib/types.ts';
 
 describe('flow limit drivers', () => {
 	const circuit = (over: Partial<FlowCircuit> = {}): FlowCircuit => ({
@@ -88,5 +88,23 @@ describe('the fault codes of the boiler', () => {
 	it('are the numbers the boiler reports, with no meaning added', () => {
 		expect(boilerFaults({ FaultCodes: [133, 28], FaultCode: 133 })).toEqual({ state: 'fault', codes: [133, 28] });
 		expect(boilerFaults({ FaultCodes: null, FaultCode: 133 })).toEqual({ state: 'fault', codes: [133] });
+	});
+});
+
+describe('the outdoor temperature', () => {
+	const boiler = (OutsideC: number | null, outdoor: Boiler['flowLimit']['outdoor']) =>
+		({ OutsideC, flowLimit: { outdoor } }) as Pick<Boiler, 'OutsideC' | 'flowLimit'>;
+
+	it('takes the sensor of the boiler first', () => {
+		expect(outsideTemp(boiler(8.5, { tempC: 24.7, ageSec: 60, stale: false }))).toBe(8.5);
+	});
+
+	it('takes the fresh reading from Home Assistant when the boiler has no sensor', () => {
+		expect(outsideTemp(boiler(null, { tempC: 24.7, ageSec: 60, stale: false }))).toBe(24.7);
+	});
+
+	it('is unknown with a stale reading or none', () => {
+		expect(outsideTemp(boiler(null, { tempC: 24.7, ageSec: 7200, stale: true }))).toBeNull();
+		expect(outsideTemp(boiler(null, null))).toBeNull();
 	});
 });

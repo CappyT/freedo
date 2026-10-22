@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { act } from '#lib/actions.ts';
-	import { boilerFaults, burnerHours, burnerState, canSetFlow, flowDrivers, flowInRange } from '#lib/boiler.ts';
+	import { boilerFaults, burnerHours, burnerState, canSetFlow, flowDrivers, flowInRange, outsideTemp } from '#lib/boiler.ts';
 	import { data } from '#lib/data.svelte.ts';
 	import { fmt, t, type Key } from '#lib/i18n.svelte.ts';
 	import GasMeter from '#lib/GasMeter.svelte';
@@ -82,7 +82,7 @@
 				<dl class="stats">
 					<div><dt>{t('boiler.return')}</dt><dd>{fmt.degrees(boiler.ReturnC)}</dd></div>
 					<div><dt>{t('boiler.dhw')}</dt><dd>{fmt.degrees(boiler.DHWC)}</dd></div>
-					<div><dt>{t('boiler.outside')}</dt><dd>{fmt.degrees(boiler.OutsideC)}</dd></div>
+					<div><dt>{t('boiler.outside')}</dt><dd>{fmt.degrees(outsideTemp(boiler))}</dd></div>
 				</dl>
 			</section>
 
