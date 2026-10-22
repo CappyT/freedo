@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.10.2
+
+- Dashboard: the outside reading of the Boiler page shows the outdoor temperature that Home Assistant gives
+  the daemon when the boiler has no outdoor sensor. It shows `-` again once that reading is stale.
+
 ## 0.10.1
 
 - Dashboard: the return, hot water and outside readings of the Boiler page are readable again. A style of
