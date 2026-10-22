@@ -4,7 +4,7 @@
 	import BarChart, { type BarItem } from '#lib/BarChart.svelte';
 	import { data } from '#lib/data.svelte.ts';
 	import { cost, localDay, monthBars, shiftMonth, total, yearBars, type Bar } from '#lib/history.ts';
-	import { fmt, t } from '#lib/i18n.svelte.ts';
+	import { fmt, t, type Key } from '#lib/i18n.svelte.ts';
 	import Icon from '#lib/Icon.svelte';
 	import { api } from '#lib/session.ts';
 	import type { EnergyHistory, HistoryInfo } from '#lib/types.ts';
@@ -87,7 +87,7 @@
 		return `${barName(b)}: ${parts.join(' · ')}`;
 	}
 
-	const fuelOff = $derived(data.boiler !== null && data.boiler.energy.gas.reason !== null);
+	const fuelOff = $derived(data.boiler?.energy.gas.reason ?? null);
 </script>
 
 <section class="page">
@@ -109,7 +109,10 @@
 	{:else if energy}
 		{#if fuelOff}
 			<p class="notice tone-warning">
-				<Icon name="warning" /><span>{t('energy.fuelOff')} <a href={resolve('/boiler/setup')}>{t('boilerSetup.title')}</a></span>
+				<Icon name="warning" /><span
+					>{t('energy.fuelOff')} {t(`reason.${fuelOff}` as Key)}
+					{#if fuelOff === 'noGasFlow'}<a href={resolve('/boiler/setup')}>{t('boilerSetup.title')}</a>{/if}</span
+				>
 			</p>
 		{/if}
 

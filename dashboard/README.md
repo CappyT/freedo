@@ -17,7 +17,7 @@ SvelteKit 3 needs Node 22.17 or later. Run the commands in this directory.
 | `npm run embed` | Copy `build/` to `../internal/web/dist`, the directory that the daemon embeds. |
 | `npm run dev` | Start the development server. `FREEDO_DEV_API` names the daemon (default `http://127.0.0.1:8080`). |
 | `npm run prefix-check` | Check the build under a path prefix. See below. |
-| `npm run ui-check` | Drive the controls in headless Chrome against the daemon: typing in the schedule editor, a refused command, the first end rule, Turn off, the profiles on the Programs screen, the rooms and devices, the first setup on an empty database, the download and the restore of a backup, the banner and the return to normal of a daemon that waits after an import, and the statistics: the switch, the report of a room, the consumption page and the price. `FREEDO_BIN` names a daemon binary that embeds the build. |
+| `npm run ui-check` | Drive the controls in headless Chrome against the daemon: typing in the schedule editor, a refused command, the first end rule, Turn off, the profiles on the Programs screen, the rooms and devices, the first setup on an empty database, the download and the restore of a backup, the banner and the return to normal of a daemon that waits after an import, and the statistics: the switch, the report of a room, the consumption page, the price and the reason of a stopped fuel counter. `FREEDO_BIN` names a daemon binary that embeds the build. |
 
 To run the daemon with the dashboard:
 

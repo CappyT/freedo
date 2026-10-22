@@ -25,7 +25,8 @@
 //   and refuses the default curve without a highest flow temperature. With a fuel flow set, the boiler
 //   page saves a meter reading, refuses a lower one before it is sent and undoes the last after a confirm.
 // - The statistics are off by default. Settings turns them on; the room report and the consumption page draw
-//   a sample, the price takes a comma, and off asks first and keeps the data until a delete.
+//   a sample, the price takes a comma, and off asks first and keeps the data until a delete. A stopped fuel
+//   counter names its reason.
 // - The first setup takes a daemon with an empty database to a room, a paired thermostat and a circuit.
 //   The device that the pair window hears and the frames of the joined device are put into the
 //   answers here: the daemon has no radio. As the daemon does, the answers keep the device in the
@@ -962,6 +963,19 @@ try {
 	check(await tab.evaluate(`document.querySelector('[data-testid=energy-link]').getAttribute('href') === '#/boiler/energy'`), 'the boiler page links to the consumption page');
 	await open('#/boiler/energy', `document.querySelector('main svg[role=slider]')`);
 	check(true, 'the consumption page shows the chart of the month');
+	// The notice of a stopped fuel counter names its reason, and links to the setup only for a missing fuel flow.
+	const energyNow = (await api(daemon.base, 'boiler')).energy;
+	const gasReason = async (reason) => {
+		boilerPatch = { energy: { ...energyNow, gas: { ...energyNow.gas, running: false, reason } } };
+		const notice = `[...document.querySelectorAll('main .notice')].find((n) => /fuel counter/.test(n.textContent))`;
+		await open('#/boiler/energy', notice);
+		return tab.evaluate(`((n) => [n.textContent, !!n.querySelector('a')])(${notice})`);
+	};
+	const [staleText, staleLink] = await gasReason('stale');
+	check(/too old/.test(staleText) && !staleLink, `an old boiler report says so, with no setup link (${staleText})`);
+	const [flowText, flowLink] = await gasReason('noGasFlow');
+	check(/fuel flow/.test(flowText) && flowLink, `a missing fuel flow links to the boiler setup (${flowText})`);
+	boilerPatch = null;
 	await typeAt('main form.price input', 0, '1,05');
 	await click('main form.price button[type=submit]');
 	check(await toast('Price saved'), 'the fuel price is saved');

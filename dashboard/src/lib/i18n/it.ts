@@ -797,7 +797,7 @@ export const it: Record<Key, string> = {
 	'energy.day': 'Giorno',
 	'energy.month': 'Mese',
 	'energy.note': 'Il combustibile è la stima di freedo, corretta con il fattore del contatore in vigore quel giorno. Il calore è la potenza stimata della caldaia. Il tempo del bruciatore conta i campioni di 5 minuti con il bruciatore acceso.',
-	'energy.fuelOff': 'Il contatore del combustibile è fermo: nella configurazione della caldaia manca la portata del combustibile.',
+	'energy.fuelOff': 'Il contatore del combustibile è fermo.',
 	'energy.price': 'Prezzo del combustibile',
 	'energy.pricePer': 'Prezzo per {unit}',
 	'energy.currency': 'Valuta',

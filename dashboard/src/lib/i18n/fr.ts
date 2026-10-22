@@ -797,7 +797,7 @@ export const fr: Record<Key, string> = {
 	'energy.day': 'Jour',
 	'energy.month': 'Mois',
 	'energy.note': 'Le combustible est l’estimation de freedo, corrigée avec le facteur du compteur en vigueur ce jour-là. La chaleur est la puissance estimée de la chaudière. Le temps du brûleur compte les mesures de 5 minutes avec le brûleur allumé.',
-	'energy.fuelOff': 'Le compteur de combustible est arrêté : il manque le débit de combustible dans la configuration de la chaudière.',
+	'energy.fuelOff': 'Le compteur de combustible est arrêté.',
 	'energy.price': 'Prix du combustible',
 	'energy.pricePer': 'Prix par {unit}',
 	'energy.currency': 'Devise',

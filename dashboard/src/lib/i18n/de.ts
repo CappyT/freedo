@@ -797,7 +797,7 @@ export const de: Record<Key, string> = {
 	'energy.day': 'Tag',
 	'energy.month': 'Monat',
 	'energy.note': 'Der Brennstoff ist die Schätzung von freedo, korrigiert mit dem Zählerfaktor dieses Tages. Die Wärme ist die geschätzte Leistung des Kessels. Die Brennerzeit zählt die 5-Minuten-Messwerte mit laufendem Brenner.',
-	'energy.fuelOff': 'Der Brennstoffzähler läuft nicht: In der Kesseleinrichtung fehlt der Brennstoffdurchsatz.',
+	'energy.fuelOff': 'Der Brennstoffzähler läuft nicht.',
 	'energy.price': 'Brennstoffpreis',
 	'energy.pricePer': 'Preis pro {unit}',
 	'energy.currency': 'Währung',

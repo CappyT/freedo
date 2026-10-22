@@ -797,7 +797,7 @@ export const en = {
 	'energy.day': 'Day',
 	'energy.month': 'Month',
 	'energy.note': 'Fuel is the estimate of freedo, corrected with the meter factor in force on that day. Heat is the estimated boiler output. The burner time counts the 5-minute samples that found the burner on.',
-	'energy.fuelOff': 'The fuel counter does not run: the boiler setup needs the fuel flow.',
+	'energy.fuelOff': 'The fuel counter does not run.',
 	'energy.price': 'Fuel price',
 	'energy.pricePer': 'Price per {unit}',
 	'energy.currency': 'Currency',
