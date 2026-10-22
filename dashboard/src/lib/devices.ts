@@ -13,7 +13,7 @@ export interface DeviceRow {
 	firmware: string | null;
 	offline: boolean;
 	alerts: AlertKey[];
-	/** The names the daemon gives to the faults and to the valve warnings of the fault word. */
+	/** The names the daemon gives to the faults, the valve warnings and the radio link warnings of the fault word. */
 	faults: string[];
 	warnings: string[];
 	/** Null on a device with no child lock. */
@@ -34,7 +34,6 @@ export function buildDevices(nodes: NodeView[], health: Health | null, models: Z
 		const faults = h.faults ?? [];
 		// The names say more than the general text, which stays for a fault with no name.
 		if (h.fault && faults.length === 0) alerts.push('deviceFault');
-		if ((h.commsWarnings?.length ?? 0) > 0) alerts.push('commsWarning');
 		if (h.offline) alerts.push('deviceOffline');
 		return {
 			short: h.short,
@@ -49,7 +48,7 @@ export function buildDevices(nodes: NodeView[], health: Health | null, models: Z
 			offline: h.offline,
 			alerts,
 			faults,
-			warnings: h.deviceWarnings ?? [],
+			warnings: [...(h.deviceWarnings ?? []), ...(h.commsWarnings ?? [])],
 			childLock: node?.ChildLock ?? null,
 			canIdentify: (h.kind === 'valve' || h.kind === 'thermostat') && zones.length > 0
 		};

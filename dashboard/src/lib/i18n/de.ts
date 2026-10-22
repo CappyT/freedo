@@ -47,6 +47,8 @@ export const de: Record<Key, string> = {
 	'condition.configWrite': 'Konfiguration nicht gespeichert',
 	'condition.stackLow': 'Interner Speicher fast voll',
 	'condition.unknown': 'Unbekanntes Störungsbit',
+	'condition.noConfigAnswer': 'Konfigurationsantwort verpasst, behebt sich selbst',
+	'condition.noNeighbour': 'Kein Funknachbar gefunden',
 
 	'banner.unreachable': 'Keine Antwort von freedo. Die Seite zeigt die letzten empfangenen Daten.',
 	'banner.restarting': 'freedo startet neu. Die Seite verbindet sich selbst wieder.',

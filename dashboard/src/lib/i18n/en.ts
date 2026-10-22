@@ -47,6 +47,8 @@ export const en = {
 	'condition.configWrite': 'Configuration not saved',
 	'condition.stackLow': 'Low internal memory',
 	'condition.unknown': 'Unknown fault bit',
+	'condition.noConfigAnswer': 'Missed configuration answer, clears by itself',
+	'condition.noNeighbour': 'No radio neighbour found',
 
 	'banner.unreachable': 'No answer from freedo. The page shows the last data it received.',
 	'banner.restarting': 'freedo restarts. The page reconnects by itself.',

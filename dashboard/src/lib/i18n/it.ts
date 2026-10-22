@@ -47,6 +47,8 @@ export const it: Record<Key, string> = {
 	'condition.configWrite': 'Configurazione non salvata',
 	'condition.stackLow': 'Memoria interna quasi esaurita',
 	'condition.unknown': 'Bit di guasto sconosciuto',
+	'condition.noConfigAnswer': 'Risposta di configurazione persa, si risolve da sola',
+	'condition.noNeighbour': 'Nessun vicino radio trovato',
 
 	'banner.unreachable': 'Nessuna risposta da freedo. La pagina mostra gli ultimi dati ricevuti.',
 	'banner.restarting': 'freedo si riavvia. La pagina si ricollega da sola.',

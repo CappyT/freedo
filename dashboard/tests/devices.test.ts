@@ -24,18 +24,20 @@ describe('device rows', () => {
 		});
 	});
 
-	it('name the faults and the valve warnings of the fault word', () => {
+	it('name the faults, the valve warnings and the link warnings of the fault word', () => {
 		const health = {
 			devices: [
 				device({ deviceWarnings: ['notMounted'] }),
 				device({ short: '0202', fault: true, faults: ['stall'] }),
-				device({ short: '0203', fault: true })
+				device({ short: '0203', fault: true }),
+				device({ short: '0204', deviceWarnings: ['notMounted'], commsWarnings: ['noConfigAnswer'] })
 			]
 		} as unknown as Health;
 		const rows = buildDevices([], health, []);
 		expect(rows[0]).toMatchObject({ faults: [], warnings: ['notMounted'], alerts: [] });
 		expect(rows[1]).toMatchObject({ faults: ['stall'], warnings: [], alerts: [] });
 		expect(rows[2]).toMatchObject({ faults: [], alerts: ['deviceFault'] });
+		expect(rows[3]).toMatchObject({ warnings: ['notMounted', 'noConfigAnswer'], alerts: [] });
 	});
 
 	it('let a wall thermostat of a zone identify itself', () => {
