@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.10.1
+
+- Dashboard: the return, hot water and outside readings of the Boiler page are readable again. A style of
+  the statistics tiles had turned them into dark tiles with dark text.
+- Daemon: with the burner off, the energy and fuel estimate keeps running at 0 while the wall thermostat
+  is silent. Only a silence after a running burner makes it `stale`. With the burner off the thermostat
+  stays silent for more than 17 minutes on the plant.
+- Dashboard: the notice of a stopped fuel counter on the page Consumption names the real reason, and links
+  to the boiler setup only when the fuel flow is missing.
+- Dashboard: a device names its radio link warning: a missed configuration answer, which clears by
+  itself, or no radio neighbour.
+- Statistics run on one plant.
+
 ## 0.10.0
 
 - Statistics, off by default: Settings turns them on. The daemon then keeps a sample of each room and of
