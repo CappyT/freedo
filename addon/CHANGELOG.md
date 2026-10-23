@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.3
+
+- Dashboard: the room report lists the heating periods of the day, the stretches with heat demand, also in a
+  room whose program keeps one temperature. A period names the return home or the target rise that started
+  it, also a rise of the away temperature. A heat-up of the program shows in its period with the time to
+  reach the target.
+
 ## 0.10.2
 
 - Dashboard: the outside reading of the Boiler page shows the outdoor temperature that Home Assistant gives
