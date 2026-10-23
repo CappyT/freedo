@@ -269,7 +269,10 @@ keeps the data; a separate row then deletes it after a confirm. With the statist
 - A room screen links to the report of the room. The report shows one local day: the heating time,
   the average, lowest and highest temperature, the average humidity and the time with the window open
   or away; a chart of the temperature over the target, the heating demand and the humidity; a table of
-  the values every hour; and the heat-ups of the day with the time to reach the target. Arrows move to
+  the values every hour; and the heating periods of the day. A period is a stretch with heat demand of
+  15 minutes at least, also with a target that never moves. The return home or a target rise, also a
+  rise of the away temperature, starts a new period and names it. A heat-up of the program shows in
+  its period with the time to reach the target. Arrows move to
   the day before or after, back to the first day with a sample.
 - The page Consumption, from the Boiler page and from Settings, shows the fuel, the cost, the heat and
   the burner time per day of a month and per month over 13 months, with a table of the same values. It
