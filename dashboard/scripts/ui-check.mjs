@@ -25,8 +25,9 @@
 //   and refuses the default curve without a highest flow temperature. With a fuel flow set, the boiler
 //   page saves a meter reading, refuses a lower one before it is sent and undoes the last after a confirm.
 // - The statistics are off by default. Settings turns them on; the room report and the consumption page draw
-//   a sample, the price takes a comma, and off asks first and keeps the data until a delete. A stopped fuel
-//   counter names its reason.
+//   a sample, the price takes a comma, and off asks first and keeps the data until a delete. The room report
+//   lists the heating periods of a room with a flat target and names the return home and the target rise.
+//   A stopped fuel counter names its reason.
 // - The first setup takes a daemon with an empty database to a room, a paired thermostat and a circuit.
 //   The device that the pair window hears and the frames of the joined device are put into the
 //   answers here: the daemon has no radio. As the daemon does, the answers keep the device in the
@@ -95,6 +96,8 @@ try {
 	const sessionBefore = Math.floor(Date.now() / 1000) - 3600;
 	// Fields put into the answer of GET /api/boiler, as if the boiler reported them. Null changes nothing.
 	let boilerPatch = null;
+	// The samples put into the answer of GET /api/history/zones/{n}, built from the bounds of the day. Null changes nothing.
+	let zoneDayPatch = null;
 	// Until waitUntil every answer is the one of a daemon that waits after an import. An import that
 	// passes starts such a wait of waitAfterImport milliseconds.
 	let waitUntil = 0;
@@ -117,7 +120,8 @@ try {
 			{ urlPattern: '*/api/health', requestStage: 'Response' },
 			{ urlPattern: '*/api/pair/window', requestStage: 'Response' },
 			{ urlPattern: '*/api/nodes', requestStage: 'Response' },
-			{ urlPattern: '*/api/boiler', requestStage: 'Response' }
+			{ urlPattern: '*/api/boiler', requestStage: 'Response' },
+			{ urlPattern: '*/api/history/zones/*', requestStage: 'Response' }
 		]
 	});
 	tab.on('Fetch.requestPaused', async (p) => {
@@ -169,6 +173,12 @@ try {
 			if (path.endsWith('/api/boiler')) {
 				if (boilerPatch === null) return void (await tab.call('Fetch.continueResponse', { requestId: p.requestId }));
 				await fulfill(p, { ...(await bodyOf(p)), ...boilerPatch });
+				return;
+			}
+			if (path.includes('/api/history/zones/')) {
+				if (zoneDayPatch === null) return void (await tab.call('Fetch.continueResponse', { requestId: p.requestId }));
+				const json = await bodyOf(p);
+				await fulfill(p, { ...json, samples: zoneDayPatch(Date.parse(json.from)), episodes: [] });
 				return;
 			}
 			if (path.endsWith('/api/nodes')) {
@@ -959,6 +969,22 @@ try {
 	await tab.evaluate(`document.querySelector('main svg[role=slider]').focus()`);
 	await tab.call('Input.dispatchKeyEvent', { type: 'keyDown', key: 'End', code: 'End', windowsVirtualKeyCode: 35 });
 	check(await tab.evaluate(`/target/.test(document.querySelector('main svg[role=slider]').getAttribute('aria-valuetext') ?? '')`), 'the keyboard reads a sample of the chart');
+	// A room with a flat target still lists its heating, and names the return home and the target rise.
+	zoneDayPatch = (fromMs) =>
+		Array.from({ length: 24 }, (_, i) => ({
+			atMs: fromMs + i * 300_000,
+			tempC: 20,
+			targetC: i < 3 ? 16 : i < 14 ? 20 : 21,
+			on: true,
+			humidityPct: null,
+			demandPct: (i >= 3 && i < 9) || i >= 14 ? 30 : 0,
+			window: false,
+			away: i < 3
+		}));
+	await open('#/zones/8/report', `document.querySelectorAll('main .list-row').length === 2`);
+	const periodRows = await tab.evaluate(`[...document.querySelectorAll('main .list-row .list-sub')].map((r) => r.textContent)`);
+	check(/^Back home/.test(periodRows[0]) && /^Target raised to 21/.test(periodRows[1]), `the report lists the heating periods with their cause (${periodRows.join(' | ')})`);
+	zoneDayPatch = null;
 	await open('#/boiler', `document.querySelector('[data-testid=energy-link]')`);
 	check(await tab.evaluate(`document.querySelector('[data-testid=energy-link]').getAttribute('href') === '#/boiler/energy'`), 'the boiler page links to the consumption page');
 	await open('#/boiler/energy', `document.querySelector('main svg[role=slider]')`);

@@ -4,7 +4,7 @@
 	import { act, errorText } from '#lib/actions.ts';
 	import { data } from '#lib/data.svelte.ts';
 	import DayChart from '#lib/DayChart.svelte';
-	import { localDay, nearest, shiftDay, summarize } from '#lib/history.ts';
+	import { CAUSE_WINDOW_MS, heatPeriods, localDay, nearest, shiftDay, summarize, type HeatPeriod } from '#lib/history.ts';
 	import { fmt, t, type Key } from '#lib/i18n.svelte.ts';
 	import Icon from '#lib/Icon.svelte';
 	import { api } from '#lib/session.ts';
@@ -45,6 +45,18 @@
 	}
 
 	const summary = $derived(day ? summarize(day.samples, day.intervalSec) : null);
+	// A program heat-up shows inside the period it started, or alone when no period holds it.
+	const periods = $derived.by(() => {
+		if (!day) return [];
+		const eps = [...day.episodes];
+		const rows = heatPeriods(day.samples, day.intervalSec).map((p) => {
+			const i = eps.findIndex((ep) => ep.startedMs >= p.startMs - CAUSE_WINDOW_MS && ep.startedMs < p.endMs);
+			return { period: p, ep: i < 0 ? null : eps.splice(i, 1)[0]! };
+		});
+		return [...rows, ...eps.map((ep) => ({ period: null, ep }))].sort(
+			(a, b) => (a.period?.startMs ?? a.ep!.startedMs) - (b.period?.startMs ?? b.ep!.startedMs)
+		);
+	});
 	const fromMs = $derived(day ? Date.parse(day.from) : 0);
 	const toMs = $derived(day ? Date.parse(day.to) : 0);
 	const canBack = $derived(day?.first !== null && day?.first !== undefined && date > day.first);
@@ -73,6 +85,14 @@
 		'open window': 'report.end.window',
 		overlay: 'report.end.overlay'
 	};
+
+	function periodLine(p: HeatPeriod): string {
+		const parts: string[] = [];
+		if (p.cause === 'home') parts.push(t('report.cause.home'));
+		if (p.cause === 'rise') parts.push(t('report.cause.rise', { temp: fmt.degrees(p.causeC) }));
+		parts.push(t('report.periodTemps', { from: fmt.degrees(p.startC), to: fmt.degrees(p.endC), pct: fmt.pct(p.meanDemandPct) }));
+		return parts.join(' · ');
+	}
 
 	function heatUpLine(ep: HeatUp): string {
 		const parts: string[] = [];
@@ -181,18 +201,29 @@
 
 			<section class="section" aria-labelledby="heatups-title">
 				<div class="section-head"><h2 id="heatups-title">{t('report.heatUps')}</h2></div>
-				{#if day.episodes.length === 0}
+				{#if periods.length === 0}
 					<p class="muted">{t('report.noHeatUps')}</p>
 				{:else}
 					<ul class="list">
-						{#each day.episodes as ep (ep.startedMs)}
+						{#each periods as { period, ep } (period?.startMs ?? ep?.startedMs)}
 							<li class="list-row">
 								<span class="disc heat"><Icon name="flame" size={18} /></span>
 								<span class="list-main">
-									<span class="list-label">
-										{t('report.heatUp', { time: fmt.clock(ep.startedMs), from: fmt.degrees(ep.startC), to: fmt.degrees(ep.targetC) })}
-									</span>
-									<span class="list-sub">{heatUpLine(ep)}</span>
+									{#if period}
+										<span class="list-label">
+											{t('report.period', {
+												from: fmt.clock(period.startMs),
+												to: fmt.clock(period.endMs),
+												time: fmt.duration((period.endMs - period.startMs) / 1000)
+											})}
+										</span>
+										<span class="list-sub">{periodLine(period)}</span>
+									{:else if ep}
+										<span class="list-label">
+											{t('report.heatUp', { time: fmt.clock(ep.startedMs), from: fmt.degrees(ep.startC), to: fmt.degrees(ep.targetC) })}
+										</span>
+									{/if}
+									{#if ep}<span class="list-sub">{heatUpLine(ep)}</span>{/if}
 								</span>
 							</li>
 						{/each}

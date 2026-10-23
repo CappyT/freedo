@@ -77,6 +77,79 @@ export function summarize(samples: HistorySample[], intervalSec: number): DaySum
 	};
 }
 
+/** What started a heating period: the return home, a target rise, or nothing that a sample shows. */
+export type HeatCause = 'home' | 'rise' | null;
+
+export interface HeatPeriod extends Span {
+	startC: number | null;
+	endC: number | null;
+	meanDemandPct: number;
+	cause: HeatCause;
+	/** The target at the cause, null without a cause. */
+	causeC: number | null;
+}
+
+// A pause of one zero-demand sample does not split a period, a shorter period is noise, and a cause
+// counts when demand follows it within the time a valve takes to answer.
+const PERIOD_GAP_MS = 10 * 60_000;
+const PERIOD_MIN_MS = 15 * 60_000;
+export const CAUSE_WINDOW_MS = 30 * 60_000;
+const RISE_C = 0.5;
+
+function causeAt(prev: HistorySample | undefined, s: HistorySample): HeatCause {
+	if (!prev || !s.on) return null;
+	if (prev.away && !s.away) return 'home';
+	if (!prev.on) return 'rise';
+	if (s.targetC !== null && prev.targetC !== null && s.targetC - prev.targetC >= RISE_C) return 'rise';
+	return null;
+}
+
+/**
+ * The stretches with heat demand, whatever asked for it: the program, a manual change, the return
+ * home or the away temperature. A return home or a target rise starts a new period.
+ */
+export function heatPeriods(samples: HistorySample[], intervalSec: number): HeatPeriod[] {
+	const out: HeatPeriod[] = [];
+	let cur: (HeatPeriod & { lastMs: number; demand: number[] }) | null = null;
+	let event: { cause: HeatCause; atMs: number; targetC: number | null } | null = null;
+	const close = () => {
+		if (cur && cur.endMs - cur.startMs >= PERIOD_MIN_MS) {
+			const { lastMs: _, demand, ...period } = cur;
+			out.push({ ...period, meanDemandPct: demand.reduce((a, b) => a + b, 0) / demand.length });
+		}
+		cur = null;
+	};
+	samples.forEach((s, i) => {
+		const cause = causeAt(samples[i - 1], s);
+		if (cause) event = { cause, atMs: s.atMs, targetC: s.targetC };
+		const demand = s.demandPct ?? 0;
+		if (demand <= 0) return;
+		if (cur && (s.atMs - cur.lastMs > PERIOD_GAP_MS || cause)) close();
+		if (cur) {
+			cur.lastMs = s.atMs;
+			cur.endMs = s.atMs + intervalSec * 1000;
+			cur.endC = s.tempC;
+			cur.demand.push(demand);
+			return;
+		}
+		const ev = event !== null && s.atMs - event.atMs <= CAUSE_WINDOW_MS ? event : null;
+		event = null;
+		cur = {
+			startMs: s.atMs,
+			endMs: s.atMs + intervalSec * 1000,
+			lastMs: s.atMs,
+			startC: s.tempC,
+			endC: s.tempC,
+			meanDemandPct: 0,
+			demand: [demand],
+			cause: ev?.cause ?? null,
+			causeC: ev?.targetC ?? null
+		};
+	});
+	close();
+	return out;
+}
+
 /** The sample nearest to atMs, null for no sample. */
 export function nearest(samples: HistorySample[], atMs: number): HistorySample | null {
 	let best: HistorySample | null = null;

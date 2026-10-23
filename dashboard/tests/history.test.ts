@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	axisTicks,
 	cost,
+	heatPeriods,
 	monthBars,
 	monthEnd,
 	nearest,
@@ -139,5 +140,46 @@ describe('bars', () => {
 	it('prices fuel only with a price', () => {
 		expect(cost(2, 1.25)).toBe(2.5);
 		expect(cost(2, null)).toBeNull();
+	});
+});
+
+describe('heatPeriods', () => {
+	const demand = (from: number, to: number, pct = 20, fields: Partial<HistorySample> = {}) =>
+		Array.from({ length: to - from }, (_, k) => sample(from + k, { demandPct: pct, ...fields }));
+
+	it('counts the demand of a room whose target never moves', () => {
+		const samples = [...demand(0, 2, 0), ...demand(2, 8, 30), ...demand(8, 12, 0)];
+		const [p, ...rest] = heatPeriods(samples, 300);
+		expect(rest).toEqual([]);
+		expect(p).toMatchObject({ startMs: T0 + 2 * STEP, endMs: T0 + 8 * STEP, meanDemandPct: 30, cause: null });
+	});
+
+	it('joins a pause of one sample and splits a longer one', () => {
+		const samples = [...demand(0, 4), ...demand(4, 5, 0), ...demand(5, 9), ...demand(9, 12, 0), ...demand(12, 16)];
+		expect(heatPeriods(samples, 300).map((p) => [p.startMs, p.endMs])).toEqual([
+			[T0, T0 + 9 * STEP],
+			[T0 + 12 * STEP, T0 + 16 * STEP]
+		]);
+	});
+
+	it('drops a period shorter than 15 minutes', () => {
+		expect(heatPeriods([...demand(0, 2), ...demand(2, 6, 0)], 300)).toEqual([]);
+	});
+
+	it('names the return home and the target rise that started a period', () => {
+		const samples = [
+			...demand(0, 3, 0, { away: true, targetC: 16 }),
+			...demand(3, 7, 40, { targetC: 20 }),
+			...demand(7, 11, 40, { targetC: 21 })
+		];
+		expect(heatPeriods(samples, 300).map((p) => [p.cause, p.causeC, p.startMs])).toEqual([
+			['home', 20, T0 + 3 * STEP],
+			['rise', 21, T0 + 7 * STEP]
+		]);
+	});
+
+	it('names a rise of the away temperature, the step of the distance setback', () => {
+		const samples = [...demand(0, 2, 0, { away: true, targetC: 16 }), ...demand(2, 3, 0, { away: true, targetC: 17 }), ...demand(3, 7, 25, { away: true, targetC: 17 })];
+		expect(heatPeriods(samples, 300).map((p) => [p.cause, p.causeC])).toEqual([['rise', 17]]);
 	});
 });
