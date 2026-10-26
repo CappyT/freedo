@@ -17,6 +17,7 @@ import (
 	"math"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -162,8 +163,26 @@ type OwnerRequest struct {
 	Device  string // short address of the requester
 	Method  string // CoAP code of the request
 	URI     string
-	Observe bool // the request carries option 6
+	Observe bool   // the request carries option 6
+	Body    string // ZoneMeasureSummary of the payload, empty when there is none
 	At      time.Time
+}
+
+// ZoneMeasureSummary renders the TLVs of a zone measure for the log: 4060 as
+// a temperature, 40a0 as a percent, every other tag in hex.
+func ZoneMeasureSummary(body []byte) string {
+	var parts []string
+	for _, tlv := range parseTLVList(body) {
+		switch {
+		case tlv.Tag == "4060" && len(tlv.Val) == 2:
+			parts = append(parts, fmt.Sprintf("4060=%.2f", float64(int16(be(tlv.Val)))/100))
+		case tlv.Tag == "40a0" && len(tlv.Val) == 1:
+			parts = append(parts, fmt.Sprintf("40a0=%d%%", tlv.Val[0]))
+		default:
+			parts = append(parts, fmt.Sprintf("%s=%x", tlv.Tag, tlv.Val))
+		}
+	}
+	return strings.Join(parts, " ")
 }
 
 // ownerRequestsMax bounds the record between two drains.
@@ -181,7 +200,8 @@ func (e *EmuState) noteOwnerRequest(m *CoAPMessage, src []byte) {
 		e.ownerSeen = e.ownerSeen[1:]
 	}
 	e.ownerSeen = append(e.ownerSeen, OwnerRequest{
-		Zone: zone, Device: ShortFromWire(src), Method: m.Code, URI: m.URI(), Observe: observe, At: e.cfg.Now(),
+		Zone: zone, Device: ShortFromWire(src), Method: m.Code, URI: m.URI(), Observe: observe,
+		Body: ZoneMeasureSummary(m.Payload), At: e.cfg.Now(),
 	})
 }
 

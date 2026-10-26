@@ -103,7 +103,11 @@ func (x *zoneOwner) reset() {
 // zone-plane requests the members addressed to us.
 func (d *daemon) tickZoneOwners(e *tado.EmuState) {
 	for _, r := range e.TakeOwnerRequests() {
-		log.Printf("zone %d owner: %s asked %s %s observe=%t", r.Zone, r.Device, r.Method, r.URI, r.Observe)
+		body := ""
+		if r.Body != "" {
+			body = " " + r.Body
+		}
+		log.Printf("zone %d owner: %s asked %s %s observe=%t%s", r.Zone, r.Device, r.Method, r.URI, r.Observe, body)
 	}
 	inst := d.inst.Load()
 	if inst == nil {
