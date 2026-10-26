@@ -1102,7 +1102,7 @@ func (e *EmuState) handleCoAP(f *Frame, m *CoAPMessage, class FrameClass, srcLbl
 		if e.proxyZoneGet(f, m, class, srcLbl, dstLbl) {
 			return nil, false
 		}
-		if body, opts, ok := e.servedZoneGet(m); ok {
+		if body, opts, ok := e.servedZoneGet(m, f.SrcEUI()); ok {
 			pkt, err = BuildContextAckBody(code, m.MID, m.Token, body, e.selfEUI, dst, m.DstPort, m.SrcPort, opts...)
 			break
 		}
@@ -2617,11 +2617,20 @@ func (e *EmuState) PendingZoneProxies() int { return len(e.zoneProxyPend) }
 
 // servedZoneGet answers a GET of a zone resource from the cached state, with the
 // options the captured answer for that resource carries. With nothing cached the
-// answer is the bare 2.05 the bridge sent before.
-func (e *EmuState) servedZoneGet(m *CoAPMessage) ([]byte, []CoAPOption, bool) {
-	zone, ok := zoneQuery(m.Query)
-	if !ok || m.Code != "0.01" {
+// answer is the bare 2.05 the bridge sent before. A z/p read with no query from
+// a device of a zone the coordinator owns gets that zone's served measure: the
+// wall thermostat reads the owner's z/p that way, and an empty answer leaves it
+// on the last demand it knew.
+func (e *EmuState) servedZoneGet(m *CoAPMessage, src []byte) ([]byte, []CoAPOption, bool) {
+	if m.Code != "0.01" {
 		return nil, nil, false
+	}
+	zone, ok := zoneQuery(m.Query)
+	if !ok {
+		// The wall thermostat reads the owner's z/p with no query.
+		if zone, ok = e.ownerRequestZone(m, src); !ok {
+			return nil, nil, false
+		}
 	}
 	resource := normalizeResource(m.Path)
 	body, ok := e.cachedZoneRead(zone, resource)

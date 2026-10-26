@@ -55,7 +55,7 @@ func removalEffects(in *tado.Install, dev *tado.Device) []removalEffect {
 		if len(members) == 1 {
 			effects = append(effects, onZone(effectLastMember))
 		}
-		if reporter, err := in.DemandReporter(z.Number); err == nil && reporter == dev {
+		if reporter, err := in.DeclaredReporter(z.Number); err == nil && reporter == dev {
 			effects = append(effects, onZone(effectReporter))
 		}
 		if measuring, err := in.MeasuringDevice(z.Number); err == nil && measuring == dev {

@@ -42,6 +42,11 @@ The chain:
   circuit value for all zones).
 - The thermostat drives the boiler and reports `h/<home>/hvac/mon`.
 
+The thermostat also reads the zone owner's `z/p` itself, with no query, about every two
+minutes (plant, 2026-10-26, coordinator as owner of one zone). On an empty `2.05` it keeps
+the last demand it knew: it held 100 % for 25 minutes after the elected valve lost its
+election and nobody answered with a measure.
+
 Tag `2040` never appears in these frames.
 
 `tado/demand.go` models the chain and `tado.Snapshot.Zones` exposes it. The

@@ -672,10 +672,20 @@ With the daemon as owner:
   from zero, as a valve does after each read of the zone document. A change of the source
   (external reading to device or back) restarts it too: the gap between the two sensors is no
   room change.
-- The daemon answers `GET z/p?lid=N` of the zone with its own measure, tags `4060` and `40a0`,
-  and pushes it to every member as `PUT z/p?lid=N` on the zone plane once a minute, under the
-  Max-Age of 1800 s the measure carries. A valve went back to its own sensor between pushes
-  3 to 5 minutes apart.
+- The zone elects no demand reporter: `DemandReporter` names none while the coordinator owns
+  the zone, so the `015e` record of each valve carries the plain role `0x05` and the reload that
+  follows the change queues the `d/config` write. The declared `reporter` row stays and takes
+  the elected bit back when the owner returns to `device`. An elected valve keeps running its
+  own controller on its own sensor whatever the zone document says: on the plant it published
+  100 % on a satisfied room from the step between the two sensors, and the thermostat fired the
+  boiler on it.
+- The daemon answers `GET z/p?lid=N` of the zone with its own measure, tags `4060`, `40a0` and
+  `0135`, and pushes it to every member as `PUT z/p?lid=N` on the zone plane once a minute,
+  under the Max-Age of 1800 s the measure carries. The wall thermostat reads the owner's `z/p`
+  with no query about every two minutes, as it would a valve that answers for its one zone: the
+  daemon answers it with the measure of the owned zone the thermostat serves, the one with the
+  highest demand when there are several. An empty answer leaves the thermostat on the last
+  demand it knew: on the plant it held 100 % for 25 minutes that way.
 - The zone takes `POST /api/zones/{n}/temperature` with no other option. `offset_mode`
   `setpoint` and `auto_offset` are refused on an owned zone, and the owner is refused while
   the zone holds one of them: the valves follow our measure, so a correction of their own
@@ -685,14 +695,15 @@ With the daemon as owner:
 - The daemon logs every zone-plane request a member addresses to it for an owned zone, with
   the method, the URI, whether it carries the observe option and the body of a measure.
 
-Seen on a plant, one valve zone: the valve read the new zone document within minutes of the
-PATCH, not at the hourly check. It sends `PUT z/p?lid=N` to the coordinator twice a minute,
-once with its own sensor and the output of its own controller, once echoing the pushed
-measure, and never with an observe option. It answers each push with `2.05` and `62a0=00`.
-It reports the pushed `40a0` as its own demand (`z/N/act` and `HeatDemandPct`) and holds the
-pushed `4060` as the zone temperature: with a target of 22 C it reported 93 where its own
-controller on its own sensor gave 57. Open: a zone with two valves and a zone the wall
-thermostat owns.
+Seen on a plant, one valve zone. An elected valve reads the new zone document within minutes
+of the PATCH, sends `PUT z/p?lid=N` to the coordinator twice a minute, once with its own sensor
+and its own controller, once echoing the pushed measure, never with an observe option, and
+answers each push with `2.05` and `62a0=00`. Its demand stays its own: the match with the
+pushed demand in a first run was two equal controllers started together. With the plain role
+`0x05` the valve asks the coordinator `GET z/s?lid=N` and `GET z/p?lid=N`, stops sending its
+own measures and echoes the pushed measure alone, demand included. Open: a zone with two valves,
+a zone the wall thermostat owns, and whether the thermostat enters its frost fallback without
+observe notifications over a long run.
 
 ### External room temperature
 

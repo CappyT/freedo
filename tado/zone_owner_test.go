@@ -176,3 +176,71 @@ func TestEnqueueZoneMeasure(t *testing.T) {
 		t.Errorf("pending = %d after the member's 2.05, want 0", n)
 	}
 }
+
+// TestZoneOwnerElectsNoMember: a heating zone the coordinator owns elects no
+// demand reporter, so the valve's 015e record drops the elected bit; the
+// declared reporter still names the measuring device.
+func TestZoneOwnerElectsNoMember(t *testing.T) {
+	in := synthInstall(t)
+	va, err := in.Resolve("VA0000000001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recs := initialNodeTable(in, va); len(recs) != 1 || recs[0].Role != 0x0d || recs[0].Node != 4 {
+		t.Fatalf("node table under the device = %+v, want role 0d for zone 4", recs)
+	}
+	in.Options.ZoneOwners = map[int]string{4: ZoneOwnerCoordinator}
+	if _, err := in.DemandReporter(4); err == nil {
+		t.Error("an owned zone elects a demand reporter")
+	}
+	if d, err := in.DeclaredReporter(4); err != nil || d != va {
+		t.Errorf("declared reporter = %v %v, want the valve", d, err)
+	}
+	if d, err := in.MeasuringDevice(4); err != nil || d != va {
+		t.Errorf("measuring device = %v %v, want the valve", d, err)
+	}
+	if recs := initialNodeTable(in, va); len(recs) != 1 || recs[0].Role != 0x05 || recs[0].Node != 4 {
+		t.Errorf("node table under the coordinator = %+v, want role 05 for zone 4", recs)
+	}
+}
+
+// TestZoneMeasureReadWithoutZoneID: the wall thermostat reads the owner's z/p
+// with no query. With the coordinator as owner the answer is the served
+// measure of the owned zone the thermostat serves; a zone it does not own
+// answers the bare 2.05 as before.
+func TestZoneMeasureReadWithoutZoneID(t *testing.T) {
+	in := synthInstall(t)
+	in.Options.ZoneOwners = map[int]string{4: ZoneOwnerCoordinator}
+	e := NewEmu(in.EmuConfig(), nil)
+	ru, err := in.Resolve("RU0000000001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := ZoneMeasureBody(19.5, 42, 500)
+	e.SetZoneMeasure(4, body)
+	read := func(mid uint16) *CoAPMessage {
+		get := synthZoneUplink(t, in, ru.WireEUI(), CoAPReq{
+			Type: "CON", Code: "0.01", MID: mid, Token: []byte{0x24},
+			Path: []string{"z", "p"},
+		})
+		return synthAnswer(t, in, e.OnFrame(get), mid)
+	}
+	m := read(0x7410)
+	if m.Code != "2.05" || !bytes.Equal(m.Payload, body) {
+		t.Errorf("answer = %s %x, want 2.05 with the served measure %x", m.Code, m.Payload, body)
+	}
+	if age, ok := m.Option(14); !ok || decodeCoAPUint(age.Val) != 1800 {
+		t.Errorf("Max-Age=%x present=%v, want 1800", age.Val, ok)
+	}
+	reqs := e.TakeOwnerRequests()
+	if len(reqs) != 1 || reqs[0].Zone != 4 || reqs[0].Device != ru.Short() {
+		t.Errorf("owner requests = %+v, want one for zone 4 from the thermostat", reqs)
+	}
+	// Back to the device: nothing served, the bare answer.
+	e.ClearZoneMeasure(4)
+	in.Options.ZoneOwners = nil
+	m = read(0x7411)
+	if m.Code != "2.05" || len(m.Payload) != 0 {
+		t.Errorf("answer under the device = %s %x, want a bare 2.05", m.Code, m.Payload)
+	}
+}

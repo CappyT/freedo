@@ -12,6 +12,7 @@ package tado
 // air.
 
 import (
+	"bytes"
 	"fmt"
 	"maps"
 	"math"
@@ -207,8 +208,8 @@ const ownerRequestsMax = 64
 // noteOwnerRequest records a zone-plane request addressed to us for a zone the
 // coordinator owns.
 func (e *EmuState) noteOwnerRequest(m *CoAPMessage, src []byte) {
-	zone, ok := zoneQuery(m.Query)
-	if !ok || e.inst == nil || !e.inst.Options.CoordinatorOwns(zone) {
+	zone, ok := e.ownerRequestZone(m, src)
+	if !ok {
 		return
 	}
 	_, observe := m.Option(6)
@@ -226,4 +227,60 @@ func (e *EmuState) TakeOwnerRequests() []OwnerRequest {
 	out := e.ownerSeen
 	e.ownerSeen = nil
 	return out
+}
+
+// ownerRequestZone names the zone a zone-plane request to the coordinator is
+// about, when the coordinator owns it. A member names the zone in the query.
+// The wall thermostat reads the owner's z/p with no query, as a valve owner
+// answers for its one zone: the request is then about the owned zone the
+// requester serves or belongs to, the one with the highest served demand when
+// there are several, since the thermostat takes the maximum anyway.
+func (e *EmuState) ownerRequestZone(m *CoAPMessage, src []byte) (int, bool) {
+	if e.inst == nil {
+		return 0, false
+	}
+	if zone, ok := zoneQuery(m.Query); ok {
+		return zone, e.inst.Options.CoordinatorOwns(zone)
+	}
+	if normalizeResource(m.Path) != "z/p" {
+		return 0, false
+	}
+	best, bestDemand, found := 0, -1, false
+	for i := range e.inst.Zones {
+		z := &e.inst.Zones[i]
+		if z.Kind != ZoneHeating || !e.inst.Options.CoordinatorOwns(z.Number) {
+			continue
+		}
+		if !e.zoneInvolves(z.Number, src) {
+			continue
+		}
+		demand := 0
+		for _, t := range parseTLVList(e.ownedMeasure[z.Number]) {
+			if t.Tag == "40a0" && len(t.Val) == 1 {
+				demand = int(t.Val[0])
+			}
+		}
+		if demand > bestDemand {
+			best, bestDemand, found = z.Number, demand, true
+		}
+	}
+	return best, found
+}
+
+// zoneInvolves reports whether the device with wire EUI src is a member or the
+// heat source of zone.
+func (e *EmuState) zoneInvolves(zone int, src []byte) bool {
+	members, err := e.inst.ZoneMembers(zone)
+	if err != nil {
+		return false
+	}
+	for _, d := range members {
+		if bytes.Equal(d.WireEUI(), src) {
+			return true
+		}
+	}
+	if hs, err := e.inst.ZoneHeatSource(zone); err == nil && bytes.Equal(hs.WireEUI(), src) {
+		return true
+	}
+	return false
 }

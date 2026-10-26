@@ -274,3 +274,33 @@ func TestZoneOwnerSourceSwitch(t *testing.T) {
 		t.Errorf("first external step = %d, want 10", got)
 	}
 }
+
+// TestZoneOwnerRolesFollowOwner: the owner of a zone decides the election. The
+// reload that follows an owner change rewrites the 015e record of the valve:
+// no elected bit under the coordinator, the declared reporter elected again
+// under the device, with a config write queued for the valve.
+func TestZoneOwnerRolesFollowOwner(t *testing.T) {
+	a := newInstallAPI(t)
+	a.declareDevices()
+	a.reportThermostatModule(71)
+	a.mutate(http.MethodPost, "/api/install/zones", map[string]any{"number": 1, "kind": "heating"})
+	a.mutate(http.MethodPut, "/api/install/zones/1/members", map[string]any{"members": []string{"VA9000000001"}})
+	a.mutate(http.MethodPatch, "/api/install/devices/VA9000000001", map[string]any{"zone": 1})
+	a.mutate(http.MethodPut, "/api/install/zones/1/reporter", map[string]any{"ref": "VA9000000001"})
+	if role, ok := a.zoneRole(apiValveEUI, 1); !ok || role != 0x0d {
+		t.Fatalf("valve 015e role = %#02x (present %v), want the elected 0x0d", role, ok)
+	}
+	a.mutate(http.MethodPatch, "/api/install/zones/1", map[string]any{"owner": "coordinator"})
+	if role, ok := a.zoneRole(apiValveEUI, 1); !ok || role != 0x05 {
+		t.Fatalf("valve 015e role under the coordinator = %#02x (present %v), want the plain 0x05", role, ok)
+	}
+	// One config write waits for the valve: the reload coalesces it with the
+	// one the election queued.
+	if n := a.pending()[apiValveEUI]; n != 1 {
+		t.Fatalf("config writes queued to the valve = %d, want 1", n)
+	}
+	a.mutate(http.MethodPatch, "/api/install/zones/1", map[string]any{"owner": "device"})
+	if role, ok := a.zoneRole(apiValveEUI, 1); !ok || role != 0x0d {
+		t.Fatalf("valve 015e role back under the device = %#02x (present %v), want the elected 0x0d", role, ok)
+	}
+}

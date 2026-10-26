@@ -908,8 +908,23 @@ func (in *Install) ZoneMembers(n int) ([]*Device, error) {
 	return out, nil
 }
 
-// DemandReporter returns the member elected to publish the zone demand.
+// DemandReporter returns the member elected to publish the zone demand. A
+// heating zone the coordinator owns elects none: its members follow the
+// coordinator's measure, and their d/config 015e record carries no elected bit.
 func (in *Install) DemandReporter(n int) (*Device, error) {
+	z, err := in.ZoneByNumber(n)
+	if err != nil {
+		return nil, err
+	}
+	if z.Kind == ZoneHeating && in.Options.CoordinatorOwns(n) {
+		return nil, fmt.Errorf("tado: config: zone %d: the coordinator owns it, no member is elected", n)
+	}
+	return in.DeclaredReporter(n)
+}
+
+// DeclaredReporter returns the member the configuration names as the demand
+// reporter, whoever owns the zone.
+func (in *Install) DeclaredReporter(n int) (*Device, error) {
 	z, err := in.ZoneByNumber(n)
 	if err != nil {
 		return nil, err
@@ -921,7 +936,7 @@ func (in *Install) DemandReporter(n int) (*Device, error) {
 }
 
 // MeasuringDevice returns the member whose temperature represents the zone.
-// A config that names none falls back to the demand reporter, then to the only
+// A config that names none falls back to the declared reporter, then to the only
 // member of a single-member zone; both match the usual single-sensor layout and
 // stay explicit in the rendered API.
 func (in *Install) MeasuringDevice(n int) (*Device, error) {
@@ -935,7 +950,7 @@ func (in *Install) MeasuringDevice(n int) (*Device, error) {
 	if z.MeasuringDevice != "" {
 		return in.Resolve(z.MeasuringDevice)
 	}
-	if d, err := in.DemandReporter(n); err == nil {
+	if d, err := in.DeclaredReporter(n); err == nil {
 		return d, nil
 	}
 	members, err := in.ZoneMembers(n)
