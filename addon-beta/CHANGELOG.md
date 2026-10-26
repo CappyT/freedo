@@ -105,3 +105,13 @@ pre-release has its notes here.
   without the tag, while the answer of a valve ended the fallback within seconds.
 - Run on a real plant with 0.11.0-beta.2, one valve zone: with a push every minute the valve
   reports the pushed demand as its own and keeps the pushed temperature.
+
+## 0.11.0-beta.4
+
+- Daemon: a zone the coordinator owns elects no demand reporter. The `015e` record of its
+  valves carries the plain role and the reload queues the `d/config` write, so a valve stops
+  running its own controller and follows the pushed demand. On the plant an elected valve kept
+  its own controller and published 100 % on a satisfied room.
+- Daemon: the wall thermostat reads the owner's `z/p` with no query every two minutes; the
+  daemon answers it with the measure of the owned zone it serves. An empty answer left it on the
+  last demand it knew for 25 minutes.
