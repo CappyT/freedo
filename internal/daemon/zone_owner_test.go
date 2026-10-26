@@ -54,6 +54,9 @@ func TestZoneOwnerController(t *testing.T) {
 	if got != 100 || x.integ != 6000 {
 		t.Errorf("cold room: demand %d integ %v, want 100 and 6000", got, x.integ)
 	}
+	// A step of the temperature source must not reach the derivative: the
+	// engine resets the controller on a switch, as TestZoneOwnerSourceSwitch
+	// checks on the step.
 	// With Ki 0 the integrator stays 0.
 	y := &zoneOwner{}
 	y.update(tado.ZonePID{Kp: 1000, Ki: 0, Kd: 0}, 20, 19, now)
@@ -249,4 +252,24 @@ func takeMeasure(t *testing.T, d *daemon, in *tado.Install, target string) *tado
 		t.Fatalf("%s still holds %d queued writes after the 2.05", target, n)
 	}
 	return m
+}
+
+// TestZoneOwnerSourceSwitch: the controller state is reset when the source of
+// the temperature changes, so that the gap between the two sensors is no
+// derivative and no integral.
+func TestZoneOwnerSourceSwitch(t *testing.T) {
+	x := &zoneOwner{}
+	now := windowStart
+	for range 5 {
+		x.update(tado.DefaultZonePID, 20.5, 21.2, now)
+		now = now.Add(time.Minute)
+	}
+	x.haveOut, x.source = true, "device"
+	// What stepZoneOwner does on the switch, then the external reading.
+	x.reset()
+	got := x.update(tado.DefaultZonePID, 20.5, 20.3, now)
+	// Kp*20/2000 = 10, the first integration 20*500/30000, no derivative.
+	if got != 10 {
+		t.Errorf("first external step = %d, want 10", got)
+	}
 }

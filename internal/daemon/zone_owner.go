@@ -168,6 +168,12 @@ func (d *daemon) stepZoneOwner(e *tado.EmuState, inst *tado.Install, z *tado.Zon
 		return
 	}
 	x.lost = false
+	if x.haveOut && source != x.source {
+		// The two sensors read the same room with a different error: a
+		// derivative or an integral across the switch is a sensor step, not a
+		// room change.
+		x.reset()
+	}
 	pid := inst.Options.ZonePID(z.Number)
 	pct := 0
 	if spC, has := d.zoneTargetC(e, z); has {
