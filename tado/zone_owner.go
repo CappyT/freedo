@@ -13,6 +13,7 @@ package tado
 
 import (
 	"bytes"
+	"encoding/hex"
 	"fmt"
 	"maps"
 	"math"
@@ -181,8 +182,13 @@ type OwnerRequest struct {
 	Method  string // CoAP code of the request
 	URI     string
 	Observe bool   // the request carries option 6
+	Options string // every option of the request, as Label renders it
 	Body    string // ZoneMeasureSummary of the payload, empty when there is none
 	At      time.Time
+	// Registered names an observe registration of the zone measure, and
+	// Token its token in hex.
+	Registered bool
+	Token      string
 }
 
 // ZoneMeasureSummary renders the TLVs of a zone measure for the log: 4060 as
@@ -206,20 +212,156 @@ func ZoneMeasureSummary(body []byte) string {
 const ownerRequestsMax = 64
 
 // noteOwnerRequest records a zone-plane request addressed to us for a zone the
-// coordinator owns.
+// coordinator owns. A GET of z/p with Observe 0 registers the requester while
+// the daemon serves a measure of the zone; servedZoneGet then answers it as the
+// first notification.
 func (e *EmuState) noteOwnerRequest(m *CoAPMessage, src []byte) {
 	zone, ok := e.ownerRequestZone(m, src)
 	if !ok {
 		return
 	}
-	_, observe := m.Option(6)
+	obs, observe := m.Option(6)
+	registered := observe && obs.Uint() == 0 && m.Code == "0.01" &&
+		normalizeResource(m.Path) == "z/p" && len(e.ownedMeasure[zone]) > 0
+	if registered {
+		e.observeZone(zone, src, m.Token)
+	}
 	if len(e.ownerSeen) >= ownerRequestsMax {
 		e.ownerSeen = e.ownerSeen[1:]
 	}
 	e.ownerSeen = append(e.ownerSeen, OwnerRequest{
 		Zone: zone, Device: ShortFromWire(src), Method: m.Code, URI: m.URI(), Observe: observe,
 		Body: ZoneMeasureSummary(m.Payload), At: e.cfg.Now(),
+		Registered: registered, Token: hex.EncodeToString(m.Token),
+		Options: optionLabels(m.Options),
 	})
+}
+
+// zoneNotifyEvery bounds the time between two notifications of an unchanged
+// measure. The thermostat holds a notification for its Max-Age plus 15 s, then
+// GETs again under a new token.
+const zoneNotifyEvery = 10 * time.Minute
+
+// zoneObserver is one observe registration of the z/p of an owned zone.
+type zoneObserver struct {
+	requester []byte
+	token     []byte
+	seq       uint32    // the Observe value last sent
+	body      []byte    // the measure last sent
+	at        time.Time // when it was sent
+}
+
+// ZoneObserver is an observe registration of the measure of an owned zone,
+// for the API and the log.
+type ZoneObserver struct {
+	Zone       int
+	Device     string // short address of the requester
+	Target     string // wire EUI hex of the requester
+	Token      string // hex
+	Seq        uint32
+	NotifiedAt time.Time
+}
+
+func (s *zoneObserver) view(zone int) ZoneObserver {
+	return ZoneObserver{
+		Zone: zone, Device: ShortFromWire(s.requester), Target: hexEUI(s.requester),
+		Token: hex.EncodeToString(s.token), Seq: s.seq, NotifiedAt: s.at,
+	}
+}
+
+// observeOption is the Observe option with the sequence number seq.
+func observeOption(seq uint32) CoAPOption { return CoAPOption{Num: 6, Val: encodeCoAPUint(seq)} }
+
+// nextObserveSeq is the Observe value after seq, in 24 bits. It skips 0, the
+// value of a registration.
+func nextObserveSeq(seq uint32) uint32 { return max((seq+1)&0xffffff, 1) }
+
+// observeZone registers src as an observer of the measure of zone under token.
+// A new registration of the same requester for the same zone replaces the old
+// one, and its sequence numbers keep rising.
+func (e *EmuState) observeZone(zone int, src, token []byte) {
+	if e.zoneObservers == nil {
+		e.zoneObservers = map[int]map[string]*zoneObserver{}
+	}
+	subs := e.zoneObservers[zone]
+	if subs == nil {
+		subs = map[string]*zoneObserver{}
+		e.zoneObservers[zone] = subs
+	}
+	s := subs[hexEUI(src)]
+	if s == nil {
+		s = &zoneObserver{requester: slices.Clone(src)}
+		subs[hexEUI(src)] = s
+	}
+	s.token = append([]byte{}, token...)
+	s.seq = nextObserveSeq(s.seq)
+	s.body = slices.Clone(e.ownedMeasure[zone])
+	s.at = e.cfg.Now()
+}
+
+// ZoneObservers lists the observe registrations of the measure of zone, by
+// requester.
+func (e *EmuState) ZoneObservers(zone int) []ZoneObserver {
+	subs := e.zoneObservers[zone]
+	out := make([]ZoneObserver, 0, len(subs))
+	for _, key := range slices.Sorted(maps.Keys(subs)) {
+		out = append(out, subs[key].view(zone))
+	}
+	return out
+}
+
+// NotifyZoneObservers queues a notification of the served measure of zone to
+// each observer whose last one carried another measure or is zoneNotifyEvery
+// old, and returns those observers. The notification is a NON 2.05 under the
+// token of the registration, so a newer one supersedes it in the queue
+// (queueZoneHop).
+func (e *EmuState) NotifyZoneObservers(zone int) []ZoneObserver {
+	body := e.ownedMeasure[zone]
+	if len(body) == 0 {
+		return nil
+	}
+	now := e.cfg.Now()
+	var out []ZoneObserver
+	for _, key := range slices.Sorted(maps.Keys(e.zoneObservers[zone])) {
+		s := e.zoneObservers[zone][key]
+		if bytes.Equal(s.body, body) && now.Sub(s.at) < zoneNotifyEvery {
+			continue
+		}
+		seq := nextObserveSeq(s.seq)
+		pkt, err := BuildContextCoAP(CoAPReq{
+			Type: "NON", Code: "2.05", MID: nextMID(), Token: s.token,
+			Options: []CoAPOption{optOctets, observeOption(seq), optZoneMeasureAge},
+			Payload: body, SrcEUI: e.selfEUI, DstEUI: s.requester,
+		})
+		var m *CoAPMessage
+		if err == nil {
+			m, err = parseCoAPCore(pkt)
+		}
+		if err != nil {
+			e.log.Log(ClassData.String(), "", e.name(s.requester), rsnBuildFail+" z/p notify "+err.Error(), "")
+			continue
+		}
+		e.queueZoneHop(s.requester, m, pkt, fmt.Sprintf("zone notify z/p lid=%d obs=%d tok=%x", zone, seq, s.token), e.selfEUI)
+		s.seq, s.body, s.at = seq, slices.Clone(body), now
+		out = append(out, s.view(zone))
+	}
+	return out
+}
+
+// pruneZoneObservers drops the registrations of a zone the coordinator no
+// longer owns, and those of a requester that is no longer a member or the heat
+// source of the zone.
+func (e *EmuState) pruneZoneObservers() {
+	for zone, subs := range e.zoneObservers {
+		for key, s := range subs {
+			if !e.inst.Options.CoordinatorOwns(zone) || !e.zoneInvolves(zone, s.requester) {
+				delete(subs, key)
+			}
+		}
+		if len(subs) == 0 {
+			delete(e.zoneObservers, zone)
+		}
+	}
 }
 
 // TakeOwnerRequests returns the requests recorded since the last call.
@@ -283,4 +425,14 @@ func (e *EmuState) zoneInvolves(zone int, src []byte) bool {
 		return true
 	}
 	return false
+}
+
+// optionLabels renders every option of a request for the log, so an on-air
+// record shows a zero-length Observe or an option the parser has no name for.
+func optionLabels(opts []CoAPOption) string {
+	out := make([]string, 0, len(opts))
+	for _, o := range opts {
+		out = append(out, o.Label())
+	}
+	return strings.Join(out, ",")
 }

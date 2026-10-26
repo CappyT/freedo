@@ -109,7 +109,10 @@ func (d *daemon) tickZoneOwners(e *tado.EmuState) {
 		if r.Body != "" {
 			body = " " + r.Body
 		}
-		log.Printf("zone %d owner: %s asked %s %s observe=%t%s", r.Zone, r.Device, r.Method, r.URI, r.Observe, body)
+		log.Printf("zone %d owner: %s asked %s %s observe=%t opts=[%s]%s", r.Zone, r.Device, r.Method, r.URI, r.Observe, r.Options, body)
+		if r.Registered {
+			log.Printf("zone %d owner: %s observes z/p tok=%s", r.Zone, r.Device, r.Token)
+		}
 	}
 	inst := d.inst.Load()
 	if inst == nil {
@@ -204,6 +207,10 @@ func (d *daemon) stepZoneOwner(e *tado.EmuState, inst *tado.Install, z *tado.Zon
 	x.tempC, x.source, x.pct, x.haveOut = tC, source, pct, true
 	humidity := d.ownerHumidityDeci(e, inst, z.Number)
 	e.SetZoneMeasure(z.Number, tado.ZoneMeasureBody(tC, pct, humidity))
+	for _, o := range e.NotifyZoneObservers(z.Number) {
+		d.requestQueuedDispatch(o.Target)
+		log.Printf("zone %d owner: notify %s z/p tok=%s obs=%d %.2f C demand %d%%", z.Number, o.Device, o.Token, o.Seq, tC, pct)
+	}
 	if !changed && now.Sub(x.pushedAt) < ownerPushEvery {
 		return
 	}
@@ -228,8 +235,8 @@ func (d *daemon) stepZoneOwner(e *tado.EmuState, inst *tado.Install, z *tado.Zon
 
 // zoneOwnerView is the owner of a heating zone for GET /api/zones: the mode,
 // and for an owned zone the temperature the controller read, its source, the
-// demand and the last push.
-func (d *daemon) zoneOwnerView(inst *tado.Install, zone int) map[string]any {
+// demand, the last push and the observers of the measure.
+func (d *daemon) zoneOwnerView(e *tado.EmuState, inst *tado.Install, zone int) map[string]any {
 	out := map[string]any{"mode": inst.Options.ZoneOwner(zone)}
 	x := d.zoneOwners[zone]
 	if x == nil || !inst.Options.CoordinatorOwns(zone) {
@@ -242,5 +249,13 @@ func (d *daemon) zoneOwnerView(inst *tado.Install, zone int) map[string]any {
 	if !x.pushedAt.IsZero() {
 		out["pushedAt"] = x.pushedAt.UTC().Format(time.RFC3339)
 	}
+	observers := []map[string]any{}
+	for _, o := range e.ZoneObservers(zone) {
+		observers = append(observers, map[string]any{
+			"device": o.Device, "token": o.Token, "seq": o.Seq,
+			"notifiedAt": o.NotifiedAt.UTC().Format(time.RFC3339),
+		})
+	}
+	out["observers"] = observers
 	return out
 }

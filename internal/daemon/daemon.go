@@ -2404,7 +2404,7 @@ func (d *daemon) declaredZones(e *tado.EmuState) []map[string]any {
 		if z.Kind == tado.ZoneHeating {
 			zone["externalTemp"] = d.roomTempView(e, z.Number)
 			zone["autoOffset"] = d.autoOffsetView(inst, z.Number)
-			zone["owner"] = d.zoneOwnerView(inst, z.Number)
+			zone["owner"] = d.zoneOwnerView(e, inst, z.Number)
 		}
 		out = append(out, zone)
 	}

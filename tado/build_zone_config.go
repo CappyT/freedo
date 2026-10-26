@@ -108,6 +108,9 @@ func BuildZoneConfigDocument(in *Install, zone int) (*ZoneConfigDocument, error)
 			tls = append(tls, TLV{Tag: zoneConfigTagCircuit, Val: []byte{byte(*z.Circuit)}})
 		}
 		tls = append(tls,
+			// No query: the thermostat observes this URI and parses a path of
+			// at most 4 and a path and query of at most 9 characters
+			// (coap_uri_parse@0x1d920). With ?lid=N it never sends the GET.
 			TLV{Tag: zoneConfigTagMeasure, Val: []byte(zoneConfigEndpointWire(ownerWire, "p"))},
 			zoneConfigU16(zoneConfigTagKp, pid.Kp),
 			zoneConfigU16(zoneConfigTagKi, pid.Ki),

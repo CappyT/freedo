@@ -101,6 +101,7 @@ func (e *EmuState) SetInstall(in *Install) (added, removed []string, err error) 
 	before, after := declaredEUIs(e.inst), declaredEUIs(in)
 	added, removed = missingFrom(after, before), missingFrom(before, after)
 	poke := openWindowChanges(e.inst, in)
+	owners := ownerChanges(e.inst, in)
 	oldZones := declaredZones(e.inst)
 	newMembers := in.EmuZones()
 	newZones := zoneSets(newMembers)
@@ -130,10 +131,35 @@ func (e *EmuState) SetInstall(in *Install) (added, removed []string, err error) 
 	e.selfEUI = self
 
 	e.rebuildZones(oldZones, newZones)
+	e.pruneZoneObservers()
 	e.refreshLowBattery()
 	written := e.refreshConfigDocuments()
-	e.pokeZoneConfigReaders(poke, written)
+	e.pokeZoneConfigReaders(slices.Concat(poke, owners), owners, written)
 	return added, removed, nil
+}
+
+// ownerChanges returns the heating zones whose owner the new installation
+// moves, either way. The wall thermostat takes the demand from the observe
+// notifications of the owner the zone document names, so it has to read the
+// new document as soon as the members do.
+func ownerChanges(before, after *Install) []int {
+	if before == nil {
+		return nil
+	}
+	var out []int
+	for i := range after.Zones {
+		z := &after.Zones[i]
+		if z.Kind != ZoneHeating {
+			continue
+		}
+		if _, err := before.ZoneByNumber(z.Number); err != nil {
+			continue
+		}
+		if before.Options.ZoneOwner(z.Number) != after.Options.ZoneOwner(z.Number) {
+			out = append(out, z.Number)
+		}
+	}
+	return out
 }
 
 // openWindowChanges returns the zones whose open window detection the new
@@ -166,28 +192,50 @@ func openWindowChanges(before, after *Install) []int {
 // document, unchanged. The capture shows this write after an open window
 // detection change: the device answers 2.04 and then reads d/<serial>/config
 // and h/<home>/z/N/config again, which is how the new zone document reaches it.
-// written names the members this reload already wrote, so no device gets two.
-func (e *EmuState) pokeZoneConfigReaders(zones []int, written map[string]bool) {
+// The heat source of each zone in sources gets the same poke. A wall thermostat
+// drops the document a write carries, so it gets the re-read trigger instead,
+// with the same effect. written names the devices this reload already wrote, so
+// no device gets two.
+func (e *EmuState) pokeZoneConfigReaders(zones, sources []int, written map[string]bool) {
 	for _, zone := range zones {
 		members, err := e.inst.ZoneMembers(zone)
 		if err != nil {
 			continue
 		}
 		for _, dev := range members {
-			wire := dev.WireEUI()
-			key := hexEUI(wire)
-			if written[key] || e.refusesConfigWrite(wire) {
-				continue
-			}
-			id, ok := e.deviceID(wire, e.nodes[key])
-			if !ok {
-				continue
-			}
-			written[key] = true
-			if err := e.EnqueueConfig(key, id, ConfigWrite{Resend: true}); err != nil {
-				e.log.Log("Config", dev.Ref(), "", rsnBuildFail+" d/config poke "+err.Error(), "")
-			}
+			e.pokeConfigReader(dev, written)
 		}
+	}
+	for _, zone := range sources {
+		if dev, err := e.inst.ZoneHeatSource(zone); err == nil {
+			e.pokeConfigReader(dev, written)
+		}
+	}
+}
+
+func (e *EmuState) pokeConfigReader(dev *Device, written map[string]bool) {
+	wire := dev.WireEUI()
+	key := hexEUI(wire)
+	if written[key] {
+		return
+	}
+	if e.refusesConfigWrite(wire) {
+		if e.ConfigRereadQueued(key) {
+			return
+		}
+		written[key] = true
+		if err := e.queueConfigReread(key); err != nil {
+			e.log.Log("Config", dev.Ref(), "", rsnBuildFail+" d/config reread "+err.Error(), "")
+		}
+		return
+	}
+	id, ok := e.deviceID(wire, e.nodes[key])
+	if !ok {
+		return
+	}
+	written[key] = true
+	if err := e.EnqueueConfig(key, id, ConfigWrite{Resend: true}); err != nil {
+		e.log.Log("Config", dev.Ref(), "", rsnBuildFail+" d/config poke "+err.Error(), "")
 	}
 }
 

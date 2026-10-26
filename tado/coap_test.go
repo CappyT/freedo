@@ -1,6 +1,7 @@
 package tado
 
 import (
+	"bytes"
 	"sort"
 	"testing"
 )
@@ -196,4 +197,38 @@ func indexByte(s string, b byte) int {
 		}
 	}
 	return -1
+}
+
+// TestCoAPZeroLengthObserve: the observe registration of the wall thermostat
+// carries option 6 with no value, which is Observe 0. The parser keeps the
+// option, and the serializer emits it empty and with a 24-bit value.
+func TestCoAPZeroLengthObserve(t *testing.T) {
+	raw := []byte{0x42, 0x01, 0x12, 0x34, 0xa1, 0xb2, 0x60, 0x51, 'z', 0x01, 'p'}
+	m, err := parseCoAPMessage(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	obs, ok := m.Option(6)
+	if !ok || len(obs.Val) != 0 || obs.Uint() != 0 {
+		t.Fatalf("Observe = %x present=%t, want present and empty", obs.Val, ok)
+	}
+	if m.Code != "0.01" || m.URI() != "z/p" || !bytes.Equal(m.Token, []byte{0xa1, 0xb2}) {
+		t.Errorf("GET = %s %s tok=%x, want 0.01 z/p tok=a1b2", m.Code, m.URI(), m.Token)
+	}
+	for _, seq := range []uint32{0, 1, 0x1234, 0xffffff} {
+		pkt, err := BuildContextCoAP(CoAPReq{
+			Type: "NON", Code: "2.05", Token: []byte{0xa1}, Options: []CoAPOption{observeOption(seq)},
+			SrcEUI: BridgeEUI, DstEUI: BridgeEUI,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		back, err := parseCoAPCore(pkt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if o, ok := back.Option(6); !ok || o.Uint() != uint64(seq) || len(o.Val) != len(encodeCoAPUint(seq)) {
+			t.Errorf("Observe %d serialized as %x present=%t", seq, o.Val, ok)
+		}
+	}
 }

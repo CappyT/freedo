@@ -584,8 +584,11 @@ type EmuState struct {
 	// addressed to us for those zones. See zone_owner.go.
 	ownedMeasure map[int][]byte
 	ownerSeen    []OwnerRequest
-	circuitRep   map[int]*demandReport
-	obsRoles     map[string][]NodeTableRec
+	// zoneObservers holds the observe registrations of the z/p of each owned
+	// zone, keyed by the wire EUI hex of the requester.
+	zoneObservers map[int]map[string]*zoneObserver
+	circuitRep    map[int]*demandReport
+	obsRoles      map[string][]NodeTableRec
 	// zoneFallback holds the last 6460 of each zone and fallbackEvents the
 	// fallback changes the daemon has not taken yet. See fallback.go.
 	zoneFallback   map[int]*fallbackState
@@ -2619,8 +2622,9 @@ func (e *EmuState) PendingZoneProxies() int { return len(e.zoneProxyPend) }
 // options the captured answer for that resource carries. With nothing cached the
 // answer is the bare 2.05 the bridge sent before. A z/p read with no query from
 // a device of a zone the coordinator owns gets that zone's served measure: the
-// wall thermostat reads the owner's z/p that way, and an empty answer leaves it
-// on the last demand it knew.
+// wall thermostat reads the owner's z/p that way. The answer to the GET that
+// registered an observe (noteOwnerRequest) carries the Observe option: on a
+// 2.05 without it the thermostat parses no body and ends the observation.
 func (e *EmuState) servedZoneGet(m *CoAPMessage, src []byte) ([]byte, []CoAPOption, bool) {
 	if m.Code != "0.01" {
 		return nil, nil, false
@@ -2637,7 +2641,11 @@ func (e *EmuState) servedZoneGet(m *CoAPMessage, src []byte) ([]byte, []CoAPOpti
 	if !ok {
 		return nil, nil, false
 	}
-	return body, zoneReadOptions(resource), true
+	opts := zoneReadOptions(resource)
+	if s := e.zoneObservers[zone][hexEUI(src)]; s != nil && resource == "z/p" && bytes.Equal(s.token, m.Token) {
+		opts = append(opts, observeOption(s.seq))
+	}
+	return body, opts, true
 }
 
 // cachedZoneRead is the body a zone read is answered with from the cache, and

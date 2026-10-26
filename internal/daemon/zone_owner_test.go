@@ -182,6 +182,18 @@ func TestZoneOwnerPushesMeasure(t *testing.T) {
 	if got := hex.EncodeToString(v.([]byte)); got != "4060020708"+"40a0014e"+"0135020000" {
 		t.Errorf("served measure = %s, want the pushed one", got)
 	}
+	// The wall thermostat observes the measure: the next change notifies it.
+	thermostat := wireOf(t, stored, "RU1000000001")
+	if _, err := d.do(func(e *tado.EmuState) (any, error) {
+		e.OnFrame(uplinkFrame(t, stored, "RU1000000001", true, tado.CoAPReq{
+			Type: "CON", Code: "0.01", MID: 0x7a02, Token: []byte{0xa1, 0xb2},
+			Path: []string{"z", "p"}, Options: []tado.CoAPOption{{Num: 6, Val: []byte{}}},
+		}))
+		return nil, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	queued := pending(t, d, thermostat)
 	// Within a minute nothing steps; after it the integrator moves the demand
 	// and a new push goes out.
 	tick()
@@ -197,6 +209,9 @@ func TestZoneOwnerPushesMeasure(t *testing.T) {
 	if got := tado.ZoneMeasureSummary(m.Payload); got != "4060=18.00 40a0=80% 0135=0000" {
 		t.Errorf("second push = %s, want a demand of 80", got)
 	}
+	if n := pending(t, d, thermostat); n != queued+1 {
+		t.Errorf("thermostat pending = %d, want %d: the notification", n, queued+1)
+	}
 	var zones map[string]any
 	if code := getJSON(t, url+"/api/zones", &zones); code != http.StatusOK {
 		t.Fatalf("zones: code=%d", code)
@@ -209,6 +224,11 @@ func TestZoneOwnerPushesMeasure(t *testing.T) {
 	}
 	if owner["mode"] != "coordinator" || owner["demandPct"] != 80.0 || owner["tempC"] != 18.0 || owner["source"] != "external" || owner["pushedAt"] == nil {
 		t.Errorf("owner view = %v", owner)
+	}
+	ru, _ := stored.Resolve("RU1000000001")
+	if obs, _ := owner["observers"].([]any); len(obs) != 1 || obs[0].(map[string]any)["device"] != ru.Short() ||
+		obs[0].(map[string]any)["token"] != "a1b2" || obs[0].(map[string]any)["seq"] != 2.0 {
+		t.Errorf("observers = %v, want the thermostat under a1b2 at 2", owner["observers"])
 	}
 	// A zone the coordinator does not own shows the mode alone.
 	for _, z := range zones["declared"].([]any) {

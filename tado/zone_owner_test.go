@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestZoneConfigDocumentCoordinatorOwner: with the coordinator as owner the
@@ -242,5 +243,139 @@ func TestZoneMeasureReadWithoutZoneID(t *testing.T) {
 	m = read(0x7411)
 	if m.Code != "2.05" || len(m.Payload) != 0 {
 		t.Errorf("answer under the device = %s %x, want a bare 2.05", m.Code, m.Payload)
+	}
+}
+
+// TestZoneMeasureObserve: the wall thermostat registers on the coordinator's
+// z/p with Observe 0 and no query. The answer is the first notification, with
+// Observe and Max-Age. A changed measure, or an unchanged one after
+// zoneNotifyEvery, goes out as a NON 2.05 under the token of the registration,
+// and a newer notification replaces one still queued. A new GET replaces the
+// registration, and a GET without Observe gets no Observe back. The
+// registrations end with the ownership.
+func TestZoneMeasureObserve(t *testing.T) {
+	in := synthInstall(t)
+	in.Options.ZoneOwners = map[int]string{4: ZoneOwnerCoordinator}
+	cfg := in.EmuConfig()
+	now := time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC)
+	cfg.Now = func() time.Time { return now }
+	e := NewEmu(cfg, nil)
+	ru, err := in.Resolve("RU0000000001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := hexEUI(ru.WireEUI())
+	e.SetZoneMeasure(4, ZoneMeasureBody(19.5, 42, 500))
+	get := func(mid uint16, token []byte, opts ...CoAPOption) *CoAPMessage {
+		t.Helper()
+		return synthAnswer(t, in, e.OnFrame(synthZoneUplink(t, in, ru.WireEUI(), CoAPReq{
+			Type: "CON", Code: "0.01", MID: mid, Token: token, Path: []string{"z", "p"}, Options: opts,
+		})), mid)
+	}
+	sent := func() *CoAPMessage {
+		t.Helper()
+		actions, ok, err := e.NextQueuedDownlink(key)
+		if err != nil || !ok {
+			t.Fatalf("dispatch ok=%t err=%v", ok, err)
+		}
+		for _, a := range actions {
+			if df, err := ParseData(in.NetworkKey(), a.Bytes); a.Kind == ActData && err == nil {
+				if app := ParseApp(df.Plaintext); app != nil && app.CoAP != nil {
+					return app.CoAP
+				}
+			}
+		}
+		t.Fatal("no CoAP message went out")
+		return nil
+	}
+	check := func(what string, m *CoAPMessage, typ string, token []byte, seq uint64, body []byte) {
+		t.Helper()
+		if m.Type != typ || m.Code != "2.05" || !bytes.Equal(m.Token, token) || !bytes.Equal(m.Payload, body) {
+			t.Errorf("%s = %s %s tok=%x %x, want %s 2.05 tok=%x %x", what, m.Type, m.Code, m.Token, m.Payload, typ, token, body)
+		}
+		if o, ok := m.Option(6); !ok || o.Uint() != seq {
+			t.Errorf("%s: Observe=%x present=%t, want %d", what, o.Val, ok, seq)
+		}
+		if age, ok := m.Option(14); !ok || decodeCoAPUint(age.Val) != 1800 {
+			t.Errorf("%s: Max-Age=%x present=%t, want 1800", what, age.Val, ok)
+		}
+	}
+	register := CoAPOption{Num: 6, Val: []byte{}}
+	check("registration answer", get(0x7601, []byte{0xa1, 0xb2}, register), "ACK", []byte{0xa1, 0xb2}, 1, ZoneMeasureBody(19.5, 42, 500))
+	if reqs := e.TakeOwnerRequests(); len(reqs) != 1 || !reqs[0].Registered || reqs[0].Token != "a1b2" {
+		t.Errorf("owner requests = %+v, want one registration under a1b2", reqs)
+	}
+	if obs := e.ZoneObservers(4); len(obs) != 1 || obs[0].Device != ru.Short() || obs[0].Token != "a1b2" || obs[0].Seq != 1 {
+		t.Fatalf("observers = %+v, want the thermostat under a1b2 at 1", obs)
+	}
+	if n := e.NotifyZoneObservers(4); len(n) != 0 {
+		t.Errorf("an unchanged measure notified %+v", n)
+	}
+	e.SetZoneMeasure(4, ZoneMeasureBody(19.25, 60, 500))
+	e.NotifyZoneObservers(4)
+	e.SetZoneMeasure(4, ZoneMeasureBody(19, 70, 500))
+	if n := e.NotifyZoneObservers(4); len(n) != 1 || n[0].Seq != 3 || n[0].Target != key {
+		t.Fatalf("notified = %+v, want the thermostat at 3", n)
+	}
+	if p := e.Pending(key); p != 1 {
+		t.Fatalf("pending = %d, want the newer notification alone", p)
+	}
+	check("notification", sent(), "NON", []byte{0xa1, 0xb2}, 3, ZoneMeasureBody(19, 70, 500))
+	now = now.Add(zoneNotifyEvery - time.Second)
+	if n := e.NotifyZoneObservers(4); len(n) != 0 {
+		t.Errorf("an unchanged measure within %s notified %+v", zoneNotifyEvery, n)
+	}
+	now = now.Add(time.Second)
+	if n := e.NotifyZoneObservers(4); len(n) != 1 || n[0].Seq != 4 {
+		t.Errorf("after %s notified = %+v, want the thermostat at 4", zoneNotifyEvery, n)
+	}
+	check("new registration answer", get(0x7602, []byte{0xc3}, register), "ACK", []byte{0xc3}, 5, ZoneMeasureBody(19, 70, 500))
+	if obs := e.ZoneObservers(4); len(obs) != 1 || obs[0].Token != "c3" || obs[0].Seq != 5 {
+		t.Errorf("observers = %+v, want one under c3 at 5", obs)
+	}
+	plain := get(0x7603, []byte{0xd4})
+	if _, ok := plain.Option(6); ok || plain.Code != "2.05" {
+		t.Errorf("plain GET answer = %s with Observe, want a 2.05 without it", plain.Code)
+	}
+	if age, ok := plain.Option(14); !ok || decodeCoAPUint(age.Val) != 1800 {
+		t.Errorf("plain GET: Max-Age=%x present=%t, want 1800", age.Val, ok)
+	}
+	if _, _, err := e.SetInstall(synthInstall(t)); err != nil {
+		t.Fatal(err)
+	}
+	if obs := e.ZoneObservers(4); len(obs) != 0 {
+		t.Errorf("observers after the owner went back to the device = %+v", obs)
+	}
+}
+
+// TestOwnerChangeRereadsHeatSource: a change of the owner, either way, sends
+// the wall thermostat that is the heat source of the zone its re-read trigger,
+// so it reads the new zone document within seconds. An unchanged reload sends
+// nothing.
+func TestOwnerChangeRereadsHeatSource(t *testing.T) {
+	in := synthInstall(t)
+	e := NewEmu(in.EmuConfig(), nil)
+	ru, err := in.Resolve("RU0000000001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	owned := synthInstall(t)
+	owned.Options.ZoneOwners = map[int]string{4: ZoneOwnerCoordinator}
+	for _, step := range []struct {
+		what string
+		in   *Install
+		want int
+	}{
+		{"to the coordinator", owned, 1},
+		{"unchanged", owned, 0},
+		{"back to the device", synthInstall(t), 1},
+	} {
+		if _, _, err := e.SetInstall(step.in); err != nil {
+			t.Fatal(err)
+		}
+		if _, rereads := rereadQueue(e, ru.WireEUI()); rereads != step.want {
+			t.Errorf("%s: %d re-read triggers, want %d", step.what, rereads, step.want)
+		}
+		drainQueue(t, e, ru.WireEUI())
 	}
 }

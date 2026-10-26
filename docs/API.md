@@ -681,19 +681,26 @@ With the daemon as owner:
   boiler on it.
 - The daemon answers `GET z/p?lid=N` of the zone with its own measure, tags `4060`, `40a0` and
   `0135`, and pushes it to every member as `PUT z/p?lid=N` on the zone plane once a minute,
-  under the Max-Age of 1800 s the measure carries. The wall thermostat reads the owner's `z/p`
-  with no query about every two minutes, as it would a valve that answers for its one zone: the
-  daemon answers it with the measure of the owned zone the thermostat serves, the one with the
-  highest demand when there are several. An empty answer leaves the thermostat on the last
-  demand it knew: on the plant it held 100 % for 25 minutes that way.
+  under the Max-Age of 1800 s the measure carries. The wall thermostat observes the owner's
+  `z/p` with no query and takes the demand from the observe notifications alone: the daemon
+  answers it with the measure of the owned zone the thermostat serves, the one with the highest
+  demand when there are several. The answer to a GET with Observe 0 carries the Observe option
+  and registers the thermostat. The daemon then sends it a NON `2.05` notification under the
+  token of the registration each time the measure changes, and at least every 10 minutes. An
+  answer without the Observe option ends the observation: the zone goes to its fallback and the
+  thermostat GETs again every two minutes. A change of `owner` sends the thermostat its
+  `d/config` re-read trigger, so it reads the new zone document within seconds.
 - The zone takes `POST /api/zones/{n}/temperature` with no other option. `offset_mode`
   `setpoint` and `auto_offset` are refused on an owned zone, and the owner is refused while
   the zone holds one of them: the valves follow our measure, so a correction of their own
   sensor has nothing left to correct.
 - `declared[].owner` in `GET /api/zones` shows `mode`, and for an owned zone `tempC`, `source`
-  (`external` or `device`), `demandPct` and `pushedAt`.
+  (`external` or `device`), `demandPct`, `pushedAt` and `observers`: one entry per observe
+  registration, with `device`, `token` (hex), `seq` (the last Observe value sent) and
+  `notifiedAt`.
 - The daemon logs every zone-plane request a member addresses to it for an owned zone, with
-  the method, the URI, whether it carries the observe option and the body of a measure.
+  the method, the URI, whether it carries the observe option and the body of a measure. It logs
+  one line per observe registration and one per notification.
 
 Seen on a plant, one valve zone. An elected valve reads the new zone document within minutes
 of the PATCH, sends `PUT z/p?lid=N` to the coordinator twice a minute, once with its own sensor
@@ -702,8 +709,7 @@ answers each push with `2.05` and `62a0=00`. Its demand stays its own: the match
 pushed demand in a first run was two equal controllers started together. With the plain role
 `0x05` the valve asks the coordinator `GET z/s?lid=N` and `GET z/p?lid=N`, stops sending its
 own measures and echoes the pushed measure alone, demand included. Open: a zone with two valves,
-a zone the wall thermostat owns, and whether the thermostat enters its frost fallback without
-observe notifications over a long run.
+a zone the wall thermostat owns, and the thermostat on the observe notifications.
 
 ### External room temperature
 

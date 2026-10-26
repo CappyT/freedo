@@ -34,18 +34,47 @@ not in `z/s`.
 The chain:
 
 - The valve computes `40a0`.
-- The valve publishes it on `h/<home>/z/N/act`. A 75-byte `2.05` relays it to
-  the wall thermostat.
+- The valve publishes it on `h/<home>/z/N/act`. The zone owner also sends it to
+  the wall thermostat in a 75-byte `2.05`: the notification of the thermostat's
+  observe of the owner's `z/p`.
 - The thermostat aggregates it into `h/<home>/c/1/act` (`4080` circuit demand,
   `2090` heat active).
 - The thermostat pushes `z/cpe?lid=N` with `4160` (heat percent, the same
   circuit value for all zones).
 - The thermostat drives the boiler and reports `h/<home>/hvac/mon`.
 
-The thermostat also reads the zone owner's `z/p` itself, with no query, about every two
-minutes (plant, 2026-10-26, coordinator as owner of one zone). On an empty `2.05` it keeps
-the last demand it knew: it held 100 % for 25 minutes after the elected valve lost its
-election and nobody answered with a measure.
+The thermostat takes the demand of a zone from the owner alone. `zone_to_circuit_demand_update`
+(thermostat 0x2debc) aggregates the circuit demand from the `40a0` of the owner's `z/p`
+observe notifications, and from a member's `PUT z/p` when the thermostat is itself the
+owner. It never consumes a member's `h/<home>/z/N/act`. The observe works this way:
+
+- `coap_observe_manager_fsm`@0x28df4 sends a CON GET of the URI in tag `6040` of the zone
+  document, with a fresh token of up to 8 bytes and an empty Observe option (option 6, value
+  0: register).
+- `coap_uri_parse`@0x1d920 takes a path of at most 4 characters (`/z/p`) and a path and
+  query of at most 9. A URI with `?lid=N` fails to parse, and the GET never goes out. With
+  the coordinator as owner, freedo writes its `z/p` with no query in `6040`.
+- `coap_observe_notify_handler`@0x29048 takes a 2.xx that carries the Observe option as a
+  notification. It parses the body, sets the deadline of the slot to the Max-Age plus 15 s
+  (60 s with no Max-Age), and the zone leaves its fallback.
+- A 2.xx with no Observe option ends the observation. The handler does not parse the body,
+  the zone goes to its fallback, hold or frost (`zone_mode_validate`@0x31498,
+  `zone_demand_apply`@0x316cc), and the thermostat GETs again about every 121 s, with no
+  end. On the plant (2026-10-26, coordinator as owner of one zone, plain `2.05` answers) the
+  GET came back every two minutes, and the thermostat held 100 % for 25 minutes.
+- When the deadline lapses, the thermostat only GETs again under a new token. The demand it
+  stored stays until a new notification arrives.
+- The thermostat reads `h/<home>/z/N/config` again, a conditional GET with the ETag, after
+  each of its `d/config` polls: hourly, or within seconds after a write to its own
+  `d/config`. It accepts the coordinator as owner.
+
+As owner, freedo answers the registering GET with an ACK `2.05` that carries Observe (a
+sequence number above 0) and Max-Age 1800, and registers the requester and its token. A new
+registration of the same requester replaces the old one. After that it sends a NON `2.05`
+under that token, with the next sequence number, Max-Age 1800 and the measure, each time the
+measure changes and at least every 10 minutes. A GET with no Observe option gets the plain
+`2.05` with Max-Age 1800. A change of the owner sends the thermostat that is the heat source
+of the zone its re-read trigger (`TestZoneMeasureObserve`, `TestOwnerChangeRereadsHeatSource`).
 
 Tag `2040` never appears in these frames.
 
@@ -1405,7 +1434,8 @@ Heat demand chain, detail:
 
 - A valve publishes `40a0` on two paths. One is `PUT h/<home>/z/N/act` with `40a0` alone.
   The other is a `2.05` message of 75 bytes with `4060` (zone temperature), `40a0` and
-  `0135` (humidity). The bridge relays that message to the wall thermostat as 76 bytes.
+  `0135` (humidity): the `z/p` observe notification of the owner. The bridge relays that
+  message to the wall thermostat as 76 bytes.
   Every zone device does this.
 - The wall thermostat publishes `PUT h/<home>/c/N/act` with `4040`, `4000`, `4080` (circuit
   demand) and `2090` (heat active). `4000` and `4040` are the target and the temperature of the
