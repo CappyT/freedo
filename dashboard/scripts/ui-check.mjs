@@ -667,11 +667,11 @@ try {
 	await tab.waitFor(`document.querySelector(${JSON.stringify(opt(3, 'input[type=number]'))})`);
 	await typeInto(opt(3, 'input[type=number]'), '90');
 	await click(opt(4, 'input[type=checkbox]'));
-	await choose(opt(5, 'select'), 'setpoint');
+	await choose('[data-testid=correction]', 'shift');
 	check(
-		/no motor stroke/.test(await tab.evaluate(`document.querySelector('[data-testid=mode-hint]').textContent`)) &&
-			(await tab.evaluate(`document.querySelector(${JSON.stringify(opt(5, 'input[type=checkbox]'))}).disabled`)),
-		'the mode Setpoint shift says it costs no motor stroke and closes the valve calibration'
+		/no motor stroke/.test(await tab.evaluate(`document.querySelector('[data-testid=correction-hint]').textContent`)) &&
+			!(await tab.evaluate(`!!document.querySelector('[data-testid=mode-hint]')`)),
+		'the continuous shift says it costs no motor stroke and hides the offset mode of the valve'
 	);
 	await typeInto(opt(5, '.pair .input.num'), '-0.7');
 	await sleep(6500);

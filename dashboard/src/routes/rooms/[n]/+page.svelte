@@ -12,12 +12,15 @@
 	import {
 		AWAY_C,
 		CALIBRATION_HOURS,
+		CORRECTIONS,
 		END_MINUTES,
 		WINDOW_MINUTES,
 		optionIssues,
 		optionsOf,
 		optionsPatch,
 		parseOffset,
+		withCorrection,
+		type Correction,
 		type RoomOptions
 	} from '#lib/roomoptions.ts';
 	import { api } from '#lib/session.ts';
@@ -92,7 +95,7 @@
 
 	const issues = $derived(options ? optionIssues(options, offsetText) : []);
 	// The valve calibration writes the offset itself while it is on, so the field is closed then.
-	const offsetClosed = $derived(zone?.auto_offset === true || options?.calibration === true);
+	const offsetClosed = $derived(zone?.auto_offset === true || options?.correction === 'calibration');
 
 	function showOptions() {
 		options = zone?.kind === 'heating' ? optionsOf(zone) : null;
@@ -446,18 +449,16 @@
 						<legend>{t('opt.correction')}</legend>
 						<div class="pair">
 							<label class="field">
-								<span>{t('opt.offsetMode')}</span>
+								<span>{t('opt.correction.method')}</span>
 								<select
 									class="input"
-									bind:value={options.offsetMode}
-									onchange={() => {
-										// The daemon refuses the valve calibration in mode setpoint.
-										if (options && options.offsetMode === 'setpoint') options.calibration = false;
+									value={options.correction}
+									onchange={(e) => {
+										if (options) options = withCorrection(options, e.currentTarget.value as Correction);
 									}}
+									data-testid="correction"
 								>
-									<option value="config">{t('opt.mode.config')}</option>
-									<option value="dbg2">{t('opt.mode.dbg2')}</option>
-									<option value="setpoint">{t('opt.mode.setpoint')}</option>
+									{#each CORRECTIONS as c (c)}<option value={c}>{t(`opt.correction.${c}`)}</option>{/each}
 								</select>
 							</label>
 							<label class="field">
@@ -465,20 +466,26 @@
 								<input class="input num" inputmode="decimal" autocomplete="off" bind:value={offsetText} disabled={offsetClosed} aria-invalid={issues.includes('offset')} />
 							</label>
 						</div>
-						<p class="note" data-testid="mode-hint">{t(`opt.mode.${options.offsetMode}.hint`)}</p>
+						<p class="note" data-testid="correction-hint">{t(`opt.correction.${options.correction}.hint`)}</p>
 						<p class="note">{offsetClosed ? t('opt.offset.closed') : options.offsetMode === 'setpoint' ? t('opt.offset.hint') : t('opt.offset.hint.valve')}</p>
-						<div class="pair">
-							<label class="check">
-								<input type="checkbox" bind:checked={options.calibration} disabled={options.offsetMode === 'setpoint'} />{t('opt.calibration')}
-							</label>
-							{#if options.calibration}
+						{#if options.correction !== 'shift'}
+							<div class="pair">
 								<label class="field">
-									<span>{t('opt.calibrationHours')}</span>
-									<input class="input num" type="number" inputmode="numeric" min={CALIBRATION_HOURS.min} max={CALIBRATION_HOURS.max} step="1" bind:value={options.calibrationHours} aria-invalid={issues.includes('calibrationHours')} />
+									<span>{t('opt.offsetMode')}</span>
+									<select class="input" bind:value={options.offsetMode}>
+										<option value="config">{t('opt.mode.config')}</option>
+										<option value="dbg2">{t('opt.mode.dbg2')}</option>
+									</select>
 								</label>
-							{/if}
-						</div>
-						<p class="note">{t('opt.calibration.hint')}</p>
+								{#if options.correction === 'calibration'}
+									<label class="field">
+										<span>{t('opt.calibrationHours')}</span>
+										<input class="input num" type="number" inputmode="numeric" min={CALIBRATION_HOURS.min} max={CALIBRATION_HOURS.max} step="1" bind:value={options.calibrationHours} aria-invalid={issues.includes('calibrationHours')} />
+									</label>
+								{/if}
+							</div>
+							<p class="note" data-testid="mode-hint">{t(`opt.mode.${options.offsetMode === 'dbg2' ? 'dbg2' : 'config'}.hint`)}</p>
+						{/if}
 					</fieldset>
 
 					{#if issues.length > 0}

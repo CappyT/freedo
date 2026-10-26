@@ -388,8 +388,13 @@ export interface InstallZone {
 	setpoint_offset_c: number | null;
 	auto_offset: boolean | null;
 	auto_offset_interval_sec: number | null;
+	/** Null on the hot water zone. */
+	owner: ZoneOwner | null;
 	away_temperature_c: number | null;
 }
+
+/** Who owns a heating zone: the elected demand reporter, or freedo on the room temperature of Home Assistant. */
+export type ZoneOwner = 'device' | 'coordinator';
 
 /** The option fields of PATCH /api/install/zones/{n} that the dashboard writes. */
 export interface ZoneOptionsPatch {
@@ -401,6 +406,7 @@ export interface ZoneOptionsPatch {
 	offset_mode?: 'config' | 'dbg2' | 'setpoint';
 	auto_offset?: boolean;
 	auto_offset_interval_sec?: number;
+	owner?: ZoneOwner;
 	away_temperature_c?: number;
 }
 
