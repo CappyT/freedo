@@ -71,7 +71,7 @@
               "correction": "Correzione della temperatura ambiente"
             },
             "data_description": {
-              "correction": "Spostamento continuo sposta lentamente i setpoint secondo la lettura. È il metodo consigliato. Calibrazione della valvola scrive l'offset della valvola al massimo una volta per intervallo, e ogni scrittura muove il motore una volta."
+              "correction": "Spostamento continuo sposta lentamente i setpoint secondo la lettura. È il metodo consigliato. Calibrazione della valvola scrive l'offset della valvola al massimo una volta per intervallo, e ogni scrittura muove il motore una volta. Il coordinatore misura la stanza esegue la regolazione sulla sorgente di temperatura ambiente, e le valvole seguono la richiesta di freedo."
             }
           }
         }
@@ -302,7 +302,8 @@
         "state": {
           "none": "Nessuna",
           "continuous_shift": "Spostamento continuo",
-          "valve_calibration": "Calibrazione della valvola"
+          "valve_calibration": "Calibrazione della valvola",
+          "coordinator_measure": "Il coordinatore misura la stanza"
         }
       },
       "temperature_source": {
@@ -487,7 +488,8 @@
       "options": {
         "none": "Nessuna",
         "continuous_shift": "Spostamento continuo",
-        "valve_calibration": "Calibrazione della valvola"
+        "valve_calibration": "Calibrazione della valvola",
+        "coordinator_measure": "Il coordinatore misura la stanza"
       }
     },
     "overlay_hvac_mode": {

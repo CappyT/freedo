@@ -81,7 +81,13 @@ ROOM_TEMP_STATES = ("active", "no_correction", "no_reading", "stale")
 CORRECTION_NONE = "none"
 CORRECTION_SHIFT = "continuous_shift"
 CORRECTION_CALIBRATION = "valve_calibration"
-CORRECTIONS = (CORRECTION_NONE, CORRECTION_SHIFT, CORRECTION_CALIBRATION)
+CORRECTION_COORDINATOR = "coordinator_measure"
+CORRECTIONS = (
+    CORRECTION_NONE,
+    CORRECTION_SHIFT,
+    CORRECTION_CALIBRATION,
+    CORRECTION_COORDINATOR,
+)
 # The offset mode a zone takes when it leaves setpoint: the daemon default.
 OFFSET_MODE_DEFAULT = "config"
 
@@ -583,23 +589,39 @@ def zone_takes_reading(data: FreedoData, zone: Zone) -> bool:
 
 
 def zone_correction(data: FreedoData, zone: Zone) -> str | None:
-    """The correction method of the zone from its offset_mode and auto_offset,
-    None when the daemon serves no offset mode for it."""
+    """The correction method of the zone from its owner, offset_mode and
+    auto_offset, None when the daemon serves no offset mode for it."""
     mode = zone_offset_mode(data, zone)
     if mode not in OFFSET_MODES:
         return None
+    if zone_owned(data, zone):
+        return CORRECTION_COORDINATOR
     if zone_auto_offset(data, zone):
         return CORRECTION_CALIBRATION
     return CORRECTION_SHIFT if mode == OFFSET_MODE_SETPOINT else CORRECTION_NONE
 
 
-def correction_patch(mode: str | None, auto: bool, method: str) -> dict[str, Any]:
+def correction_patch(
+    mode: str | None, auto: bool, method: str, owned: bool = False
+) -> dict[str, Any]:
     """The PATCH /api/install/zones/{n} fields that move a zone from offset_mode
-    mode and auto_offset auto to the correction method, empty when it holds it.
-    The daemon refuses offset_mode setpoint while auto_offset is on, and
-    auto_offset in mode setpoint, against the values the request leaves. So one
-    request carries both fields when both change."""
+    mode, auto_offset auto and owner coordinator (owned) to the correction
+    method, empty when it holds it. The daemon refuses offset_mode setpoint
+    while auto_offset is on, and auto_offset in mode setpoint, against the
+    values the request leaves. It also refuses owner coordinator together with
+    either, and either on an owned zone. So one request carries every field
+    that changes."""
     fields: dict[str, Any] = {}
+    if method == CORRECTION_COORDINATOR:
+        if not owned:
+            fields["owner"] = "coordinator"
+            if auto:
+                fields["auto_offset"] = False
+            if mode == OFFSET_MODE_SETPOINT:
+                fields["offset_mode"] = OFFSET_MODE_DEFAULT
+        return fields
+    if owned:
+        fields["owner"] = "device"
     if method == CORRECTION_SHIFT:
         if auto:
             fields["auto_offset"] = False

@@ -26,6 +26,7 @@ from .model import (
     zone_auto_offset,
     zone_correction,
     zone_offset_mode,
+    zone_owned,
     zone_setting,
 )
 from .rooms import async_set_source, current_source, source_choices, zone_area
@@ -171,7 +172,8 @@ class ZoneOffsetModeSelect(FreedoZoneSettingEntity, SelectEntity):
 class RoomTemperatureCorrectionSelect(FreedoZoneSettingEntity, SelectEntity):
     """How the zone corrects its regulation with the room temperature: none,
     a continuous shift of the setpoints (offset_mode setpoint), or a
-    calibration of the valve offset (auto_offset on, offset_mode config). It
+    calibration of the valve offset (auto_offset on, offset_mode config), or
+    the coordinator as the owner of the zone (owner coordinator). It
     replaces, for the user, the pair select Temperature offset mode and switch
     Automatic correction, which exclude each other. One PATCH carries both
     fields, which the daemon checks against the values the request leaves, so
@@ -199,7 +201,12 @@ class RoomTemperatureCorrectionSelect(FreedoZoneSettingEntity, SelectEntity):
         if zone is None:
             return
         data = self.coordinator.data
-        fields = correction_patch(zone_offset_mode(data, zone), zone_auto_offset(data, zone), option)
+        fields = correction_patch(
+            zone_offset_mode(data, zone),
+            zone_auto_offset(data, zone),
+            option,
+            zone_owned(data, zone),
+        )
         if fields:
             await self._write(**fields)
             await self.coordinator.async_request_refresh()

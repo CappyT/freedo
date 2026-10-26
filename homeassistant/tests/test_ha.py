@@ -2740,7 +2740,7 @@ async def test_correction_select_options_and_current(hass, client):
     living = entity_id(hass, entry, "select", LIVING_CORRECTION)
     bedroom = entity_id(hass, entry, "select", BEDROOM_CORRECTION)
     assert hass.states.get(living).attributes["options"] == [
-        "none", "continuous_shift", "valve_calibration",
+        "none", "continuous_shift", "valve_calibration", "coordinator_measure",
     ]
     assert er.async_get(hass).async_get(living).entity_category == "config"
     # Zone 1 is in mode setpoint, zone 2 in mode config with auto_offset on.

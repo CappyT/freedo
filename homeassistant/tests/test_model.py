@@ -9,6 +9,7 @@ import pytest
 
 from model import (
     CORRECTION_CALIBRATION,
+    CORRECTION_COORDINATOR,
     CORRECTION_NONE,
     CORRECTION_SHIFT,
     boiler_energy,
@@ -884,27 +885,77 @@ def test_zone_correction(mode, auto, want):
     assert zone_correction(d, d.zones[2]) == want
 
 
+def test_zone_correction_coordinator():
+    install = copy.deepcopy(INSTALL_ZONES)
+    install["zones"][1].update(offset_mode="config", auto_offset=False, owner="coordinator")
+    d = parse(HEALTH, ZONES, NODES, BOILER, HOME, install)
+    assert zone_correction(d, d.zones[2]) == CORRECTION_COORDINATOR
+    install["zones"][1]["owner"] = "device"
+    d = parse(HEALTH, ZONES, NODES, BOILER, HOME, install)
+    assert zone_correction(d, d.zones[2]) == CORRECTION_NONE
+
+
+@pytest.mark.parametrize(
+    ("mode", "auto", "owned", "method", "want"),
+    [
+        ("config", False, False, CORRECTION_COORDINATOR, {"owner": "coordinator"}),
+        ("dbg2", False, False, CORRECTION_COORDINATOR, {"owner": "coordinator"}),
+        (
+            "setpoint", False, False, CORRECTION_COORDINATOR,
+            {"owner": "coordinator", "offset_mode": "config"},
+        ),
+        (
+            "config", True, False, CORRECTION_COORDINATOR,
+            {"owner": "coordinator", "auto_offset": False},
+        ),
+        ("config", False, True, CORRECTION_COORDINATOR, {}),
+        ("config", False, True, CORRECTION_NONE, {"owner": "device"}),
+        (
+            "config", False, True, CORRECTION_SHIFT,
+            {"owner": "device", "offset_mode": "setpoint"},
+        ),
+        (
+            "config", False, True, CORRECTION_CALIBRATION,
+            {"owner": "device", "auto_offset": True},
+        ),
+    ],
+)
+def test_correction_patch_coordinator(mode, auto, owned, method, want):
+    assert correction_patch(mode, auto, method, owned) == want
+
+
 def test_correction_patch_leaves_no_state_the_daemon_refuses():
     # The daemon refuses offset_mode setpoint with auto_offset on, against the
     # values a request leaves. Every move ends on the method and passes.
-    methods = (CORRECTION_NONE, CORRECTION_SHIFT, CORRECTION_CALIBRATION)
+    methods = (CORRECTION_NONE, CORRECTION_SHIFT, CORRECTION_CALIBRATION, CORRECTION_COORDINATOR)
     for mode in ("config", "dbg2", "setpoint"):
         for auto in (False, True):
             if mode == "setpoint" and auto:
                 continue
-            for method in methods:
-                fields = correction_patch(mode, auto, method)
-                new_mode = fields.get("offset_mode", mode)
-                new_auto = fields.get("auto_offset", auto)
-                assert not (new_mode == "setpoint" and new_auto), (mode, auto, method)
-                if new_auto:
-                    reached = CORRECTION_CALIBRATION
-                else:
-                    reached = CORRECTION_SHIFT if new_mode == "setpoint" else CORRECTION_NONE
-                assert reached == method, (mode, auto, method)
+            for owned in (False, True):
+                if owned and (auto or mode == "setpoint"):
+                    continue
+                for method in methods:
+                    check(mode, auto, owned, method)
     assert correction_patch("setpoint", False, CORRECTION_SHIFT) == {}
     with pytest.raises(ValueError):
         correction_patch("config", False, "cloud")
+
+
+def check(mode, auto, owned, method):
+    fields = correction_patch(mode, auto, method, owned)
+    new_mode = fields.get("offset_mode", mode)
+    new_auto = fields.get("auto_offset", auto)
+    new_owned = fields.get("owner", "coordinator" if owned else "device") == "coordinator"
+    assert not (new_mode == "setpoint" and new_auto), (mode, auto, owned, method)
+    assert not (new_owned and (new_auto or new_mode == "setpoint")), (mode, auto, owned, method)
+    if new_owned:
+        reached = CORRECTION_COORDINATOR
+    elif new_auto:
+        reached = CORRECTION_CALIBRATION
+    else:
+        reached = CORRECTION_SHIFT if new_mode == "setpoint" else CORRECTION_NONE
+    assert reached == method, (mode, auto, owned, method)
 
 
 def test_device_zones():

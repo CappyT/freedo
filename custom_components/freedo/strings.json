@@ -71,7 +71,7 @@
               "correction": "Room temperature correction"
             },
             "data_description": {
-              "correction": "Continuous shift moves the setpoints slowly from the reading. It is the recommended method. Valve calibration writes the valve offset at most once per interval, and each write moves the motor once."
+              "correction": "Continuous shift moves the setpoints slowly from the reading. It is the recommended method. Valve calibration writes the valve offset at most once per interval, and each write moves the motor once. Coordinator measures the room runs the control on the room temperature source, and the valves follow the demand of freedo."
             }
           }
         }
@@ -230,7 +230,8 @@
         "state": {
           "none": "None",
           "continuous_shift": "Continuous shift",
-          "valve_calibration": "Valve calibration"
+          "valve_calibration": "Valve calibration",
+          "coordinator_measure": "Coordinator measures the room"
         }
       },
       "temperature_source": {
@@ -395,7 +396,8 @@
       "options": {
         "none": "None",
         "continuous_shift": "Continuous shift",
-        "valve_calibration": "Valve calibration"
+        "valve_calibration": "Valve calibration",
+        "coordinator_measure": "Coordinator measures the room"
       }
     },
     "overlay_hvac_mode": {

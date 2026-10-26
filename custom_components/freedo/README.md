@@ -88,7 +88,7 @@ The integration and the options of the add-on have English, Italian, German and 
 | button Calibrate motor | valve | `POST /api/nodes/{id}/calibrate` |
 | sensor Calibration | valve | `/api/nodes` `Telemetry` `calib_state` and `calib_error` |
 | switch Early start, switch Open window detection, number Window time | heating zone | `/api/install/zones`; writes `PATCH /api/install/zones/{n}` |
-| select Room temperature correction | heating zone | `/api/install/zones` `offset_mode`, `auto_offset`; writes `PATCH /api/install/zones/{n}` |
+| select Room temperature correction | heating zone | `/api/install/zones` `offset_mode`, `auto_offset`, `owner`; writes `PATCH /api/install/zones/{n}` |
 | number Calibration | heating zone | `/api/install/zones` `auto_offset`, `auto_offset_interval_sec`; writes `PATCH /api/install/zones/{n}` |
 | switch Valve calibration (diagnostic, disabled by default) | heating zone | `/api/zones` `declared[].autoOffset`, `/api/install/zones` `auto_offset`; writes `PATCH /api/install/zones/{n}` |
 | select Device change end rule, number Change timer | heating zone | `/api/install/zones` `device_overlay_end`, `device_overlay_end_sec`; writes `PATCH /api/install/zones/{n}` |
@@ -378,6 +378,13 @@ daemon answers. They exist only while the daemon holds an installation.
     `config`): the daemon writes the valve offset from the reading, at most once
     per Number Calibration. Each write makes the valve home
     its motor.
+  - Coordinator measures the room (`coordinator_measure`, `owner` coordinator):
+    freedo owns the zone, runs the control on the room temperature source of the
+    zone, and the valves follow its demand. Their own sensor, warmed by the
+    radiator, no longer closes them early. It needs a room temperature source
+    on the zone. The daemon refuses it with Continuous shift or Valve
+    calibration on, so the select turns them off in the same request. The
+    hot water zone has no select.
   - The select writes `offset_mode` and `auto_offset` in one
     `PATCH /api/install/zones/{n}`. The daemon checks the two fields against the
     values the request leaves, so the move between the shift and the calibration
@@ -902,6 +909,8 @@ target on the reading of that sensor.
     The correction is tag `0140` on the valve, and in mode `config` each write
     makes the valve home its motor, so the interval bounds the battery and the
     noise.
+  - Coordinator measures the room (`owner` coordinator) runs the control on
+    the reading, and the valves follow the demand of freedo.
 - A new sensor sets Continuous shift on a zone with the correction None, in
   the page of the room and in select Temperature source. With the correction None the
   daemon answers 409 to a reading, because the other modes write tag `0140` to

@@ -44,6 +44,7 @@ from .model import (
     zone_auto_offset,
     zone_correction,
     zone_offset_mode,
+    zone_owned,
 )
 from .rooms import (
     SOURCE_SENSOR,
@@ -446,7 +447,10 @@ class FreedoOptionsFlow(OptionsFlowWithReload):
                 ):
                     method = CORRECTION_SHIFT
                 fields = correction_patch(
-                    zone_offset_mode(data, zone), zone_auto_offset(data, zone), method
+                    zone_offset_mode(data, zone),
+                    zone_auto_offset(data, zone),
+                    method,
+                    zone_owned(data, zone),
                 )
                 if fields:
                     result = await runtime.client.patch_install_zone(zone.number, **fields)

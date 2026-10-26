@@ -71,7 +71,7 @@
               "correction": "Correction de la température ambiante"
             },
             "data_description": {
-              "correction": "Décalage continu déplace lentement les consignes selon la mesure. C'est la méthode recommandée. Calibrage de la vanne écrit le décalage de la vanne au plus une fois par intervalle, et chaque écriture déplace le moteur une fois."
+              "correction": "Décalage continu déplace lentement les consignes selon la mesure. C'est la méthode recommandée. Calibrage de la vanne écrit le décalage de la vanne au plus une fois par intervalle, et chaque écriture déplace le moteur une fois. Le coordinateur mesure la pièce exécute la régulation sur la source de température ambiante, et les vannes suivent la demande de freedo."
             }
           }
         }
@@ -302,7 +302,8 @@
         "state": {
           "none": "Aucune",
           "continuous_shift": "Décalage continu",
-          "valve_calibration": "Calibrage de la vanne"
+          "valve_calibration": "Calibrage de la vanne",
+          "coordinator_measure": "Le coordinateur mesure la pièce"
         }
       },
       "temperature_source": {
@@ -487,7 +488,8 @@
       "options": {
         "none": "Aucune",
         "continuous_shift": "Décalage continu",
-        "valve_calibration": "Calibrage de la vanne"
+        "valve_calibration": "Calibrage de la vanne",
+        "coordinator_measure": "Le coordinateur mesure la pièce"
       }
     },
     "overlay_hvac_mode": {

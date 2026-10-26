@@ -71,7 +71,7 @@
               "correction": "Raumtemperaturkorrektur"
             },
             "data_description": {
-              "correction": "Kontinuierliche Verschiebung verschiebt die Sollwerte langsam nach dem Messwert. Das ist die empfohlene Methode. Ventilkalibrierung schreibt den Ventiloffset höchstens einmal pro Intervall, und jeder Schreibvorgang bewegt den Motor einmal."
+              "correction": "Kontinuierliche Verschiebung verschiebt die Sollwerte langsam nach dem Messwert. Das ist die empfohlene Methode. Ventilkalibrierung schreibt den Ventiloffset höchstens einmal pro Intervall, und jeder Schreibvorgang bewegt den Motor einmal. Koordinator misst den Raum führt die Regelung mit der Raumtemperaturquelle aus, und die Ventile folgen dem Bedarf von freedo."
             }
           }
         }
@@ -302,7 +302,8 @@
         "state": {
           "none": "Keine",
           "continuous_shift": "Kontinuierliche Verschiebung",
-          "valve_calibration": "Ventilkalibrierung"
+          "valve_calibration": "Ventilkalibrierung",
+          "coordinator_measure": "Koordinator misst den Raum"
         }
       },
       "temperature_source": {
@@ -487,7 +488,8 @@
       "options": {
         "none": "Keine",
         "continuous_shift": "Kontinuierliche Verschiebung",
-        "valve_calibration": "Ventilkalibrierung"
+        "valve_calibration": "Ventilkalibrierung",
+        "coordinator_measure": "Koordinator misst den Raum"
       }
     },
     "overlay_hvac_mode": {
