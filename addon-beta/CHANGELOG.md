@@ -147,3 +147,13 @@ pre-release has its notes here.
   minutes after an add-on update.
 - Run on a real plant with 0.11.0-beta.6: the room settings and the Home Assistant select move a
   room between the correction methods in one request.
+
+## 0.11.0-beta.8
+
+- Daemon: the room temperature readings survive a restart of the daemon while they are fresh, so
+  the controller of an owned zone runs at its first step after the start. On the plant with
+  0.11.0-beta.7 the restored observe registration waited 10 minutes for the first valve report,
+  because Home Assistant sends a reading again only on a change of the sensor or every 15 minutes.
+- Run on a real plant with 0.11.0-beta.7: after a restart of the daemon the wall thermostat kept
+  its observe registration, and the first notification under the stored token and the next
+  sequence was taken.
