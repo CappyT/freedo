@@ -173,8 +173,10 @@ type daemon struct {
 	autoOffsets map[int]*autoOffset
 	autoUnsaved bool
 	// zoneOwners holds the controller of each zone the coordinator owns. It
-	// belongs to the engine goroutine; see zone_owner.go.
-	zoneOwners map[int]*zoneOwner
+	// belongs to the engine goroutine; see zone_owner.go. zoneObsSaved holds
+	// the observe registrations last stored.
+	zoneOwners   map[int]*zoneOwner
+	zoneObsSaved []storedZoneObserver
 	// outdoor is the last outdoor temperature pushed, flowChanged when a curve
 	// or the adaptation last changed each circuit's flow limit, flowEpoch the
 	// engine start and flowAdapt the adaptation of each circuit. All four
@@ -350,6 +352,7 @@ func (d *daemon) setInstall(in *tado.Install) (added, removed []string, err erro
 		d.dropRoomTemps(in)
 		d.dropAutoOffsets(in)
 		d.dropZoneOwners(d.emu, in)
+		d.saveZoneObservers(d.emu, in)
 	}
 	return added, removed, nil
 }
@@ -2703,7 +2706,8 @@ func (d *daemon) tickHomeState(e *tado.EmuState) {
 
 // restoreHomeState loads the home state the engine keeps in the database: the
 // away flag, the program presets, the windows, the heat-up models, the
-// adapted flow limits, the room shifts, the block each zone last took, the
+// adapted flow limits, the room shifts, the observe registrations of the owned
+// zones, the block each zone last took, the
 // zone rewrites still owed and the early starts running. With that baseline the
 // first tick writes each zone whose program moved while the daemon was down, and
 // each owed write, and no other.
@@ -2732,6 +2736,9 @@ func (d *daemon) restoreHomeState(e *tado.EmuState) error {
 		return err
 	}
 	if err := d.restoreAutoOffsets(); err != nil {
+		return err
+	}
+	if err := d.restoreZoneObservers(e); err != nil {
 		return err
 	}
 	blocks, stored, err := d.state.ProgramBlocks(ctx)

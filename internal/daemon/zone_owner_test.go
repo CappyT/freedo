@@ -363,3 +363,105 @@ func TestZoneOwnerRolesFollowOwner(t *testing.T) {
 		t.Fatalf("valve 015e role back under the device = %#02x (present %v), want the elected 0x0d", role, ok)
 	}
 }
+
+// TestZoneOwnerObserveSurvivesRestart: the observe registration of the wall
+// thermostat is stored, and the first step after a restart on the same
+// database notifies it under the same token with the next sequence, so the
+// thermostat does not hold its last demand until its own deadline.
+func TestZoneOwnerObserveSurvivesRestart(t *testing.T) {
+	a := newInstallAPIOn(t, windowInstall(t, func(in *tado.Install) {
+		in.Options.ZoneOwners = map[int]string{3: tado.ZoneOwnerCoordinator}
+	}))
+	stored := loadStored(t, a)
+	thermostat := wireOf(t, stored, "RU1000000001")
+	start := func(at time.Time, in *tado.Install) (*daemon, *testClock, string) {
+		t.Helper()
+		clock := newTestClock(at)
+		d, url := newWindowDaemon(t, in, clock, a.store)
+		if _, err := d.do(func(e *tado.EmuState) (any, error) { return nil, d.restoreZoneObservers(e) }); err != nil {
+			t.Fatal(err)
+		}
+		seedBlock(t, d, in, earlyValve, 3)
+		if !in.Options.CoordinatorOwns(3) {
+			return d, clock, url
+		}
+		var view map[string]any
+		if code := postJSON(t, http.MethodPost, url+"/api/zones/3/temperature", map[string]any{"tempC": 18}, &view); code != http.StatusOK {
+			t.Fatalf("temperature: code=%d %v", code, view)
+		}
+		return d, clock, url
+	}
+	tick := func(d *daemon) {
+		t.Helper()
+		if _, err := d.do(func(e *tado.EmuState) (any, error) { d.tickZoneOwners(e); return nil, nil }); err != nil {
+			t.Fatal(err)
+		}
+	}
+	notified := func(d *daemon, desc string) bool {
+		t.Helper()
+		v, err := d.do(func(e *tado.EmuState) (any, error) { return e.Queue(thermostat), nil })
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, q := range v.([]tado.QueueEntry) {
+			if q.Desc == desc {
+				return true
+			}
+		}
+		return false
+	}
+
+	d, clock, url := start(windowStart, stored)
+	var view map[string]any
+	if code := postJSON(t, http.MethodPut, url+"/api/zones/3/schedule",
+		allDayProgram(map[string]any{"minute": 0, "setpoint_c": 19.5}), &view); code != http.StatusOK {
+		t.Fatalf("schedule: code=%d %v", code, view)
+	}
+	tick(d)
+	if _, err := d.do(func(e *tado.EmuState) (any, error) {
+		e.OnFrame(uplinkFrame(t, stored, "RU1000000001", true, tado.CoAPReq{
+			Type: "CON", Code: "0.01", MID: 0x7a02, Token: []byte{0xa1, 0xb2},
+			Path: []string{"z", "p"}, Options: []tado.CoAPOption{{Num: 6, Val: []byte{}}},
+		}))
+		return nil, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if code := postJSON(t, http.MethodPost, url+"/api/zones/3/temperature", map[string]any{"tempC": 18.5}, &view); code != http.StatusOK {
+		t.Fatalf("temperature: code=%d %v", code, view)
+	}
+	clock.advance(time.Minute)
+	tick(d)
+	if !notified(d, "zone notify z/p lid=3 obs=2 tok=a1b2") {
+		t.Fatal("no notification at obs=2 before the restart")
+	}
+	rows, err := a.store.ZoneObservers(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].Zone != 3 || rows[0].Target != thermostat || rows[0].Token != "a1b2" || rows[0].Seq != 2 {
+		t.Fatalf("stored observers = %+v, want the thermostat under a1b2 at 2", rows)
+	}
+
+	// The restart: the measure is the same, and the thermostat still gets it
+	// within the first step.
+	d2, _, _ := start(clock.now().Add(5*time.Minute), stored)
+	tick(d2)
+	if !notified(d2, "zone notify z/p lid=3 obs=3 tok=a1b2") {
+		v, _ := d2.do(func(e *tado.EmuState) (any, error) { return e.Queue(thermostat), nil })
+		t.Fatalf("no notification at obs=3 after the restart, queue %+v", v)
+	}
+	if rows, err := a.store.ZoneObservers(t.Context()); err != nil || len(rows) != 1 || rows[0].Seq != 3 {
+		t.Errorf("stored observers after the restart = %+v (err %v), want seq 3", rows, err)
+	}
+
+	// A zone the coordinator no longer owns drops the stored registration.
+	if code := postJSON(t, http.MethodPatch, a.base+"/api/install/zones/3", map[string]any{"owner": "device"}, &view); code != http.StatusOK {
+		t.Fatalf("owner device: code=%d %v", code, view)
+	}
+	d3, _, _ := start(clock.now().Add(10*time.Minute), loadStored(t, a))
+	tick(d3)
+	if rows, err := a.store.ZoneObservers(t.Context()); err != nil || len(rows) != 0 {
+		t.Errorf("stored observers of a zone the device owns = %+v (err %v), want none", rows, err)
+	}
+}

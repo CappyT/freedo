@@ -24,11 +24,17 @@ package daemon
 // restarts. The state is not stored: a restart starts the controller from
 // zero, as a valve does after each read of the zone document.
 //
+// The observe registrations are stored (meta zone_observers): after a restart
+// the wall thermostat keeps its registration and ignores a notification under
+// an unknown token or with a lower sequence, so without them it would hold its
+// last demand until its own deadline, up to 30 minutes.
+//
 // Unverified on air: no capture shows a member with the coordinator as owner.
 // The daemon logs every zone-plane request a member addresses to us for an
 // owned zone, so the on-air check can see what the members ask.
 
 import (
+	"context"
 	"encoding/hex"
 	"log"
 	"math"
@@ -118,6 +124,7 @@ func (d *daemon) tickZoneOwners(e *tado.EmuState) {
 	if inst == nil {
 		return
 	}
+	defer d.saveZoneObservers(e, inst)
 	d.dropZoneOwners(e, inst)
 	now := d.retryNow()
 	for i := range inst.Zones {
@@ -258,4 +265,80 @@ func (d *daemon) zoneOwnerView(e *tado.EmuState, inst *tado.Install, zone int) m
 	}
 	out["observers"] = observers
 	return out
+}
+
+// storedZoneObserver is the JSON of one observe registration in meta
+// zone_observers. The measure last sent is not stored: the restored
+// registration notifies at the first step, as after a change of the measure.
+type storedZoneObserver struct {
+	Zone       int    `json:"zone"`
+	Target     string `json:"target"` // wire EUI hex of the requester
+	Token      string `json:"token"`  // hex
+	Seq        uint32 `json:"seq"`
+	NotifiedMs int64  `json:"notifiedMs"`
+}
+
+// zoneObserverRows lists the observe registrations of every heating zone, in
+// zone order.
+func zoneObserverRows(e *tado.EmuState, inst *tado.Install) []storedZoneObserver {
+	out := []storedZoneObserver{}
+	zones := make([]int, 0, len(inst.Zones))
+	for i := range inst.Zones {
+		if inst.Zones[i].Kind == tado.ZoneHeating {
+			zones = append(zones, inst.Zones[i].Number)
+		}
+	}
+	slices.Sort(zones)
+	for _, zone := range zones {
+		for _, o := range e.ZoneObservers(zone) {
+			out = append(out, storedZoneObserver{
+				Zone: zone, Target: o.Target, Token: o.Token, Seq: o.Seq, NotifiedMs: o.NotifiedAt.UnixMilli(),
+			})
+		}
+	}
+	return out
+}
+
+// saveZoneObservers stores the observe registrations once they moved: a new
+// registration, a notification (its sequence must keep rising across a
+// restart) or a registration dropped. A failed save stays owed to the next
+// tick.
+func (d *daemon) saveZoneObservers(e *tado.EmuState, inst *tado.Install) {
+	if d.state == nil {
+		return
+	}
+	rows := zoneObserverRows(e, inst)
+	if d.zoneObsSaved != nil && slices.Equal(rows, d.zoneObsSaved) {
+		return
+	}
+	if err := d.state.SetZoneObservers(context.Background(), rows); err != nil {
+		log.Printf("persist the zone observers: %v", err)
+		return
+	}
+	d.zoneObsSaved = rows
+}
+
+// restoreZoneObservers loads the stored observe registrations before the
+// engine starts. A registration of a zone the coordinator no longer owns, or
+// of a requester that left the zone, is dropped.
+func (d *daemon) restoreZoneObservers(e *tado.EmuState) error {
+	if d.state == nil {
+		return nil
+	}
+	stored, err := d.state.ZoneObservers(context.Background())
+	if err != nil {
+		return err
+	}
+	for _, s := range stored {
+		requester, err1 := hex.DecodeString(s.Target)
+		token, err2 := hex.DecodeString(s.Token)
+		if err1 != nil || err2 != nil {
+			log.Printf("zone %d owner: stored observer %s tok=%s is not hex, dropped", s.Zone, s.Target, s.Token)
+			continue
+		}
+		if e.RestoreZoneObserver(s.Zone, requester, token, s.Seq, time.UnixMilli(s.NotifiedMs).UTC()) {
+			log.Printf("zone %d owner: %s observes z/p tok=%s obs=%d, restored", s.Zone, tado.ShortFromWire(requester), s.Token, s.Seq)
+		}
+	}
+	return nil
 }

@@ -699,7 +699,8 @@ With the daemon as owner:
 - `declared[].owner` in `GET /api/zones` shows `mode`, and for an owned zone `tempC`, `source`
   (`external` or `device`), `demandPct`, `pushedAt` and `observers`: one entry per observe
   registration, with `device`, `token` (hex), `seq` (the last Observe value sent) and
-  `notifiedAt`.
+  `notifiedAt`. The daemon stores the registrations, so after a restart the first step
+  notifies each observer under its token with the next `seq`.
 - The daemon logs every zone-plane request a member addresses to it for an owned zone, with
   the method, the URI, whether it carries the observe option and the body of a measure. It logs
   one line per observe registration and one per notification.

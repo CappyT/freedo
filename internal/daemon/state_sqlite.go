@@ -793,6 +793,24 @@ func (s *stateStore) SetAutoOffsets(ctx context.Context, stored map[int]storedAu
 	return err
 }
 
+// ZoneObservers returns the observe registrations of the measure of the owned
+// zones, see zone_owner.go.
+func (s *stateStore) ZoneObservers(ctx context.Context) ([]storedZoneObserver, error) {
+	var stored []storedZoneObserver
+	err := s.metaJSON(ctx, "zone_observers", &stored)
+	return stored, err
+}
+
+// SetZoneObservers replaces the stored observe registrations.
+func (s *stateStore) SetZoneObservers(ctx context.Context, stored []storedZoneObserver) error {
+	raw, err := json.Marshal(stored)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `INSERT OR REPLACE INTO meta (key, value) VALUES ('zone_observers', ?)`, string(raw))
+	return err
+}
+
 // DeleteThermalModel forgets the heat-up model of zone.
 func (s *stateStore) DeleteThermalModel(ctx context.Context, zone int) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM meta WHERE key = ?`, thermalModelPrefix+strconv.Itoa(zone))

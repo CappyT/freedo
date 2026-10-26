@@ -299,6 +299,26 @@ func (e *EmuState) observeZone(zone int, src, token []byte) {
 	s.at = e.cfg.Now()
 }
 
+// RestoreZoneObserver adds a registration the daemon stored before a restart,
+// and reports whether it took it: the coordinator must still own zone and the
+// requester must still belong to it. The registration holds no body, so the
+// next NotifyZoneObservers sends the served measure under the next sequence.
+func (e *EmuState) RestoreZoneObserver(zone int, requester, token []byte, seq uint32, at time.Time) bool {
+	if e.inst == nil || !e.inst.Options.CoordinatorOwns(zone) || !e.zoneInvolves(zone, requester) {
+		return false
+	}
+	if e.zoneObservers == nil {
+		e.zoneObservers = map[int]map[string]*zoneObserver{}
+	}
+	if e.zoneObservers[zone] == nil {
+		e.zoneObservers[zone] = map[string]*zoneObserver{}
+	}
+	e.zoneObservers[zone][hexEUI(requester)] = &zoneObserver{
+		requester: slices.Clone(requester), token: slices.Clone(token), seq: seq, at: at,
+	}
+	return true
+}
+
 // ZoneObservers lists the observe registrations of the measure of zone, by
 // requester.
 func (e *EmuState) ZoneObservers(zone int) []ZoneObserver {
