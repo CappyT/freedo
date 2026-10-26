@@ -138,3 +138,12 @@ pre-release has its notes here.
   and the circuit followed the coordinator demand within a minute. The thermostat did not put any
   room in fallback after that reboot.
 
+## 0.11.0-beta.7
+
+- Daemon: the observe registrations of an owned zone survive a restart of the daemon. The wall
+  thermostat keeps its registration across our restart and ignores a notification under an
+  unknown token or a lower sequence, so the daemon stores token and sequence and notifies at its
+  first step after the start. Before, the thermostat held the last demand it got for up to 30
+  minutes after an add-on update.
+- Run on a real plant with 0.11.0-beta.6: the room settings and the Home Assistant select move a
+  room between the correction methods in one request.
