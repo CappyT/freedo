@@ -124,3 +124,17 @@ pre-release has its notes here.
   notification follows each change of the measure and at least every 10 minutes. A change of the
   zone owner sends the thermostat its re-read trigger, so it reads the new zone document within
   seconds. `GET /api/zones` lists the observers of an owned zone.
+
+## 0.11.0-beta.6
+
+- Daemon: the checks of the zone owner in `PATCH /api/install/zones/{n}` read the values the request
+  leaves, so one request moves a zone between the correction methods.
+- Dashboard: the room settings hold one Temperature correction select: none, continuous shift, valve
+  calibration, or the coordinator measures the room. The offset mode select stays for config and
+  dbg2. The calibration hours show only in valve calibration.
+- Home Assistant: the select Room temperature correction offers Coordinator measures the room.
+- Run on a real plant with 0.11.0-beta.5: after a reboot of the wall thermostat, it registered its
+  observe on the coordinator-owned room with a zero-length Observe option, took the notifications,
+  and the circuit followed the coordinator demand within a minute. The thermostat did not put any
+  room in fallback after that reboot.
+
