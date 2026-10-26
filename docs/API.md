@@ -979,7 +979,14 @@ algorithm of the tado cloud, which is not public.
 - Each item of `flowLimit.circuits` also shows `defaultCurve` (`true` while the circuit follows the
   default curve) and `reductionC` (the reduction in force now, `null` while the outdoor reading is
   missing or stale or the circuit does not follow the curve). `computedC` is the limit that results.
-- The fit is not verified on a plant. No test on air covers the curve.
+- The fit is checked against the monthly mean reduction that the tado cloud reports for the
+  same plant (the monthly energy report, `flowTemperatureOptimization.reduction`) over one
+  season, with monthly outdoor means of a weather archive: within 0.6 C from 3.6 to 19 C
+  outdoors, except one month of 1.8 C at the start of the season, when the cloud started its
+  adaptation again. At 8 C the live cloud value and the curve both serve the maximum minus 6 C.
+  Below 3 C no month exists on either side. The cloud holds the warm-season limit at
+  `max(48 C, maximum - 9)`; the cap of 8 C gives the same 48 C for a maximum of 56 C and
+  one degree more for a higher maximum. No test on air covers the curve.
 
 `flow_auto_adapt` (default `false`) switches on an automatic adaptation of the limit of each
 circuit. It is a local controller. It is not the algorithm of the tado cloud, which is not
