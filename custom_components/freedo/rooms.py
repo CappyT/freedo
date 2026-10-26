@@ -48,7 +48,6 @@ from .model import (
     CORRECTION_NONE,
     CORRECTION_SHIFT,
     KIND_HEATING,
-    OFFSET_MODE_SETPOINT,
     FreedoData,
     Zone,
     correction_patch,
@@ -60,6 +59,8 @@ from .model import (
     zone_correction,
     zone_measuring_candidates,
     zone_offset_mode,
+    zone_owned,
+    zone_takes_reading,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -390,15 +391,11 @@ def current_source(
     entry: FreedoConfigEntry, data: FreedoData, zone: Zone
 ) -> tuple[str, str] | None:
     """The source the zone regulates on, as (kind, target): the mapped sensor
-    while its pushes are not paused and the zone has a correction, else the
+    while its pushes are not paused and the zone takes the reading, else the
     device the zone measures on."""
     mapped = room_temp_zones(entry.options.get(CONF_ROOM_TEMPS) or {}).get(zone.number)
     paused = room_temp_paused(entry.options.get(CONF_ROOM_TEMP_PAUSED) or [])
-    if (
-        mapped
-        and zone.number not in paused
-        and (zone_offset_mode(data, zone) == OFFSET_MODE_SETPOINT or zone_auto_offset(data, zone))
-    ):
+    if mapped and zone.number not in paused and zone_takes_reading(data, zone):
         return (SOURCE_SENSOR, mapped)
     return (SOURCE_DEVICE, zone.measuring) if zone.measuring else None
 
@@ -410,8 +407,9 @@ async def async_set_source(
     source of zone number. It raises FreedoError when the daemon refuses.
 
     A sensor is mapped to the zone in the options, its pushes resume and its
-    reading goes out at once. A zone with no correction gets the continuous
-    shift, because the daemon refuses a reading (409) there.
+    reading goes out at once. A zone that takes no reading gets the continuous
+    shift, because the daemon refuses a reading (409) there; an owned zone takes
+    it as it is.
 
     A device becomes the measuring device of the zone (PUT
     /api/install/zones/{n}/measuring). When a sensor is mapped, its pushes
@@ -447,7 +445,7 @@ async def async_set_source(
                 save(paused=True)
                 await client.clear_room_temp(number)
         return
-    if zone_correction(data, zone) == CORRECTION_NONE:
+    if zone_correction(data, zone) == CORRECTION_NONE and not zone_owned(data, zone):
         fields = correction_patch(
             zone_offset_mode(data, zone), zone_auto_offset(data, zone), CORRECTION_SHIFT
         )

@@ -566,6 +566,22 @@ def zone_auto_offset(data: FreedoData, zone: Zone) -> bool:
     return bool((data.zone_settings.get(zone.number) or {}).get("auto_offset"))
 
 
+def zone_owned(data: FreedoData, zone: Zone) -> bool:
+    """GET /api/install/zones owner coordinator: the daemon runs the zone
+    controller on the external room temperature and the valves follow it."""
+    return (data.zone_settings.get(zone.number) or {}).get("owner") == "coordinator"
+
+
+def zone_takes_reading(data: FreedoData, zone: Zone) -> bool:
+    """Whether the daemon accepts POST /api/zones/{n}/temperature for the zone:
+    offset_mode setpoint, auto_offset on, or the coordinator as the owner."""
+    return (
+        zone_offset_mode(data, zone) == OFFSET_MODE_SETPOINT
+        or zone_auto_offset(data, zone)
+        or zone_owned(data, zone)
+    )
+
+
 def zone_correction(data: FreedoData, zone: Zone) -> str | None:
     """The correction method of the zone from its offset_mode and auto_offset,
     None when the daemon serves no offset mode for it."""
@@ -637,7 +653,7 @@ def room_temp_state(data: FreedoData, zone: Zone) -> str | None:
     the cause: the zone has no correction (the daemon refuses a reading then),
     no reading came, or the reading is older than room_temp_max_age_sec. None
     when the daemon does not serve the view or the offset mode. Modes config and
-    dbg2 take the reading too while auto_offset is on."""
+    dbg2 take the reading too while auto_offset is on, and an owned zone always."""
     view = data.room_temps.get(zone.number)
     if view is None:
         return None
@@ -646,7 +662,7 @@ def room_temp_state(data: FreedoData, zone: Zone) -> str | None:
     mode = zone_offset_mode(data, zone)
     if mode is None:
         return None
-    if mode != OFFSET_MODE_SETPOINT and not zone_auto_offset(data, zone):
+    if not zone_takes_reading(data, zone):
         return "no_correction"
     if view.get("tempC") is None:
         return "no_reading"

@@ -33,6 +33,7 @@ from model import (
     room_temp_paused,
     room_temp_payload,
     room_temp_state,
+    zone_takes_reading,
     room_temp_zones,
     schedule_payload,
     schedule_programs,
@@ -609,6 +610,12 @@ def test_room_temp_state():
     stale = _room_temp(inUse=False, stale=True, ageSec=1900)
     assert room_temp_state(stale, d.zones[1]) == "stale"
     assert room_temp_state(_room_temp(inUse=False), d.zones[1]) is None
+    # An owned zone takes the reading with no correction of its own.
+    owned = copy.deepcopy(INSTALL_ZONES)
+    owned["zones"][1]["owner"] = "coordinator"
+    o = parse(HEALTH, ZONES, NODES, BOILER, HOME, owned)
+    assert zone_takes_reading(o, o.zones[2])
+    assert room_temp_state(o, o.zones[2]) == "no_reading"
     # No installation read: the mode is unknown, and so is the cause.
     assert room_temp_state(parse(HEALTH, ZONES, NODES, BOILER, HOME), d.zones[2]) is None
     # Mode config with auto_offset on takes the reading: the cause is not the
