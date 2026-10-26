@@ -66,3 +66,19 @@ pre-release has its notes here.
 - The folder `/share/freedo/stable` of older releases holds the network key and nothing reads it.
   The add-on does not delete it: delete it by hand. The log names it at each start.
 - The backup did not run on a plant yet: this pre-release is the first run.
+
+## 0.11.0-beta.1
+
+- Daemon: the zone option `owner` (`device` or `coordinator`). With `coordinator`, freedo is the
+  owner and the measuring point of the zone: it runs the valve controller with the gains of the
+  zone on the outside temperature reading of the zone, answers the measure to its members and
+  pushes it to them. The valves follow that demand and no offset on their sensor is needed.
+  `PATCH /api/install/zones/{n}` sets it; the install view and `GET /api/zones` show it.
+- Daemon: the option is refused on hot water, with `offset_mode setpoint` or with `auto_offset`
+  on, and those two are refused on an owned zone.
+- Daemon: the log names each zone-plane request that a member of an owned zone sends to the
+  coordinator, with the method, the URI and the observe flag.
+- Docs: the default weather curve of the flow limit is checked against eight monthly reports of
+  the tado cloud of one plant and the value it serves today.
+- The zone owner did not run on a plant yet: this pre-release is the first run. The daemon sends
+  no observe notification: the first run tells whether the members ask for them.
