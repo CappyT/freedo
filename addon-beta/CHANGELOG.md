@@ -96,3 +96,12 @@ pre-release has its notes here.
 - Run on a real plant with 0.11.0-beta.1, one valve zone: the valve read the zone document
   within minutes, sends its own measure to the coordinator about once a minute with no observe,
   answers the pushed measure with 2.05, and took the pushed temperature into its controller.
+
+## 0.11.0-beta.3
+
+- Daemon: the zone measure of the owner carries the humidity tag `0135` of the measuring device,
+  as every captured measure does. On the plant the wall thermostat asked the coordinator for the
+  measure of the owned zone after its restart and stayed in the frost fallback on an answer
+  without the tag, while the answer of a valve ended the fallback within seconds.
+- Run on a real plant with 0.11.0-beta.2, one valve zone: with a push every minute the valve
+  reports the pushed demand as its own and keeps the pushed temperature.
