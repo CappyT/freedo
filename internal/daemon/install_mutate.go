@@ -878,7 +878,7 @@ func (s *stateStore) PatchZone(ctx context.Context, number int, p zonePatch) (in
 		if err := patchZonePID(ctx, tx, cur, number, p.PID); err != nil {
 			return err
 		}
-		if err := patchZoneOwner(ctx, tx, cur, number, p.Owner); err != nil {
+		if err := patchZoneOwner(ctx, tx, cur, number, p); err != nil {
 			return err
 		}
 		if err := patchZoneAway(ctx, tx, number, p.AwayTemperatureC); err != nil {
@@ -931,7 +931,7 @@ func patchDeviceOverlayEnd(ctx context.Context, tx querier, cur *tado.Install, n
 // patchZoneOffset applies the correction fields of p on the mode the zone
 // holds. A mode other than setpoint drops the coordinator's own correction, so
 // it cannot come back unseen with a later switch. The default is not stored.
-// The check against auto_offset reads the value p leaves.
+// The checks against auto_offset and the owner read the values p leaves.
 func patchZoneOffset(ctx context.Context, tx querier, cur *tado.Install, number int, p zonePatch) error {
 	if p.OffsetMode == nil && p.SetpointOffsetCenti == nil {
 		return nil
@@ -942,12 +942,16 @@ func patchZoneOffset(ctx context.Context, tx querier, cur *tado.Install, number 
 		if p.AutoOffset != nil {
 			auto = *p.AutoOffset
 		}
+		owned := cur.Options.CoordinatorOwns(number)
+		if p.Owner != nil {
+			owned = *p.Owner == tado.ZoneOwnerCoordinator
+		}
 		off.Mode = *p.OffsetMode
 		if off.Mode != tado.OffsetModeSetpoint {
 			off.SetpointCenti = 0
 		} else if auto {
 			return badf("offset_mode: zone %d has auto_offset on, switch it off first", number)
-		} else if cur.Options.CoordinatorOwns(number) {
+		} else if owned {
 			return badf("offset_mode: zone %d has the coordinator as owner, which regulates on the external reading", number)
 		}
 	}
@@ -993,12 +997,16 @@ func patchZoneAutoOffset(ctx context.Context, tx querier, cur *tado.Install, num
 		if p.OffsetMode != nil {
 			mode = *p.OffsetMode
 		}
+		owned := cur.Options.CoordinatorOwns(number)
+		if p.Owner != nil {
+			owned = *p.Owner == tado.ZoneOwnerCoordinator
+		}
 		switch {
 		case z.Kind != tado.ZoneHeating:
 			return badf("auto_offset: zone %d is not a heating zone", number)
 		case mode == tado.OffsetModeSetpoint:
 			return badf("auto_offset: zone %d is in offset mode setpoint, which corrects continuously from the reading", number)
-		case cur.Options.CoordinatorOwns(number):
+		case owned:
 			return badf("auto_offset: zone %d has the coordinator as owner, which regulates on the external reading", number)
 		}
 	}
@@ -1412,8 +1420,10 @@ func (s *stateStore) DeleteCircuit(ctx context.Context, id int, expect *uint64) 
 }
 
 // patchZoneOwner stores who owns the zone. Only a heating zone takes the
-// coordinator. The default, the device, is not stored.
-func patchZoneOwner(ctx context.Context, tx querier, cur *tado.Install, number int, owner *string) error {
+// coordinator, with the offset mode and the auto_offset p leaves. The default,
+// the device, is not stored.
+func patchZoneOwner(ctx context.Context, tx querier, cur *tado.Install, number int, p zonePatch) error {
+	owner := p.Owner
 	if owner == nil {
 		return nil
 	}
@@ -1432,10 +1442,18 @@ func patchZoneOwner(ctx context.Context, tx querier, cur *tado.Install, number i
 	}
 	// The valves of an owned zone follow our measure: a correction of their
 	// own sensor has nothing left to correct.
-	if cur.Options.ZoneOffset(number).Mode == tado.OffsetModeSetpoint {
+	mode := cur.Options.ZoneOffset(number).Mode
+	if p.OffsetMode != nil {
+		mode = *p.OffsetMode
+	}
+	auto := cur.Options.AutoOffset(number).Enabled
+	if p.AutoOffset != nil {
+		auto = *p.AutoOffset
+	}
+	if mode == tado.OffsetModeSetpoint {
 		return badf("owner: zone %d is in offset mode setpoint, switch it to config or dbg2 first", number)
 	}
-	if cur.Options.AutoOffset(number).Enabled {
+	if auto {
 		return badf("owner: zone %d has auto_offset on, switch it off first", number)
 	}
 	raw, err := json.Marshal(*owner)

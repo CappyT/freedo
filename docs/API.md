@@ -694,6 +694,8 @@ With the daemon as owner:
   `setpoint` and `auto_offset` are refused on an owned zone, and the owner is refused while
   the zone holds one of them: the valves follow our measure, so a correction of their own
   sensor has nothing left to correct.
+  The daemon checks the fields of one request against the values the request leaves, so one
+  request can carry `owner`, `offset_mode` and `auto_offset` together.
 - `declared[].owner` in `GET /api/zones` shows `mode`, and for an owned zone `tempC`, `source`
   (`external` or `device`), `demandPct`, `pushedAt` and `observers`: one entry per observe
   registration, with `device`, `token` (hex), `seq` (the last Observe value sent) and

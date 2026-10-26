@@ -114,6 +114,45 @@ func TestZoneOwnerPatch(t *testing.T) {
 	}
 }
 
+// TestZoneOwnerPatchOneRequest: one request moves a zone between the
+// correction methods, and the owner is checked against the values the request
+// leaves.
+func TestZoneOwnerPatchOneRequest(t *testing.T) {
+	a := newInstallAPIOn(t, windowInstall(t, nil))
+	url := a.base + "/api/install/zones/3"
+	var res map[string]any
+	patch := func(body map[string]any, want int) {
+		t.Helper()
+		if code := postJSON(t, http.MethodPatch, url, body, &res); code != want {
+			t.Fatalf("%v: code=%d %v, want %d", body, code, res, want)
+		}
+	}
+	owner := func(want string) {
+		t.Helper()
+		if got := loadStored(t, a).Options.ZoneOwner(3); got != want {
+			t.Fatalf("stored owner = %q, want %q", got, want)
+		}
+	}
+	// shift -> coordinator, and back to shift.
+	patch(map[string]any{"offset_mode": "setpoint"}, http.StatusOK)
+	patch(map[string]any{"offset_mode": "config", "owner": "coordinator"}, http.StatusOK)
+	owner(tado.ZoneOwnerCoordinator)
+	patch(map[string]any{"owner": "device", "offset_mode": "setpoint"}, http.StatusOK)
+	owner(tado.ZoneOwnerDevice)
+	// calibration -> coordinator, and back to calibration.
+	patch(map[string]any{"offset_mode": "config", "auto_offset": true}, http.StatusOK)
+	patch(map[string]any{"auto_offset": false, "owner": "coordinator"}, http.StatusOK)
+	owner(tado.ZoneOwnerCoordinator)
+	patch(map[string]any{"owner": "device", "auto_offset": true}, http.StatusOK)
+	owner(tado.ZoneOwnerDevice)
+	// The request still cannot hold both.
+	patch(map[string]any{"auto_offset": false, "offset_mode": "setpoint"}, http.StatusOK)
+	patch(map[string]any{"owner": "coordinator", "offset_mode": "setpoint"}, http.StatusBadRequest)
+	patch(map[string]any{"offset_mode": "config", "auto_offset": true}, http.StatusOK)
+	patch(map[string]any{"owner": "coordinator", "auto_offset": true}, http.StatusBadRequest)
+	owner(tado.ZoneOwnerDevice)
+}
+
 // TestZoneOwnerPushesMeasure: an owned zone with a fresh external reading
 // serves the measure, pushes it to its valve, pushes again on a change or
 // after ownerPushEvery, and shows the controller in GET /api/zones.
