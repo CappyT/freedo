@@ -76,18 +76,34 @@ func (in *Install) checkZoneOwners(c *issues) {
 
 // ZoneMeasureBody is the body of a zone measure, tags 4060 (zone temperature)
 // and 40a0 (zone demand), in the order a valve pushes them.
-func ZoneMeasureBody(tempC float64, demandPct int) []byte {
+func ZoneMeasureBody(tempC float64, demandPct, humidityDeci int) []byte {
 	centi := int(math.Round(tempC * 100))
+	h := min(max(humidityDeci, 0), 1000)
 	return encodeTLVs([]TLV{
 		{Tag: "4060", Val: []byte{byte(centi >> 8), byte(centi)}},
 		{Tag: "40a0", Val: []byte{byte(min(max(demandPct, 0), 100))}},
+		{Tag: "0135", Val: []byte{byte(h >> 8), byte(h)}},
 	})
+}
+
+// DeviceHumidityDeci is the last humidity a device reported, in tenths of a
+// percent, for the measure of a zone the coordinator owns.
+func (e *EmuState) DeviceHumidityDeci(target string) (int, bool) {
+	wire, _, err := e.resolve(target)
+	if err != nil {
+		return 0, false
+	}
+	ns, known := e.nodes[hexEUI(wire)]
+	if !known || len(ns.raw["0135"]) == 0 {
+		return 0, false
+	}
+	return int(be(ns.raw["0135"])), true
 }
 
 // BuildZoneMeasureCoAP builds the zone measure push of the owner to one member,
 // PUT z/p?lid=N on the zone plane with the Max-Age the captured pushes carry.
 // The token is empty, as in the captured pushes of a valve.
-func BuildZoneMeasureCoAP(zone int, tempC float64, demandPct int, mid uint16, srcEUI, dstEUI []byte) ([]byte, error) {
+func BuildZoneMeasureCoAP(zone int, tempC float64, demandPct, humidityDeci int, mid uint16, srcEUI, dstEUI []byte) ([]byte, error) {
 	return BuildContextCoAP(CoAPReq{
 		Type:    "CON",
 		Code:    "0.03",
@@ -96,7 +112,7 @@ func BuildZoneMeasureCoAP(zone int, tempC float64, demandPct int, mid uint16, sr
 		Path:    []string{"z", "p"},
 		Query:   []string{"lid=" + strconv.Itoa(zone)},
 		Options: []CoAPOption{optOctets, optZoneMeasureAge},
-		Payload: ZoneMeasureBody(tempC, demandPct),
+		Payload: ZoneMeasureBody(tempC, demandPct, humidityDeci),
 		SrcEUI:  srcEUI,
 		DstEUI:  dstEUI,
 	})
@@ -108,7 +124,7 @@ const zoneMeasureKind = "measure"
 // EnqueueZoneMeasure queues the measure of zone to target. A member answers the
 // push with an ACK 2.05. A measure to the same target and zone that has not
 // gone out yet is superseded: the measure is a running value.
-func (e *EmuState) EnqueueZoneMeasure(target string, zone int, tempC float64, demandPct int) error {
+func (e *EmuState) EnqueueZoneMeasure(target string, zone int, tempC float64, demandPct, humidityDeci int) error {
 	wire, _, err := e.resolve(target)
 	if err != nil {
 		return err
@@ -117,7 +133,7 @@ func (e *EmuState) EnqueueZoneMeasure(target string, zone int, tempC float64, de
 		return fmt.Errorf("tado: zone %d: the coordinator does not own it", zone)
 	}
 	mid := nextMID()
-	pkt, err := BuildZoneMeasureCoAP(zone, tempC, demandPct, mid, e.selfEUI, wire)
+	pkt, err := BuildZoneMeasureCoAP(zone, tempC, demandPct, humidityDeci, mid, e.selfEUI, wire)
 	if err != nil {
 		return err
 	}

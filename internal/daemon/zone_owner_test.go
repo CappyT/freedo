@@ -151,8 +151,9 @@ func TestZoneOwnerPushesMeasure(t *testing.T) {
 		t.Fatalf("pending = %d, want one measure push", n)
 	}
 	m := takeMeasure(t, d, stored, valve)
-	if m.URI() != "z/p?lid=3" || hex.EncodeToString(m.Payload) != "4060020708"+"40a0014e" {
-		t.Errorf("push = %s %x, want z/p?lid=3 with 18.00 C and 78 %%", m.URI(), m.Payload)
+	// 18.00 C, 78 %, and the humidity tag at 0: the fixture valve reported none.
+	if m.URI() != "z/p?lid=3" || hex.EncodeToString(m.Payload) != "4060020708"+"40a0014e"+"0135020000" {
+		t.Errorf("push = %s %x, want z/p?lid=3 with 18.00 C, 78 %% and 0135", m.URI(), m.Payload)
 	}
 	// The served measure is the same body.
 	v, err := d.do(func(e *tado.EmuState) (any, error) {
@@ -178,7 +179,7 @@ func TestZoneOwnerPushesMeasure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := hex.EncodeToString(v.([]byte)); got != "4060020708"+"40a0014e" {
+	if got := hex.EncodeToString(v.([]byte)); got != "4060020708"+"40a0014e"+"0135020000" {
 		t.Errorf("served measure = %s, want the pushed one", got)
 	}
 	// Within a minute nothing steps; after it the integrator moves the demand
@@ -193,8 +194,8 @@ func TestZoneOwnerPushesMeasure(t *testing.T) {
 		t.Fatalf("pending after a change = %d, want 1", n)
 	}
 	m = takeMeasure(t, d, stored, valve)
-	if m.Payload[len(m.Payload)-1] != 80 {
-		t.Errorf("second push demand = %d, want 80", m.Payload[len(m.Payload)-1])
+	if got := tado.ZoneMeasureSummary(m.Payload); got != "4060=18.00 40a0=80% 0135=0000" {
+		t.Errorf("second push = %s, want a demand of 80", got)
 	}
 	var zones map[string]any
 	if code := getJSON(t, url+"/api/zones", &zones); code != http.StatusOK {

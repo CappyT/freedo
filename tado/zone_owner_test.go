@@ -82,9 +82,9 @@ func TestZoneMeasureServedForOwnedZone(t *testing.T) {
 		Type: "CON", Code: "0.03", MID: 0x7501, Token: []byte{},
 		Path: []string{"z", "p"}, Query: []string{"lid=4"},
 		Options: []CoAPOption{optOctets, optZoneMeasureAge},
-		Payload: ZoneMeasureBody(21.5, 0),
+		Payload: ZoneMeasureBody(21.5, 0, 500),
 	}))
-	own := ZoneMeasureBody(18.25, 63)
+	own := ZoneMeasureBody(18.25, 63, 634)
 	e.SetZoneMeasure(4, own)
 	get := synthZoneUplink(t, in, va.WireEUI(), CoAPReq{
 		Type: "CON", Code: "0.01", MID: 0x7502, Token: []byte{0x23},
@@ -110,7 +110,7 @@ func TestZoneMeasureServedForOwnedZone(t *testing.T) {
 		Type: "CON", Code: "0.01", MID: 0x7503, Token: []byte{0x24},
 		Path: []string{"z", "p"}, Query: []string{"lid=4"},
 	})), 0x7503)
-	if !bytes.Equal(m.Payload, ZoneMeasureBody(21.5, 0)) {
+	if !bytes.Equal(m.Payload, ZoneMeasureBody(21.5, 0, 500)) {
 		t.Errorf("after the clear the answer is %x, want the member's push", m.Payload)
 	}
 }
@@ -122,13 +122,13 @@ func TestEnqueueZoneMeasure(t *testing.T) {
 	in := synthInstall(t)
 	in.Options.ZoneOwners = map[int]string{4: ZoneOwnerCoordinator}
 	e := NewEmu(in.EmuConfig(), nil)
-	if err := e.EnqueueZoneMeasure("VA0000000001", 0, 18, 10); err == nil {
+	if err := e.EnqueueZoneMeasure("VA0000000001", 0, 18, 10, 500); err == nil {
 		t.Error("a zone the coordinator does not own took a measure")
 	}
-	if err := e.EnqueueZoneMeasure("VA0000000001", 4, 18, 10); err != nil {
+	if err := e.EnqueueZoneMeasure("VA0000000001", 4, 18, 10, 500); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.EnqueueZoneMeasure("VA0000000001", 4, 18.25, 63); err != nil {
+	if err := e.EnqueueZoneMeasure("VA0000000001", 4, 18.25, 63, 634); err != nil {
 		t.Fatal(err)
 	}
 	if n := e.Pending("VA0000000001"); n != 1 {
@@ -158,11 +158,11 @@ func TestEnqueueZoneMeasure(t *testing.T) {
 		t.Errorf("push = %s %s %s contexted=%t token=%x, want CON PUT z/p?lid=4 on the zone plane with an empty token",
 			m.Type, m.Code, m.URI(), m.Contexted(), m.Token)
 	}
-	if want := ZoneMeasureBody(18.25, 63); !bytes.Equal(m.Payload, want) {
+	if want := ZoneMeasureBody(18.25, 63, 634); !bytes.Equal(m.Payload, want) {
 		t.Errorf("payload = %x, want %x", m.Payload, want)
 	}
-	if hex.EncodeToString(m.Payload) != "4060020721"+"40a0013f" {
-		t.Errorf("payload = %x, want 4060=0721 40a0=3f", m.Payload)
+	if hex.EncodeToString(m.Payload) != "4060020721"+"40a0013f"+"013502027a" {
+		t.Errorf("payload = %x, want 4060=0721 40a0=3f 0135=027a", m.Payload)
 	}
 	if age, ok := m.Option(14); !ok || decodeCoAPUint(age.Val) != 1800 {
 		t.Errorf("Max-Age=%x present=%v, want 1800", age.Val, ok)

@@ -156,6 +156,19 @@ func (d *daemon) ownerTempC(e *tado.EmuState, inst *tado.Install, zone int, now 
 	return 0, "", false
 }
 
+// ownerHumidityDeci is the humidity the measure carries in tag 0135, in tenths
+// of a percent: the last reading of the measuring device, 0 when it has none.
+// Every captured measure carries the tag; the wall thermostat took no measure
+// without it on the plant.
+func (d *daemon) ownerHumidityDeci(e *tado.EmuState, inst *tado.Install, zone int) int {
+	dev, err := inst.MeasuringDevice(zone)
+	if err != nil {
+		return 0
+	}
+	h, _ := e.DeviceHumidityDeci(hex.EncodeToString(dev.WireEUI()))
+	return h
+}
+
 // stepZoneOwner runs one step of the controller of zone when a step is due,
 // serves the measure and pushes it to the members when it changed or
 // ownerPushEvery passed.
@@ -189,7 +202,8 @@ func (d *daemon) stepZoneOwner(e *tado.EmuState, inst *tado.Install, z *tado.Zon
 	}
 	changed := !x.haveOut || pct != x.pct || source != x.source
 	x.tempC, x.source, x.pct, x.haveOut = tC, source, pct, true
-	e.SetZoneMeasure(z.Number, tado.ZoneMeasureBody(tC, pct))
+	humidity := d.ownerHumidityDeci(e, inst, z.Number)
+	e.SetZoneMeasure(z.Number, tado.ZoneMeasureBody(tC, pct, humidity))
 	if !changed && now.Sub(x.pushedAt) < ownerPushEvery {
 		return
 	}
@@ -200,7 +214,7 @@ func (d *daemon) stepZoneOwner(e *tado.EmuState, inst *tado.Install, z *tado.Zon
 	}
 	for _, m := range members {
 		target := hex.EncodeToString(m.WireEUI())
-		if err := e.EnqueueZoneMeasure(target, z.Number, tC, pct); err != nil {
+		if err := e.EnqueueZoneMeasure(target, z.Number, tC, pct, humidity); err != nil {
 			log.Printf("zone %d owner: measure to %s: %v", z.Number, m.Short(), err)
 			continue
 		}
