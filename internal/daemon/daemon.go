@@ -172,6 +172,9 @@ type daemon struct {
 	// save. Both belong to the engine goroutine; see auto_offset.go.
 	autoOffsets map[int]*autoOffset
 	autoUnsaved bool
+	// zoneOwners holds the controller of each zone the coordinator owns. It
+	// belongs to the engine goroutine; see zone_owner.go.
+	zoneOwners map[int]*zoneOwner
 	// outdoor is the last outdoor temperature pushed, flowChanged when a curve
 	// or the adaptation last changed each circuit's flow limit, flowEpoch the
 	// engine start and flowAdapt the adaptation of each circuit. All four
@@ -300,6 +303,7 @@ func newDaemon(in *tado.Install, emu *tado.EmuState, radio radio.Radio, dryRun b
 		windowOwed:       make(map[windowWrite]*windowOwed),
 		roomTemps:        make(map[int]*roomTemp),
 		autoOffsets:      make(map[int]*autoOffset),
+		zoneOwners:       make(map[int]*zoneOwner),
 		flowChanged:      make(map[int]time.Time),
 		flowAdapt:        make(map[int]*flowAdapt),
 		thermal:          make(map[int]*thermalModel),
@@ -345,6 +349,7 @@ func (d *daemon) setInstall(in *tado.Install) (added, removed []string, err erro
 		}
 		d.dropRoomTemps(in)
 		d.dropAutoOffsets(in)
+		d.dropZoneOwners(d.emu, in)
 	}
 	return added, removed, nil
 }
@@ -454,6 +459,7 @@ func (d *daemon) run(ctx context.Context) {
 			d.tickHomeState(d.emu)
 			d.tickRoomTemps(d.emu)
 			d.tickAutoOffsets(d.emu)
+			d.tickZoneOwners(d.emu)
 			d.tickWindows(d.emu)
 			d.tickPairWindow(d.emu)
 			d.tickEnergy()
@@ -2398,6 +2404,7 @@ func (d *daemon) declaredZones(e *tado.EmuState) []map[string]any {
 		if z.Kind == tado.ZoneHeating {
 			zone["externalTemp"] = d.roomTempView(e, z.Number)
 			zone["autoOffset"] = d.autoOffsetView(inst, z.Number)
+			zone["owner"] = d.zoneOwnerView(inst, z.Number)
 		}
 		out = append(out, zone)
 	}

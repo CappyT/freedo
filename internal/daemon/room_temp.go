@@ -74,7 +74,7 @@ const (
 
 var (
 	errRoomTempZone = errors.New("only a heating zone takes an external room temperature")
-	errRoomTempMode = errors.New("an external room temperature needs offset_mode setpoint or auto_offset: " +
+	errRoomTempMode = errors.New("an external room temperature needs offset_mode setpoint, auto_offset or the coordinator as owner: " +
 		"the other modes keep the correction in tag 0140 on the valve, and mode config also makes a valve home its motor")
 )
 
@@ -164,7 +164,7 @@ func (d *daemon) postZoneTemperature(w http.ResponseWriter, r *http.Request) {
 			return nil, err
 		}
 		inst := d.inst.Load()
-		if inst.Options.ZoneOffset(z.Number).Mode != tado.OffsetModeSetpoint && !inst.Options.AutoOffset(z.Number).Enabled {
+		if !zoneTakesReading(inst, z.Number) {
 			return nil, fmt.Errorf("zone %d: %w", z.Number, errRoomTempMode)
 		}
 		now := d.retryNow()
@@ -328,7 +328,7 @@ func (d *daemon) dropRoomTemps(inst *tado.Install) {
 	for zone, x := range d.roomTemps {
 		z, err := inst.ZoneByNumber(zone)
 		kept := err == nil && z.Kind == tado.ZoneHeating &&
-			(inst.Options.ZoneOffset(zone).Mode == tado.OffsetModeSetpoint || inst.Options.AutoOffset(zone).Enabled)
+			zoneTakesReading(inst, zone)
 		if kept {
 			continue
 		}
@@ -420,4 +420,11 @@ func (d *daemon) roomTempView(e *tado.EmuState, zone int) map[string]any {
 		view["wantedC"] = roundCenti(x.wantedC)
 	}
 	return view
+}
+
+// zoneTakesReading reports whether zone takes an external room temperature:
+// in mode setpoint, with auto_offset on, or with the coordinator as owner.
+func zoneTakesReading(inst *tado.Install, zone int) bool {
+	o := inst.Options
+	return o.ZoneOffset(zone).Mode == tado.OffsetModeSetpoint || o.AutoOffset(zone).Enabled || o.CoordinatorOwns(zone)
 }

@@ -75,8 +75,8 @@ type storedAutoOffset struct {
 }
 
 // learnerReadsExternal reports whether the learners of zone read the external
-// room temperature now: in mode setpoint while the reading is fresh, or with
-// auto_offset on while the reading is fresh. The reading does not move when the
+// room temperature now: in mode setpoint, with auto_offset on or with the
+// coordinator as owner, while the reading is fresh. The reading does not move when the
 // correction is written, so a write does not disturb a running episode then.
 func (d *daemon) learnerReadsExternal(inst *tado.Install, zone int) bool {
 	if inst == nil {
@@ -85,11 +85,7 @@ func (d *daemon) learnerReadsExternal(inst *tado.Install, zone int) bool {
 	if _, ok := d.freshRoomTemp(inst, zone); !ok {
 		return false
 	}
-	switch inst.Options.ZoneOffset(zone).Mode {
-	case tado.OffsetModeSetpoint:
-		return true
-	}
-	return inst.Options.AutoOffset(zone).Enabled
+	return zoneTakesReading(inst, zone)
 }
 
 // autoEligible reports whether zone may carry an automatic calibration: a

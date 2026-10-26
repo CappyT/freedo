@@ -327,6 +327,7 @@ allows it.
 | `offset_mode` | `config` | How the temperature correction reaches the zone: `config`, `dbg2` or `setpoint`. |
 | `auto_offset` | `false` | Automatic calibration of the zone correction (valve offset) from an external room temperature. Only a heating zone in `offset_mode` `config` or `dbg2` takes it. |
 | `auto_offset_interval_sec` | 86400 | Shortest interval between two automatic corrections, 3600 to 604800 seconds. |
+| `owner` | `device` | Who owns the zone: `device` (the elected demand reporter) or `coordinator`, which runs the zone controller on the external room temperature. Only a heating zone in `offset_mode` `config` or `dbg2` with `auto_offset` off takes it. Unverified on air. |
 | `pid` | 1000, 500, 1500 | Controller gains `kp`, `ki`, `kd` of the valve, each 0 to 65535. `kp` and `ki` cannot both be 0. `null` restores the defaults. |
 | `away_temperature_c` | `null` | Temperature in away, 5 to 25 C with at most two decimals. `null` and 5 mean off in away. The hot water zone refuses it. An away program of the zone replaces the fixed temperature while the home is away. |
 | `ha_area` | `null` | Home Assistant area of the zone, `{"id": "...", "name": "..."}`, each 1 to 255 bytes with no control character. `null` clears it. The integration writes it and the dashboard shows it. The daemon never acts on it. `GET /api/zones` shows it in `declared[].haArea`. |
@@ -651,15 +652,49 @@ a change inside the noise of the difference away from the valve.
 `nextAt`, `filteredDiffC`, `sampleSpanSec` and `stopReason`. `stopReason` is null while the
 writes run. A stopped zone has `nextAt` null.
 
+### Coordinator as zone owner
+
+The zone option `owner` set to `coordinator` names the daemon as the owner of a heating zone
+in its zone document: tag `63a0` (owner) and tag `6040` (measuring endpoint) carry the
+coordinator endpoint, the members and their report endpoints stay as they are. On air the
+owner runs the zone controller on its own sensor and publishes the measure on `z/p`; the other
+members follow its demand, the way a second valve follows the first and a valve follows the
+wall thermostat where that one owns the zone. The commercial wireless temperature sensor works
+this way.
+
+With the daemon as owner:
+
+- The daemon runs the controller of the valve, `Kp*(SP-T)/2000 + Ki*integ/30000 -
+  Kd*(T-Tref)/2000` in centi-degrees with the gains of `pid`, once a minute, on the external
+  room temperature while it is fresh, else on the calibrated temperature of the measuring
+  device. Without a target (an open window, an off block, away with no temperature) the demand
+  is 0 and the integrator restarts. The state is not stored: a restart starts the controller
+  from zero, as a valve does after each read of the zone document.
+- The daemon answers `GET z/p?lid=N` of the zone with its own measure, tags `4060` and `40a0`,
+  and pushes it to every member as `PUT z/p?lid=N` on the zone plane when the demand changes
+  and at most every 5 minutes otherwise, under the Max-Age of 1800 s the measure carries.
+- The zone takes `POST /api/zones/{n}/temperature` with no other option. `offset_mode`
+  `setpoint` and `auto_offset` are refused on an owned zone, and the owner is refused while
+  the zone holds one of them: the valves follow our measure, so a correction of their own
+  sensor has nothing left to correct.
+- `declared[].owner` in `GET /api/zones` shows `mode`, and for an owned zone `tempC`, `source`
+  (`external` or `device`), `demandPct` and `pushedAt`.
+- The daemon logs every zone-plane request a member addresses to it for an owned zone, with
+  the method, the URI and whether it carries the observe option.
+
+No capture shows a device with the coordinator as owner. The check on air is open: whether a
+valve and the wall thermostat accept the coordinator endpoint as owner, what they ask it, and
+how they take the push.
+
 ### External room temperature
 
 `POST /api/zones/{n}/temperature` with `{"tempC": 20.4, "source": "Soggiorno thermometer"}`
 gives the zone the room temperature that an outside sensor measures. `DELETE` removes it.
 `tempC` stays in -10 to 50 and the daemon rounds it to 0.01 C. `source` is optional: it names
 the sensor for display, at most 255 bytes with no control character. A push without it clears
-the name. A zone must be a heating zone in mode `setpoint`, or in mode
-`config` or `dbg2` with `auto_offset` on. Hot water gets `400`, an unknown zone `404`, and a
-zone with no mode that takes the reading gets `409`.
+the name. A zone must be a heating zone in mode `setpoint`, in mode `config` or `dbg2` with
+`auto_offset` on, or with the coordinator as owner. Hot water gets `400`, an unknown zone
+`404`, and a zone with no mode that takes the reading gets `409`.
 
 The valve controls on its own sensor, and the daemon cannot change that value. The daemon
 shifts the setpoints it writes instead. The shift is the external temperature minus the zone

@@ -61,6 +61,13 @@ func BuildZoneConfigDocument(in *Install, zone int) (*ZoneConfigDocument, error)
 
 	owner := zoneConfigOwner(in, z, members)
 	endpointMembers := zoneConfigOrderMembers(owner, members)
+	// The coordinator as owner: the owner and the measuring endpoint name us,
+	// in the same address form the document uses for a device. The members
+	// and their report endpoints stay as they are. Unverified on air.
+	ownerWire := owner.WireEUI()
+	if z.Kind == ZoneHeating && in.Options.CoordinatorOwns(zone) {
+		ownerWire = in.CoordinatorEUI()
+	}
 	membership := endpointMembers
 	if z.Kind == ZoneHeating && z.Circuit != nil {
 		heatSource, err := in.ZoneHeatSource(zone)
@@ -75,7 +82,7 @@ func BuildZoneConfigDocument(in *Install, zone int) (*ZoneConfigDocument, error)
 	tls := []TLV{
 		{Tag: zoneConfigTagKind, Val: []byte{z.Kind.TLV6020()}},
 		{Tag: zoneConfigTagState, Val: []byte{zoneConfigEnabled}},
-		{Tag: zoneConfigTagOwner, Val: []byte(zoneConfigEndpoint(owner, "s"))},
+		{Tag: zoneConfigTagOwner, Val: []byte(zoneConfigEndpointWire(ownerWire, "s"))},
 	}
 
 	if z.Kind == ZoneHeating {
@@ -101,7 +108,7 @@ func BuildZoneConfigDocument(in *Install, zone int) (*ZoneConfigDocument, error)
 			tls = append(tls, TLV{Tag: zoneConfigTagCircuit, Val: []byte{byte(*z.Circuit)}})
 		}
 		tls = append(tls,
-			TLV{Tag: zoneConfigTagMeasure, Val: []byte(zoneConfigEndpoint(owner, "p"))},
+			TLV{Tag: zoneConfigTagMeasure, Val: []byte(zoneConfigEndpointWire(ownerWire, "p"))},
 			zoneConfigU16(zoneConfigTagKp, pid.Kp),
 			zoneConfigU16(zoneConfigTagKi, pid.Ki),
 			zoneConfigU16(zoneConfigTagKd, pid.Kd),
@@ -145,7 +152,11 @@ func zoneConfigOrderMembers(owner *Device, members []*Device) []*Device {
 }
 
 func zoneConfigEndpoint(d *Device, resource string) string {
-	wire := d.WireEUI()
+	return zoneConfigEndpointWire(d.WireEUI(), resource)
+}
+
+// zoneConfigEndpointWire is the endpoint of a node by its wire EUI.
+func zoneConfigEndpointWire(wire []byte, resource string) string {
 	return fmt.Sprintf("coap://[fe80:0:0:0:%x:%x:%x:%x]/z/%s",
 		(uint16(wire[7])<<8|uint16(wire[6]))^0x0200,
 		uint16(wire[5])<<8|uint16(wire[4]),

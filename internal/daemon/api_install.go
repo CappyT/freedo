@@ -173,6 +173,9 @@ type zonePatch struct {
 	// zone on or off; AutoOffsetIntervalSec sets how often at most it writes.
 	AutoOffset            *bool `json:"auto_offset"`
 	AutoOffsetIntervalSec *int  `json:"auto_offset_interval_sec"`
+	// Owner names who owns the zone: "device" or "coordinator". See
+	// tado/zone_owner.go.
+	Owner *string `json:"owner"`
 	// PID sets the controller gains kp, ki and kd; null returns the zone to
 	// the default ones.
 	PID optPID `json:"pid"`
@@ -251,6 +254,7 @@ func zoneView(in *tado.Install, z *tado.Zone) map[string]any {
 		"setpoint_offset_c":        nil,
 		"auto_offset":              nil,
 		"auto_offset_interval_sec": nil,
+		"owner":                    nil,
 		"pid":                      nil,
 		"away_temperature_c":       nil,
 		"ha_area":                  haAreaView(in, z.Number),
@@ -270,6 +274,7 @@ func zoneView(in *tado.Install, z *tado.Zone) map[string]any {
 		out["auto_offset"] = auto.Enabled
 		out["auto_offset_interval_sec"] = auto.IntervalSec
 		out["pid"] = in.Options.ZonePID(z.Number)
+		out["owner"] = in.Options.ZoneOwner(z.Number)
 		if c, ok := in.Options.AwayTemperatures[z.Number]; ok {
 			out["away_temperature_c"] = c
 		}

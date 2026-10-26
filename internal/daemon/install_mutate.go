@@ -878,6 +878,9 @@ func (s *stateStore) PatchZone(ctx context.Context, number int, p zonePatch) (in
 		if err := patchZonePID(ctx, tx, cur, number, p.PID); err != nil {
 			return err
 		}
+		if err := patchZoneOwner(ctx, tx, cur, number, p.Owner); err != nil {
+			return err
+		}
 		if err := patchZoneAway(ctx, tx, number, p.AwayTemperatureC); err != nil {
 			return err
 		}
@@ -944,6 +947,8 @@ func patchZoneOffset(ctx context.Context, tx querier, cur *tado.Install, number 
 			off.SetpointCenti = 0
 		} else if auto {
 			return badf("offset_mode: zone %d has auto_offset on, switch it off first", number)
+		} else if cur.Options.CoordinatorOwns(number) {
+			return badf("offset_mode: zone %d has the coordinator as owner, which regulates on the external reading", number)
 		}
 	}
 	if p.SetpointOffsetCenti != nil {
@@ -993,6 +998,8 @@ func patchZoneAutoOffset(ctx context.Context, tx querier, cur *tado.Install, num
 			return badf("auto_offset: zone %d is not a heating zone", number)
 		case mode == tado.OffsetModeSetpoint:
 			return badf("auto_offset: zone %d is in offset mode setpoint, which corrects continuously from the reading", number)
+		case cur.Options.CoordinatorOwns(number):
+			return badf("auto_offset: zone %d has the coordinator as owner, which regulates on the external reading", number)
 		}
 	}
 	if a == tado.DefaultAutoOffset {
@@ -1402,4 +1409,38 @@ func (s *stateStore) DeleteCircuit(ctx context.Context, id int, expect *uint64) 
 		return err
 	})
 	return res, gone, err
+}
+
+// patchZoneOwner stores who owns the zone. Only a heating zone takes the
+// coordinator. The default, the device, is not stored.
+func patchZoneOwner(ctx context.Context, tx querier, cur *tado.Install, number int, owner *string) error {
+	if owner == nil {
+		return nil
+	}
+	if msg := tado.CheckZoneOwner(*owner); msg != "" {
+		return badf("owner: %s", msg)
+	}
+	if *owner == tado.ZoneOwnerDevice {
+		return clearInstallValue(ctx, tx, install.ZoneOwnerKey(number))
+	}
+	z, err := cur.ZoneByNumber(number)
+	if err != nil {
+		return notFoundf("no zone %d", number)
+	}
+	if z.Kind != tado.ZoneHeating {
+		return badf("owner: zone %d is not a heating zone", number)
+	}
+	// The valves of an owned zone follow our measure: a correction of their
+	// own sensor has nothing left to correct.
+	if cur.Options.ZoneOffset(number).Mode == tado.OffsetModeSetpoint {
+		return badf("owner: zone %d is in offset mode setpoint, switch it to config or dbg2 first", number)
+	}
+	if cur.Options.AutoOffset(number).Enabled {
+		return badf("owner: zone %d has auto_offset on, switch it off first", number)
+	}
+	raw, err := json.Marshal(*owner)
+	if err != nil {
+		return err
+	}
+	return setInstallValue(ctx, tx, install.ZoneOwnerKey(number), string(raw))
 }

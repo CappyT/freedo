@@ -208,6 +208,9 @@ func ReadInstall(ctx context.Context, q Querier) (*tado.Install, uint64, error) 
 	if err := loadAutoOffsets(kv, &in.Options); err != nil {
 		return nil, 0, err
 	}
+	if err := loadZoneOwners(kv, &in.Options); err != nil {
+		return nil, 0, err
+	}
 	if err := loadAwayTemperatures(kv, &in.Options); err != nil {
 		return nil, 0, err
 	}
@@ -789,6 +792,16 @@ func (s *Store) ReplaceInstall(ctx context.Context, in *tado.Install) (uint64, e
 		}
 		values = append(values, [2]string{AutoOffsetKey(zone), string(raw)})
 	}
+	for zone, owner := range in.Options.ZoneOwners {
+		if owner == "" || owner == tado.ZoneOwnerDevice {
+			continue
+		}
+		raw, err := json.Marshal(owner)
+		if err != nil {
+			return 0, err
+		}
+		values = append(values, [2]string{ZoneOwnerKey(zone), string(raw)})
+	}
 	for zone, c := range in.Options.AwayTemperatures {
 		values = append(values, [2]string{AwayTemperatureKey(zone), strconv.FormatFloat(c, 'g', -1, 64)})
 	}
@@ -1053,6 +1066,34 @@ func WriteInstall(path string, in *tado.Install) error {
 	defer store.Close()
 	if _, err := store.ReplaceInstall(context.Background(), in); err != nil {
 		return fmt.Errorf("state database %s: %w", path, err)
+	}
+	return nil
+}
+
+// zoneOwnerPrefix starts the install key of a zone's owner, stored as a JSON
+// string. The key exists only while the coordinator owns the zone.
+const zoneOwnerPrefix = "zone_owner."
+
+func ZoneOwnerKey(zone int) string { return zoneOwnerPrefix + strconv.Itoa(zone) }
+
+func loadZoneOwners(kv map[string]string, o *tado.Options) error {
+	for key, raw := range kv {
+		rest, ok := strings.CutPrefix(key, zoneOwnerPrefix)
+		if !ok {
+			continue
+		}
+		zone, err := strconv.Atoi(rest)
+		if err != nil {
+			return fmt.Errorf("install %s: %w", key, err)
+		}
+		var owner string
+		if err := json.Unmarshal([]byte(raw), &owner); err != nil {
+			return fmt.Errorf("install %s: %w", key, err)
+		}
+		if o.ZoneOwners == nil {
+			o.ZoneOwners = map[int]string{}
+		}
+		o.ZoneOwners[zone] = owner
 	}
 	return nil
 }

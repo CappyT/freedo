@@ -578,9 +578,14 @@ type EmuState struct {
 	// zoneRep and circuitRep hold the merged heat-demand chain, keyed by zone
 	// number and by heating-circuit id. obsRoles holds the 015e role records a
 	// device published about itself. See demand.go.
-	zoneRep    map[int]*demandReport
-	circuitRep map[int]*demandReport
-	obsRoles   map[string][]NodeTableRec
+	zoneRep map[int]*demandReport
+	// ownedMeasure is the zone measure the daemon serves on z/p for each zone
+	// the coordinator owns, and ownerSeen the zone-plane requests devices
+	// addressed to us for those zones. See zone_owner.go.
+	ownedMeasure map[int][]byte
+	ownerSeen    []OwnerRequest
+	circuitRep   map[int]*demandReport
+	obsRoles     map[string][]NodeTableRec
 	// zoneFallback holds the last 6460 of each zone and fallbackEvents the
 	// fallback changes the daemon has not taken yet. See fallback.go.
 	zoneFallback   map[int]*fallbackState
@@ -719,6 +724,7 @@ func NewEmu(cfg EmuConfig, log *UnhandledLogger) *EmuState {
 		zoneWrites:     map[int]deliveredWrite{},
 		zoneProxyPend:  map[midKey]*zoneProxyWait{},
 		zoneRep:        map[int]*demandReport{},
+		ownedMeasure:   map[int][]byte{},
 		circuitRep:     map[int]*demandReport{},
 		zoneFallback:   map[int]*fallbackState{},
 		obsRoles:       map[string][]NodeTableRec{},
@@ -1091,6 +1097,7 @@ func (e *EmuState) handleCoAP(f *Frame, m *CoAPMessage, class FrameClass, srcLbl
 		// A zone write addressed to us updates the zone's cached state and is
 		// re-emitted to the zone's other members; a zone read is proxied to a
 		// member when that is enabled, else answered from that cache.
+		e.noteOwnerRequest(m, f.SrcEUI())
 		e.fanOutZone(f, m, class, srcLbl, dstLbl)
 		if e.proxyZoneGet(f, m, class, srcLbl, dstLbl) {
 			return nil, false
@@ -2629,6 +2636,11 @@ func (e *EmuState) servedZoneGet(m *CoAPMessage) ([]byte, []CoAPOption, bool) {
 // does: the cache keeps the head of the last write or report, which a later
 // home state or program change leaves stale.
 func (e *EmuState) cachedZoneRead(zone int, resource string) ([]byte, bool) {
+	if resource == "z/p" {
+		if owned := e.ownedMeasure[zone]; len(owned) > 0 {
+			return owned, true
+		}
+	}
 	body := e.zoneState[zoneKey(zone, resource)]
 	if len(body) == 0 {
 		return nil, false
