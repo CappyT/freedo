@@ -115,3 +115,12 @@ pre-release has its notes here.
 - Daemon: the wall thermostat reads the owner's `z/p` with no query every two minutes; the
   daemon answers it with the measure of the owned zone it serves. An empty answer left it on the
   last demand it knew for 25 minutes.
+
+## 0.11.0-beta.5
+
+- Daemon: the coordinator serves its `z/p` as a CoAP observe. The wall thermostat takes the
+  demand of a zone from the observe notifications of the owner alone, and parses no answer
+  without the Observe option. The answer to its registration carries Observe, and a NON
+  notification follows each change of the measure and at least every 10 minutes. A change of the
+  zone owner sends the thermostat its re-read trigger, so it reads the new zone document within
+  seconds. `GET /api/zones` lists the observers of an owned zone.

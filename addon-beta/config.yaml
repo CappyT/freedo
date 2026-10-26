@@ -1,5 +1,5 @@
 name: freedo beta
-version: "0.11.0-beta.4"
+version: "0.11.0-beta.5"
 slug: freedo_beta
 description: Pre-releases of the local coordinator for tado 868 MHz heating devices
 url: https://github.com/CappyT/freedo
