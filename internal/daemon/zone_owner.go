@@ -45,8 +45,10 @@ const (
 	// minutes" in the valve.
 	ownerTrefAge = 10 * time.Minute
 	// ownerPushEvery bounds the time between two pushes of an unchanged
-	// measure, well under the Max-Age of 1800 s the measure carries.
-	ownerPushEvery = 5 * time.Minute
+	// measure. A valve that owns a zone pushes its measure about once a minute,
+	// and a member seen on air went back to its own sensor between pushes 3 to
+	// 5 minutes apart.
+	ownerPushEvery = ownerStep
 )
 
 // ownerSample is one temperature the controller read, for Tref.
