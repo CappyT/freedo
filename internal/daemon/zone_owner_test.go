@@ -465,3 +465,66 @@ func TestZoneOwnerObserveSurvivesRestart(t *testing.T) {
 		t.Errorf("stored observers of a zone the device owns = %+v (err %v), want none", rows, err)
 	}
 }
+
+// TestZoneOwnerRoomTempSurvivesRestart: the last external reading is stored,
+// and the first step after a restart on the same database runs the controller
+// on it without a new push. A reading older than room_temp_max_age_sec is
+// dropped at start.
+func TestZoneOwnerRoomTempSurvivesRestart(t *testing.T) {
+	a := newInstallAPIOn(t, windowInstall(t, func(in *tado.Install) {
+		in.Options.ZoneOwners = map[int]string{3: tado.ZoneOwnerCoordinator}
+	}))
+	stored := loadStored(t, a)
+	start := func(at time.Time) (*daemon, *testClock, string) {
+		t.Helper()
+		clock := newTestClock(at)
+		d, url := newWindowDaemon(t, stored, clock, a.store)
+		if _, err := d.do(func(e *tado.EmuState) (any, error) { return nil, d.restoreRoomTemps() }); err != nil {
+			t.Fatal(err)
+		}
+		seedBlock(t, d, stored, earlyValve, 3)
+		return d, clock, url
+	}
+	owner := func(d *daemon) (float64, string) {
+		t.Helper()
+		v, err := d.do(func(e *tado.EmuState) (any, error) {
+			d.tickZoneOwners(e)
+			x := d.zoneOwners[3]
+			if x == nil {
+				return [2]any{0.0, ""}, nil
+			}
+			return [2]any{x.tempC, x.source}, nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := v.([2]any)
+		return r[0].(float64), r[1].(string)
+	}
+
+	_, clock, url := start(windowStart)
+	var view map[string]any
+	if code := postJSON(t, http.MethodPost, url+"/api/zones/3/temperature", map[string]any{"tempC": 18.5, "source": "hall"}, &view); code != http.StatusOK {
+		t.Fatalf("temperature: code=%d %v", code, view)
+	}
+	rows, err := a.store.RoomTemps(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].Zone != 3 || rows[0].TempC != 18.5 || rows[0].Source != "hall" || rows[0].AtMs != clock.now().UnixMilli() {
+		t.Fatalf("stored readings = %+v, want zone 3 at 18.5 from hall", rows)
+	}
+
+	// The restart: no new push, and the controller reads the stored reading.
+	d2, clock2, _ := start(clock.now().Add(5 * time.Minute))
+	if c, src := owner(d2); src != "external" || c != 18.5 {
+		t.Fatalf("after the restart the controller reads %.2f from %q, want 18.50 external", c, src)
+	}
+
+	// A restart after the max age drops the reading.
+	maxAge := stored.Options.RoomTempMaxAge()
+	_, _, _ = start(clock2.now().Add(maxAge))
+	if rows, err := a.store.RoomTemps(t.Context()); err != nil || len(rows) != 0 {
+		t.Errorf("stored readings after the stale restart = %+v (err %v), want none", rows, err)
+	}
+}

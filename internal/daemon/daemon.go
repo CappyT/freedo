@@ -162,11 +162,13 @@ type daemon struct {
 	// window.go.
 	windows    map[int]zoneWindow
 	windowOwed map[windowWrite]*windowOwed
-	// roomTemps holds the external room temperature of each zone that has one
-	// and roomUnsaved says whether the applied shifts moved since the last save.
-	// Both belong to the engine goroutine; see room_temp.go.
-	roomTemps   map[int]*roomTemp
-	roomUnsaved bool
+	// roomTemps holds the external room temperature of each zone that has one,
+	// roomUnsaved says whether the applied shifts moved since the last save and
+	// roomTempsSaved holds the readings last stored. All belong to the engine
+	// goroutine; see room_temp.go.
+	roomTemps      map[int]*roomTemp
+	roomUnsaved    bool
+	roomTempsSaved []storedRoomTemp
 	// autoOffsets holds the automatic temperature-correction calibration of each
 	// zone that states it and autoUnsaved says whether it moved since the last
 	// save. Both belong to the engine goroutine; see auto_offset.go.
@@ -2733,6 +2735,9 @@ func (d *daemon) restoreHomeState(e *tado.EmuState) error {
 		return err
 	}
 	if err := d.restoreRoomShifts(); err != nil {
+		return err
+	}
+	if err := d.restoreRoomTemps(); err != nil {
 		return err
 	}
 	if err := d.restoreAutoOffsets(); err != nil {

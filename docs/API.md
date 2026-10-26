@@ -722,7 +722,8 @@ gives the zone the room temperature that an outside sensor measures. `DELETE` re
 the sensor for display, at most 255 bytes with no control character. A push without it clears
 the name. A zone must be a heating zone in mode `setpoint`, in mode `config` or `dbg2` with
 `auto_offset` on, or with the coordinator as owner. Hot water gets `400`, an unknown zone
-`404`, and a zone with no mode that takes the reading gets `409`.
+`404`, and a zone with no mode that takes the reading gets `409`. The last reading survives a
+restart of the daemon while it is fresh.
 
 The valve controls on its own sensor, and the daemon cannot change that value. The daemon
 shifts the setpoints it writes instead. The shift is the external temperature minus the zone

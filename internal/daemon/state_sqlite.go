@@ -774,6 +774,24 @@ func (s *stateStore) SetRoomShifts(ctx context.Context, stored map[int]int) erro
 	return err
 }
 
+// RoomTemps returns the last external room temperature of each zone, see
+// room_temp.go.
+func (s *stateStore) RoomTemps(ctx context.Context) ([]storedRoomTemp, error) {
+	var stored []storedRoomTemp
+	err := s.metaJSON(ctx, "room_temps", &stored)
+	return stored, err
+}
+
+// SetRoomTemps replaces the stored room temperature readings.
+func (s *stateStore) SetRoomTemps(ctx context.Context, stored []storedRoomTemp) error {
+	raw, err := json.Marshal(stored)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `INSERT OR REPLACE INTO meta (key, value) VALUES ('room_temps', ?)`, string(raw))
+	return err
+}
+
 // AutoOffsets returns the tracked correction (in centi-degrees) and the last
 // automatic write time of each zone with an automatic temperature calibration,
 // see auto_offset.go.

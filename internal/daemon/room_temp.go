@@ -21,8 +21,9 @@ package daemon
 // The applied shift replaces the manual offset while it holds. A reading older
 // than options.room_temp_max_age_sec ends the correction: the wanted shift
 // goes back to the manual offset through the same filter and the applied shift
-// follows, one step at a time. The reading is not stored. The applied shift is,
-// because the setpoints on the valves carry it.
+// follows, one step at a time. The last reading and the applied shift are stored,
+// because the setpoints on the valves carry the shift and a restart must not
+// leave the zone without a measure until the sensor pushes again.
 
 import (
 	"context"
@@ -175,6 +176,7 @@ func (d *daemon) postZoneTemperature(w http.ResponseWriter, r *http.Request) {
 			d.roomTemps[z.Number] = x
 		}
 		x.tempC, x.at, x.source = roundCenti(*b.TempC), now, b.Source
+		d.saveRoomTemps()
 		return d.roomTempView(e, z.Number), nil
 	})
 	if errors.Is(err, errRoomTempMode) {
@@ -216,6 +218,7 @@ func (d *daemon) deleteZoneTemperature(w http.ResponseWriter, r *http.Request) {
 		if x := d.roomTemps[z.Number]; x != nil {
 			x.at = time.Time{}
 		}
+		d.saveRoomTemps()
 		return d.roomTempView(e, z.Number), nil
 	})
 	if writeHandlerErr(w, err) {
@@ -336,6 +339,81 @@ func (d *daemon) dropRoomTemps(inst *tado.Install) {
 		d.roomUnsaved = d.roomUnsaved || x.on
 	}
 	d.saveRoomShifts()
+	d.saveRoomTemps()
+}
+
+// storedRoomTemp is one stored reading: the zone, the temperature, the time of
+// the push in unix milliseconds and the label of the sensor.
+type storedRoomTemp struct {
+	Zone   int     `json:"zone"`
+	TempC  float64 `json:"tempC"`
+	AtMs   int64   `json:"at"`
+	Source string  `json:"source"`
+}
+
+func (d *daemon) roomTempRows() []storedRoomTemp {
+	rows := make([]storedRoomTemp, 0, len(d.roomTemps))
+	for zone, x := range d.roomTemps {
+		if !x.at.IsZero() {
+			rows = append(rows, storedRoomTemp{Zone: zone, TempC: x.tempC, AtMs: x.at.UnixMilli(), Source: x.source})
+		}
+	}
+	slices.SortFunc(rows, func(a, b storedRoomTemp) int { return a.Zone - b.Zone })
+	return rows
+}
+
+// saveRoomTemps stores the readings once they changed. A failed save stays owed
+// to the next one.
+func (d *daemon) saveRoomTemps() {
+	if d.state == nil {
+		return
+	}
+	rows := d.roomTempRows()
+	if d.roomTempsSaved != nil && slices.Equal(rows, d.roomTempsSaved) {
+		return
+	}
+	if err := d.state.SetRoomTemps(context.Background(), rows); err != nil {
+		log.Printf("persist the room temperatures: %v", err)
+		return
+	}
+	d.roomTempsSaved = rows
+}
+
+// restoreRoomTemps loads the stored readings after the shifts, with their
+// original time. A reading that is stale, or of a zone that cannot take one
+// any more, is dropped.
+func (d *daemon) restoreRoomTemps() error {
+	inst := d.inst.Load()
+	if d.state == nil || inst == nil {
+		return nil
+	}
+	stored, err := d.state.RoomTemps(context.Background())
+	if err != nil {
+		return err
+	}
+	d.roomTempsSaved = stored
+	now := d.retryNow()
+	for _, s := range stored {
+		z, err := inst.ZoneByNumber(s.Zone)
+		if err != nil || z.Kind != tado.ZoneHeating || !zoneTakesReading(inst, s.Zone) {
+			continue
+		}
+		x := d.roomTemps[s.Zone]
+		if x == nil {
+			manual := inst.Options.SetpointShiftC(s.Zone)
+			x = &roomTemp{shiftC: manual, wantedC: manual, evalAt: now}
+		}
+		x.tempC, x.at, x.source = s.TempC, time.UnixMilli(s.AtMs), s.Source
+		if !roomTempFresh(inst, x, now) {
+			x.at = time.Time{}
+			if !x.on {
+				continue
+			}
+		}
+		d.roomTemps[s.Zone] = x
+	}
+	d.saveRoomTemps()
+	return nil
 }
 
 // saveRoomShifts stores the applied shifts once they moved. A failed save stays
@@ -359,9 +437,9 @@ func (d *daemon) saveRoomShifts() {
 	d.roomUnsaved = false
 }
 
-// restoreRoomShifts loads the stored shifts before the engine starts. The
-// readings are not stored, so each shift is released from the start, unless a
-// new reading comes first. A shift of a zone that cannot take one any more is
+// restoreRoomShifts loads the stored shifts before the engine starts.
+// restoreRoomTemps then restores the readings, so a shift without a fresh
+// reading is released. A shift of a zone that cannot take one any more is
 // dropped.
 func (d *daemon) restoreRoomShifts() error {
 	inst := d.inst.Load()
