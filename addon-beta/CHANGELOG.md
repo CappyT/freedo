@@ -82,3 +82,17 @@ pre-release has its notes here.
   the tado cloud of one plant and the value it serves today.
 - The zone owner did not run on a plant yet: this pre-release is the first run. The daemon sends
   no observe notification: the first run tells whether the members ask for them.
+
+## 0.11.0-beta.2
+
+- Daemon: the controller of an owned zone resets when its temperature source changes, so the
+  gap between the two sensors is no derivative. On the plant the switch from the valve sensor to
+  the room thermometer gave a demand of 78 percent for 10 minutes.
+- Daemon: the owner pushes its measure to the members every minute. On the plant a valve went
+  back to its own sensor between pushes 3 to 5 minutes apart.
+- Daemon: the log line of a member request to the owner shows the body of a zone measure.
+- Home Assistant: the integration feeds the room thermometer reading to an owned zone, and sets
+  no correction when it maps a sensor to one.
+- Run on a real plant with 0.11.0-beta.1, one valve zone: the valve read the zone document
+  within minutes, sends its own measure to the coordinator about once a minute with no observe,
+  answers the pushed measure with 2.05, and took the pushed temperature into its controller.
