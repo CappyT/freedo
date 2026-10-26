@@ -669,10 +669,13 @@ With the daemon as owner:
   room temperature while it is fresh, else on the calibrated temperature of the measuring
   device. Without a target (an open window, an off block, away with no temperature) the demand
   is 0 and the integrator restarts. The state is not stored: a restart starts the controller
-  from zero, as a valve does after each read of the zone document.
+  from zero, as a valve does after each read of the zone document. A change of the source
+  (external reading to device or back) restarts it too: the gap between the two sensors is no
+  room change.
 - The daemon answers `GET z/p?lid=N` of the zone with its own measure, tags `4060` and `40a0`,
-  and pushes it to every member as `PUT z/p?lid=N` on the zone plane when the demand changes
-  and at most every 5 minutes otherwise, under the Max-Age of 1800 s the measure carries.
+  and pushes it to every member as `PUT z/p?lid=N` on the zone plane once a minute, under the
+  Max-Age of 1800 s the measure carries. A valve went back to its own sensor between pushes
+  3 to 5 minutes apart.
 - The zone takes `POST /api/zones/{n}/temperature` with no other option. `offset_mode`
   `setpoint` and `auto_offset` are refused on an owned zone, and the owner is refused while
   the zone holds one of them: the valves follow our measure, so a correction of their own
@@ -680,11 +683,16 @@ With the daemon as owner:
 - `declared[].owner` in `GET /api/zones` shows `mode`, and for an owned zone `tempC`, `source`
   (`external` or `device`), `demandPct` and `pushedAt`.
 - The daemon logs every zone-plane request a member addresses to it for an owned zone, with
-  the method, the URI and whether it carries the observe option.
+  the method, the URI, whether it carries the observe option and the body of a measure.
 
-No capture shows a device with the coordinator as owner. The check on air is open: whether a
-valve and the wall thermostat accept the coordinator endpoint as owner, what they ask it, and
-how they take the push.
+Seen on a plant, one valve zone: the valve read the new zone document within minutes of the
+PATCH, not at the hourly check. It sends `PUT z/p?lid=N` to the coordinator twice a minute,
+once with its own sensor and the output of its own controller, once echoing the pushed
+measure, and never with an observe option. It answers each push with `2.05` and `62a0=00`.
+It reports the pushed `40a0` as its own demand (`z/N/act` and `HeatDemandPct`) and holds the
+pushed `4060` as the zone temperature: with a target of 22 C it reported 93 where its own
+controller on its own sensor gave 57. Open: a zone with two valves and a zone the wall
+thermostat owns.
 
 ### External room temperature
 
