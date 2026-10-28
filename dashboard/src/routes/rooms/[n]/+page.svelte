@@ -5,6 +5,7 @@
 	import { tick } from 'svelte';
 	import { act, errorText } from '#lib/actions.ts';
 	import ConfirmDialog from '#lib/ConfirmDialog.svelte';
+	import { data } from '#lib/data.svelte.ts';
 	import { t } from '#lib/i18n.svelte.ts';
 	import Icon from '#lib/Icon.svelte';
 	import { manage } from '#lib/install.svelte.ts';
@@ -93,6 +94,11 @@
 		loaded = true;
 	}
 
+	// Home Assistant pushes a room temperature that the method None drops. The note stays until the form picks a method.
+	const refused = $derived(
+		options?.correction === 'none' ? data.zones?.declared.find((z) => z.number === number)?.externalTemp?.refused : null
+	);
+
 	const issues = $derived(options ? optionIssues(options, offsetText) : []);
 	// The valve calibration writes the offset itself while it is on, so the field is closed then.
 	const offsetClosed = $derived(zone?.auto_offset === true || options?.correction === 'calibration');
@@ -125,6 +131,20 @@
 			showOptions();
 		}
 	}
+
+	// The link on the room screen names the correction field in a query. The page is routed by hash, so a fragment would
+	// become part of the route, and the router keeps the query out of page.url. The field exists only once the form is drawn.
+	let jumped = false;
+	$effect(() => {
+		if (jumped || !loaded || !options) return;
+		jumped = true;
+		if (new URLSearchParams(location.hash.split('?')[1]).get('field') !== 'correction') return;
+		void tick().then(() => {
+			const field = document.getElementById('correction');
+			field?.scrollIntoView({ block: 'center' });
+			field?.focus();
+		});
+	});
 
 	// The first read, and one more when the person opens another room.
 	$effect(() => {
@@ -447,6 +467,12 @@
 
 					<fieldset class="wide">
 						<legend>{t('opt.correction')}</legend>
+						{#if refused}
+							<p class="notice tone-warning" data-testid="correction-refused">
+								<Icon name="warning" />
+								<span>{t('roomTemp.refused', { source: refused.source ?? t('roomTemp.source'), method: t('opt.correction.none') })}</span>
+							</p>
+						{/if}
 						<div class="pair">
 							<label class="field">
 								<span>{t('opt.correction.method')}</span>
@@ -456,6 +482,7 @@
 									onchange={(e) => {
 										if (options) options = withCorrection(options, e.currentTarget.value as Correction);
 									}}
+									id="correction"
 									data-testid="correction"
 								>
 									{#each CORRECTIONS as c (c)}<option value={c}>{t(`opt.correction.${c}`)}</option>{/each}

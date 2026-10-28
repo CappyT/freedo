@@ -19,6 +19,8 @@
 //   room restart a device after a confirm, move a device, show the effects of a removal before the delete, offer only free devices,
 //   and rename and delete the room. No room is the group of the devices in no room.
 // - The settings of a heated room save its options in one request and keep the ranges of the daemon.
+// - The room screen shows the room temperature that Home Assistant pushes: the source, the reading, its age and the
+//   method. A push that the method None refuses shows as a warning there and in the correction field.
 // - The burner badge of the boiler page follows the burner flag, also while no room asks for heat.
 //   A boiler fault code shows on the boiler page and as a banner.
 // - The boiler setup saves the energy data and the flow options, with a comma as the decimal separator,
@@ -700,6 +702,46 @@ try {
 	);
 	await tab.waitFor(`document.querySelector(${JSON.stringify(opt(5, '.pair .input.num'))})?.value === '-0.7'`, 3000);
 	check(await saveDisabled(), 'the saved options show again, with nothing left to save');
+	// The room temperature that Home Assistant pushes. Bedroom keeps the method None, so the daemon refuses the push and
+	// the room screen and the correction field say why. Bath took the continuous shift above, so its reading is in use.
+	const push = (zone, body) =>
+		fetch(`${daemon.base}/api/zones/${zone}/temperature`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+	const refusal = 'Test thermometer sends the room temperature, but with the method None freedo ignores it.';
+	check((await push(10, { tempC: 20.4, source: 'Test thermometer' })).status === 409, 'the daemon refuses a room temperature for the method None');
+	await open('#/zones/10', `document.querySelector('[data-testid=room-temp]')`);
+	check(
+		(await tab.evaluate(`document.querySelector('[data-testid=room-temp]').dataset.state`)) === 'refused' &&
+			(await tab.evaluate(`document.querySelector('[data-testid=room-temp-refused]').textContent.trim()`)) === refusal,
+		'the room screen warns that the method None ignores the room temperature that Home Assistant sends'
+	);
+	await click('[data-testid=room-temp-change]');
+	await tab.waitFor(`document.querySelector('[data-testid=correction-refused]')`, 10_000);
+	check(
+		(await tab.evaluate(`document.querySelector('[data-testid=correction-refused]').textContent.trim()`)) === refusal,
+		'the correction field repeats the warning while the method is None'
+	);
+	check(
+		await tab.waitFor(`document.activeElement?.id === 'correction'`, 3000).then(() => true, () => false),
+		'the link from the room screen focuses the correction field'
+	);
+	await choose('[data-testid=correction]', 'shift');
+	check(!(await tab.evaluate(`!!document.querySelector('[data-testid=correction-refused]')`)), 'the warning goes when the form picks a method');
+	await open('#/zones/1', `document.querySelector('#state-title')`);
+	await sleep(1500);
+	check(!(await tab.evaluate(`!!document.querySelector('[data-testid=room-temp]')`)), 'a room with the method None and no refused push shows no room temperature line');
+	check((await push(2, { tempC: 21.4, source: 'Test thermometer' })).status === 200, 'the daemon takes a room temperature for the continuous shift');
+	await open('#/zones/2', `document.querySelector('[data-testid=room-temp][data-state=active]')`);
+	const live = await tab.evaluate(`document.querySelector('[data-testid=room-temp]').innerText`);
+	check(
+		/Room temperature/.test(live) && /Test thermometer/.test(live) && /21\.4°/.test(live) && /ago|now/.test(live) && /Method: Continuous shift/.test(live),
+		`the room screen shows the source, the reading, its age and the method (${live.replace(/\s+/g, ' ')})`
+	);
+	await fetch(`${daemon.base}/api/zones/2/temperature`, { method: 'DELETE' });
+	await open('#/zones/2', `document.querySelector('[data-testid=room-temp][data-state=no_reading]')`);
+	check(
+		/No reading from Home Assistant/.test(await tab.evaluate(`document.querySelector('[data-testid=room-temp]').innerText`)),
+		'a method that needs a reading says when none arrived'
+	);
 	await open('#/rooms/0', `document.querySelector('[data-member]')`);
 	check(!(await tab.evaluate(`!!document.querySelector('[data-testid=room-options]')`)), 'the hot water room has no room options');
 

@@ -101,6 +101,31 @@ export interface Target {
 	hasProgram?: boolean;
 }
 
+/** A push of a room temperature that a zone refused because no correction method takes it. */
+export interface RefusedReading {
+	source: string | null;
+	at: string;
+	ageSec: number;
+}
+
+/** The room temperature that an outside sensor gives a heating zone. docs/API.md, "External room temperature". */
+export interface ExternalTemp {
+	tempC: number | null;
+	at: string | null;
+	ageSec: number | null;
+	source: string | null;
+	/** The reading is older than the limit and no longer drives the zone. */
+	stale: boolean;
+	inUse: boolean;
+	learnInUse: boolean;
+	deviceC: number | null;
+	wantedC: number | null;
+	shiftC: number;
+	offsetC: number;
+	/** The last push the zone refused, null when there is none or it is old. Absent on a daemon without the field. */
+	refused?: RefusedReading | null;
+}
+
 export interface DeclaredZone {
 	number: number;
 	name: string;
@@ -112,6 +137,8 @@ export interface DeclaredZone {
 	writer?: string;
 	window?: WindowView;
 	target: Target;
+	/** Heating zones only. */
+	externalTemp?: ExternalTemp;
 }
 
 export interface ZoneDemand {

@@ -15,10 +15,12 @@
 	import Icon, { type IconName } from '#lib/Icon.svelte';
 	import SchedulePanel from '#lib/SchedulePanel.svelte';
 	import ScheduleWeek from '#lib/ScheduleWeek.svelte';
+	import { correctionOf } from '#lib/roomoptions.ts';
+	import { readingUnix, roomTempState } from '#lib/roomtemp.ts';
 	import { HEATING_RANGE, programInForce, type Group, type Mode } from '#lib/schedule.ts';
 	import { api } from '#lib/session.ts';
 	import { stateIcons, nextText, todayOf } from '#lib/today.svelte.ts';
-	import type { EndRule } from '#lib/types.ts';
+	import type { EndRule, InstallZone } from '#lib/types.ts';
 	import { zoneName } from '#lib/zones.ts';
 
 	const range = HEATING_RANGE;
@@ -38,6 +40,30 @@
 	let minutes = $state(0);
 	let busy = $state(false);
 	let programs = $state<Record<Mode, Group[] | null>>({ home: null, away: null });
+
+	// The correction method is in the installation, not in the live zone. It is read again with each poll,
+	// because another client can change it.
+	// A late answer must not overwrite a newer one, and the method of another room must not show.
+	let installZone = $state<InstallZone | null>(null);
+	let installAsked = 0;
+	$effect(() => {
+		void data.zones;
+		const room = number;
+		const asked = ++installAsked;
+		api
+			.installZones()
+			.then((list) => {
+				if (asked === installAsked) installZone = list.find((z) => z.number === room) ?? null;
+			})
+			.catch(() => {});
+	});
+	const method = $derived(installZone && installZone.number === number ? correctionOf(installZone) : null);
+	const ext = $derived(model?.zone.externalTemp);
+	const roomTemp = $derived(method === null ? 'none' : roomTempState(method, ext));
+	const methodName = $derived(method === null ? '' : t(`opt.correction.${method}`));
+	const methodLine = $derived(t('roomTemp.method', { method: methodName }));
+	const readingAgo = $derived(ext?.ageSec == null ? '' : fmt.ago(readingUnix(ext.ageSec)));
+	const settingsHref = $derived(resolve('/rooms/[n]', { n: String(number) }) + '?field=correction');
 
 	const shown = $derived(
 		draft ?? model?.zone.target.targetC ?? model?.zone.target.programC ?? model?.tempC ?? 20
@@ -210,6 +236,35 @@
 								</span>
 							</li>
 						{/if}
+						{#if roomTemp !== 'none' && ext}
+							<li class="list-row" data-testid="room-temp" data-state={roomTemp}>
+								{#if roomTemp === 'refused'}
+									<span class="warn"><Icon name="warning" size={18} /></span>
+									<span class="list-main">
+										<span class="list-label">{t('roomTemp.label')}</span>
+										<span class="list-sub warn" data-testid="room-temp-refused">
+											{t('roomTemp.refused', { source: ext.refused?.source ?? t('roomTemp.source'), method: methodName })}
+										</span>
+									</span>
+									<a class="action" href={settingsHref} data-testid="room-temp-change">{t('roomTemp.change')}</a>
+								{:else if roomTemp === 'active'}
+									<span class="list-main">
+										<span class="list-label">{t('roomTemp.label')}</span>
+										<span class="list-sub">
+											{[ext.source ?? t('roomTemp.source'), readingAgo, methodLine].join(' · ')}
+										</span>
+									</span>
+									<span class="list-value num">{fmt.degrees(ext.tempC)}</span>
+								{:else}
+									<span class="list-main">
+										<span class="list-label">{t('roomTemp.label')}</span>
+										<span class="list-sub">
+											{[roomTemp === 'stale' ? t('roomTemp.stale', { age: readingAgo }) : t('roomTemp.none'), methodLine].join(' · ')}
+										</span>
+									</span>
+								{/if}
+							</li>
+						{/if}
 						{#if windowState}
 							<li class="list-row">
 								<span class="list-main">
@@ -288,5 +343,9 @@
 
 	.action {
 		color: var(--link);
+	}
+
+	.warn {
+		color: var(--status-warning-text);
 	}
 </style>

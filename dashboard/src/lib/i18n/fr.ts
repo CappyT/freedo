@@ -164,6 +164,13 @@ export const fr: Record<Key, string> = {
 	'zone.demand': 'Demande de chauffage',
 	'zone.scheduled': 'Prévu maintenant',
 	'zone.devices': 'Appareils de cette pièce',
+	'roomTemp.label': 'Température de la pièce',
+	'roomTemp.method': 'Méthode : {method}',
+	'roomTemp.source': 'Home Assistant',
+	'roomTemp.refused': '{source} envoie la température de la pièce, mais avec la méthode {method} freedo l’ignore.',
+	'roomTemp.change': 'Changer la méthode',
+	'roomTemp.stale': 'Mesure trop ancienne ({age})',
+	'roomTemp.none': 'Aucune mesure de Home Assistant',
 	'zone.hotWaterName': 'Eau chaude',
 
 	'ends.legend': 'Durée du changement',

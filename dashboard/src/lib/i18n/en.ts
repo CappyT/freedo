@@ -164,6 +164,13 @@ export const en = {
 	'zone.demand': 'Heating demand',
 	'zone.scheduled': 'Scheduled now',
 	'zone.devices': 'Devices of this room',
+	'roomTemp.label': 'Room temperature',
+	'roomTemp.method': 'Method: {method}',
+	'roomTemp.source': 'Home Assistant',
+	'roomTemp.refused': '{source} sends the room temperature, but with the method {method} freedo ignores it.',
+	'roomTemp.change': 'Change method',
+	'roomTemp.stale': 'Reading too old ({age})',
+	'roomTemp.none': 'No reading from Home Assistant',
 	'zone.hotWaterName': 'Hot water',
 
 	'ends.legend': 'How long the change lasts',
