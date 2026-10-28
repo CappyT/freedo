@@ -39,6 +39,7 @@ import (
 	"log"
 	"math"
 	"slices"
+	"strings"
 	"time"
 
 	"freedo/tado"
@@ -117,7 +118,8 @@ func (d *daemon) tickZoneOwners(e *tado.EmuState) {
 		}
 		log.Printf("zone %d owner: %s asked %s %s observe=%t opts=[%s]%s", r.Zone, r.Device, r.Method, r.URI, r.Observe, r.Options, body)
 		if r.Registered {
-			log.Printf("zone %d owner: %s observes z/p tok=%s", r.Zone, r.Device, r.Token)
+			path, _, _ := strings.Cut(r.URI, "?")
+			log.Printf("zone %d owner: %s observes %s tok=%s", r.Zone, r.Device, path, r.Token)
 		}
 	}
 	inst := d.inst.Load()
@@ -216,7 +218,7 @@ func (d *daemon) stepZoneOwner(e *tado.EmuState, inst *tado.Install, z *tado.Zon
 	e.SetZoneMeasure(z.Number, tado.ZoneMeasureBody(tC, pct, humidity))
 	for _, o := range e.NotifyZoneObservers(z.Number) {
 		d.requestQueuedDispatch(o.Target)
-		log.Printf("zone %d owner: notify %s z/p tok=%s obs=%d %.2f C demand %d%%", z.Number, o.Device, o.Token, o.Seq, tC, pct)
+		log.Printf("zone %d owner: notify %s tok=%s obs=%d %.2f C demand %d%%", z.Number, o.Device, o.Token, o.Seq, tC, pct)
 	}
 	if !changed && now.Sub(x.pushedAt) < ownerPushEvery {
 		return
@@ -337,7 +339,7 @@ func (d *daemon) restoreZoneObservers(e *tado.EmuState) error {
 			continue
 		}
 		if e.RestoreZoneObserver(s.Zone, requester, token, s.Seq, time.UnixMilli(s.NotifiedMs).UTC()) {
-			log.Printf("zone %d owner: %s observes z/p tok=%s obs=%d, restored", s.Zone, tado.ShortFromWire(requester), s.Token, s.Seq)
+			log.Printf("zone %d owner: %s observes the measure tok=%s obs=%d, restored", s.Zone, tado.ShortFromWire(requester), s.Token, s.Seq)
 		}
 	}
 	return nil
