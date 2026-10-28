@@ -63,10 +63,12 @@ func BuildZoneConfigDocument(in *Install, zone int) (*ZoneConfigDocument, error)
 	endpointMembers := zoneConfigOrderMembers(owner, members)
 	// The coordinator as owner: the owner and the measuring endpoint name us,
 	// in the same address form the document uses for a device. The members
-	// and their report endpoints stay as they are. Unverified on air.
+	// and their report endpoints stay as they are.
 	ownerWire := owner.WireEUI()
+	measure := zoneConfigEndpointWire(ownerWire, "p")
 	if z.Kind == ZoneHeating && in.Options.CoordinatorOwns(zone) {
 		ownerWire = in.CoordinatorEUI()
+		measure = zoneConfigPathWire(ownerWire, ownerZoneResource(zone))
 	}
 	membership := endpointMembers
 	if z.Kind == ZoneHeating && z.Circuit != nil {
@@ -111,7 +113,11 @@ func BuildZoneConfigDocument(in *Install, zone int) (*ZoneConfigDocument, error)
 			// No query: the thermostat observes this URI and parses a path of
 			// at most 4 and a path and query of at most 9 characters
 			// (coap_uri_parse@0x1d920). With ?lid=N it never sends the GET.
-			TLV{Tag: zoneConfigTagMeasure, Val: []byte(zoneConfigEndpointWire(ownerWire, "p"))},
+			// The thermostat keeps one outgoing observe subscription per peer,
+			// port and path: coap_sub_add@0x218ac frees a match through
+			// coap_sub_remove_match@0x21850. Every owned zone of the coordinator
+			// therefore needs its own path, /z<N> (4 characters with N <= 99).
+			TLV{Tag: zoneConfigTagMeasure, Val: []byte(measure)},
 			zoneConfigU16(zoneConfigTagKp, pid.Kp),
 			zoneConfigU16(zoneConfigTagKi, pid.Ki),
 			zoneConfigU16(zoneConfigTagKd, pid.Kd),
@@ -160,12 +166,17 @@ func zoneConfigEndpoint(d *Device, resource string) string {
 
 // zoneConfigEndpointWire is the endpoint of a node by its wire EUI.
 func zoneConfigEndpointWire(wire []byte, resource string) string {
-	return fmt.Sprintf("coap://[fe80:0:0:0:%x:%x:%x:%x]/z/%s",
+	return zoneConfigPathWire(wire, "z/"+resource)
+}
+
+// zoneConfigPathWire is the endpoint of a node by its wire EUI and a path.
+func zoneConfigPathWire(wire []byte, path string) string {
+	return fmt.Sprintf("coap://[fe80:0:0:0:%x:%x:%x:%x]/%s",
 		(uint16(wire[7])<<8|uint16(wire[6]))^0x0200,
 		uint16(wire[5])<<8|uint16(wire[4]),
 		uint16(wire[3])<<8|uint16(wire[2]),
 		uint16(wire[1])<<8|uint16(wire[0]),
-		resource)
+		path)
 }
 
 func zoneConfigU16(tag string, value int) TLV {

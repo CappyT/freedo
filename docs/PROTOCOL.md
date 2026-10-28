@@ -52,8 +52,30 @@ owner. It never consumes a member's `h/<home>/z/N/act`. The observe works this w
   document, with a fresh token of up to 8 bytes and an empty Observe option (option 6, value
   0: register).
 - `coap_uri_parse`@0x1d920 takes a path of at most 4 characters (`/z/p`) and a path and
-  query of at most 9. A URI with `?lid=N` fails to parse, and the GET never goes out. With
-  the coordinator as owner, freedo writes its `z/p` with no query in `6040`.
+  query of at most 9. A URI with `?lid=N` fails to parse, and the GET never goes out.
+  `coap_msg_set_uri_path`@0x22e26 strips the leading slash and sends the rest as one Uri-Path
+  option, so an inner `/` stays inside that option.
+- `coap_sub_add`@0x218ac stores the path in a field of 5 bytes, so the path with its slash has
+  at most 4 characters. It calls `coap_sub_remove_match`@0x21850, which frees every
+  subscription with the same peer, port and path. The thermostat has one observe slot per zone
+  (11 slots) and keeps one outgoing subscription per peer, port and path. When several zones
+  name the same URI, each registration deletes the one before, and the other slots lapse into
+  their fallback and register again in a loop (seen on the plant with zones 1, 3 and 8). With
+  the coordinator as owner, freedo writes `/z<N>` in `6040` of owned zone N (`/z1`, `/z8`,
+  `/z10`), `N` of at most 2 digits, and the legacy `z/p` with no query stays an accepted
+  request for a thermostat that holds an older document.
+- A notification matches its subscription by token alone (`coap_sub_find_by_token`@0x2181c).
+  `coap_sub_notify_dispatch`@0x21930 drops a notification whose Observe value equals the last
+  one and accepts a lower one, so each notification of a registration needs a new value.
+- Of the notification body the thermostat stores the tags `4060` and `40a0` to the zone of
+  the slot. It ignores `0135`. The circuit demand is the maximum over the zones
+  (`zone_to_circuit_demand_update`@0x2debc).
+- `coap_observe_config_load`@0x28d24 calls `coap_observe_table_reset` and resets all 11
+  slots. Every zone registers again and stays in its fallback until its first notification.
+- The thermostat also serves `PUT z/p?lid=N` (`coap_res_zone_meas_put`@0x2d3ec). It stores
+  `4060` and `40a0` for zone `lid` and answers `2.05` with `62a0`. It does not touch the
+  observe slots. Whether the slot index and `lid` name the same zone is not readable
+  statically.
 - `coap_observe_notify_handler`@0x29048 takes a 2.xx that carries the Observe option as a
   notification. It parses the body, sets the deadline of the slot to the Max-Age plus 15 s
   (60 s with no Max-Age), and the zone leaves its fallback.
@@ -69,8 +91,8 @@ owner. It never consumes a member's `h/<home>/z/N/act`. The observe works this w
   `d/config`. It accepts the coordinator as owner.
 
 As owner, freedo answers the registering GET with an ACK `2.05` that carries Observe (a
-sequence number above 0) and Max-Age 1800, and registers the requester and its token. A new
-registration of the same requester replaces the old one. After that it sends a NON `2.05`
+sequence number above 0) and Max-Age 1800, and registers the requester and its token for the
+zone. A new registration of the same requester for the same zone replaces the old one. After that it sends a NON `2.05`
 under that token, with the next sequence number, Max-Age 1800 and the measure, each time the
 measure changes and at least every 10 minutes. A GET with no Observe option gets the plain
 `2.05` with Max-Age 1800. A change of the owner sends the thermostat that is the heat source

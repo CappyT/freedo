@@ -7,9 +7,9 @@ package tado
 // reports the demand of the first, and a valve follows the wall thermostat
 // where that one owns the zone. The commercial wireless temperature sensor
 // works this way. With the coordinator as owner the daemon runs the controller
-// on an external room temperature and the valves become actuators. No capture
-// shows a device with the coordinator as owner: the option is unverified on
-// air.
+// on an external room temperature and the valves become actuators. The option
+// runs on the plant with the wall thermostat observing the measure of several
+// owned zones.
 
 import (
 	"bytes"
@@ -40,6 +40,28 @@ func (o Options) ZoneOwner(zone int) string {
 
 // CoordinatorOwns reports whether the daemon owns zone.
 func (o Options) CoordinatorOwns(zone int) bool { return o.ZoneOwner(zone) == ZoneOwnerCoordinator }
+
+// ownerZoneResource is the path of the measure of an owned zone on the
+// coordinator: z<N>, N in decimal without leading zeros. The wall thermostat
+// keeps one outgoing observe subscription per peer, port and path
+// (coap_sub_add@0x218ac, coap_sub_remove_match@0x21850), so each owned zone
+// needs a path of its own. The path field holds 4 bytes with the slash
+// (coap_sub_add), so N has at most 2 digits.
+func ownerZoneResource(zone int) string { return "z" + strconv.Itoa(zone) }
+
+// ownerZonePath returns N of a path z<N>: 1 or 2 digits and no leading zero.
+// The path "z" and the resources "z/p" or "z/s" are not owner zone paths.
+func ownerZonePath(path string) (int, bool) {
+	digits, ok := strings.CutPrefix(path, "z")
+	if !ok || len(digits) == 0 || len(digits) > 2 || (len(digits) == 2 && digits[0] == '0') {
+		return 0, false
+	}
+	if !isAllDigits(digits) {
+		return 0, false
+	}
+	n, _ := strconv.Atoi(digits)
+	return n, true
+}
 
 // CheckZoneOwner reports what is wrong with an owner value, or "".
 func CheckZoneOwner(owner string) string {
@@ -212,9 +234,9 @@ func ZoneMeasureSummary(body []byte) string {
 const ownerRequestsMax = 64
 
 // noteOwnerRequest records a zone-plane request addressed to us for a zone the
-// coordinator owns. A GET of z/p with Observe 0 registers the requester while
-// the daemon serves a measure of the zone; servedZoneGet then answers it as the
-// first notification.
+// coordinator owns. A GET of z/p or z<N> with Observe 0 registers the requester
+// while the daemon serves a measure of the zone; servedZoneGet then answers it
+// as the first notification.
 func (e *EmuState) noteOwnerRequest(m *CoAPMessage, src []byte) {
 	zone, ok := e.ownerRequestZone(m, src)
 	if !ok {
@@ -222,7 +244,7 @@ func (e *EmuState) noteOwnerRequest(m *CoAPMessage, src []byte) {
 	}
 	obs, observe := m.Option(6)
 	registered := observe && obs.Uint() == 0 && m.Code == "0.01" &&
-		normalizeResource(m.Path) == "z/p" && len(e.ownedMeasure[zone]) > 0
+		isMeasureRead(m.Path) && len(e.ownedMeasure[zone]) > 0
 	if registered {
 		e.observeZone(zone, src, m.Token)
 	}
@@ -391,15 +413,36 @@ func (e *EmuState) TakeOwnerRequests() []OwnerRequest {
 	return out
 }
 
+// isMeasureRead reports whether path names the measure of a zone: z/p, or the
+// z<N> path of an owned zone.
+func isMeasureRead(path string) bool {
+	if _, ok := ownerZonePath(path); ok {
+		return true
+	}
+	return normalizeResource(path) == "z/p"
+}
+
+// ownedMeasurePath reports whether path is z<N> of a zone the coordinator owns.
+func (e *EmuState) ownedMeasurePath(path string) bool {
+	zone, ok := ownerZonePath(path)
+	return ok && e.inst != nil && e.inst.Options.CoordinatorOwns(zone)
+}
+
 // ownerRequestZone names the zone a zone-plane request to the coordinator is
-// about, when the coordinator owns it. A member names the zone in the query.
-// The wall thermostat reads the owner's z/p with no query, as a valve owner
-// answers for its one zone: the request is then about the owned zone the
-// requester serves or belongs to, the one with the highest served demand when
-// there are several, since the thermostat takes the maximum anyway.
+// about, when the coordinator owns it. The path z<N> names zone N: the zone
+// document gives it as the measuring endpoint of an owned zone, and the request
+// counts only from a device that is involved in the zone. A member names the
+// zone in the query otherwise. A wall thermostat that still holds the older
+// document reads the owner's z/p with no query, as a valve owner answers for
+// its one zone: the request is then about the owned zone the requester serves
+// or belongs to, the one with the highest served demand when there are
+// several, since the thermostat takes the maximum anyway.
 func (e *EmuState) ownerRequestZone(m *CoAPMessage, src []byte) (int, bool) {
 	if e.inst == nil {
 		return 0, false
+	}
+	if zone, ok := ownerZonePath(m.Path); ok {
+		return zone, e.inst.Options.CoordinatorOwns(zone) && e.zoneInvolves(zone, src)
 	}
 	if zone, ok := zoneQuery(m.Query); ok {
 		return zone, e.inst.Options.CoordinatorOwns(zone)

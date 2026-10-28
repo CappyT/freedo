@@ -1003,7 +1003,7 @@ func (e *EmuState) handleCoAP(f *Frame, m *CoAPMessage, class FrameClass, srcLbl
 		e.confirmByMID(f.SrcEUI(), m) // a NON 2.xx response to a queued GET, if any
 		return nil, false             // NON telemetry: MAC ACK only, by design
 	}
-	if !knownResource(m.Path) {
+	if !knownResource(m.Path) && !e.ownedMeasurePath(m.Path) {
 		e.log.Log(class.String(), srcLbl, dstLbl, rsnUnknownRes+" path="+m.URI(), f.Hex())
 	}
 	if !knownMethod(m.Code) {
@@ -2021,11 +2021,15 @@ func (ns *NodeState) refreshLastKnown() {
 // bridge fans those out and can answer a GET of them from its cache.
 var zoneResources = map[string]bool{"z/s": true, "z/p": true, "z/cpe": true}
 
-// isZonePlane reports a link-local zone-plane request (z/p, z/cpe, z/s?lid=N),
+// isZonePlane reports a link-local zone-plane request (z/p, z/cpe, z/s?lid=N,
+// and z<N>, the measure of a zone the coordinator owns),
 // which a device sends to its zone peers through the coordinator. Devices carry
 // option 2048 on some of these and not on others, so they tell nothing about
 // the session the coordinator served.
 func isZonePlane(m *CoAPMessage) bool {
+	if _, ok := ownerZonePath(m.Path); ok {
+		return true
+	}
 	first, _, _ := strings.Cut(m.Path, "/")
 	return first == "z"
 }
@@ -2620,23 +2624,31 @@ func (e *EmuState) PendingZoneProxies() int { return len(e.zoneProxyPend) }
 
 // servedZoneGet answers a GET of a zone resource from the cached state, with the
 // options the captured answer for that resource carries. With nothing cached the
-// answer is the bare 2.05 the bridge sent before. A z/p read with no query from
-// a device of a zone the coordinator owns gets that zone's served measure: the
-// wall thermostat reads the owner's z/p that way. The answer to the GET that
-// registered an observe (noteOwnerRequest) carries the Observe option: on a
-// 2.05 without it the thermostat parses no body and ends the observation.
+// answer is the bare 2.05 the bridge sent before. A z/p read with no query, or a
+// read of z<N>, from a device of a zone the coordinator owns gets that zone's
+// served measure: the wall thermostat reads the owner's measure that way. The
+// answer to the GET that registered an observe (noteOwnerRequest) carries the
+// Observe option: on a 2.05 without it the thermostat parses no body and ends
+// the observation.
 func (e *EmuState) servedZoneGet(m *CoAPMessage, src []byte) ([]byte, []CoAPOption, bool) {
 	if m.Code != "0.01" {
 		return nil, nil, false
 	}
-	zone, ok := zoneQuery(m.Query)
-	if !ok {
-		// The wall thermostat reads the owner's z/p with no query.
+	resource := normalizeResource(m.Path)
+	zone, ok := ownerZonePath(m.Path)
+	if ok {
+		// The path z<N> is the z/p of an owned zone N.
+		resource = "z/p"
+		if _, ok = e.ownerRequestZone(m, src); !ok {
+			return nil, nil, false
+		}
+	} else if zone, ok = zoneQuery(m.Query); !ok {
+		// A wall thermostat with the older zone document reads the owner's z/p
+		// with no query.
 		if zone, ok = e.ownerRequestZone(m, src); !ok {
 			return nil, nil, false
 		}
 	}
-	resource := normalizeResource(m.Path)
 	body, ok := e.cachedZoneRead(zone, resource)
 	if !ok {
 		return nil, nil, false

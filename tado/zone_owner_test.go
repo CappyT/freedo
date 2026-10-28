@@ -27,7 +27,8 @@ func TestZoneConfigDocumentCoordinatorOwner(t *testing.T) {
 	want := bytes.ReplaceAll(device.Body, []byte(valve+"s"), []byte(coordinator+"s"))
 	// 8000 lists the valve as a member: put that one back.
 	want = bytes.Replace(want, zoneConfigTestTLV(0x8000, []byte(coordinator+"s")), zoneConfigTestTLV(0x8000, []byte(valve+"s")), 1)
-	want = bytes.ReplaceAll(want, zoneConfigTestTLV(0x6040, []byte(valve+"p")), zoneConfigTestTLV(0x6040, []byte(coordinator+"p")))
+	// 6040 names the path of the zone, not z/p: one observe subscription per path.
+	want = bytes.ReplaceAll(want, zoneConfigTestTLV(0x6040, []byte(valve+"p")), zoneConfigTestTLV(0x6040, []byte(coordinator[:len(coordinator)-2]+"z3")))
 	if !bytes.Equal(doc.Body, want) {
 		t.Errorf("body = %x\nwant   %x", doc.Body, want)
 	}
@@ -39,6 +40,41 @@ func TestZoneConfigDocumentCoordinatorOwner(t *testing.T) {
 	}
 	if bytes.Contains(doc.Body, []byte(coordinator+"cpe")) || bytes.Contains(doc.Body, zoneConfigTestTLV(0x8000, []byte(coordinator+"s"))) {
 		t.Error("the coordinator appears as a member")
+	}
+}
+
+// TestZoneConfigMeasureEndpointPerZone: the measuring endpoint of a zone the
+// coordinator owns is its own path z<N>, so the thermostat keeps one observe
+// subscription per owned zone. A zone a device owns keeps z/p.
+func TestZoneConfigMeasureEndpointPerZone(t *testing.T) {
+	in := fixtureInstall(t)
+	in.Options.ZoneOwners = map[int]string{8: ZoneOwnerCoordinator, 10: ZoneOwnerCoordinator}
+	for zone, want := range map[int]string{
+		8:  "coap://[fe80:0:0:0:21b:c507:face:a109]/z8",
+		10: "coap://[fe80:0:0:0:21b:c507:face:a109]/z10",
+		3:  "coap://[fe80:0:0:0:21b:c507:fade:a408]/z/p",
+	} {
+		doc, err := BuildZoneConfigDocument(in, zone)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Contains(doc.Body, zoneConfigTestTLV(0x6040, []byte(want))) {
+			t.Errorf("zone %d: 6040 is not %q in %x", zone, want, doc.Body)
+		}
+	}
+}
+
+// TestOwnerZonePath: z<N> has 1 or 2 digits and no leading zero.
+func TestOwnerZonePath(t *testing.T) {
+	for path, want := range map[string]int{"z1": 1, "z8": 8, "z10": 10, "z99": 99} {
+		if n, ok := ownerZonePath(path); !ok || n != want {
+			t.Errorf("ownerZonePath(%q) = %d %t, want %d", path, n, ok, want)
+		}
+	}
+	for _, path := range []string{"", "z", "z/p", "z/s", "z01", "z100", "z-1", "z1/p", "zz", "z+1", "h/7654321/z/1/s"} {
+		if n, ok := ownerZonePath(path); ok {
+			t.Errorf("ownerZonePath(%q) = %d, want no match", path, n)
+		}
 	}
 }
 
@@ -377,5 +413,125 @@ func TestOwnerChangeRereadsHeatSource(t *testing.T) {
 			t.Errorf("%s: %d re-read triggers, want %d", step.what, rereads, step.want)
 		}
 		drainQueue(t, e, ru.WireEUI())
+	}
+}
+
+// TestZoneMeasureObservePerZonePath: the wall thermostat registers on z1 and z8
+// under different tokens, as it does with the zone document that names /z<N>.
+// Each registration is kept, and a change of the measure of a zone notifies
+// under the token of that zone with its own body. A device that is not involved
+// in the zone, and a zone the coordinator does not own, register nothing. The
+// legacy z/p with no query still registers on the owned zone with the highest
+// demand.
+func TestZoneMeasureObservePerZonePath(t *testing.T) {
+	in := fixtureInstall(t)
+	in.Options.ZoneOwners = map[int]string{1: ZoneOwnerCoordinator, 8: ZoneOwnerCoordinator}
+	e := NewEmu(in.EmuConfig(), nil)
+	ru, err := in.Resolve("RU1000000001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	office, err := in.Resolve("VA1000000002") // member of zone 3 only
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := hexEUI(ru.WireEUI())
+	body1, body8 := ZoneMeasureBody(20.5, 10, 500), ZoneMeasureBody(18.5, 80, 500)
+	e.SetZoneMeasure(1, body1)
+	e.SetZoneMeasure(8, body8)
+	e.SetZoneMeasure(3, ZoneMeasureBody(19, 0, 500))
+	get := func(dev *Device, mid uint16, path string, token []byte) *CoAPMessage {
+		t.Helper()
+		pathSegs := strings.Split(path, "/")
+		return synthAnswer(t, in, e.OnFrame(synthZoneUplink(t, in, dev.WireEUI(), CoAPReq{
+			Type: "CON", Code: "0.01", MID: mid, Token: token, Path: pathSegs,
+			Options: []CoAPOption{{Num: 6, Val: []byte{}}},
+		})), mid)
+	}
+	for i, tc := range []struct {
+		path  string
+		token []byte
+		body  []byte
+	}{{"z1", []byte{0xb5}, body1}, {"z8", []byte{0xb7}, body8}} {
+		m := get(ru, uint16(0x7701+i), tc.path, tc.token)
+		if o, ok := m.Option(6); m.Code != "2.05" || !bytes.Equal(m.Payload, tc.body) || !ok || o.Uint() != 1 {
+			t.Errorf("%s: answer = %s %x observe=%t, want 2.05 %x at 1", tc.path, m.Code, m.Payload, ok, tc.body)
+		}
+	}
+	reqs := e.TakeOwnerRequests()
+	if len(reqs) != 2 || reqs[0].URI != "z1" || reqs[0].Zone != 1 || !reqs[0].Registered ||
+		reqs[1].URI != "z8" || reqs[1].Zone != 8 || !reqs[1].Registered || reqs[1].Token != "b7" {
+		t.Fatalf("owner requests = %+v, want one registration each for z1 and z8", reqs)
+	}
+	for zone, token := range map[int]string{1: "b5", 8: "b7"} {
+		if obs := e.ZoneObservers(zone); len(obs) != 1 || obs[0].Target != key || obs[0].Token != token {
+			t.Errorf("zone %d observers = %+v, want the thermostat under %s", zone, obs, token)
+		}
+	}
+	// The notifications wait in the queue of the thermostat, one per token.
+	queued := func(token byte) *CoAPMessage {
+		t.Helper()
+		for _, d := range e.queue[key] {
+			if m, err := parseCoAPCore(d.coap); err == nil && bytes.Equal(m.Token, []byte{token}) {
+				return m
+			}
+		}
+		t.Fatalf("no notification queued under token %02x", token)
+		return nil
+	}
+	body8 = ZoneMeasureBody(18.75, 90, 500)
+	e.SetZoneMeasure(8, body8)
+	if n := e.NotifyZoneObservers(1); len(n) != 0 {
+		t.Errorf("zone 1 did not change but notified %+v", n)
+	}
+	if n := e.NotifyZoneObservers(8); len(n) != 1 || n[0].Seq != 2 {
+		t.Fatalf("zone 8 notified = %+v, want the thermostat at 2", n)
+	}
+	body1 = ZoneMeasureBody(20.25, 0, 500)
+	e.SetZoneMeasure(1, body1)
+	if n := e.NotifyZoneObservers(1); len(n) != 1 || n[0].Seq != 2 {
+		t.Fatalf("zone 1 notified = %+v, want the thermostat at 2", n)
+	}
+	if m := queued(0xb7); !bytes.Equal(m.Payload, body8) {
+		t.Errorf("zone 8 notification = %x, want %x", m.Payload, body8)
+	}
+	if m := queued(0xb5); !bytes.Equal(m.Payload, body1) {
+		t.Errorf("zone 1 notification = %x, want %x", m.Payload, body1)
+	}
+
+	// A device outside zone 8 and a zone the coordinator does not own.
+	for i, path := range []string{"z8", "z3"} {
+		m := get(office, uint16(0x7710+i), path, []byte{0xc1})
+		if _, ok := m.Option(6); ok || m.Code != "2.05" || len(m.Payload) != 0 {
+			t.Errorf("%s from the valve of zone 3 = %s %x observe=%t, want the bare 2.05", path, m.Code, m.Payload, ok)
+		}
+	}
+	if m := get(ru, 0x7712, "z3", []byte{0xc2}); len(m.Payload) != 0 {
+		t.Errorf("z3, owned by a device, answered %x", m.Payload)
+	}
+	for _, zone := range []int{3, 8} {
+		for _, o := range e.ZoneObservers(zone) {
+			if o.Target == hexEUI(office.WireEUI()) || zone == 3 {
+				t.Errorf("zone %d registered %+v", zone, o)
+			}
+		}
+	}
+	for _, r := range e.TakeOwnerRequests() {
+		if r.Registered {
+			t.Errorf("owner request %+v registered", r)
+		}
+	}
+
+	// Legacy: z/p with no query maps to the owned zone with the highest demand
+	// (zone 8, 0 for zone 1) and replaces the registration of that zone.
+	m := get(ru, 0x7720, "z/p", []byte{0xd1})
+	if o, ok := m.Option(6); m.Code != "2.05" || !bytes.Equal(m.Payload, body8) || !ok || o.Uint() != 3 {
+		t.Errorf("legacy z/p = %s %x observe=%x, want 2.05 %x at 3", m.Code, m.Payload, o.Val, body8)
+	}
+	if obs := e.ZoneObservers(8); len(obs) != 1 || obs[0].Token != "d1" {
+		t.Errorf("zone 8 observers after the legacy GET = %+v, want d1", obs)
+	}
+	if obs := e.ZoneObservers(1); len(obs) != 1 || obs[0].Token != "b5" {
+		t.Errorf("zone 1 observers after the legacy GET = %+v, want b5 unchanged", obs)
 	}
 }

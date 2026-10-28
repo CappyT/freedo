@@ -681,8 +681,19 @@ With the daemon as owner:
   boiler on it.
 - The daemon answers `GET z/p?lid=N` of the zone with its own measure, tags `4060`, `40a0` and
   `0135`, and pushes it to every member as `PUT z/p?lid=N` on the zone plane once a minute,
-  under the Max-Age of 1800 s the measure carries. The wall thermostat observes the owner's
-  `z/p` with no query and takes the demand from the observe notifications alone: the daemon
+  under the Max-Age of 1800 s the measure carries. The wall thermostat observes the measure of
+  each owned zone and takes the demand from the observe notifications alone. The zone
+  document names `/z<N>` as the measuring endpoint (tag `6040`) of an owned zone, `N` in
+  decimal without leading zeros (`/z1`, `/z8`, `/z10`). A zone that a device owns keeps
+  `/z/p`. The thermostat keeps one outgoing observe subscription per peer, port and path.
+  With one path for all owned zones, each registration would replace the one before, so one
+  zone would keep its observer. With one path per zone the thermostat holds one registration
+  per owned zone. The path field of the thermostat holds 4 characters with the slash, so `N`
+  has at most 2 digits. Zone numbers stop at 31, so no extra check is needed. A GET of
+  `z<N>` with Observe 0 from a member or the heat source of zone `N` gets the measure of zone
+  `N` and registers the device under the token of the GET. From any other device, or for a
+  zone the daemon does not own, the daemon answers the bare `2.05` and registers nothing.
+  A thermostat that still holds an older zone document reads `z/p` with no query. The daemon
   answers it with the measure of the owned zone the thermostat serves, the one with the highest
   demand when there are several. The answer to a GET with Observe 0 carries the Observe option
   and registers the thermostat. The daemon then sends it a NON `2.05` notification under the
@@ -711,8 +722,10 @@ and its own controller, once echoing the pushed measure, never with an observe o
 answers each push with `2.05` and `62a0=00`. Its demand stays its own: the match with the
 pushed demand in a first run was two equal controllers started together. With the plain role
 `0x05` the valve asks the coordinator `GET z/s?lid=N` and `GET z/p?lid=N`, stops sending its
-own measures and echoes the pushed measure alone, demand included. Open: a zone with two valves,
-a zone the wall thermostat owns, and the thermostat on the observe notifications.
+own measures and echoes the pushed measure alone, demand included. The thermostat runs on the
+plant with zones 1, 3 and 8 owned. Open: whether the observe slot index of the thermostat and
+the `lid` index of its `PUT z/p?lid=N` name the same zone. A static reading of the firmware
+cannot show it.
 
 ### External room temperature
 
