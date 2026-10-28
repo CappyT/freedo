@@ -305,8 +305,9 @@ hub, so both do not record the same reading.
   (the daemon holds no reading) or `stale` (the
   last reading is older than `room_temp_max_age_sec`). It is unknown while the
   daemon serves no offset mode. It is an enum sensor with short translated
-  states. The attributes are `correction` (`none`, `continuous_shift` or
-  `valve_calibration`), `offset_mode`, `source`, `temperature_c` and `age_sec`
+  states. The state is `active` for a zone that the coordinator owns, while its
+  reading is fresh. The attributes are `correction` (`none`, `continuous_shift`,
+  `valve_calibration` or `coordinator_measure`), `offset_mode`, `source`, `temperature_c` and `age_sec`
   (the reading), `device_temperature_c` (the
   temperature of the valve), `shift_c` (the shift applied to the setpoints) and
   `wanted_shift_c` (the shift it moves toward). The sensor needs a daemon that
@@ -369,22 +370,13 @@ daemon answers. They exist only while the daemon holds an installation.
 - Select Room temperature correction is how the zone corrects its regulation
   with the room temperature of a Home Assistant sensor. See Room temperature of
   a zone.
-  - None (`none`): the zone regulates on its own sensor. The daemon refuses a
-    room temperature reading.
-  - Continuous shift (`continuous_shift`, offset mode `setpoint`): the daemon
-    shifts the setpoints slowly from the reading and writes nothing to the
-    device. This is the recommended method.
-  - Valve calibration (`valve_calibration`, `auto_offset` on in offset mode
-    `config`): the daemon writes the valve offset from the reading, at most once
-    per Number Calibration. Each write makes the valve home
-    its motor.
-  - Coordinator measures the room (`coordinator_measure`, `owner` coordinator):
-    freedo owns the zone, runs the control on the room temperature source of the
-    zone, and the valves follow its demand. Their own sensor, warmed by the
-    radiator, no longer closes them early. It needs a room temperature source
-    on the zone. The daemon refuses it with Continuous shift or Valve
-    calibration on, so the select turns them off in the same request. The
-    hot water zone has no select.
+  - The table in Room temperature of a zone describes the four methods:
+    None (`none`), Continuous shift (`continuous_shift`, offset mode
+    `setpoint`), Valve calibration (`valve_calibration`, `auto_offset` on) and
+    Coordinator measures the room (`coordinator_measure`, `owner` coordinator).
+  - Coordinator measures the room needs a room temperature source on the zone.
+    The daemon refuses it with Continuous shift or Valve calibration on, so the
+    select turns them off in the same request. The hot water zone has no select.
   - The select writes `offset_mode` and `auto_offset` in one
     `PATCH /api/install/zones/{n}`. The daemon checks the two fields against the
     values the request leaves, so the move between the shift and the calibration
@@ -477,8 +469,8 @@ current source, and both write the same state: see Rooms.
   of a sensor shows the reading of the last poll. A label that repeats gets the
   short address or the entity id.
 - The current option is the mapped sensor while its pushes are not paused and
-  the zone has a correction (Continuous shift or Valve calibration); otherwise
-  it is the effective measuring device (`measuringDevice` of `GET /api/zones`).
+  the zone takes the reading (any correction except None); otherwise it is the
+  effective measuring device (`measuringDevice` of `GET /api/zones`).
 - Choosing a sensor maps it to the zone in the options, resumes the pushes and
   sends the current reading at once. A zone with the correction None gets
   Continuous shift. A zone with Valve calibration keeps it.
@@ -801,16 +793,19 @@ sensors and its correction.
     room has when the page opens: after a change of the area, submit and open
     the room again to see the sensors of the new area first.
   - Window and door sensors: see Window and door sensors of a room.
-  - Correction, in the closed section Advanced: the choice of select Room
-    temperature correction. A Home Assistant sensor chosen as the source of a
-    room with the correction None sets Continuous shift.
+  - Correction: the choice of select Room temperature correction. The field
+    is in the open, and its help text names the four methods. A Home Assistant
+    sensor chosen as the source of a room with the correction None sets
+    Continuous shift.
 - Submit writes the room and returns to the list, which shows the new values.
   A page writes only what it changes, and only its room. It does not reload the
   integration. When freedo refuses the correction or the source, the page comes
   back with an error and writes nothing else.
 - A sensor that is mapped to a room but is not in use, because the room has the
-  correction None, still sends readings. A page saved with a device as the
-  source pauses it, so a correction set later does not bring it back unseen.
+  correction None, still sends readings, and the daemon refuses them. Home
+  Assistant shows the repair issue "Room thermometers ignored": see Room
+  temperature of a zone. A page saved with a device as the source pauses the
+  sensor, so a correction set later does not bring it back unseen.
 
 ### Area of a room
 
@@ -885,8 +880,21 @@ while one of them is open.
 ### Room temperature of a zone
 
 A heating zone regulates on the sensor of its valve. With a room temperature
-sensor, the daemon corrects the setpoints it writes, so the room reaches the
-target on the reading of that sensor.
+sensor, freedo can use the room reading in one of four ways. Select Room
+temperature correction chooses the way. The API field is in the first column.
+
+| Method | Who regulates the room | Role of the valve sensor | What freedo writes to the devices | Radio and battery | State on air |
+|---|---|---|---|---|---|
+| None (`offset_mode` `config` or `dbg2`, `auto_offset` off) | The valve, on its own sensor. freedo ignores the room sensor and answers 409 to its reading. | Drives the regulation. | Only the manual offset. | No extra traffic. | Default. |
+| Continuous shift (`offset_mode` `setpoint`) | The valve, on its own sensor. freedo shifts each setpoint it writes by the filtered difference: steps of 0.2 C, at least 15 minutes apart, time constant 2 hours. | Drives the regulation. | Setpoints only. | No extra traffic beyond the setpoint writes. | Not verified on air. |
+| Valve calibration (`auto_offset` on, `offset_mode` `config` or `dbg2`) | The valve, on its own sensor corrected by the offset `0140`. | Drives the regulation, corrected by the offset. | The offset `0140`, at most once per Number Calibration. | In mode `config` each write homes the motor. In mode `dbg2` it does not. | Not verified on air. |
+| Coordinator measures the room (`owner` `coordinator`) | freedo, on the room sensor while its reading is fresh. The valves follow its demand. | Drives the regulation only while the room sensor has no fresh reading: freedo then regulates on the calibrated temperature of the measuring device. | The measure of the room, pushed to each member every minute. | The wall thermostat observes freedo on `/z<N>`, one registration per room. | Runs on one plant on six rooms, one with the wall thermostat and two with two valves, since version 0.11.0-beta.10. |
+
+Mapping a sensor does not by itself make freedo use it. With the correction
+None, freedo ignores the reading. A sensor chosen today sets Continuous shift on
+a room with the correction None. A sensor mapped in another way, or a correction
+set back to None, keeps None. Home Assistant then shows the repair issue "Room
+thermometers ignored" with the names of those rooms.
 
 - Map a sensor to a zone on the page of its room in Configure, or with select
   Temperature source. A sensor can serve several zones. The hot water zone has
@@ -900,17 +908,8 @@ target on the reading of that sensor.
   sent. A value outside -10..50 C is not sent, because the daemon rejects it.
   The integration logs the first failed push of a zone and stays silent until a
   push succeeds.
-- Select Room temperature correction says how the daemon uses the reading. See
-  Zone settings.
-  - Continuous shift (offset mode `setpoint`) shifts the setpoints of the zone
-    continuously from the reading.
-  - Valve calibration (`auto_offset`) calibrates the correction of the zone
-    from the reading, at most once per Number Calibration.
-    The correction is tag `0140` on the valve, and in mode `config` each write
-    makes the valve home its motor, so the interval bounds the battery and the
-    noise.
-  - Coordinator measures the room (`owner` coordinator) runs the control on
-    the reading, and the valves follow the demand of freedo.
+- Select Room temperature correction says how freedo uses the reading. See the
+  table above and Zone settings.
 - A new sensor sets Continuous shift on a zone with the correction None, in
   the page of the room and in select Temperature source. With the correction None the
   daemon answers 409 to a reading, because the other modes write tag `0140` to
@@ -934,6 +933,20 @@ target on the reading of that sensor.
   once and runs at the same pace.
 - Sensor Temperature source state shows whether the zone uses the reading, and the
   cause when it does not. See Diagnostics.
+
+#### Check which method a room uses
+
+- Select Room temperature correction shows the method of the room.
+- Sensor Temperature source state shows `no_correction` when the correction is
+  None and freedo ignores the sensor. See Diagnostics.
+- The repair issue "Room thermometers ignored" lists every heating room that
+  has a mapped sensor, with its pushes not paused, and the correction None.
+  It is a warning with no repair step. Choose a correction on the page of the
+  room in Configure, or choose a device of the room as the Temperature source to
+  pause the pushes. The issue recomputes at each poll and when you choose a
+  source. It goes when the list is empty.
+- The room page of the dashboard shows the room temperature line and warns when
+  freedo ignores a sensor.
 
 ## Presence blueprint
 
