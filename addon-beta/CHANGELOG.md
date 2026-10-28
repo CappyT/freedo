@@ -172,3 +172,14 @@ pre-release has its notes here.
   mode is not verified on air.
 - Run on a real plant with 0.11.0-beta.8: Living room (two valves) and Hall (wall thermostat and a
   valve) on the coordinator as owner, on the Home Assistant thermometers.
+
+## 0.11.0-beta.10
+
+- Daemon: the ETag of the wall thermostat's `d/config` hashes the measure path of each room it
+  serves. The thermostat reloads its observe registrations only after a new `d/config`: with
+  0.11.0-beta.9 it read the zone documents with `/z<N>` at its hourly check and stayed on the
+  old `z/p`. The first start of this version moves the ETag once, and the thermostat registers on
+  the new paths within seconds.
+- Run on a real plant with 0.11.0-beta.9: the valves read `/z<N>` and take the measure from
+  `GET z<N>?lid=N`. The flow limit did not move on the default curve for 45 minutes at a steady
+  outdoor temperature.
