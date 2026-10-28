@@ -674,7 +674,7 @@ export const de: Record<Key, string> = {
 	'opt.correction.none.hint': 'Die Ventile regeln auf ihrem eigenen Sensor. freedo schreibt ihnen nur den manuellen Offset.',
 	'opt.correction.shift.hint': 'freedo behält den Offset und verschiebt jeden Sollwert, den es an den Raum sendet. Mit einer frischen Raumtemperatur aus Home Assistant folgt die Verschiebung statt des Offsets der Differenz zwischen dieser Temperatur und dem Ventilsensor. freedo schreibt nichts in die Konfiguration des Ventils, also macht das Ventil keinen Motorhub.',
 	'opt.correction.calibration.hint': 'freedo korrigiert den Offset des Ventils aus einer Raumtemperatur, die Home Assistant sendet, höchstens einmal pro Intervall. Im Modus Ventilkonfiguration kostet jede Korrektur einen vollen Motorhub.',
-	'opt.correction.coordinator.hint': 'freedo wird der Eigentümer des Raums. Es regelt den Raum auf der Temperatur, die Home Assistant sendet, und die Ventile folgen seiner Anforderung. Ihr eigener Sensor, vom Heizkörper erwärmt, schließt sie nicht mehr zu früh. Der Raum braucht eine Raumtemperaturquelle in Home Assistant. Ohne sie, oder mit einem alten Messwert, regelt freedo auf dem Ventilsensor. Dieser Modus ist nicht per Funk geprüft.',
+	'opt.correction.coordinator.hint': 'freedo wird der Eigentümer des Raums. Es regelt den Raum auf der Temperatur, die Home Assistant sendet, und die Ventile folgen seiner Anforderung. Ihr eigener Sensor, vom Heizkörper erwärmt, schließt sie nicht mehr zu früh. Der Raum braucht eine Raumtemperaturquelle in Home Assistant. Ohne sie, oder mit einem alten Messwert, regelt freedo auf dem Ventilsensor.',
 	'opt.offsetMode': 'Offset-Modus',
 	'opt.mode.config': 'Ventilkonfiguration (voller Motorhub)',
 	'opt.mode.dbg2': 'Debug-Datensatz des Ventils',

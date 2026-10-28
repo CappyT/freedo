@@ -674,7 +674,7 @@ export const en = {
 	'opt.correction.none.hint': 'The valves regulate on their own sensor. freedo writes only the manual offset to them.',
 	'opt.correction.shift.hint': 'freedo keeps the offset and shifts every setpoint that it sends to the room. With a fresh room temperature from Home Assistant, the shift follows the gap between that temperature and the valve sensor instead of the offset. freedo writes nothing to the configuration of the valve, so the valve does no motor stroke.',
 	'opt.correction.calibration.hint': 'freedo corrects the offset of the valve from a room temperature that Home Assistant sends, at most once per interval. In the mode Valve configuration each correction costs one full motor stroke.',
-	'opt.correction.coordinator.hint': 'freedo becomes the owner of the room. It controls the room on the temperature that Home Assistant sends, and the valves follow its demand. Their own sensor, warmed by the radiator, no longer closes them early. The room needs a room temperature source in Home Assistant. Without one, or with an old reading, freedo controls on the valve sensor. This mode is not verified on air.',
+	'opt.correction.coordinator.hint': 'freedo becomes the owner of the room. It controls the room on the temperature that Home Assistant sends, and the valves follow its demand. Their own sensor, warmed by the radiator, no longer closes them early. The room needs a room temperature source in Home Assistant. Without one, or with an old reading, freedo controls on the valve sensor.',
 	'opt.offsetMode': 'Offset mode',
 	'opt.mode.config': 'Valve configuration (full motor stroke)',
 	'opt.mode.dbg2': 'Valve debug record',
