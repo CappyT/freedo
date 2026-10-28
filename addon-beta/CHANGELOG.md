@@ -157,3 +157,18 @@ pre-release has its notes here.
 - Run on a real plant with 0.11.0-beta.7: after a restart of the daemon the wall thermostat kept
   its observe registration, and the first notification under the stored token and the next
   sequence was taken.
+
+## 0.11.0-beta.9
+
+- Daemon: the flow limit moves when the curve value before the rounding is `flow_hysteresis_c`
+  from the served one. On the plant the default curve moved the limit between 48 and 49 C every 30
+  minutes at 13 C outdoor, and each change made the wall thermostat reload its configuration and
+  hold its rooms in frost fallback for up to 4 minutes. A cut of the flow adaptation that ends is
+  still served at once.
+- Daemon: each room that freedo owns names its own measure path, `/z<N>`, in its zone document.
+  The wall thermostat keeps one observe subscription per peer and path, so with one shared `z/p`
+  the registrations of several owned rooms replaced each other and the rooms fell back in turn.
+- Dashboard: the hint of the temperature correction "freedo owns the room" no longer says that the
+  mode is not verified on air.
+- Run on a real plant with 0.11.0-beta.8: Living room (two valves) and Hall (wall thermostat and a
+  valve) on the coordinator as owner, on the Home Assistant thermometers.
