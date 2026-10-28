@@ -183,3 +183,19 @@ pre-release has its notes here.
 - Run on a real plant with 0.11.0-beta.9: the valves read `/z<N>` and take the measure from
   `GET z<N>?lid=N`. The flow limit did not move on the default curve for 45 minutes at a steady
   outdoor temperature.
+
+## 0.11.0-beta.11
+
+- Home Assistant: a repair issue Room thermometers ignored lists the rooms whose temperature
+  sensor freedo ignores, because their Room temperature correction is None. On a real plant two
+  rooms had a sensor mapped and the daemon refused every reading, with no sign in the interface.
+- Home Assistant: the page of a room in Configure shows the correction outside the closed
+  section, with one line for each of the four methods.
+- Dashboard: the room screen shows the room temperature from Home Assistant, its sensor, its age
+  and the method that uses it. When freedo ignores the sensor, the line says so and opens the
+  correction of the room.
+- Daemon: `GET /api/zones` shows in `externalTemp.refused` the last reading that a zone refused.
+- Docs: the integration README compares the four methods: who regulates the room, what the valve
+  sensor does, what freedo writes, radio, and state on air.
+- Run on a real plant with 0.11.0-beta.10: six rooms on the coordinator as owner, on the Home
+  Assistant thermometers. The wall thermostat holds one observe registration for each room.
