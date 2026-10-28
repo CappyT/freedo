@@ -57,23 +57,14 @@
         "data": {
           "area": "Pièce",
           "temperature_source": "Source de température",
+          "correction": "Correction de la température ambiante",
           "windows": "Capteurs de fenêtres et de portes"
         },
         "data_description": {
           "area": "L'appareil de la pièce passe dans cette pièce Home Assistant. Ses vannes et ses thermostats y passent aussi, sauf si vous les avez placés dans une autre pièce. Vous pouvez aussi la définir sur la page de l'appareil.",
           "temperature_source": "Ce qui mesure la température de la pièce : un appareil de la pièce ou un capteur Home Assistant. La liste affiche d'abord les appareils de la pièce, puis les capteurs de sa pièce Home Assistant actuelle, puis les autres capteurs avec leur pièce Home Assistant. Après un changement de pièce Home Assistant, validez et rouvrez la pièce pour voir d'abord les capteurs de la nouvelle.",
+          "correction": "Aucune : les vannes régulent sur leur propre capteur et freedo ignore le capteur de la pièce.\nDécalage continu : les vannes régulent sur leur propre capteur et freedo décale les consignes selon le capteur de la pièce.\nCalibrage de la vanne : freedo écrit le décalage de la vanne selon le capteur de la pièce, au plus une fois par intervalle.\nLe coordinateur mesure la pièce : freedo régule la pièce sur le capteur de la pièce et les vannes suivent sa demande.",
           "windows": "Le chauffage de la pièce s'arrête tant que l'un de ces capteurs est ouvert. Un capteur sert une seule pièce : un capteur utilisé par une autre pièce l'affiche entre crochets, et il passe à cette pièce."
-        },
-        "sections": {
-          "advanced": {
-            "name": "Avancé",
-            "data": {
-              "correction": "Correction de la température ambiante"
-            },
-            "data_description": {
-              "correction": "Décalage continu déplace lentement les consignes selon la mesure. C'est la méthode recommandée. Calibrage de la vanne écrit le décalage de la vanne au plus une fois par intervalle, et chaque écriture déplace le moteur une fois. Le coordinateur mesure la pièce exécute la régulation sur la source de température ambiante, et les vannes suivent la demande de freedo."
-            }
-          }
         }
       },
       "outdoor": {
@@ -511,6 +502,10 @@
     "rooms_no_area": {
       "title": "Pièces sans pièce Home Assistant",
       "description": "Ces pièces freedo fonctionnent, mais elles ne sont dans aucune pièce Home Assistant : {rooms}. Définissez la pièce dans Paramètres > Appareils et services > freedo > Configurer > Pièces, ou sur la page de l'appareil de la pièce. Vous pouvez ignorer ce problème."
+    },
+    "room_sensor_ignored": {
+      "title": "Thermomètres de pièce ignorés",
+      "description": "freedo ignore le capteur de température de ces pièces, car leur Correction de la température ambiante est Aucune : {rooms}. Choisissez une correction sur la page de la pièce dans Configurer, ou sélectionnez comme Source de température un appareil de la pièce pour arrêter d'envoyer le capteur."
     }
   },
   "exceptions": {

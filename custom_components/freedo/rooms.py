@@ -13,6 +13,10 @@ device page both set that area; the integration reads it at each poll.
   its translated name.
 - The heating zones without an area raise one repair issue per entry, which
   lists them and which the user can ignore.
+- The heating zones that map a room sensor, with its pushes running, and have
+  no correction raise a second repair issue per entry: the daemon refuses
+  their readings, so the sensor changes nothing. The issue lists the rooms and
+  follows each poll and each change of the sensor mapping.
 - The area goes to the daemon as the display field ha_area of the zone row, on a
   daemon that serves it. The stored value is also the previous area of the zone
   after a restart.
@@ -66,6 +70,7 @@ from .model import (
 _LOGGER = logging.getLogger(__name__)
 
 ISSUE_NO_AREA = "rooms_no_area"
+ISSUE_SENSOR_IGNORED = "room_sensor_ignored"
 # The kinds of a temperature source.
 SOURCE_DEVICE = "device"
 SOURCE_SENSOR = "sensor"
@@ -93,6 +98,26 @@ def node_identifier(entry_id: str, short: str) -> tuple[str, str]:
 
 def issue_id(entry_id: str) -> str:
     return f"{ISSUE_NO_AREA}_{entry_id}"
+
+
+def sensor_issue_id(entry_id: str) -> str:
+    return f"{ISSUE_SENSOR_IGNORED}_{entry_id}"
+
+
+def ignored_sensor_rooms(entry: FreedoConfigEntry, data: FreedoData) -> list[str]:
+    """The names of the heating rooms that map a sensor, with its pushes not
+    paused, and have the correction None: the daemon refuses the readings. A
+    room whose correction the daemon does not serve is left out."""
+    mapped = room_temp_zones(entry.options.get(CONF_ROOM_TEMPS) or {})
+    paused = room_temp_paused(entry.options.get(CONF_ROOM_TEMP_PAUSED) or [])
+    return [
+        zone.name
+        for zone in sorted(data.zones.values(), key=lambda z: z.number)
+        if zone.kind == KIND_HEATING
+        and zone.number in mapped
+        and zone.number not in paused
+        and zone_correction(data, zone) == CORRECTION_NONE
+    ]
 
 
 def zone_area(hass: HomeAssistant, entry_id: str, number: int) -> str | None:
@@ -155,6 +180,7 @@ def async_remove_issues(hass: HomeAssistant, entry_id: str) -> None:
     """Delete the repair issue and the device memory of an entry that goes
     away."""
     ir.async_delete_issue(hass, DOMAIN, issue_id(entry_id))
+    ir.async_delete_issue(hass, DOMAIN, sensor_issue_id(entry_id))
     hass.data.get(_SEEN, {}).pop(entry_id, None)
 
 
@@ -167,8 +193,10 @@ def _created_before_load(device: dr.DeviceEntry) -> bool:
 def async_track_rooms(
     hass: HomeAssistant, coordinator: FreedoCoordinator
 ) -> Callable[[], None]:
-    """Keep the zone devices, their members, the repair issue and the daemon
-    display field in step with the zone areas at each poll."""
+    """Keep the zone devices, their members, the repair issues and the daemon
+    display field in step with the zone areas at each poll. async_set_source
+    runs the listeners after it changes the mapping, so the issue about the
+    ignored room sensors follows it at once."""
     devices = dr.async_get(hass)
     areas = ar.async_get(hass)
     entry: FreedoConfigEntry = coordinator.config_entry
@@ -178,6 +206,8 @@ def async_track_rooms(
     previous: dict[int, str | None] = {}
     # The room names of the open repair issue, None before the first poll.
     issue_rooms: list[str] | None = None
+    # The same for the issue about the ignored room sensors.
+    ignored_rooms: list[str] | None = None
     # Zones whose ha_area write runs, and zones whose last write failed.
     sending: set[int] = set()
     failed: set[int] = set()
@@ -220,6 +250,29 @@ def async_track_rooms(
             is_persistent=False,
             severity=ir.IssueSeverity.WARNING,
             translation_key=ISSUE_NO_AREA,
+            translation_placeholders={"rooms": ", ".join(rooms)},
+        )
+
+    @callback
+    def sync_ignored() -> None:
+        nonlocal ignored_rooms
+        if coordinator.data is None:
+            return
+        rooms = ignored_sensor_rooms(entry, coordinator.data)
+        if rooms == ignored_rooms:
+            return
+        ignored_rooms = rooms
+        if not rooms:
+            ir.async_delete_issue(hass, DOMAIN, sensor_issue_id(entry_id))
+            return
+        ir.async_create_issue(
+            hass,
+            DOMAIN,
+            sensor_issue_id(entry_id),
+            is_fixable=False,
+            is_persistent=False,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key=ISSUE_SENSOR_IGNORED,
             translation_placeholders={"rooms": ", ".join(rooms)},
         )
 
@@ -277,6 +330,7 @@ def async_track_rooms(
                 sync_daemon(zone.number, area_id, row)
         seen_by_entry[entry_id] = present
         sync_issue(unmapped)
+        sync_ignored()
 
     update()
     return coordinator.async_add_listener(update)
@@ -435,6 +489,8 @@ async def async_set_source(
                 str(number): sensor,
             }
         hass.config_entries.async_update_entry(entry, options=options)
+        # The repair issue about the ignored room sensors reads the options.
+        runtime.coordinator.async_update_listeners()
 
     if kind == SOURCE_DEVICE:
         await client.set_zone_measuring(number, target)

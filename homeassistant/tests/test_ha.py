@@ -53,6 +53,7 @@ import custom_components.freedo  # noqa: E402,F401  # the target of the client p
 from custom_components.freedo.api import FreedoApiError, FreedoConnectionError  # noqa: E402
 from custom_components.freedo.const import CONF_ROOM_TEMP_PAUSED  # noqa: E402
 from custom_components.freedo.model import OFFSET_MODES, ZONE_OVERLAY_RULES  # noqa: E402
+from custom_components.freedo.rooms import async_set_source  # noqa: E402
 from test_model import (  # noqa: E402
     BOILER,
     CIRCUITS,
@@ -822,6 +823,112 @@ async def test_removing_the_entry_removes_its_issue(hass, client):
     assert ir.async_get(hass).async_get_issue(DOMAIN, f"rooms_no_area_{entry.entry_id}") is None
 
 
+def ignored_sensor_issue(hass, entry):
+    """The rooms the open ignored-sensor issue lists, None without one."""
+    issue = ir.async_get(hass).async_get_issue(DOMAIN, f"room_sensor_ignored_{entry.entry_id}")
+    return issue.translation_placeholders["rooms"] if issue else None
+
+
+async def test_ignored_room_sensor_raises_a_repair_issue(hass, client):
+    # Zone 1 shifts its setpoints, zone 2 has no correction: the daemon refuses
+    # the readings of zone 2.
+    set_room_sensor(hass, "21.4")
+    set_room_sensor(hass, "20.1", entity=HALL_SENSOR)
+    entry = await setup_entry(
+        hass, client, options={"room_temperatures": {"1": ROOM_SENSOR, "2": HALL_SENSOR}}
+    )
+    assert ignored_sensor_issue(hass, entry) == "Bedroom"
+    issue = ir.async_get(hass).async_get_issue(DOMAIN, f"room_sensor_ignored_{entry.entry_id}")
+    assert issue.translation_key == "room_sensor_ignored"
+    assert issue.is_fixable is False
+    assert issue.severity is ir.IssueSeverity.WARNING
+    # It is a second issue, apart from the rooms without an area.
+    assert no_area_issue(hass, entry) == "Living, Bedroom"
+
+    # Zone 1 loses its correction too: both rooms are listed, in room order.
+    client.install_json["zones"][0]["offset_mode"] = "config"
+    await refresh(hass, entry)
+    assert ignored_sensor_issue(hass, entry) == "Living, Bedroom"
+
+    # A correction that takes the reading removes the room from the list, and
+    # the issue goes with the last room.
+    client.install_json["zones"][1]["offset_mode"] = "setpoint"
+    await refresh(hass, entry)
+    assert ignored_sensor_issue(hass, entry) == "Living"
+    client.install_json["zones"][0]["auto_offset"] = True
+    await refresh(hass, entry)
+    assert ignored_sensor_issue(hass, entry) is None
+
+
+async def test_ignored_room_sensor_issue_follows_the_options(hass, client):
+    set_room_sensor(hass, "20.1", entity=HALL_SENSOR)
+    entry = await setup_entry(hass, client)
+    assert ignored_sensor_issue(hass, entry) is None
+
+    # A mapping on a room with no correction raises the issue at the next poll.
+    hass.config_entries.async_update_entry(
+        entry, options={"room_temperatures": {"2": HALL_SENSOR}}
+    )
+    await refresh(hass, entry)
+    assert ignored_sensor_issue(hass, entry) == "Bedroom"
+
+    # A paused push is not a sensor the daemon refuses.
+    hass.config_entries.async_update_entry(
+        entry, options={**entry.options, CONF_ROOM_TEMP_PAUSED: [2]}
+    )
+    await refresh(hass, entry)
+    assert ignored_sensor_issue(hass, entry) is None
+    hass.config_entries.async_update_entry(
+        entry, options={**entry.options, CONF_ROOM_TEMP_PAUSED: []}
+    )
+    await refresh(hass, entry)
+    assert ignored_sensor_issue(hass, entry) == "Bedroom"
+
+    # Without the mapping there is nothing to ignore.
+    hass.config_entries.async_update_entry(entry, options={})
+    await refresh(hass, entry)
+    assert ignored_sensor_issue(hass, entry) is None
+
+
+async def test_choosing_a_device_source_clears_the_ignored_sensor_issue_at_once(hass, client):
+    set_room_sensor(hass, "20.1", entity=HALL_SENSOR)
+    entry = await setup_entry(hass, client, options={"room_temperatures": {"2": HALL_SENSOR}})
+    assert ignored_sensor_issue(hass, entry) == "Bedroom"
+
+    # The device choice pauses the pushes. The issue goes with no poll.
+    await async_set_source(hass, entry, 2, "device", "dddd")
+    assert ignored_sensor_issue(hass, entry) is None
+
+    # A sensor on a room with no correction starts the continuous shift, so the
+    # daemon takes the readings and the issue stays away.
+    await async_set_source(hass, entry, 2, "sensor", HALL_SENSOR)
+    assert client.install_json["zones"][1]["offset_mode"] == "setpoint"
+    assert ignored_sensor_issue(hass, entry) is None
+
+
+async def test_ignored_room_sensor_issue_skips_the_rooms_that_take_a_reading(hass, client):
+    # Zone 2 maps a sensor and the coordinator owns it, so the daemon takes the
+    # readings. The hot water zone has no offset mode.
+    client.install_json["zones"][1].update(owner="coordinator")
+    entry = await setup_entry(
+        hass, client, options={"room_temperatures": {"2": HALL_SENSOR, "9": HALL_SENSOR}}
+    )
+    assert ignored_sensor_issue(hass, entry) is None
+    # A daemon that serves no installation rows says nothing either.
+    client.install_json["zones"][1].update(owner="device")
+    client.install_json["zones"][1]["offset_mode"] = None
+    await refresh(hass, entry)
+    assert ignored_sensor_issue(hass, entry) is None
+
+
+async def test_removing_the_entry_removes_the_ignored_sensor_issue(hass, client):
+    entry = await setup_entry(hass, client, options={"room_temperatures": {"2": HALL_SENSOR}})
+    assert ignored_sensor_issue(hass, entry) == "Bedroom"
+    await hass.config_entries.async_remove(entry.entry_id)
+    await hass.async_block_till_done()
+    assert ir.async_get(hass).async_get_issue(DOMAIN, f"room_sensor_ignored_{entry.entry_id}") is None
+
+
 # --- item 5: window pushes ---
 
 
@@ -1345,12 +1452,11 @@ async def open_room(hass, entry, room, result=None):
 
 
 async def submit_room(hass, result, **page):
-    """Submit the page of a room as the frontend does: the section Advanced
-    always travels, with the correction the page shows unless page names one."""
-    advanced = form_fields(result).get("advanced")
-    if advanced is not None:
-        (key,) = result["data_schema"].schema[advanced].schema.schema
-        page["advanced"] = {"correction": page.pop("correction", key.default())}
+    """Submit the page of a room as the frontend does: the correction always
+    travels, with the value the page shows unless page names one."""
+    correction = form_fields(result).get("correction")
+    if correction is not None:
+        page["correction"] = page.get("correction", correction.default())
     result = await hass.config_entries.options.async_configure(result["flow_id"], page)
     await hass.async_block_till_done()
     return result
@@ -1429,7 +1535,7 @@ async def test_job_use_a_wall_sensor_as_the_room_temperature(hass, client):
 
     result = await open_room(hass, entry, 2)
     assert result["description_placeholders"] == {"room": "Bedroom"}
-    assert list(form_fields(result)) == ["area", "temperature_source", "windows", "advanced"]
+    assert list(form_fields(result)) == ["area", "temperature_source", "correction", "windows"]
     # The page shows the source in use, and it is required: no empty choice.
     source = form_fields(result)["temperature_source"]
     assert isinstance(source, vol.Required) and source.default() == "device:dddd"
@@ -1437,13 +1543,14 @@ async def test_job_use_a_wall_sensor_as_the_room_temperature(hass, client):
         "device:dddd": "Bedroom (VA0000000004)",
         "sensor:sensor.wall": "Wall sensor (18.1 °C)",
     }
-    # The frontend gets an area picker, two dropdowns and a closed section.
+    # The frontend gets an area picker, three dropdowns and no section: the
+    # correction is in the open.
     wire = wire_form(result)
     assert "area" in wire["area"]["selector"]
     assert wire["temperature_source"]["required"] is True
     assert wire["windows"]["selector"]["entity"]["multiple"] is True
-    assert wire["advanced"]["type"] == "expandable" and wire["advanced"]["expanded"] is False
-    assert [f["name"] for f in wire["advanced"]["schema"]] == ["correction"]
+    assert "select" in wire["correction"]["selector"] and wire["correction"]["required"] is True
+    assert not any(field.get("type") == "expandable" for field in wire.values())
     result = await submit_room(hass, result, area=bedroom_area, temperature_source="sensor:sensor.wall")
     # The room had no correction: the sensor starts the continuous shift. The
     # reading goes out at once, with no reload.
@@ -1810,9 +1917,15 @@ async def test_room_page_keeps_the_correction_the_user_sets(hass, client):
     add_sensor(hass, entry, HALL_SENSOR, "Hall", "20.1")
     client.calls.clear()
     result = await open_room(hass, entry, 2)
-    # The section Advanced starts closed and shows the correction of the room.
-    advanced = result["data_schema"].schema[form_fields(result)["advanced"]]
-    assert advanced.options == {"collapsed": True}
+    # The page shows the correction of the room, in no section.
+    assert form_fields(result)["correction"].default() == "none"
+    key = form_fields(result)["correction"]
+    assert result["data_schema"].schema[key].config["options"] == [
+        "none",
+        "continuous_shift",
+        "valve_calibration",
+        "coordinator_measure",
+    ]
     result = await submit_room(
         hass, result, temperature_source=f"sensor:{HALL_SENSOR}", correction="valve_calibration"
     )
@@ -2004,6 +2117,43 @@ async def test_external_room_sensor_follows_the_offset_mode(hass, client):
     )
     await refresh(hass, entry)
     assert external_room_sensor(hass, entry, 1).state == "no_correction"
+
+
+async def test_external_room_sensor_of_a_coordinator_zone(hass, client):
+    # The coordinator owns zone 2 and its sensor reading is fresh.
+    client.install_json["zones"][1].update(owner="coordinator")
+    client.zones_json["declared"][1]["externalTemp"].update(
+        {"tempC": 20.3, "at": "2026-01-01T00:00:00Z", "ageSec": 30, "source": "Bedroom thermometer",
+         "stale": False, "inUse": True}
+    )
+    entry = await setup_entry(hass, client)
+    owned = external_room_sensor(hass, entry, 2)
+    assert owned.state == "active"
+    assert owned.attributes["correction"] == "coordinator_measure"
+    assert owned.attributes["temperature_c"] == 20.3
+
+    # No reading yet: the zone takes one, so the cause is not the correction.
+    client.zones_json["declared"][1]["externalTemp"].update(
+        {"tempC": None, "at": None, "ageSec": None, "source": None, "inUse": False}
+    )
+    await refresh(hass, entry)
+    waiting = external_room_sensor(hass, entry, 2)
+    assert waiting.state == "no_reading"
+    assert waiting.attributes["correction"] == "coordinator_measure"
+
+    # An old reading is stale.
+    client.zones_json["declared"][1]["externalTemp"].update(
+        {"tempC": 20.3, "ageSec": 1900, "stale": True}
+    )
+    await refresh(hass, entry)
+    assert external_room_sensor(hass, entry, 2).state == "stale"
+
+    # The coordinator leaves the zone: with mode config it has no correction.
+    client.install_json["zones"][1].update(owner="device")
+    await refresh(hass, entry)
+    left = external_room_sensor(hass, entry, 2)
+    assert left.state == "no_correction"
+    assert left.attributes["correction"] == "none"
 
 
 async def test_no_external_room_sensor_on_a_daemon_without_the_view(hass, client):

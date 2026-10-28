@@ -101,6 +101,7 @@ ROOM_KEYS = [
     ("entity", "select", "room_temperature_correction"),
     ("entity", "select", "temperature_source"),
     ("issues", "rooms_no_area"),
+    ("issues", "room_sensor_ignored"),
 ]
 ZONE_WORD = {"en": "zone", "it": "zona", "de": "Zone", "fr": "zone"}
 ROOMS_PATH = {
@@ -136,10 +137,16 @@ def test_room_texts_name_rooms_and_freedo(language):
     room = tree["options"]["step"]["room"]
     select = tree["entity"]["select"]
     assert room["data"]["temperature_source"] == select["temperature_source"]["name"]
-    assert (
-        room["sections"]["advanced"]["data"]["correction"]
-        == select["room_temperature_correction"]["name"]
-    )
+    assert room["data"]["correction"] == select["room_temperature_correction"]["name"]
+    # The help text of the correction names the four methods, as the options
+    # of the select call them.
+    for option in tree["selector"]["correction_method"]["options"].values():
+        assert option in room["data_description"]["correction"]
+    # The repair issue about an ignored room sensor names the same two fields.
+    issue = tree["issues"]["room_sensor_ignored"]["description"]
+    assert select["room_temperature_correction"]["name"] in issue
+    assert select["temperature_source"]["name"] in issue
+    assert tree["selector"]["correction_method"]["options"]["none"] in issue
 
 
 @pytest.mark.parametrize("language", ("en", *LANGUAGES))

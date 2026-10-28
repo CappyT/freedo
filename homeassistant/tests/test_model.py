@@ -617,6 +617,14 @@ def test_room_temp_state():
     o = parse(HEALTH, ZONES, NODES, BOILER, HOME, owned)
     assert zone_takes_reading(o, o.zones[2])
     assert room_temp_state(o, o.zones[2]) == "no_reading"
+    assert zone_correction(o, o.zones[2]) == CORRECTION_COORDINATOR
+    # A fresh reading on the owned zone is in use.
+    fresh = copy.deepcopy(ZONES)
+    fresh["declared"][1]["externalTemp"].update(
+        tempC=20.3, at="2026-01-01T00:00:00Z", ageSec=30, source="Bedroom thermometer", inUse=True
+    )
+    f = parse(HEALTH, fresh, NODES, BOILER, HOME, owned)
+    assert room_temp_state(f, f.zones[2]) == "active"
     # No installation read: the mode is unknown, and so is the cause.
     assert room_temp_state(parse(HEALTH, ZONES, NODES, BOILER, HOME), d.zones[2]) is None
     # Mode config with auto_offset on takes the reading: the cause is not the

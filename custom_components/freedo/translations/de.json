@@ -57,23 +57,14 @@
         "data": {
           "area": "Bereich",
           "temperature_source": "Temperaturquelle",
+          "correction": "Raumtemperaturkorrektur",
           "windows": "Fenster- und Türsensoren"
         },
         "data_description": {
           "area": "Das Gerät des Raums kommt in den Bereich. Seine Ventile und Thermostate kommen auch dorthin, außer du hast sie in einen anderen Bereich gesetzt. Du kannst den Bereich auch auf der Geräteseite setzen.",
           "temperature_source": "Was die Temperatur des Raums misst: ein Gerät des Raums oder ein Home Assistant-Sensor. Die Liste zeigt zuerst die Geräte des Raums, dann die Sensoren des Bereichs, den der Raum jetzt hat, dann die anderen Sensoren mit ihrem Bereich. Nach einer Änderung des Bereichs: absenden und den Raum erneut öffnen, um die Sensoren des neuen Bereichs zuerst zu sehen.",
+          "correction": "Keine: Die Ventile regeln nach ihrem eigenen Sensor, und freedo ignoriert den Raumsensor.\nKontinuierliche Verschiebung: Die Ventile regeln nach ihrem eigenen Sensor, und freedo verschiebt die Sollwerte nach dem Raumsensor.\nVentilkalibrierung: freedo schreibt den Ventiloffset nach dem Raumsensor, höchstens einmal pro Intervall.\nKoordinator misst den Raum: freedo regelt den Raum nach dem Raumsensor, und die Ventile folgen seinem Bedarf.",
           "windows": "Die Heizung des Raums stoppt, solange einer dieser Sensoren offen ist. Ein Sensor dient einem Raum: Ein Sensor, den ein anderer Raum verwendet, zeigt diesen Raum in eckigen Klammern und wechselt zu diesem Raum."
-        },
-        "sections": {
-          "advanced": {
-            "name": "Erweitert",
-            "data": {
-              "correction": "Raumtemperaturkorrektur"
-            },
-            "data_description": {
-              "correction": "Kontinuierliche Verschiebung verschiebt die Sollwerte langsam nach dem Messwert. Das ist die empfohlene Methode. Ventilkalibrierung schreibt den Ventiloffset höchstens einmal pro Intervall, und jeder Schreibvorgang bewegt den Motor einmal. Koordinator misst den Raum führt die Regelung mit der Raumtemperaturquelle aus, und die Ventile folgen dem Bedarf von freedo."
-            }
-          }
         }
       },
       "outdoor": {
@@ -511,6 +502,10 @@
     "rooms_no_area": {
       "title": "Räume ohne Bereich",
       "description": "Diese freedo-Räume funktionieren, sind aber in keinem Home Assistant-Bereich: {rooms}. Setze den Bereich unter Einstellungen > Geräte & Dienste > freedo > Konfigurieren > Räume oder auf der Geräteseite des Raums. Du kannst dieses Problem ignorieren."
+    },
+    "room_sensor_ignored": {
+      "title": "Raumthermometer ignoriert",
+      "description": "freedo ignoriert den Raumtemperatursensor dieser Räume, weil ihre Raumtemperaturkorrektur Keine ist: {rooms}. Wähle eine Korrektur auf der Seite des Raums unter Konfigurieren, oder wähle als Temperaturquelle ein Gerät des Raums, damit der Sensor nicht mehr gesendet wird."
     }
   },
   "exceptions": {

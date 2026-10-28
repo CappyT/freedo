@@ -16,7 +16,6 @@ from homeassistant.config_entries import (
 )
 from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.data_entry_flow import section
 from homeassistant.helpers import area_registry as ar, selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.service_info.hassio import HassioServiceInfo
@@ -63,7 +62,6 @@ _LOGGER = logging.getLogger(__name__)
 CONF_ROOM = "room"
 CONF_AREA = "area"
 CONF_SOURCE = "temperature_source"
-CONF_ADVANCED = "advanced"
 CONF_CORRECTION = "correction"
 # The choice of the step Rooms that ends the options.
 ROOM_DONE = "done"
@@ -342,23 +340,18 @@ class FreedoOptionsFlow(OptionsFlowWithReload):
                     options=sources, mode=selector.SelectSelectorMode.DROPDOWN
                 )
             )
-        fields[vol.Optional(CONF_WINDOWS)] = self._window_selector(data, zone, area_id)
         method = zone_correction(data, zone)
         if method is not None:
-            fields[vol.Required(CONF_ADVANCED)] = section(
-                vol.Schema(
-                    {
-                        vol.Required(CONF_CORRECTION, default=method): selector.SelectSelector(
-                            selector.SelectSelectorConfig(
-                                options=list(CORRECTIONS),
-                                translation_key="correction_method",
-                                mode=selector.SelectSelectorMode.DROPDOWN,
-                            )
-                        )
-                    }
-                ),
-                {"collapsed": True},
+            # In the open, not in a collapsed section: a room that ignores its
+            # sensor must show why.
+            fields[vol.Required(CONF_CORRECTION, default=method)] = selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=list(CORRECTIONS),
+                    translation_key="correction_method",
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
             )
+        fields[vol.Optional(CONF_WINDOWS)] = self._window_selector(data, zone, area_id)
         windows = window_zones(entry.options.get(CONF_WINDOWS) or {}).get(zone.number, [])
         return self.async_show_form(
             step_id="room",
@@ -435,7 +428,7 @@ class FreedoOptionsFlow(OptionsFlowWithReload):
             # the device choice pauses it, so a later correction does not
             # bring it back unseen.
             kind = ""
-        method = (user_input.get(CONF_ADVANCED) or {}).get(CONF_CORRECTION)
+        method = user_input.get(CONF_CORRECTION)
         try:
             if method is not None:
                 # A new sensor needs a correction to change the regulation, so

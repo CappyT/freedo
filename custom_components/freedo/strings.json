@@ -57,23 +57,14 @@
         "data": {
           "area": "Area",
           "temperature_source": "Temperature source",
+          "correction": "Room temperature correction",
           "windows": "Window and door sensors"
         },
         "data_description": {
           "area": "The room device moves to the area. Its valves and thermostats move too, unless you placed them in another area. You can also set the area on the device page.",
           "temperature_source": "What measures the room temperature: a device of the room or a Home Assistant sensor. The list shows the devices of the room first, then the sensors of the area that the room has now, then the other sensors with their area. After you change the area, submit and open the room again to see the sensors of the new area first.",
+          "correction": "None: the valves regulate on their own sensor and freedo ignores the room sensor.\nContinuous shift: the valves regulate on their own sensor and freedo shifts the setpoints from the room sensor.\nValve calibration: freedo writes the valve offset from the room sensor, at most once per interval.\nCoordinator measures the room: freedo regulates the room on the room sensor and the valves follow its demand.",
           "windows": "The heating of the room stops while one of these sensors is open. A sensor serves one room: a sensor that another room uses shows that room in square brackets, and it moves to this room."
-        },
-        "sections": {
-          "advanced": {
-            "name": "Advanced",
-            "data": {
-              "correction": "Room temperature correction"
-            },
-            "data_description": {
-              "correction": "Continuous shift moves the setpoints slowly from the reading. It is the recommended method. Valve calibration writes the valve offset at most once per interval, and each write moves the motor once. Coordinator measures the room runs the control on the room temperature source, and the valves follow the demand of freedo."
-            }
-          }
         }
       },
       "outdoor": {
@@ -419,6 +410,10 @@
     "rooms_no_area": {
       "title": "Rooms without an area",
       "description": "These freedo rooms work, but they are in no Home Assistant area: {rooms}. Set the area in Settings > Devices & services > freedo > Configure > Rooms, or on the device page of the room. You can ignore this issue."
+    },
+    "room_sensor_ignored": {
+      "title": "Room thermometers ignored",
+      "description": "freedo ignores the room temperature sensor of these rooms, because their Room temperature correction is None: {rooms}. Choose a correction on the page of the room in Configure, or select Temperature source a device of the room to stop sending the sensor."
     }
   },
   "exceptions": {

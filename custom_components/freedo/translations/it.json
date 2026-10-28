@@ -57,23 +57,14 @@
         "data": {
           "area": "Area",
           "temperature_source": "Sorgente della temperatura",
+          "correction": "Correzione della temperatura ambiente",
           "windows": "Sensori di finestre e porte"
         },
         "data_description": {
           "area": "Il dispositivo della stanza passa all'area. Le sue valvole e i suoi termostati passano anche loro, se non li hai messi in un'altra area. Puoi impostare l'area anche nella pagina del dispositivo.",
           "temperature_source": "Ciò che misura la temperatura della stanza: un dispositivo della stanza oppure un sensore di Home Assistant. L'elenco mostra prima i dispositivi della stanza, poi i sensori dell'area che la stanza ha ora, poi gli altri sensori con la loro area. Dopo aver cambiato l'area, invia e riapri la stanza per vedere prima i sensori della nuova area.",
+          "correction": "Nessuna: le valvole regolano sul proprio sensore e freedo ignora il sensore della stanza.\nSpostamento continuo: le valvole regolano sul proprio sensore e freedo sposta i setpoint in base al sensore della stanza.\nCalibrazione della valvola: freedo scrive l'offset della valvola in base al sensore della stanza, al massimo una volta per intervallo.\nIl coordinatore misura la stanza: freedo regola la stanza sul sensore della stanza e le valvole seguono la sua richiesta.",
           "windows": "Il riscaldamento della stanza si ferma finché uno di questi sensori è aperto. Un sensore serve una sola stanza: un sensore usato da un'altra stanza la mostra tra parentesi quadre, e passa a questa stanza."
-        },
-        "sections": {
-          "advanced": {
-            "name": "Avanzate",
-            "data": {
-              "correction": "Correzione della temperatura ambiente"
-            },
-            "data_description": {
-              "correction": "Spostamento continuo sposta lentamente i setpoint secondo la lettura. È il metodo consigliato. Calibrazione della valvola scrive l'offset della valvola al massimo una volta per intervallo, e ogni scrittura muove il motore una volta. Il coordinatore misura la stanza esegue la regolazione sulla sorgente di temperatura ambiente, e le valvole seguono la richiesta di freedo."
-            }
-          }
         }
       },
       "outdoor": {
@@ -511,6 +502,10 @@
     "rooms_no_area": {
       "title": "Stanze senza area",
       "description": "Queste stanze di freedo funzionano, ma non sono in nessuna area di Home Assistant: {rooms}. Imposta l'area in Impostazioni > Dispositivi e servizi > freedo > Configura > Stanze, oppure nella pagina del dispositivo della stanza. Puoi ignorare questo problema."
+    },
+    "room_sensor_ignored": {
+      "title": "Termometri delle stanze ignorati",
+      "description": "freedo ignora il sensore di temperatura di queste stanze, perché la loro Correzione della temperatura ambiente è Nessuna: {rooms}. Scegli una correzione nella pagina della stanza in Configura, oppure seleziona come Sorgente della temperatura un dispositivo della stanza per smettere di inviare il sensore."
     }
   },
   "exceptions": {
