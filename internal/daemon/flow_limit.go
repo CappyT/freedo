@@ -10,6 +10,8 @@ package daemon
 // With options.flow_auto_adapt the room feedback trims that limit, see
 // flow_adapt.go. The thermostat applies a new value only by re-opening its
 // OpenTherm session, so a change needs a minimum step and a minimum interval.
+// The step is measured on the value before its rounding to whole degrees, so a
+// reading near a rounding boundary does not move the served limit.
 
 import (
 	"encoding/hex"
@@ -63,6 +65,20 @@ func (d *daemon) flowCeiling(o tado.Options, id int, now time.Time) int {
 	return flowBase(o)
 }
 
+// flowCeilingExact is flowCeiling before the rounding of a curve value.
+func (d *daemon) flowCeilingExact(o tado.Options, id int, now time.Time) float64 {
+	if outdoor := d.freshOutdoor(o, now); outdoor != nil {
+		if curve, ok := o.EnabledFlowCurve(id); ok {
+			return curve.ExactFlowAt(*outdoor)
+		}
+		if flowDefaultCurve(o, id) {
+			limit, _ := o.FlowLimit()
+			return tado.ExactDefaultFlowAt(limit, *outdoor)
+		}
+	}
+	return float64(flowBase(o))
+}
+
 // flowManaged says whether a curve or the adaptation sets the flow limit of
 // circuit id, which then refuses a manual value.
 func flowManaged(o tado.Options, id int) bool {
@@ -83,10 +99,29 @@ func (d *daemon) flowWanted(o tado.Options, id int, now time.Time) (int, bool) {
 	return ceiling, true
 }
 
-// tickFlowLimits serves the target of each managed circuit, when it differs
-// from the served value by the hysteresis and the last change is older than
-// the minimum interval. The engine start opens the interval, so a restart
-// does not change a value at once. It reports whether a served value changed.
+// flowWantedExact is flowWanted before the rounding of a curve value, and
+// whether the adaptation cuts it. The adaptation works on whole degrees: a
+// limit it cuts below the ceiling stays whole, and one it leaves alone keeps
+// the exact ceiling.
+func (d *daemon) flowWantedExact(o tado.Options, id int, now time.Time) (exact float64, trimmed, ok bool) {
+	if !flowManaged(o, id) {
+		return 0, false, false
+	}
+	exact = d.flowCeilingExact(o, id, now)
+	if a := d.flowAdapt[id]; a != nil && o.FlowAutoAdaptEnabled() {
+		ceiling := d.flowCeiling(o, id, now)
+		if adapted := a.limit(ceiling); adapted < ceiling {
+			return float64(adapted), true, true
+		}
+	}
+	return exact, false, true
+}
+
+// tickFlowLimits serves the target of each managed circuit, rounded to whole
+// degrees, when the target before the rounding differs from the served value
+// by the hysteresis and the last change is older than the minimum interval.
+// The engine start opens the interval, so a restart does not change a value at
+// once. It reports whether a served value changed.
 func (d *daemon) tickFlowLimits(e *tado.EmuState) bool {
 	inst := d.inst.Load()
 	if inst == nil {
@@ -99,14 +134,31 @@ func (d *daemon) tickFlowLimits(e *tado.EmuState) bool {
 		if inst.Options.FlowAutoAdaptEnabled() {
 			d.adaptFlow(e, inst, c.ID, now)
 		}
-		target, ok := d.flowWanted(inst.Options, c.ID, now)
+		exact, trimmed, ok := d.flowWantedExact(inst.Options, c.ID, now)
 		if !ok {
 			continue
 		}
 		_, maxC := e.FlowBounds(c.ID)
-		target = min(target, maxC)
+		exact = min(exact, float64(maxC))
 		served, isServed, _ := e.ServedFlow(c.ID)
-		if isServed && math.Abs(float64(target)-served) < float64(inst.Options.FlowHysteresis()) {
+		// The whole-degree value comes from flowWanted, not from rounding exact:
+		// the default curve rounds its reduction, which differs on a tie.
+		target, _ := d.flowWanted(inst.Options, c.ID, now)
+		target = min(target, maxC)
+		wasTrimmed, known := d.flowTrimmed[c.ID]
+		if !known {
+			// After a start the served value may be a cut the adaptation made
+			// before it.
+			wasTrimmed = inst.Options.FlowAutoAdaptEnabled() && isServed && served < float64(target)
+		}
+		// The step on the exact value holds back the noise of a curve. A cut of
+		// the adaptation that ends is no curve noise: its release passes.
+		released := wasTrimmed && !trimmed
+		if isServed && !released && math.Abs(exact-served) < float64(inst.Options.FlowHysteresis()) {
+			continue
+		}
+		if isServed && float64(target) == served {
+			d.flowTrimmed[c.ID] = trimmed
 			continue
 		}
 		last, ok := d.flowChanged[c.ID]
@@ -126,6 +178,7 @@ func (d *daemon) tickFlowLimits(e *tado.EmuState) bool {
 			continue
 		}
 		d.flowChanged[c.ID] = now
+		d.flowTrimmed[c.ID] = trimmed
 		changed = true
 		log.Printf("circuit %d flow limit %g -> %d C", c.ID, served, target)
 	}
@@ -147,6 +200,7 @@ func (d *daemon) releaseFlowLimits(e *tado.EmuState, before, after *tado.Install
 		if flowManaged(before.Options, id) && !(declared && flowManaged(after.Options, id)) {
 			e.ClearFlowSetpoint(id)
 			delete(d.flowChanged, id)
+			delete(d.flowTrimmed, id)
 		}
 		if _, ok := d.flowAdapt[id]; ok && !(declared && after.Options.FlowAutoAdaptEnabled()) {
 			delete(d.flowAdapt, id)

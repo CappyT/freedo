@@ -491,3 +491,25 @@ func TestFlowAdaptAPI(t *testing.T) {
 		t.Errorf("off again: %v, want no limit served and no adaptation", c)
 	}
 }
+
+// TestFlowAdaptRaiseToTheCurveCeilingPasses: a raise that ends a cut at the
+// rounded curve ceiling is served, although the exact ceiling is less than the
+// hysteresis from the served cut. testCurve gives 47.625 C at 4.9 C outdoor.
+func TestFlowAdaptRaiseToTheCurveCeilingPasses(t *testing.T) {
+	r := newAdaptRig(t, nil, func(in *tado.Install) {
+		in.Options.FlowCurves = map[int]tado.FlowCurve{1: testCurve}
+	})
+	outdoor := func() { r.d.outdoor = &outdoorReading{tempC: 4.9, at: r.clock.now()} }
+	r.target(adaptValve3, 3, 21)
+	outdoor()
+	r.startAt(47)
+	r.d.flowTrimmed[1] = true
+	r.run(3*time.Hour, func(time.Duration) { outdoor(); r.report(adaptValve3, 3, 19.5, 100) })
+	r.wantAdapted("short at a cut under the ceiling", 48, 48)
+	n := len(r.writes)
+	r.run(3*time.Hour, func(time.Duration) { outdoor(); r.report(adaptValve3, 3, 19.5, 100) })
+	r.wantAdapted("at the ceiling", 48, 48)
+	if len(r.writes) != n {
+		t.Errorf("writes %v, want none at the ceiling", r.writes[n:])
+	}
+}

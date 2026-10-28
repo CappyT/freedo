@@ -181,12 +181,15 @@ type daemon struct {
 	zoneObsSaved []storedZoneObserver
 	// outdoor is the last outdoor temperature pushed, flowChanged when a curve
 	// or the adaptation last changed each circuit's flow limit, flowEpoch the
-	// engine start and flowAdapt the adaptation of each circuit. All four
-	// belong to the engine goroutine; see flow_limit.go and flow_adapt.go.
+	// engine start, flowAdapt the adaptation of each circuit and flowTrimmed
+	// whether the last served value of each circuit was a cut of the
+	// adaptation. All five belong to the engine goroutine; see flow_limit.go
+	// and flow_adapt.go.
 	outdoor     *outdoorReading
 	flowChanged map[int]time.Time
 	flowEpoch   time.Time
 	flowAdapt   map[int]*flowAdapt
+	flowTrimmed map[int]bool
 	// thermal holds the heat-up model of each zone, heating the episode each
 	// zone runs now, thermalTarget the target each zone followed at the last
 	// tick, and early the block each zone started early. All four belong to
@@ -310,6 +313,7 @@ func newDaemon(in *tado.Install, emu *tado.EmuState, radio radio.Radio, dryRun b
 		zoneOwners:       make(map[int]*zoneOwner),
 		flowChanged:      make(map[int]time.Time),
 		flowAdapt:        make(map[int]*flowAdapt),
+		flowTrimmed:      make(map[int]bool),
 		thermal:          make(map[int]*thermalModel),
 		heating:          make(map[int]*heatEpisode),
 		thermalTarget:    make(map[int]float64),

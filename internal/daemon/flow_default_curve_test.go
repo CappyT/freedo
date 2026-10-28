@@ -293,3 +293,54 @@ func TestFlowDefaultCurveAPI(t *testing.T) {
 		t.Errorf("a manual limit with the switch off: %d %v, want 200", code, refused)
 	}
 }
+
+// holdOutdoor runs span with the outdoor readings in values, one per 5 minute
+// step in turn, and fails when the served limit of circuit 1 is not want after.
+func (r *adaptRig) holdOutdoor(span time.Duration, values []float64, want float64) {
+	r.t.Helper()
+	n := 0
+	r.run(span, func(time.Duration) {
+		r.outdoor(values[n%len(values)])
+		n++
+	})
+	if got, _, _ := r.d.emu.ServedFlow(1); got != want {
+		r.t.Errorf("outdoor %v: served %g, want %g", values, got, want)
+	}
+}
+
+// TestFlowDefaultCurveHysteresisUsesUnroundedValue: a reading that crosses a
+// rounding boundary of the reduction does not move the served limit; it moves
+// once the unrounded value is a full hysteresis away.
+func TestFlowDefaultCurveHysteresisUsesUnroundedValue(t *testing.T) {
+	r := newDefaultCurveRig(t, nil)
+	r.holdOutdoor(35*time.Minute, []float64{11.5}, 49) // exact 49.005
+	n := len(r.writes)
+	r.holdOutdoor(3*time.Hour, []float64{13.0, 13.1, 13.6, 13.1}, 49)
+	r.holdOutdoor(35*time.Minute, []float64{15}, 48) // exact 48.0
+	r.holdOutdoor(3*time.Hour, []float64{12.5, 13.0, 12.5}, 48)
+	r.holdOutdoor(35*time.Minute, []float64{11}, 49)
+	if len(r.writes) != n+2 {
+		t.Errorf("writes %v, want 2 after the first served limit", r.writes)
+	}
+	if c := r.circuit(); c["computedC"] != 49 {
+		t.Errorf("view %v, want computedC 49", c)
+	}
+}
+
+// TestFlowCurveHysteresisUsesUnroundedValue: the same deadband for a custom
+// curve, with a value near a .5 boundary. testCurve gives 48.375 at 4.3 C and
+// 48.625 at 4.1 C.
+func TestFlowCurveHysteresisUsesUnroundedValue(t *testing.T) {
+	r := newAdaptRig(t, nil, func(in *tado.Install) {
+		in.Options.FlowAutoAdapt = nil
+		in.Options.FlowCurves = map[int]tado.FlowCurve{1: testCurve}
+	})
+	r.holdOutdoor(35*time.Minute, []float64{4.3}, 48)
+	n := len(r.writes)
+	r.holdOutdoor(3*time.Hour, []float64{4.1, 4.3, 4.1}, 48)
+	r.holdOutdoor(35*time.Minute, []float64{3.3}, 50) // exact 49.625
+	r.holdOutdoor(35*time.Minute, []float64{4.3}, 48) // exact 48.375
+	if len(r.writes) != n+2 {
+		t.Errorf("writes %v, want 2 after the first served limit", r.writes)
+	}
+}

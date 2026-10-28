@@ -92,12 +92,19 @@ type FlowCurvePoint struct {
 	FlowC    int     `yaml:"flow_c" json:"flow_c"`
 }
 
-// FlowAt returns the flow limit the curve gives at outdoorC.
+// FlowAt returns the flow limit the curve gives at outdoorC, in whole degrees.
 func (c FlowCurve) FlowAt(outdoorC float64) int {
+	return int(math.Round(c.ExactFlowAt(outdoorC)))
+}
+
+// ExactFlowAt returns the flow limit the curve gives at outdoorC before the
+// rounding, clamped to MinC..MaxC. The daemon compares it with the served limit,
+// so that a reading near a rounding boundary does not move the limit.
+func (c FlowCurve) ExactFlowAt(outdoorC float64) float64 {
 	p, q := c.Points[0], c.Points[1]
 	slope := float64(q.FlowC-p.FlowC) / (q.OutdoorC - p.OutdoorC)
-	v := int(math.Round(float64(p.FlowC) + slope*(outdoorC-p.OutdoorC)))
-	return min(max(v, c.MinC), c.MaxC)
+	v := float64(p.FlowC) + slope*(outdoorC-p.OutdoorC)
+	return min(max(v, float64(c.MinC)), float64(c.MaxC))
 }
 
 // Validate checks that the curve is a line and that every flow value it can
@@ -140,9 +147,19 @@ const (
 // the manual maximum limitC, in whole degrees. It stays inside the window a
 // circuit accepts.
 func DefaultFlowAt(limitC int, outdoorC float64) int {
-	reduction := int(math.Round(defaultCurveBaseC + defaultCurveSlopeCPerC*outdoorC))
-	reduction = min(max(reduction, defaultCurveMinReductionC), defaultCurveMaxReductionC)
+	reduction := int(math.Round(defaultReductionC(outdoorC)))
 	return max(limitC-reduction, int(FlowMinC))
+}
+
+// ExactDefaultFlowAt is DefaultFlowAt before the rounding of the reduction. The
+// daemon compares it with the served limit.
+func ExactDefaultFlowAt(limitC int, outdoorC float64) float64 {
+	return max(float64(limitC)-defaultReductionC(outdoorC), FlowMinC)
+}
+
+// defaultReductionC is the clamped reduction of the default curve, unrounded.
+func defaultReductionC(outdoorC float64) float64 {
+	return min(max(defaultCurveBaseC+defaultCurveSlopeCPerC*outdoorC, defaultCurveMinReductionC), defaultCurveMaxReductionC)
 }
 
 // FlowLimit is the flow limit of a circuit that nothing else sets. ok is false

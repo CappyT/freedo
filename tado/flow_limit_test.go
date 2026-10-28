@@ -3,6 +3,7 @@ package tado
 import (
 	"bytes"
 	"encoding/hex"
+	"math"
 	"strconv"
 	"strings"
 	"testing"
@@ -400,4 +401,55 @@ func TestThermostatConfigETagFollowsFlowLimit(t *testing.T) {
 	}
 	// The trigger the clear queued still waits, and covers the reload.
 	noWrites("new default", 1)
+}
+
+// TestExactFlowAt: the exact value is clamped like the whole-degree one, and
+// FlowAt is that value rounded.
+func TestExactFlowAt(t *testing.T) {
+	c := FlowCurve{
+		Enabled: true,
+		Points:  [2]FlowCurvePoint{{OutdoorC: -5, FlowC: 60}, {OutdoorC: 15, FlowC: 35}},
+		MinC:    38, MaxC: 55,
+	}
+	for _, tc := range []struct {
+		outdoor float64
+		want    float64
+	}{
+		{-20, 55}, {3, 50}, {4.3, 48.375}, {4.7, 47.875}, {12, 38.75}, {15, 38}, {30, 38},
+	} {
+		got := c.ExactFlowAt(tc.outdoor)
+		if math.Abs(got-tc.want) > 1e-9 {
+			t.Errorf("ExactFlowAt(%g) = %g, want %g", tc.outdoor, got, tc.want)
+		}
+		if int(math.Round(got)) != c.FlowAt(tc.outdoor) {
+			t.Errorf("FlowAt(%g) = %d, not the rounded exact value %g", tc.outdoor, c.FlowAt(tc.outdoor), got)
+		}
+	}
+}
+
+// TestExactDefaultFlowAt: the exact default curve is unrounded and clamped, and
+// it rounds to DefaultFlowAt except on the half degree tie of an odd reduction.
+func TestExactDefaultFlowAt(t *testing.T) {
+	for _, tc := range []struct {
+		limit   int
+		outdoor float64
+		want    float64
+	}{
+		{56, -60, 56}, {56, 0, 52.8}, {56, 13, 48.51}, {56, 20, 48}, {33, 20, 30}, {30, 20, 30},
+	} {
+		if got := ExactDefaultFlowAt(tc.limit, tc.outdoor); math.Abs(got-tc.want) > 1e-9 {
+			t.Errorf("ExactDefaultFlowAt(%d, %g) = %g, want %g", tc.limit, tc.outdoor, got, tc.want)
+		}
+	}
+	for limit := int(FlowMinC); limit <= int(FlowMaxC); limit++ {
+		for outdoor := -60.0; outdoor <= 60; outdoor += 0.05 {
+			exact := ExactDefaultFlowAt(limit, outdoor)
+			if exact > float64(limit) || exact < float64(max(limit-defaultCurveMaxReductionC, int(FlowMinC))) {
+				t.Fatalf("ExactDefaultFlowAt(%d, %g) = %g, outside the window", limit, outdoor, exact)
+			}
+			if d := math.Abs(float64(DefaultFlowAt(limit, outdoor)) - exact); d > 0.5+1e-9 {
+				t.Fatalf("DefaultFlowAt(%d, %g) = %d, exact %g", limit, outdoor, DefaultFlowAt(limit, outdoor), exact)
+			}
+		}
+	}
 }

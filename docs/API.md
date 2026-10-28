@@ -1001,8 +1001,10 @@ session again. Each application closes and opens the session.
   flow limit), `min_c`, `max_c` and `enabled`. It is off by default. `POST /api/outdoor` with
   `{"tempC": n}` gives the outdoor temperature. A reading older than `outdoor_max_age_sec`
   returns the circuit to `flow_limit_c` (48 C while that option is unset).
-- The served limit changes by at least `flow_hysteresis_c` and at most once per
-  `flow_min_interval_sec`. The interval also starts at daemon start.
+- The served limit changes when the computed value, before rounding to whole degrees, is at least
+  `flow_hysteresis_c` from the served one, and at most once per `flow_min_interval_sec`. This keeps a
+  reading near a rounding boundary from moving the limit back and forth. The interval also starts at
+  daemon start.
 - A circuit with an active curve of its own refuses `POST /api/boiler/flow` with `409`. An `id` that the
   installation does not declare gets `400`.
 - `GET /api/boiler` shows under `flowLimit` the outdoor temperature and its age, `defaultC`
