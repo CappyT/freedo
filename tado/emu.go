@@ -4175,9 +4175,47 @@ func (e *EmuState) mergeDeviceConfigOn(base cfgSnapshot, key string, w ConfigWri
 	var etagInput []byte
 	thermostat := e.isThermostat(key)
 	if thermostat {
-		etagInput = e.flowETagInput()
+		etagInput = append(e.flowETagInput(), e.measureETagInput(key)...)
 	}
 	return mergeConfigDocument(base, w, etagInput, thermostat)
+}
+
+// measureETagInput is the measuring endpoint (tag 6040) of each heating zone
+// the wall thermostat key serves, for its d/config ETag. The thermostat
+// reloads its observe slots only after a d/config 2.05: a zone document read
+// alone leaves each slot on the endpoint it registered on. So a new endpoint,
+// from a change of owner or of the document form, reaches its observe client
+// only when this ETag moves.
+func (e *EmuState) measureETagInput(key string) []byte {
+	if e.inst == nil {
+		return nil
+	}
+	wire, err := hex.DecodeString(key)
+	if err != nil {
+		return nil
+	}
+	var out []byte
+	zones := make([]int, 0, len(e.inst.Zones))
+	for i := range e.inst.Zones {
+		if z := &e.inst.Zones[i]; z.Kind == ZoneHeating && e.zoneInvolves(z.Number, wire) {
+			zones = append(zones, z.Number)
+		}
+	}
+	slices.Sort(zones)
+	for _, zone := range zones {
+		doc, err := BuildZoneConfigDocument(e.inst, zone)
+		if err != nil {
+			continue
+		}
+		for _, t := range parseTLVList(doc.Body) {
+			if t.Tag == zoneConfigTagMeasure {
+				out = append(out, []byte(zoneConfigTagMeasure)...)
+				out = binary.BigEndian.AppendUint16(out, uint16(zone))
+				out = append(out, t.Val...)
+			}
+		}
+	}
+	return out
 }
 
 func (e *EmuState) isThermostat(key string) bool {

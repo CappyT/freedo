@@ -114,6 +114,14 @@ func TestThermostatRereadOnEveryETagChange(t *testing.T) {
 				"members: [RU0000000001, VA0000000001], reporter: RU0000000001"))
 			return err
 		}},
+		{name: "reload zone_owner", moves: true, change: func(t *testing.T, e *EmuState, key string) error {
+			_, _, err := e.SetInstall(rereadInstall(t, "  zone_owner: {4: coordinator}\n", "", ""))
+			return err
+		}},
+		{name: "reload zone_pid", change: func(t *testing.T, e *EmuState, key string) error {
+			_, _, err := e.SetInstall(rereadInstall(t, "  zone_pid: {4: {kp: 120, ki: 40, kd: 10}}\n", "", ""))
+			return err
+		}},
 		{name: "reload offline_schedule", moves: true, change: func(t *testing.T, e *EmuState, key string) error {
 			_, _, err := e.SetInstall(rereadInstall(t, "  offline_schedule: false\n", "", ""))
 			return err

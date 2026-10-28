@@ -699,8 +699,11 @@ With the daemon as owner:
   and registers the thermostat. The daemon then sends it a NON `2.05` notification under the
   token of the registration each time the measure changes, and at least every 10 minutes. An
   answer without the Observe option ends the observation: the zone goes to its fallback and the
-  thermostat GETs again every two minutes. A change of `owner` sends the thermostat its
-  `d/config` re-read trigger, so it reads the new zone document within seconds.
+  thermostat GETs again every two minutes. The thermostat reloads its observe slots only after
+  a `2.05` of `d/config`, so the ETag of its `d/config` hashes the measuring endpoint of each
+  heating zone it serves. A change of `owner`, or a new form of the endpoint after an update,
+  moves the ETag and sends the thermostat its `d/config` re-read trigger: it reads the new
+  zone documents within seconds and registers on the new endpoints.
 - The zone takes `POST /api/zones/{n}/temperature` with no other option. `offset_mode`
   `setpoint` and `auto_offset` are refused on an owned zone, and the owner is refused while
   the zone holds one of them: the valves follow our measure, so a correction of their own

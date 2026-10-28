@@ -72,6 +72,9 @@ owner. It never consumes a member's `h/<home>/z/N/act`. The observe works this w
   (`zone_to_circuit_demand_update`@0x2debc).
 - `coap_observe_config_load`@0x28d24 calls `coap_observe_table_reset` and resets all 11
   slots. Every zone registers again and stays in its fallback until its first notification.
+  On the plant the reload follows a `2.05` of `d/config` only. The hourly check that reads a
+  changed zone document under an unchanged `d/config` (`2.03`) leaves each slot on the
+  endpoint it registered on.
 - The thermostat also serves `PUT z/p?lid=N` (`coap_res_zone_meas_put`@0x2d3ec). It stores
   `4060` and `40a0` for zone `lid` and answers `2.05` with `62a0`. It does not touch the
   observe slots. Whether the slot index and `lid` name the same zone is not readable
