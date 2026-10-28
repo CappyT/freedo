@@ -96,6 +96,15 @@ type roomTemp struct {
 	wroteAt time.Time
 }
 
+// roomRefusal is the last push a zone refused because no mode of the zone takes
+// a reading. It stays in memory and shows while younger than
+// options.room_temp_max_age_sec: the integration pushes every 15 minutes while
+// the mapping lives.
+type roomRefusal struct {
+	at     time.Time
+	source string
+}
+
 func (d *daemon) roomTempZone(number int) (*tado.Zone, error) {
 	inst := d.inst.Load()
 	if inst == nil {
@@ -165,10 +174,12 @@ func (d *daemon) postZoneTemperature(w http.ResponseWriter, r *http.Request) {
 			return nil, err
 		}
 		inst := d.inst.Load()
+		now := d.retryNow()
 		if !zoneTakesReading(inst, z.Number) {
+			d.roomRefused[z.Number] = roomRefusal{at: now, source: b.Source}
 			return nil, fmt.Errorf("zone %d: %w", z.Number, errRoomTempMode)
 		}
-		now := d.retryNow()
+		delete(d.roomRefused, z.Number)
 		x := d.roomTemps[z.Number]
 		if x == nil {
 			manual := inst.Options.SetpointShiftC(z.Number)
@@ -215,6 +226,7 @@ func (d *daemon) deleteZoneTemperature(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return nil, err
 		}
+		delete(d.roomRefused, z.Number)
 		if x := d.roomTemps[z.Number]; x != nil {
 			x.at = time.Time{}
 		}
@@ -337,6 +349,12 @@ func (d *daemon) dropRoomTemps(inst *tado.Install) {
 		}
 		delete(d.roomTemps, zone)
 		d.roomUnsaved = d.roomUnsaved || x.on
+	}
+	for zone := range d.roomRefused {
+		if z, err := inst.ZoneByNumber(zone); err != nil || z.Kind != tado.ZoneHeating ||
+			zoneTakesReading(inst, zone) {
+			delete(d.roomRefused, zone)
+		}
 	}
 	d.saveRoomShifts()
 	d.saveRoomTemps()
@@ -469,12 +487,15 @@ func (d *daemon) restoreRoomShifts() error {
 // the flow adaptation read tempC: the same as inUse in mode setpoint, and with
 // auto_offset on in the modes config and dbg2. deviceC is the temperature the
 // zone reports on the wire scale and wantedC the filtered shift. shiftC is the
-// shift applied to the zone, and offsetC the manual one it returns to.
+// shift applied to the zone, and offsetC the manual one it returns to. refused
+// is the last push the zone refused for want of a mode that takes a reading,
+// {source, at, ageSec}, or nil once that push is older than the limit for a
+// reading. A zone with no reading carries it too.
 func (d *daemon) roomTempView(e *tado.EmuState, zone int) map[string]any {
 	inst := d.inst.Load()
 	view := map[string]any{
 		"tempC": nil, "at": nil, "ageSec": nil, "source": nil, "stale": false, "inUse": false, "learnInUse": false,
-		"deviceC": nil, "wantedC": nil,
+		"deviceC": nil, "wantedC": nil, "refused": d.roomRefusedView(inst, zone),
 		"shiftC": d.shiftC(inst, zone), "offsetC": inst.Options.SetpointShiftC(zone),
 	}
 	if deviceC, _, _, ok := e.ZoneReport(zone); ok {
@@ -498,6 +519,24 @@ func (d *daemon) roomTempView(e *tado.EmuState, zone int) map[string]any {
 		view["wantedC"] = roundCenti(x.wantedC)
 	}
 	return view
+}
+
+// roomRefusedView renders the last refused push of zone, nil when there is none
+// or it is older than the limit for a reading.
+func (d *daemon) roomRefusedView(inst *tado.Install, zone int) any {
+	r, ok := d.roomRefused[zone]
+	if !ok {
+		return nil
+	}
+	age := d.retryNow().Sub(r.at)
+	if age > inst.Options.RoomTempMaxAge() {
+		return nil
+	}
+	var source any
+	if r.source != "" {
+		source = r.source
+	}
+	return map[string]any{"source": source, "at": r.at.UTC().Format(time.RFC3339), "ageSec": int(age / time.Second)}
 }
 
 // zoneTakesReading reports whether zone takes an external room temperature:

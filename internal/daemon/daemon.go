@@ -164,11 +164,13 @@ type daemon struct {
 	windowOwed map[windowWrite]*windowOwed
 	// roomTemps holds the external room temperature of each zone that has one,
 	// roomUnsaved says whether the applied shifts moved since the last save and
-	// roomTempsSaved holds the readings last stored. All belong to the engine
-	// goroutine; see room_temp.go.
+	// roomTempsSaved holds the readings last stored and roomRefused the last
+	// push each zone refused. All belong to the engine goroutine; see
+	// room_temp.go.
 	roomTemps      map[int]*roomTemp
 	roomUnsaved    bool
 	roomTempsSaved []storedRoomTemp
+	roomRefused    map[int]roomRefusal
 	// autoOffsets holds the automatic temperature-correction calibration of each
 	// zone that states it and autoUnsaved says whether it moved since the last
 	// save. Both belong to the engine goroutine; see auto_offset.go.
@@ -309,6 +311,7 @@ func newDaemon(in *tado.Install, emu *tado.EmuState, radio radio.Radio, dryRun b
 		windows:          make(map[int]zoneWindow),
 		windowOwed:       make(map[windowWrite]*windowOwed),
 		roomTemps:        make(map[int]*roomTemp),
+		roomRefused:      make(map[int]roomRefusal),
 		autoOffsets:      make(map[int]*autoOffset),
 		zoneOwners:       make(map[int]*zoneOwner),
 		flowChanged:      make(map[int]time.Time),

@@ -738,8 +738,9 @@ gives the zone the room temperature that an outside sensor measures. `DELETE` re
 the sensor for display, at most 255 bytes with no control character. A push without it clears
 the name. A zone must be a heating zone in mode `setpoint`, in mode `config` or `dbg2` with
 `auto_offset` on, or with the coordinator as owner. Hot water gets `400`, an unknown zone
-`404`, and a zone with no mode that takes the reading gets `409`. The last reading survives a
-restart of the daemon while it is fresh.
+`404`, and a zone with no mode that takes the reading gets `409`. The daemon remembers that
+refused push in memory (the time and the `source`) and shows it as `refused`. The last reading
+survives a restart of the daemon while it is fresh.
 
 The valve controls on its own sensor, and the daemon cannot change that value. The daemon
 shifts the setpoints it writes instead. The shift is the external temperature minus the zone
@@ -766,7 +767,12 @@ shift and forgets the reading. The reading is not stored. The applied shift is s
 `meta.room_shift`.
 
 `declared[].externalTemp` in `GET /api/zones` shows `tempC`, `at`, `ageSec`, `source`, `stale`,
-`inUse`, `learnInUse`, `deviceC`, `shiftC`, `offsetC` and `wantedC`. `inUse` says the reading
+`inUse`, `learnInUse`, `deviceC`, `shiftC`, `offsetC`, `wantedC` and `refused`. `refused` is
+`{"source": string|null, "at": RFC3339, "ageSec": int}` for the last push that got `409`, or
+`null`. An accepted push, a `DELETE`, a mode of the zone that takes the reading and the removal
+of the zone clear it. A refusal older than `room_temp_max_age_sec` does not show. It also
+shows on a zone that has no reading, so a mapping on a zone with no mode that takes it is
+visible. A restart of the daemon clears it. `inUse` says the reading
 drives the zone and the zone reports `tempC` as its temperature; that holds in mode `setpoint`
 and in `config` or `dbg2` with `auto_offset` on. `learnInUse` says the early start, the flow
 adaptation and the plant episodes read `tempC` instead of `4060`: the same as `inUse` in mode

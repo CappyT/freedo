@@ -685,3 +685,147 @@ func TestRoomTempMaxAgeOption(t *testing.T) {
 		t.Errorf("zero limit: code=%d %v, want 400", code, res)
 	}
 }
+
+// refusedOf returns externalTemp.refused of zone 3, nil when it is null.
+func (r *roomRig) refusedOf() map[string]any {
+	r.t.Helper()
+	view, _ := r.view()
+	refused, present := view["refused"]
+	if !present {
+		r.t.Fatalf("externalTemp has no refused key: %v", view)
+	}
+	if refused == nil {
+		return nil
+	}
+	m, ok := refused.(map[string]any)
+	if !ok {
+		r.t.Fatalf("refused = %v, want an object or null", refused)
+	}
+	return m
+}
+
+func (r *roomRig) setMode(mode string) {
+	r.t.Helper()
+	var res map[string]any
+	if code := postJSON(r.t, http.MethodPatch, r.url+"/api/install/zones/3", map[string]any{"offset_mode": mode}, &res); code != http.StatusOK {
+		r.t.Fatalf("patch %s: code=%d %v", mode, code, res)
+	}
+	r.deliverAll()
+}
+
+func (r *roomRig) pushFrom(c float64, source string) int {
+	r.t.Helper()
+	var out map[string]any
+	return postJSON(r.t, http.MethodPost, r.url+"/api/zones/3/temperature", map[string]any{"tempC": c, "source": source}, &out)
+}
+
+// TestRoomTempRefusedPush: a push the zone refuses for want of a mode that
+// takes it shows as externalTemp.refused with the source and the age, even
+// though the zone has no reading. A push accepted after a mode change, a
+// DELETE and the age limit each clear it.
+func TestRoomTempRefusedPush(t *testing.T) {
+	t.Run("set by a refused push", func(t *testing.T) {
+		r := newRoomRig(t, 0, nil)
+		if r.refusedOf() != nil {
+			t.Fatal("refused is set before any push")
+		}
+		r.setMode(tado.OffsetModeConfig)
+		if code := r.pushFrom(20, "Soggiorno thermometer"); code != http.StatusConflict {
+			t.Fatalf("push: code=%d, want 409", code)
+		}
+		refused := r.refusedOf()
+		if refused["source"] != "Soggiorno thermometer" || refused["at"] != windowStart.Format(time.RFC3339) || refused["ageSec"] != 0.0 {
+			t.Errorf("refused = %v, want the source, the push time and age 0", refused)
+		}
+		view, _ := r.view()
+		wantView(t, "the zone has no reading", view, map[string]any{"tempC": nil, "inUse": false})
+		r.clock.advance(4 * time.Minute)
+		if refused := r.refusedOf(); refused["ageSec"] != 240.0 {
+			t.Errorf("refused after 4 minutes = %v, want age 240", refused)
+		}
+	})
+	t.Run("no source is null", func(t *testing.T) {
+		r := newRoomRig(t, 0, nil)
+		r.setMode(tado.OffsetModeConfig)
+		if _, code := r.push(20); code != http.StatusConflict {
+			t.Fatalf("push: code=%d, want 409", code)
+		}
+		if refused := r.refusedOf(); refused == nil || refused["source"] != nil {
+			t.Errorf("refused = %v, want an object with a null source", refused)
+		}
+	})
+	t.Run("a bad push is not remembered", func(t *testing.T) {
+		r := newRoomRig(t, 0, nil)
+		r.setMode(tado.OffsetModeConfig)
+		if code := r.pushFrom(80, "Soggiorno thermometer"); code != http.StatusBadRequest {
+			t.Fatalf("push: code=%d, want 400", code)
+		}
+		if refused := r.refusedOf(); refused != nil {
+			t.Errorf("refused = %v after a 400, want null", refused)
+		}
+	})
+	t.Run("cleared by an accepted push", func(t *testing.T) {
+		r := newRoomRig(t, 0, nil)
+		r.setMode(tado.OffsetModeConfig)
+		if code := r.pushFrom(20, "Soggiorno thermometer"); code != http.StatusConflict {
+			t.Fatalf("push: code=%d, want 409", code)
+		}
+		r.setMode(tado.OffsetModeSetpoint)
+		if refused := r.refusedOf(); refused != nil {
+			t.Errorf("refused = %v after a mode that takes the reading, want null", refused)
+		}
+		if code := r.pushFrom(20, "Soggiorno thermometer"); code != http.StatusOK {
+			t.Fatalf("push after the mode change: code=%d, want 200", code)
+		}
+		if refused := r.refusedOf(); refused != nil {
+			t.Errorf("refused = %v after an accepted push, want null", refused)
+		}
+	})
+	t.Run("cleared by delete", func(t *testing.T) {
+		r := newRoomRig(t, 0, nil)
+		r.setMode(tado.OffsetModeConfig)
+		if code := r.pushFrom(20, "Soggiorno thermometer"); code != http.StatusConflict {
+			t.Fatalf("push: code=%d, want 409", code)
+		}
+		var view map[string]any
+		if code := postJSON(t, http.MethodDelete, r.url+"/api/zones/3/temperature", map[string]any{}, &view); code != http.StatusOK {
+			t.Fatalf("delete: code=%d %v", code, view)
+		}
+		if view["refused"] != nil {
+			t.Errorf("the delete answer holds refused = %v, want null", view["refused"])
+		}
+		if refused := r.refusedOf(); refused != nil {
+			t.Errorf("refused = %v after a delete, want null", refused)
+		}
+	})
+	t.Run("old refusal is not shown", func(t *testing.T) {
+		r := newRoomRig(t, 0, func(in *tado.Install) {
+			maxAge := 900
+			in.Options.RoomTempMaxAgeSec = &maxAge
+		})
+		r.setMode(tado.OffsetModeConfig)
+		if code := r.pushFrom(20, "Soggiorno thermometer"); code != http.StatusConflict {
+			t.Fatalf("push: code=%d, want 409", code)
+		}
+		r.clock.advance(14 * time.Minute)
+		if r.refusedOf() == nil {
+			t.Error("refused is gone after 14 minutes with a limit of 15")
+		}
+		r.clock.advance(2 * time.Minute)
+		if refused := r.refusedOf(); refused != nil {
+			t.Errorf("refused = %v after 16 minutes with a limit of 15, want null", refused)
+		}
+	})
+	t.Run("hot water has none", func(t *testing.T) {
+		r := newRoomRig(t, 0, nil)
+		var out map[string]any
+		postJSON(t, http.MethodPost, r.url+"/api/zones/0/temperature", map[string]any{"tempC": 20, "source": "x"}, &out)
+		var zones roomZones
+		getJSON(t, r.url+"/api/zones", &zones)
+		for _, z := range zones.Declared {
+			if z.Number == 0 && z.ExternalTemp != nil {
+				t.Errorf("hot water carries externalTemp %v", z.ExternalTemp)
+			}
+		}
+	})
+}
