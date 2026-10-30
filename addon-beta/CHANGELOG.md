@@ -222,3 +222,14 @@ pre-release has its notes here.
   Temperature source state says `device` for a room a device owns.
 - Dashboard: the room settings show one select, who measures the room: the devices of the room,
   or the Home Assistant thermometer. The offset and the offset mode sit under Advanced.
+
+## 0.11.0-beta.13
+
+- Home Assistant: the setup of the integration removes from the entity registry the select Room
+  temperature correction, the switch Valve calibration and the number Calibration of each heating
+  room.
+- Dashboard: the room note names the wall thermostat when it is the device that measures the room.
+- Daemon: the migration of a room in offset mode `setpoint` was exercised on the 0.11.0-beta.11 and
+  0.11.0-beta.12 binaries with a recorded bridge: the first start that transmits writes the program
+  unshifted to the zone writer. A release write that a restart interrupts goes out again as a plain
+  rewrite, so a running manual overlay keeps the old shift until it ends.
