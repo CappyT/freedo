@@ -582,6 +582,28 @@ async def test_firmware_change_reaches_the_device_registry(hass, client):
     assert registry.async_get(device.id).sw_version == "3.1"
 
 
+async def test_setup_removes_the_entities_of_the_retired_methods(hass, client):
+    registry = er.async_get(hass)
+    entry = MockConfigEntry(domain=DOMAIN, data={CONF_HOST: "127.0.0.1", CONF_PORT: 8080})
+    entry.add_to_hass(hass)
+    stale = {
+        ("select", "zone1_room_temperature_correction"),
+        ("switch", "zone1_auto_offset"),
+        ("number", "zone1_auto_offset_interval_sec"),
+    }
+    for platform, key in stale:
+        registry.async_get_or_create(platform, DOMAIN, f"{entry.entry_id}_{key}", config_entry=entry)
+    registry.async_get_or_create("switch", DOMAIN, f"{entry.entry_id}_aaaa_child_lock", config_entry=entry)
+    with patch("custom_components.freedo.FreedoClient", return_value=client):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+    for platform, key in stale:
+        assert not has_entity(hass, entry, platform, key)
+    assert has_entity(hass, entry, "switch", "aaaa_child_lock")
+    # A second setup finds nothing to remove.
+    assert await hass.config_entries.async_reload(entry.entry_id)
+
+
 # --- rooms: zone areas, names and repair issues ---
 
 

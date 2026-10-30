@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+import re
 
 from homeassistant.config_entries import SOURCE_HASSIO
 from homeassistant.const import CONF_HOST, CONF_PORT, Platform
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import config_validation as cv, device_registry as dr
+from homeassistant.helpers import (
+    config_validation as cv,
+    device_registry as dr,
+    entity_registry as er,
+)
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.typing import ConfigType
 
@@ -32,6 +38,14 @@ PLATFORMS = [
     Platform.WATER_HEATER,
 ]
 
+_LOGGER = logging.getLogger(__name__)
+
+# Zone entities that 0.11.0-beta.12 no longer creates: the select Room
+# temperature correction, the switch Valve calibration and the number
+# Calibration.
+_REMOVED_ZONE_ENTITY = re.compile(
+    r"_zone\d+_(room_temperature_correction|auto_offset|auto_offset_interval_sec)$"
+)
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
@@ -63,6 +77,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: FreedoConfigEntry) -> bo
     )
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     _remove_departed(hass, entry, coordinator.data)
+    _remove_retired_entities(hass, entry)
     _follow_installation(hass, entry, coordinator)
     entry.async_on_unload(async_track_firmware(hass, coordinator))
     entry.async_on_unload(async_track_rooms(hass, coordinator))
@@ -99,6 +114,17 @@ def _remove_departed(hass: HomeAssistant, entry: FreedoConfigEntry, data: Freedo
     for device in dr.async_entries_for_config_entry(registry, entry.entry_id):
         if not device.identifiers & keep:
             registry.async_remove_device(device.id)
+
+
+@callback
+def _remove_retired_entities(hass: HomeAssistant, entry: FreedoConfigEntry) -> None:
+    """Remove the zone entities that a release no longer creates. An upgrade
+    keeps them in the registry as unavailable."""
+    registry = er.async_get(hass)
+    for entity in er.async_entries_for_config_entry(registry, entry.entry_id):
+        if _REMOVED_ZONE_ENTITY.search(entity.unique_id):
+            _LOGGER.debug("Removing the retired entity %s", entity.entity_id)
+            registry.async_remove(entity.entity_id)
 
 
 @callback
