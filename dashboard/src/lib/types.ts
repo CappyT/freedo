@@ -101,7 +101,7 @@ export interface Target {
 	hasProgram?: boolean;
 }
 
-/** A push of a room temperature that a zone refused because no correction method takes it. */
+/** A push of a room temperature that a zone refused because a device owns the zone. */
 export interface RefusedReading {
 	source: string | null;
 	at: string;
@@ -117,11 +117,7 @@ export interface ExternalTemp {
 	/** The reading is older than the limit and no longer drives the zone. */
 	stale: boolean;
 	inUse: boolean;
-	learnInUse: boolean;
 	deviceC: number | null;
-	wantedC: number | null;
-	shiftC: number;
-	offsetC: number;
 	/** The last push the zone refused, null when there is none or it is old. Absent on a daemon without the field. */
 	refused?: RefusedReading | null;
 }
@@ -377,6 +373,8 @@ export type BoilerPatch = Partial<Omit<BoilerOptions, 'boiler_min_power_kw' | 'f
 
 export interface InstallInfo extends BoilerOptions {
 	rev: number;
+	/** Age at which a room temperature from Home Assistant expires. */
+	room_temp_max_age_sec?: number;
 	/** The IANA zone of the installation, empty while the daemon follows its host. */
 	timezone: string;
 	utc_offset_min: number | null;
@@ -410,11 +408,8 @@ export interface InstallZone {
 	/** The fields below are null on the hot water zone, which has none of these options. */
 	device_overlay_end: 'manual' | 'until_next' | 'timer' | null;
 	device_overlay_end_sec: number | null;
-	offset_mode: 'config' | 'dbg2' | 'setpoint' | null;
-	/** The correction the daemon holds in mode setpoint. Null in the other modes: the valve holds it there. */
-	setpoint_offset_c: number | null;
-	auto_offset: boolean | null;
-	auto_offset_interval_sec: number | null;
+	/** How a manual offset reaches the valve. */
+	offset_mode: 'config' | 'dbg2' | null;
 	/** Null on the hot water zone. */
 	owner: ZoneOwner | null;
 	away_temperature_c: number | null;
@@ -430,9 +425,7 @@ export interface ZoneOptionsPatch {
 	early_start?: boolean;
 	device_overlay_end?: 'manual' | 'until_next' | 'timer';
 	device_overlay_end_sec?: number;
-	offset_mode?: 'config' | 'dbg2' | 'setpoint';
-	auto_offset?: boolean;
-	auto_offset_interval_sec?: number;
+	offset_mode?: 'config' | 'dbg2';
 	owner?: ZoneOwner;
 	away_temperature_c?: number;
 }

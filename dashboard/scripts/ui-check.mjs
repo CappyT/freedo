@@ -20,7 +20,7 @@
 //   and rename and delete the room. No room is the group of the devices in no room.
 // - The settings of a heated room save its options in one request and keep the ranges of the daemon.
 // - The room screen shows the room temperature that Home Assistant pushes: the source, the reading, its age and the
-//   method. A push that the method None refuses shows as a warning there and in the correction field.
+//   owner. A push that a device-owned room refuses shows as a warning there and next to the select of the room temperature source.
 // - The burner badge of the boiler page follows the burner flag, also while no room asks for heat.
 //   A boiler fault code shows on the boiler page and as a banner.
 // - The boiler setup saves the energy data and the flow options, with a comma as the decimal separator,
@@ -669,11 +669,14 @@ try {
 	await tab.waitFor(`document.querySelector(${JSON.stringify(opt(3, 'input[type=number]'))})`);
 	await typeInto(opt(3, 'input[type=number]'), '90');
 	await click(opt(4, 'input[type=checkbox]'));
-	await choose('[data-testid=correction]', 'shift');
 	check(
-		/no motor stroke/.test(await tab.evaluate(`document.querySelector('[data-testid=correction-hint]').textContent`)) &&
-			!(await tab.evaluate(`!!document.querySelector('[data-testid=mode-hint]')`)),
-		'the continuous shift says it costs no motor stroke and hides the offset mode of the valve'
+		(await valueOf('[data-testid=source]')) === '04a3defa07c51b00' &&
+			/A valve measures on the radiator/.test(await tab.evaluate(`document.querySelector('[data-testid=source-note]').textContent`)),
+		'a room with one device shows it as the room temperature source, with the note of a device'
+	);
+	check(
+		!(await tab.evaluate(`document.querySelector(${JSON.stringify(opt(5, 'details'))}).open`)),
+		'the offset and its mode sit in the closed section Advanced'
 	);
 	await typeInto(opt(5, '.pair .input.num'), '-0.7');
 	await sleep(6500);
@@ -693,54 +696,74 @@ try {
 	const bathOptions = (await api(daemon.base, 'install/zones/2')).zone;
 	check(
 		bathOptions.open_window_duration_sec === 1200 && bathOptions.away_temperature_c === 16.5 && bathOptions.device_overlay_end === 'timer' &&
-			bathOptions.device_overlay_end_sec === 5400 && bathOptions.early_start === true && bathOptions.offset_mode === 'setpoint' && bathOptions.setpoint_offset_c === -0.7,
-		`the daemon stores the window time, the away temperature, the end rule, the early start, the offset mode and the offset (${JSON.stringify([bathOptions.open_window_duration_sec, bathOptions.away_temperature_c, bathOptions.device_overlay_end, bathOptions.device_overlay_end_sec, bathOptions.early_start, bathOptions.offset_mode, bathOptions.setpoint_offset_c])})`
+			bathOptions.device_overlay_end_sec === 5400 && bathOptions.early_start === true,
+		`the daemon stores the window time, the away temperature, the end rule and the early start (${JSON.stringify([bathOptions.open_window_duration_sec, bathOptions.away_temperature_c, bathOptions.device_overlay_end, bathOptions.device_overlay_end_sec, bathOptions.early_start])})`
 	);
 	check(
 		requests.filter((r) => r === 'PATCH /api/install/zones/2').length === 1 && requests.filter((r) => r === 'POST /api/zones/2/offset').length === 1,
 		'the options go in one request, and the offset in one more'
 	);
-	await tab.waitFor(`document.querySelector(${JSON.stringify(opt(5, '.pair .input.num'))})?.value === '-0.7'`, 3000);
-	check(await saveDisabled(), 'the saved options show again, with nothing left to save');
-	// The room temperature that Home Assistant pushes. Bedroom keeps the method None, so the daemon refuses the push and
-	// the room screen and the correction field say why. Bath took the continuous shift above, so its reading is in use.
+	await tab.waitFor(`document.querySelector(${JSON.stringify(opt(5, '.pair .input.num'))})?.value === ''`, 3000);
+	check(await saveDisabled(), 'the saved options show again, with the offset field empty and nothing left to save');
+	// The room temperature that Home Assistant pushes. Bedroom keeps its device as owner, so the daemon refuses the push and
+	// the room screen and the select of the source say why. Bath takes the thermometer below, so its reading is in use.
 	const push = (zone, body) =>
 		fetch(`${daemon.base}/api/zones/${zone}/temperature`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-	const refusal = 'Test thermometer sends the room temperature, but with the method None freedo ignores it.';
-	check((await push(10, { tempC: 20.4, source: 'Test thermometer' })).status === 409, 'the daemon refuses a room temperature for the method None');
+	const patchZone = (zone, body) =>
+		fetch(`${daemon.base}/api/install/zones/${zone}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+	const refusal = 'Test thermometer sends the room temperature, but a device of the room measures it. freedo ignores the reading.';
+	check((await push(10, { tempC: 20.4, source: 'Test thermometer' })).status === 409, 'the daemon refuses a room temperature for a room that a device owns');
 	await open('#/zones/10', `document.querySelector('[data-testid=room-temp]')`);
 	check(
 		(await tab.evaluate(`document.querySelector('[data-testid=room-temp]').dataset.state`)) === 'refused' &&
 			(await tab.evaluate(`document.querySelector('[data-testid=room-temp-refused]').textContent.trim()`)) === refusal,
-		'the room screen warns that the method None ignores the room temperature that Home Assistant sends'
+		'the room screen warns that a device-owned room ignores the room temperature that Home Assistant sends'
 	);
-	await click('[data-testid=room-temp-change]');
-	await tab.waitFor(`document.querySelector('[data-testid=correction-refused]')`, 10_000);
+	await open('#/rooms/10', `document.querySelector('[data-testid=source-refused]')`);
 	check(
-		(await tab.evaluate(`document.querySelector('[data-testid=correction-refused]').textContent.trim()`)) === refusal,
-		'the correction field repeats the warning while the method is None'
+		(await tab.evaluate(`document.querySelector('[data-testid=source-refused]').textContent.trim()`)) === refusal,
+		'the room settings repeat the warning while a device owns the room'
 	);
 	check(
-		await tab.waitFor(`document.activeElement?.id === 'correction'`, 3000).then(() => true, () => false),
-		'the link from the room screen focuses the correction field'
+		(await tab.evaluate(`[...document.querySelectorAll('[data-testid=source] optgroup')].map((g) => g.label + ':' + g.children.length).join()`)) === 'Devices of this room:1,Home Assistant:1' &&
+			(await tab.evaluate(`document.querySelector('[data-testid=source] option[value=coordinator]').textContent`)).startsWith('Test thermometer'),
+		'the select lists the devices of the room and the thermometer under the name of the source that pushed'
 	);
-	await choose('[data-testid=correction]', 'shift');
-	check(!(await tab.evaluate(`!!document.querySelector('[data-testid=correction-refused]')`)), 'the warning goes when the form picks a method');
+	await choose('[data-testid=source]', 'coordinator');
+	check(await toast('Room saved'), 'the thermometer is saved as the source');
+	await tab.waitFor(`!document.querySelector('[data-testid=source-refused]')`, 6000);
+	check(
+		(await api(daemon.base, 'install/zones/10')).zone.owner === 'coordinator',
+		'the daemon stores the thermometer as the owner of the room, and the warning goes'
+	);
+	check(
+		/No reading from Home Assistant/.test(await tab.evaluate(`document.querySelector('[data-testid=source-note]').textContent`)),
+		'the note says that the thermometer sent no reading yet'
+	);
+	await choose('[data-testid=source]', '02a6cefa07c51b00');
+	// The toast of the thermometer can still be on screen, so poll the daemon instead of reading once.
+	let ownerBack = false;
+	for (let i = 0; i < 20 && !ownerBack; i++) {
+		ownerBack = (await api(daemon.base, 'install/zones/10')).zone.owner === 'device';
+		if (!ownerBack) await sleep(250);
+	}
+	check(ownerBack, 'a device is saved as the source and the daemon gives the room back to a device');
 	await open('#/zones/1', `document.querySelector('#state-title')`);
 	await sleep(1500);
-	check(!(await tab.evaluate(`!!document.querySelector('[data-testid=room-temp]')`)), 'a room with the method None and no refused push shows no room temperature line');
-	check((await push(2, { tempC: 21.4, source: 'Test thermometer' })).status === 200, 'the daemon takes a room temperature for the continuous shift');
+	check(!(await tab.evaluate(`!!document.querySelector('[data-testid=room-temp]')`)), 'a room that a device owns, with no refused push, shows no room temperature line');
+	await patchZone(2, { owner: 'coordinator' });
+	check((await push(2, { tempC: 21.4, source: 'Test thermometer' })).status === 200, 'the daemon takes a room temperature for a room that the thermometer owns');
 	await open('#/zones/2', `document.querySelector('[data-testid=room-temp][data-state=active]')`);
 	const live = await tab.evaluate(`document.querySelector('[data-testid=room-temp]').innerText`);
 	check(
-		/Room temperature/.test(live) && /Test thermometer/.test(live) && /21\.4°/.test(live) && /ago|now/.test(live) && /Method: Continuous shift/.test(live),
-		`the room screen shows the source, the reading, its age and the method (${live.replace(/\s+/g, ' ')})`
+		/Room temperature/.test(live) && /Test thermometer/.test(live) && /21\.4°/.test(live) && /ago|now/.test(live),
+		`the room screen shows the source, the reading and its age (${live.replace(/\s+/g, ' ')})`
 	);
 	await fetch(`${daemon.base}/api/zones/2/temperature`, { method: 'DELETE' });
 	await open('#/zones/2', `document.querySelector('[data-testid=room-temp][data-state=no_reading]')`);
 	check(
 		/No reading from Home Assistant/.test(await tab.evaluate(`document.querySelector('[data-testid=room-temp]').innerText`)),
-		'a method that needs a reading says when none arrived'
+		'a room that the thermometer owns says when no reading arrived'
 	);
 	await open('#/rooms/0', `document.querySelector('[data-member]')`);
 	check(!(await tab.evaluate(`!!document.querySelector('[data-testid=room-options]')`)), 'the hot water room has no room options');
@@ -839,7 +862,7 @@ try {
 	await clickIn('main form', 'Save');
 	check(await toast('Room renamed'), 'the room is renamed');
 	await tab.waitFor(`document.querySelector('main h1')?.textContent === 'Loft'`);
-	await choose('.choices label:nth-child(2) select', valve.eui);
+	await choose('[data-testid=source]', valve.eui);
 	check(await toast('Room saved'), 'the measuring device is saved');
 	const loft = (await api(daemon.base, 'install/zones/4')).zone;
 	check(loft.name === 'Loft' && loft.measuring_device === valve.eui, `the daemon stores the name and the measuring device (${loft.name}, ${loft.measuring_device})`);

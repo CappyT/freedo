@@ -1,24 +1,16 @@
 import type { InstallZone, ZoneOptionsPatch } from './types.ts';
 
-// The limits of the daemon: docs/API.md, "Zone options" and "Temperature correction".
+// The limits of the daemon: docs/API.md, "Zone options".
 export const WINDOW_MINUTES = { min: 1, max: 1092 };
 export const END_MINUTES = { min: 1, max: 7 * 24 * 60 };
 export const AWAY_C = { min: 5, max: 25 };
-export const CALIBRATION_HOURS = { min: 1, max: 168 };
 export const OFFSET_C = { min: -10, max: 10 };
 const DEFAULT_END_MINUTES = 60;
 
 export type EndRuleOption = 'manual' | 'until_next' | 'timer';
-export type OffsetMode = 'config' | 'dbg2' | 'setpoint';
-/**
- * How the room corrects the temperature its valves measure. The daemon holds it in three fields:
- * shift is offset_mode setpoint, calibration is auto_offset on, coordinator is owner coordinator.
- * It takes at most one of them.
- */
-export type Correction = 'none' | 'shift' | 'calibration' | 'coordinator';
-export const CORRECTIONS: readonly Correction[] = ['none', 'shift', 'calibration', 'coordinator'];
+export type OffsetMode = 'config' | 'dbg2';
 
-/** The options of a heated room as the form holds them: minutes and hours where the daemon holds seconds. */
+/** The options of a heated room as the form holds them: minutes where the daemon holds seconds. */
 export interface RoomOptions {
 	windowDetection: boolean;
 	windowMinutes: number;
@@ -27,22 +19,8 @@ export interface RoomOptions {
 	endRule: EndRuleOption;
 	endMinutes: number;
 	earlyStart: boolean;
-	correction: Correction;
-	/** Setpoint in the correction shift, config or dbg2 in the others: how a manual offset reaches the valve. */
+	/** How a manual offset reaches the valve. */
 	offsetMode: OffsetMode;
-	calibrationHours: number;
-}
-
-export function correctionOf(zone: InstallZone): Correction {
-	if (zone.owner === 'coordinator') return 'coordinator';
-	if (zone.auto_offset) return 'calibration';
-	return zone.offset_mode === 'setpoint' ? 'shift' : 'none';
-}
-
-/** The options with another correction, and the offset mode that the daemon takes with it. */
-export function withCorrection(o: RoomOptions, correction: Correction): RoomOptions {
-	if (correction === 'shift') return { ...o, correction, offsetMode: 'setpoint' };
-	return { ...o, correction, offsetMode: o.offsetMode === 'setpoint' ? 'config' : o.offsetMode };
 }
 
 export function optionsOf(zone: InstallZone): RoomOptions {
@@ -53,13 +31,11 @@ export function optionsOf(zone: InstallZone): RoomOptions {
 		endRule: zone.device_overlay_end ?? 'until_next',
 		endMinutes: zone.device_overlay_end_sec ? Math.round(zone.device_overlay_end_sec / 60) : DEFAULT_END_MINUTES,
 		earlyStart: zone.early_start,
-		correction: correctionOf(zone),
-		offsetMode: zone.offset_mode ?? 'config',
-		calibrationHours: Math.round((zone.auto_offset_interval_sec ?? 86400) / 3600)
+		offsetMode: zone.offset_mode ?? 'config'
 	};
 }
 
-export type OptionIssue = 'window' | 'away' | 'endTimer' | 'calibrationHours' | 'offset';
+export type OptionIssue = 'window' | 'away' | 'endTimer' | 'offset';
 
 const whole = (v: number, range: { min: number; max: number }) => Number.isInteger(v) && v >= range.min && v <= range.max;
 const twoDecimals = (v: number) => Math.abs(v * 100 - Math.round(v * 100)) < 1e-9;
@@ -82,18 +58,13 @@ export function optionIssues(o: RoomOptions, offset: string): OptionIssue[] {
 	if (!whole(o.windowMinutes, WINDOW_MINUTES)) issues.push('window');
 	if (!(o.awayC >= AWAY_C.min && o.awayC <= AWAY_C.max && twoDecimals(o.awayC))) issues.push('away');
 	if (o.endRule === 'timer' && !whole(o.endMinutes, END_MINUTES)) issues.push('endTimer');
-	if (o.correction === 'calibration' && !whole(o.calibrationHours, CALIBRATION_HOURS)) issues.push('calibrationHours');
 	if (parseOffset(offset) === undefined) issues.push('offset');
 	return issues;
 }
 
-/**
- * The fields of PATCH /api/install/zones/{n} that differ from what the zone holds. Empty when none does.
- * A change of correction sets the new one and clears the old one.
- */
-export function optionsPatch(zone: InstallZone, draft: RoomOptions): ZoneOptionsPatch {
+/** The fields of PATCH /api/install/zones/{n} that differ from what the zone holds. Empty when none does. */
+export function optionsPatch(zone: InstallZone, o: RoomOptions): ZoneOptionsPatch {
 	const now = optionsOf(zone);
-	const o = withCorrection(draft, draft.correction);
 	const patch: ZoneOptionsPatch = {};
 	if (o.windowDetection !== now.windowDetection) patch.open_window_detection = o.windowDetection;
 	if (o.windowMinutes !== now.windowMinutes) patch.open_window_duration_sec = o.windowMinutes * 60;
@@ -104,11 +75,5 @@ export function optionsPatch(zone: InstallZone, draft: RoomOptions): ZoneOptions
 	}
 	if (o.earlyStart !== now.earlyStart) patch.early_start = o.earlyStart;
 	if (o.offsetMode !== now.offsetMode) patch.offset_mode = o.offsetMode;
-	const calibration = o.correction === 'calibration';
-	if (calibration !== (now.correction === 'calibration')) patch.auto_offset = calibration;
-	if (calibration && o.calibrationHours !== now.calibrationHours) patch.auto_offset_interval_sec = o.calibrationHours * 3600;
-	if ((o.correction === 'coordinator') !== (now.correction === 'coordinator')) {
-		patch.owner = o.correction === 'coordinator' ? 'coordinator' : 'device';
-	}
 	return patch;
 }

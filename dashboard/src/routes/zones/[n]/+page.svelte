@@ -15,7 +15,6 @@
 	import Icon, { type IconName } from '#lib/Icon.svelte';
 	import SchedulePanel from '#lib/SchedulePanel.svelte';
 	import ScheduleWeek from '#lib/ScheduleWeek.svelte';
-	import { correctionOf } from '#lib/roomoptions.ts';
 	import { readingUnix, roomTempState } from '#lib/roomtemp.ts';
 	import { HEATING_RANGE, programInForce, type Group, type Mode } from '#lib/schedule.ts';
 	import { api } from '#lib/session.ts';
@@ -41,9 +40,9 @@
 	let busy = $state(false);
 	let programs = $state<Record<Mode, Group[] | null>>({ home: null, away: null });
 
-	// The correction method is in the installation, not in the live zone. It is read again with each poll,
+	// The owner of the zone is in the installation, not in the live zone. It is read again with each poll,
 	// because another client can change it.
-	// A late answer must not overwrite a newer one, and the method of another room must not show.
+	// A late answer must not overwrite a newer one, and the owner of another room must not show.
 	let installZone = $state<InstallZone | null>(null);
 	let installAsked = 0;
 	$effect(() => {
@@ -57,13 +56,10 @@
 			})
 			.catch(() => {});
 	});
-	const method = $derived(installZone && installZone.number === number ? correctionOf(installZone) : null);
+	const owner = $derived(installZone && installZone.number === number ? installZone.owner : null);
 	const ext = $derived(model?.zone.externalTemp);
-	const roomTemp = $derived(method === null ? 'none' : roomTempState(method, ext));
-	const methodName = $derived(method === null ? '' : t(`opt.correction.${method}`));
-	const methodLine = $derived(t('roomTemp.method', { method: methodName }));
+	const roomTemp = $derived(roomTempState(owner, ext));
 	const readingAgo = $derived(ext?.ageSec == null ? '' : fmt.ago(readingUnix(ext.ageSec)));
-	const settingsHref = $derived(resolve('/rooms/[n]', { n: String(number) }) + '?field=correction');
 
 	const shown = $derived(
 		draft ?? model?.zone.target.targetC ?? model?.zone.target.programC ?? model?.tempC ?? 20
@@ -243,15 +239,14 @@
 									<span class="list-main">
 										<span class="list-label">{t('roomTemp.label')}</span>
 										<span class="list-sub warn" data-testid="room-temp-refused">
-											{t('roomTemp.refused', { source: ext.refused?.source ?? t('roomTemp.source'), method: methodName })}
+											{t('roomTemp.refused', { source: ext.refused?.source ?? t('roomTemp.source') })}
 										</span>
 									</span>
-									<a class="action" href={settingsHref} data-testid="room-temp-change">{t('roomTemp.change')}</a>
 								{:else if roomTemp === 'active'}
 									<span class="list-main">
 										<span class="list-label">{t('roomTemp.label')}</span>
 										<span class="list-sub">
-											{[ext.source ?? t('roomTemp.source'), readingAgo, methodLine].join(' · ')}
+											{[ext.source ?? t('roomTemp.source'), readingAgo].join(' · ')}
 										</span>
 									</span>
 									<span class="list-value num">{fmt.degrees(ext.tempC)}</span>
@@ -259,7 +254,7 @@
 									<span class="list-main">
 										<span class="list-label">{t('roomTemp.label')}</span>
 										<span class="list-sub">
-											{[roomTemp === 'stale' ? t('roomTemp.stale', { age: readingAgo }) : t('roomTemp.none'), methodLine].join(' · ')}
+											{roomTemp === 'stale' ? t('roomTemp.stale', { age: readingAgo }) : t('roomTemp.none')}
 										</span>
 									</span>
 								{/if}

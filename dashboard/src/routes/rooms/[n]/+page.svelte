@@ -6,27 +6,24 @@
 	import { act, errorText } from '#lib/actions.ts';
 	import ConfirmDialog from '#lib/ConfirmDialog.svelte';
 	import { data } from '#lib/data.svelte.ts';
-	import { t } from '#lib/i18n.svelte.ts';
+	import { fmt, t } from '#lib/i18n.svelte.ts';
 	import Icon from '#lib/Icon.svelte';
 	import { manage } from '#lib/install.svelte.ts';
 	import { canJoin, describeEffect, movePlan, moveTargets } from '#lib/install.ts';
 	import {
 		AWAY_C,
-		CALIBRATION_HOURS,
-		CORRECTIONS,
 		END_MINUTES,
 		WINDOW_MINUTES,
 		optionIssues,
 		optionsOf,
 		optionsPatch,
 		parseOffset,
-		withCorrection,
-		type Correction,
 		type RoomOptions
 	} from '#lib/roomoptions.ts';
+	import { COORDINATOR_SOURCE, electedDevice, readingUnix, sourceNote, sourceValue, sourceWrites } from '#lib/roomtemp.ts';
 	import { api } from '#lib/session.ts';
 	import { toasts } from '#lib/toast.svelte.ts';
-	import type { InstallCircuit, InstallDevice, InstallZone, Removal } from '#lib/types.ts';
+	import type { InstallCircuit, InstallDevice, InstallInfo, InstallZone, Removal } from '#lib/types.ts';
 	import { zoneName } from '#lib/zones.ts';
 
 	// The route "none" is the group of the devices in no room. It has members and no settings of a zone.
@@ -35,6 +32,7 @@
 	let zones = $state<InstallZone[]>([]);
 	let devices = $state<InstallDevice[]>([]);
 	let circuits = $state<InstallCircuit[]>([]);
+	let info = $state<InstallInfo | null>(null);
 	let loaded = $state(false);
 	let problem = $state<string | null>(null);
 	// The name in the field. It follows the room until the person types.
@@ -84,7 +82,7 @@
 
 	async function load() {
 		try {
-			[zones, devices, circuits] = await Promise.all([api.installZones(), api.installDevices(), api.installCircuits()]);
+			[zones, devices, circuits, info] = await Promise.all([api.installZones(), api.installDevices(), api.installCircuits(), api.installInfo()]);
 			problem = null;
 			if (!typed) name = zone?.name ?? '';
 			if (!optionsDirty) showOptions();
@@ -94,19 +92,53 @@
 		loaded = true;
 	}
 
-	// Home Assistant pushes a room temperature that the method None drops. The note stays until the form picks a method.
-	const refused = $derived(
-		options?.correction === 'none' ? data.zones?.declared.find((z) => z.number === number)?.externalTemp?.refused : null
-	);
-
 	const issues = $derived(options ? optionIssues(options, offsetText) : []);
-	// The valve calibration writes the offset itself while it is on, so the field is closed then.
-	const offsetClosed = $derived(zone?.auto_offset === true || options?.correction === 'calibration');
+
+	// The room temperature source: a device of the room, or the thermometer of Home Assistant.
+	const external = $derived(data.zones?.declared.find((z) => z.number === number)?.externalTemp);
+	const selected = $derived(zone ? sourceValue(zone) : '');
+	const elected = $derived(zone ? electedDevice(zone) : null);
+	const electedName = $derived.by(() => {
+		const device = members.find((d) => d.eui === elected);
+		return device ? labelOf(device) : null;
+	});
+	const note = $derived(zone ? sourceNote(zone, external) : 'device');
+	const maxAgeMinutes = $derived(Math.round((info?.room_temp_max_age_sec ?? 1800) / 60));
+	const readingAge = $derived(external?.ageSec == null ? '' : fmt.ago(readingUnix(external.ageSec)));
+	// Home Assistant pushes a room temperature that a device-owned zone drops. The warning stays until the person picks the thermometer.
+	const refused = $derived(zone?.owner === 'device' ? external?.refused : null);
+	const thermometer = $derived(
+		[external?.source ?? external?.refused?.source ?? t('roomSource.ha'), ...(external?.tempC != null && external.ageSec != null ? [fmt.temp(external.tempC), readingAge] : [])].join(' · ')
+	);
+	const noteText = $derived.by(() => {
+		const age = { temp: fmt.temp(external?.tempC), age: readingAge, minutes: maxAgeMinutes };
+		if (note === 'fresh') return electedName ? t('roomSource.note.fresh', { ...age, device: electedName }) : t('roomSource.note.fresh.any', age);
+		if (note === 'stale') return electedName ? t('roomSource.note.stale', { ...age, device: electedName }) : t('roomSource.note.stale.any', age);
+		if (note === 'no_reading') return t('roomSource.note.none');
+		return t(note === 'choose' ? 'roomSource.note.choose' : 'roomSource.note.device');
+	});
+
+	/** The text of a device option: name, kind and the temperature that the node reports. */
+	function deviceOption(device: InstallDevice): string {
+		const temp = data.nodes.find((n) => n.Short === device.short)?.TempC;
+		return [labelOf(device), t(`kind.${device.kind}`), ...(temp ? [fmt.temp(temp)] : [])].join(' · ');
+	}
+
+	/** The select writes at once. The measuring device goes first, so the owner device finds it elected. */
+	async function chooseSource(select: HTMLSelectElement) {
+		if (!zone) return;
+		const room = zone.number;
+		const writes = sourceWrites(zone, select.value);
+		await choose(select, selected, async () => {
+			if (writes.measuring) await api.setRole(room, 'measuring', writes.measuring);
+			if (writes.owner) await api.patchZone(room, { owner: writes.owner });
+		});
+	}
 
 	function showOptions() {
 		options = zone?.kind === 'heating' ? optionsOf(zone) : null;
-		// Only mode setpoint holds the offset in the daemon. In the other modes the valve holds it, and no report carries it.
-		offsetText = zone?.offset_mode === 'setpoint' && zone.setpoint_offset_c !== null ? String(zone.setpoint_offset_c) : '';
+		// No report carries the offset: the valve holds it.
+		offsetText = '';
 	}
 
 	async function saveOptions(event: SubmitEvent) {
@@ -114,9 +146,8 @@
 		if (!zone || !options || issues.length > 0) return;
 		const room = zone.number;
 		const patch = optionsPatch(zone, options);
-		const typedOffset = offsetClosed ? null : parseOffset(offsetText);
-		const sameOffset = zone.offset_mode === 'setpoint' && options.offsetMode === 'setpoint' && typedOffset === zone.setpoint_offset_c;
-		const offset = typedOffset === undefined || sameOffset ? null : typedOffset;
+		const typedOffset = parseOffset(offsetText);
+		const offset = typedOffset === undefined ? null : typedOffset;
 		if (Object.keys(patch).length === 0 && offset === null) {
 			optionsDirty = false;
 			return;
@@ -131,20 +162,6 @@
 			showOptions();
 		}
 	}
-
-	// The link on the room screen names the correction field in a query. The page is routed by hash, so a fragment would
-	// become part of the route, and the router keeps the query out of page.url. The field exists only once the form is drawn.
-	let jumped = false;
-	$effect(() => {
-		if (jumped || !loaded || !options) return;
-		jumped = true;
-		if (new URLSearchParams(location.hash.split('?')[1]).get('field') !== 'correction') return;
-		void tick().then(() => {
-			const field = document.getElementById('correction');
-			field?.scrollIntoView({ block: 'center' });
-			field?.focus();
-		});
-	});
 
 	// The first read, and one more when the person opens another room.
 	$effect(() => {
@@ -386,20 +403,6 @@
 						<span class="note">{t('rooms.circuit.hint')}</span>
 					</label>
 					<label class="field">
-						<span>{t('rooms.measuring')}</span>
-						<select
-							class="input"
-							value={zone.measuring_device ?? ''}
-							disabled={busy}
-							onchange={(e) =>
-								choose(e.currentTarget, zone?.measuring_device ?? '', (v) => api.setRole(zone.number, 'measuring', v === '' ? null : v))}
-						>
-							<option value="">{t('rooms.role.auto')}</option>
-							{#each members as device (device.eui)}<option value={device.eui}>{labelOf(device)}</option>{/each}
-						</select>
-						<span class="note">{t('rooms.measuring.hint')}</span>
-					</label>
-					<label class="field">
 						<span>{t('rooms.reporter')}</span>
 						<select
 							class="input"
@@ -466,36 +469,48 @@
 					</fieldset>
 
 					<fieldset class="wide">
-						<legend>{t('opt.correction')}</legend>
+						<legend>{t('roomTemp.label')}</legend>
 						{#if refused}
-							<p class="notice tone-warning" data-testid="correction-refused">
+							<p class="notice tone-warning" data-testid="source-refused">
 								<Icon name="warning" />
-								<span>{t('roomTemp.refused', { source: refused.source ?? t('roomTemp.source'), method: t('opt.correction.none') })}</span>
+								<span>{t('roomTemp.refused', { source: refused.source ?? t('roomTemp.source') })}</span>
 							</p>
 						{/if}
-						<div class="pair">
-							<label class="field">
-								<span>{t('opt.correction.method')}</span>
-								<select
-									class="input"
-									value={options.correction}
-									onchange={(e) => {
-										if (options) options = withCorrection(options, e.currentTarget.value as Correction);
-									}}
-									id="correction"
-									data-testid="correction"
-								>
-									{#each CORRECTIONS as c (c)}<option value={c}>{t(`opt.correction.${c}`)}</option>{/each}
-								</select>
-							</label>
-							<label class="field">
-								<span>{t('opt.offset')}</span>
-								<input class="input num" inputmode="decimal" autocomplete="off" bind:value={offsetText} disabled={offsetClosed} aria-invalid={issues.includes('offset')} />
-							</label>
-						</div>
-						<p class="note" data-testid="correction-hint">{t(`opt.correction.${options.correction}.hint`)}</p>
-						<p class="note">{offsetClosed ? t('opt.offset.closed') : options.offsetMode === 'setpoint' ? t('opt.offset.hint') : t('opt.offset.hint.valve')}</p>
-						{#if options.correction !== 'shift'}
+						<label class="field">
+							<span>{t('roomSource.field')}</span>
+							<!-- The select writes at once, so its events stay out of the form, which saves the options. -->
+							<select
+								class="input"
+								value={selected}
+								disabled={busy}
+								onchange={(e) => {
+									e.stopPropagation();
+									void chooseSource(e.currentTarget);
+								}}
+								oninput={(e) => e.stopPropagation()}
+								data-testid="source"
+							>
+								<optgroup label={t('zone.devices')}>
+									{#each members as device (device.eui)}<option value={device.eui}>{deviceOption(device)}</option>{/each}
+								</optgroup>
+								<optgroup label={t('roomTemp.source')}>
+									<option value={COORDINATOR_SOURCE}>{thermometer}</option>
+								</optgroup>
+							</select>
+						</label>
+						<p class={note === 'no_reading' ? 'notice tone-warning' : 'note'} data-testid="source-note">
+							{#if note === 'no_reading'}<Icon name="warning" />{/if}
+							<span>{noteText}</span>
+						</p>
+						<details>
+							<summary>{t('roomSource.advanced')}</summary>
+							<div class="pair">
+								<label class="field">
+									<span>{t('opt.offset')}</span>
+									<input class="input num" inputmode="decimal" autocomplete="off" bind:value={offsetText} aria-invalid={issues.includes('offset')} />
+								</label>
+							</div>
+							<p class="note">{t('opt.offset.hint')}</p>
 							<div class="pair">
 								<label class="field">
 									<span>{t('opt.offsetMode')}</span>
@@ -504,15 +519,9 @@
 										<option value="dbg2">{t('opt.mode.dbg2')}</option>
 									</select>
 								</label>
-								{#if options.correction === 'calibration'}
-									<label class="field">
-										<span>{t('opt.calibrationHours')}</span>
-										<input class="input num" type="number" inputmode="numeric" min={CALIBRATION_HOURS.min} max={CALIBRATION_HOURS.max} step="1" bind:value={options.calibrationHours} aria-invalid={issues.includes('calibrationHours')} />
-									</label>
-								{/if}
 							</div>
 							<p class="note" data-testid="mode-hint">{t(`opt.mode.${options.offsetMode === 'dbg2' ? 'dbg2' : 'config'}.hint`)}</p>
-						{/if}
+						</details>
 					</fieldset>
 
 					{#if issues.length > 0}
@@ -660,6 +669,10 @@
 
 	.options select {
 		max-width: 100%;
+	}
+
+	.options details > :not(summary) {
+		margin-top: 0.6rem;
 	}
 
 	.num {
