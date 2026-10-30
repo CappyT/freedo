@@ -200,7 +200,7 @@ pre-release has its notes here.
 - Run on a real plant with 0.11.0-beta.10: six rooms on the coordinator as owner, on the Home
   Assistant thermometers. The wall thermostat holds one observe registration for each room.
 
-## Unreleased
+## 0.11.0-beta.12
 
 - A heating room has one room temperature source: a device of the room, or the Home Assistant
   thermometer with the coordinator as owner. freedo no longer runs Continuous shift (offset mode
