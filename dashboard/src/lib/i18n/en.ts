@@ -671,6 +671,7 @@ export const en = {
 	'roomSource.ha': 'Home Assistant thermometer',
 	'roomSource.advanced': 'Advanced',
 	'roomSource.note.device': 'A valve measures on the radiator and reads warmer than the room. With the Home Assistant thermometer, freedo reads the measurement and tells the valves how far to open.',
+	'roomSource.note.thermostat': 'The wall thermostat measures the room. With the Home Assistant thermometer, freedo uses its reading instead of the thermostat.',
 	'roomSource.note.choose': 'Choose the device that measures the room.',
 	'roomSource.note.fresh': 'Last reading {temp}, {age}. If the thermometer is silent for more than {minutes} minutes, the room returns to {device}.',
 	'roomSource.note.fresh.any': 'Last reading {temp}, {age}.',

@@ -1,4 +1,4 @@
-import type { ExternalTemp, InstallZone, ZoneOwner } from './types.ts';
+import type { DeviceKind, ExternalTemp, InstallZone, ZoneOwner } from './types.ts';
 
 /**
  * What the room screen says about the room temperature that Home Assistant pushes:
@@ -59,13 +59,18 @@ export function sourceWrites(zone: SourceZone, choice: string): SourceWrites {
 /**
  * The note under the select:
  * - choose: a device owns the zone, several devices are members and none is elected;
+ * - thermostat: a device owns the zone and the elected device is a wall thermostat;
  * - device: a device owns the zone;
  * - fresh, no_reading, stale: the thermometer owns the zone, by the state of its reading.
  */
-export type SourceNote = 'choose' | 'device' | 'fresh' | 'no_reading' | 'stale';
+export type SourceNote = 'choose' | 'thermostat' | 'device' | 'fresh' | 'no_reading' | 'stale';
 
-export function sourceNote(zone: SourceZone, ext: ExternalTemp | null | undefined): SourceNote {
-	if (zone.owner !== 'coordinator') return electedDevice(zone) === null && zone.members.length > 1 ? 'choose' : 'device';
+/** `electedKind` is the kind of the elected device, null when the device is unknown. */
+export function sourceNote(zone: SourceZone, ext: ExternalTemp | null | undefined, electedKind: DeviceKind | null = null): SourceNote {
+	if (zone.owner !== 'coordinator') {
+		if (electedDevice(zone) === null && zone.members.length > 1) return 'choose';
+		return electedKind === 'thermostat' ? 'thermostat' : 'device';
+	}
 	const state = roomTempState('coordinator', ext);
 	return state === 'active' ? 'fresh' : state === 'stale' ? 'stale' : 'no_reading';
 }

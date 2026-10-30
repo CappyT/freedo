@@ -671,6 +671,7 @@ export const it: Record<Key, string> = {
 	'roomSource.ha': 'Termometro di Home Assistant',
 	'roomSource.advanced': 'Avanzate',
 	'roomSource.note.device': 'La valvola misura sul radiatore e legge più caldo della stanza. Con il termometro di Home Assistant, freedo legge la misura e dice alle valvole quanto aprire.',
+	'roomSource.note.thermostat': 'Il termostato a parete misura la stanza. Con il termometro di Home Assistant, freedo usa la sua misura al posto del termostato.',
 	'roomSource.note.choose': 'Scegli il dispositivo che misura la stanza.',
 	'roomSource.note.fresh': 'Ultima misura {temp}, {age}. Se il termometro tace per più di {minutes} minuti, la stanza torna a {device}.',
 	'roomSource.note.fresh.any': 'Ultima misura {temp}, {age}.',

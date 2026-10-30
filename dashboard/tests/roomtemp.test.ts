@@ -142,6 +142,14 @@ describe('the note under the select', () => {
 		expect(sourceNote(ha, refused)).toBe('no_reading');
 	});
 
+	it('says thermostat when the elected device is a wall thermostat, and device for a valve', () => {
+		expect(sourceNote(room({ measuring_device: 'aa' }), fresh, 'thermostat')).toBe('thermostat');
+		expect(sourceNote(room({ measuring_device: 'aa' }), fresh, 'valve')).toBe('device');
+		expect(sourceNote(room({ measuring_device: 'aa' }), fresh)).toBe('device');
+		expect(sourceNote(room({ owner: 'coordinator' }), fresh, 'thermostat')).toBe('fresh');
+		expect(sourceNote(room(), undefined, 'thermostat')).toBe('choose');
+	});
+
 	it('does not ask for a choice while the thermometer owns the zone', () => {
 		expect(sourceNote(room({ owner: 'coordinator' }), fresh)).toBe('fresh');
 	});

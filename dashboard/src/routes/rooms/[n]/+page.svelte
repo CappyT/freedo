@@ -102,7 +102,8 @@
 		const device = members.find((d) => d.eui === elected);
 		return device ? labelOf(device) : null;
 	});
-	const note = $derived(zone ? sourceNote(zone, external) : 'device');
+	const electedKind = $derived(members.find((d) => d.eui === elected)?.kind ?? null);
+	const note = $derived(zone ? sourceNote(zone, external, electedKind) : 'device');
 	const maxAgeMinutes = $derived(Math.round((info?.room_temp_max_age_sec ?? 1800) / 60));
 	const readingAge = $derived(external?.ageSec == null ? '' : fmt.ago(readingUnix(external.ageSec)));
 	// Home Assistant pushes a room temperature that a device-owned zone drops. The warning stays until the person picks the thermometer.
@@ -115,7 +116,8 @@
 		if (note === 'fresh') return electedName ? t('roomSource.note.fresh', { ...age, device: electedName }) : t('roomSource.note.fresh.any', age);
 		if (note === 'stale') return electedName ? t('roomSource.note.stale', { ...age, device: electedName }) : t('roomSource.note.stale.any', age);
 		if (note === 'no_reading') return t('roomSource.note.none');
-		return t(note === 'choose' ? 'roomSource.note.choose' : 'roomSource.note.device');
+		if (note === 'choose') return t('roomSource.note.choose');
+		return t(note === 'thermostat' ? 'roomSource.note.thermostat' : 'roomSource.note.device');
 	});
 
 	/** The text of a device option: name, kind and the temperature that the node reports. */

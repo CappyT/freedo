@@ -671,6 +671,7 @@ export const de: Record<Key, string> = {
 	'roomSource.ha': 'Home-Assistant-Thermometer',
 	'roomSource.advanced': 'Erweitert',
 	'roomSource.note.device': 'Das Ventil misst am Heizkörper und liest wärmer als der Raum. Mit dem Home-Assistant-Thermometer liest freedo die Messung und sagt den Ventilen, wie weit sie öffnen.',
+	'roomSource.note.thermostat': 'Der Wandthermostat misst den Raum. Mit dem Home-Assistant-Thermometer verwendet freedo dessen Messung statt des Thermostats.',
 	'roomSource.note.choose': 'Wählen Sie das Gerät, das den Raum misst.',
 	'roomSource.note.fresh': 'Letzter Messwert {temp}, {age}. Schweigt das Thermometer länger als {minutes} Minuten, kehrt der Raum zu {device} zurück.',
 	'roomSource.note.fresh.any': 'Letzter Messwert {temp}, {age}.',
