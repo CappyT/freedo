@@ -218,7 +218,7 @@ func TestAutoChangeOverlaySurvivesRestart(t *testing.T) {
 }
 
 // TestAutoChangeOverlayKeepsRuleOnRestate: a rewrite of the running overlay, as
-// a correction change does, keeps the rule.
+// a shift release does, keeps the rule.
 func TestAutoChangeOverlayKeepsRuleOnRestate(t *testing.T) {
 	in := windowInstall(t, nil)
 	d, url := newWindowDaemon(t, in, newTestClock(windowStart), nil)
@@ -229,7 +229,7 @@ func TestAutoChangeOverlayKeepsRuleOnRestate(t *testing.T) {
 	}
 	deliver(t, d, in, writer)
 	if _, err := d.do(func(e *tado.EmuState) (any, error) {
-		return nil, d.restateZone(e, in, 3, writer, 0.5)
+		return nil, d.releaseShift(e, 3, writer, 0.5)
 	}); err != nil {
 		t.Fatal(err)
 	}

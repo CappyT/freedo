@@ -265,7 +265,7 @@ func (d *daemon) overlayDuration(e *tado.EmuState, z *tado.Zone, mode string, du
 func (d *daemon) roomOverlay(e *tado.EmuState, z *tado.Zone, dev *tado.Device, overlay byte, duration time.Duration, fallback float64) tado.SetpointParams {
 	sched := fallback
 	if block, ok := d.zoneSched[z.Number]; ok {
-		sched = d.rawSetpointC(d.inst.Load(), z.Number, block.c)
+		sched = block.c
 	}
 	return tado.SetpointParams{
 		ID: z.Number, Sched: sched, Overlay: overlay, Duration: duration,
@@ -319,9 +319,8 @@ func (d *daemon) postZoneSetpoint(w http.ResponseWriter, r *http.Request) {
 			if z.Kind == tado.ZoneHotWater {
 				return e.EnqueueDHWOverlay(target, z.Number, c, true, duration, b.endRule())
 			}
-			raw := d.rawSetpointC(d.inst.Load(), z.Number, c)
-			sp := d.roomOverlay(e, z, dev, overlay, duration, raw)
-			sp.Setpoint = raw
+			sp := d.roomOverlay(e, z, dev, overlay, duration, c)
+			sp.Setpoint = c
 			sp.EndRule = b.endRule()
 			return e.EnqueueSetpoint(target, sp)
 		})
@@ -482,7 +481,7 @@ func (d *daemon) zoneTargetView(e *tado.EmuState, z *tado.Zone) map[string]any {
 			"kind": kind, "rule": overlayRule(block.Overlay, timer, timed), "on": on, "setpointC": nil, "endsAt": nil,
 		}
 		if on && block.SetpointC != nil {
-			overlay["setpointC"] = d.correctedC(d.inst.Load(), z.Number, *block.SetpointC)
+			overlay["setpointC"] = *block.SetpointC
 		}
 		if timed && !timer.ExpiresAt.IsZero() {
 			overlay["endsAt"] = timer.ExpiresAt.UTC().Format(time.RFC3339)

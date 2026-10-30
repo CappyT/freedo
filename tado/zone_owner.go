@@ -89,12 +89,6 @@ func (in *Install) checkZoneOwners(c *issues) {
 		case z.Kind != ZoneHeating:
 			c.errf(path, "zone %d is not a heating zone", zone)
 		}
-		if in.Options.ZoneOffset(zone).Mode == OffsetModeSetpoint {
-			c.errf(path, "zone %d is in offset mode setpoint: the owner regulates on the external reading", zone)
-		}
-		if in.Options.AutoOffset(zone).Enabled {
-			c.errf(path, "zone %d has auto_offset on: the owner regulates on the external reading", zone)
-		}
 	}
 }
 

@@ -148,9 +148,7 @@ func TestZoneOffsetCheck(t *testing.T) {
 	}{
 		{ZoneOffset{Mode: OffsetModeConfig}, true},
 		{ZoneOffset{Mode: OffsetModeDbg2}, true},
-		{ZoneOffset{Mode: OffsetModeSetpoint, SetpointCenti: -1000}, true},
-		{ZoneOffset{Mode: OffsetModeSetpoint, SetpointCenti: 1001}, false},
-		{ZoneOffset{Mode: OffsetModeDbg2, SetpointCenti: 50}, false},
+		{ZoneOffset{Mode: "setpoint"}, false},
 		{ZoneOffset{Mode: "cloud"}, false},
 	} {
 		if got := tc.off.Check() == ""; got != tc.good {
@@ -158,12 +156,8 @@ func TestZoneOffsetCheck(t *testing.T) {
 		}
 	}
 	var o Options
-	if o.ZoneOffset(3).Mode != OffsetModeConfig || o.SetpointShiftC(3) != 0 {
-		t.Errorf("default = %+v shift %v, want config and 0", o.ZoneOffset(3), o.SetpointShiftC(3))
-	}
-	o.ZoneOffsets = map[int]ZoneOffset{3: {Mode: OffsetModeSetpoint, SetpointCenti: -70}}
-	if got := o.SetpointShiftC(3); got != -0.7 {
-		t.Errorf("setpoint shift = %v, want -0.7", got)
+	if o.ZoneOffset(3).Mode != OffsetModeConfig {
+		t.Errorf("default = %+v, want config", o.ZoneOffset(3))
 	}
 }
 

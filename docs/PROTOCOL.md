@@ -351,7 +351,7 @@ program moved while the daemon was down
 `TestRestartAcrossBoundaryRewritesDueZones`).
 
 The baseline moves when a rewrite is queued, and the queue is not durable. So
-every zone rewrite (`rewriteZones`, `restateShiftedZones`) also records its member
+every zone rewrite (`rewriteZones`, `releaseShifts`) also records its member
 in meta `program_owed`. The emulator numbers each zone block write that it queues
 (`ZoneWriteMark`). A 2.xx to that write, or to a newer zone block write to the
 same member and zone, settles it (`ZoneWriteDelivered`). The first tick after a

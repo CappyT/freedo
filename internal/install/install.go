@@ -205,9 +205,6 @@ func ReadInstall(ctx context.Context, q Querier) (*tado.Install, uint64, error) 
 	if err := loadZonePIDs(kv, &in.Options); err != nil {
 		return nil, 0, err
 	}
-	if err := loadAutoOffsets(kv, &in.Options); err != nil {
-		return nil, 0, err
-	}
 	if err := loadZoneOwners(kv, &in.Options); err != nil {
 		return nil, 0, err
 	}
@@ -402,34 +399,6 @@ func loadZoneOffsets(kv map[string]string, o *tado.Options) error {
 			o.ZoneOffsets = map[int]tado.ZoneOffset{}
 		}
 		o.ZoneOffsets[zone] = off
-	}
-	return nil
-}
-
-// autoOffsetPrefix starts the install key of a zone's automatic temperature
-// calibration, stored as JSON. The key exists only while the zone states one.
-const autoOffsetPrefix = "auto_offset."
-
-func AutoOffsetKey(zone int) string { return autoOffsetPrefix + strconv.Itoa(zone) }
-
-func loadAutoOffsets(kv map[string]string, o *tado.Options) error {
-	for key, raw := range kv {
-		rest, ok := strings.CutPrefix(key, autoOffsetPrefix)
-		if !ok {
-			continue
-		}
-		zone, err := strconv.Atoi(rest)
-		if err != nil {
-			return fmt.Errorf("install %s: %w", key, err)
-		}
-		var a tado.AutoOffset
-		if err := json.Unmarshal([]byte(raw), &a); err != nil {
-			return fmt.Errorf("install %s: %w", key, err)
-		}
-		if o.AutoOffsets == nil {
-			o.AutoOffsets = map[int]tado.AutoOffset{}
-		}
-		o.AutoOffsets[zone] = a
 	}
 	return nil
 }
@@ -784,13 +753,6 @@ func (s *Store) ReplaceInstall(ctx context.Context, in *tado.Install) (uint64, e
 			return 0, err
 		}
 		values = append(values, [2]string{ZonePIDKey(zone), string(raw)})
-	}
-	for zone, a := range in.Options.AutoOffsets {
-		raw, err := json.Marshal(a)
-		if err != nil {
-			return 0, err
-		}
-		values = append(values, [2]string{AutoOffsetKey(zone), string(raw)})
 	}
 	for zone, owner := range in.Options.ZoneOwners {
 		if owner == "" || owner == tado.ZoneOwnerDevice {

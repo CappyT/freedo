@@ -19,23 +19,14 @@ import (
 // record goes to cfg_store_set and to the attribute report FIFO
 // (coap_report_enqueue@0xd8b0), with no call to the d/config client. No capture
 // shows the write on air.
-//
-// OffsetModeSetpoint leaves 0140 on the valve as it is. The coordinator adds
-// the correction to the zone temperature it reports and subtracts it from the
-// setpoints it writes to the zone.
 const (
-	OffsetModeConfig   = "config"
-	OffsetModeDbg2     = "dbg2"
-	OffsetModeSetpoint = "setpoint"
+	OffsetModeConfig = "config"
+	OffsetModeDbg2   = "dbg2"
 )
 
 // ZoneOffset is how a heating zone takes its room temperature correction.
 type ZoneOffset struct {
 	Mode string `yaml:"mode" json:"mode"`
-	// SetpointCenti is the correction the coordinator applies itself, in
-	// centi-degrees, on top of the 0140 the valve holds. Only mode setpoint
-	// carries one.
-	SetpointCenti int `yaml:"setpoint_centi,omitempty" json:"setpoint_centi,omitempty"`
 }
 
 // DefaultZoneOffset is the correction mode of a zone that states none.
@@ -60,31 +51,13 @@ func (o Options) RoomTempMaxAge() time.Duration {
 	return optSeconds(o.RoomTempMaxAgeSec, DefaultRoomTempMaxAgeSec)
 }
 
-// SetpointShiftC is the correction in degrees the coordinator applies to zone
-// itself: the one of mode setpoint, else 0.
-func (o Options) SetpointShiftC(zone int) float64 {
-	off := o.ZoneOffset(zone)
-	if off.Mode != OffsetModeSetpoint {
-		return 0
-	}
-	return float64(off.SetpointCenti) / 100
-}
-
 // Check reports what is wrong with the mode, or "".
 func (r ZoneOffset) Check() string {
 	switch r.Mode {
 	case OffsetModeConfig, OffsetModeDbg2:
-		if r.SetpointCenti != 0 {
-			return "setpoint_centi needs mode setpoint"
-		}
-	case OffsetModeSetpoint:
-		if r.SetpointCenti < -calibOffsetAbs || r.SetpointCenti > calibOffsetAbs {
-			return "setpoint_centi must be within -" + strconv.Itoa(calibOffsetAbs) + ".." + strconv.Itoa(calibOffsetAbs)
-		}
-	default:
-		return "bad mode " + strconv.Quote(r.Mode) + ": want config, dbg2 or setpoint"
+		return ""
 	}
-	return ""
+	return "bad mode " + strconv.Quote(r.Mode) + ": want config or dbg2"
 }
 
 func (in *Install) checkZoneOffsets(c *issues) {
@@ -196,22 +169,6 @@ func patchConfigDocument(previous cfgSnapshot, updates []TLV) cfgSnapshot {
 	etag := append([]byte(nil), previous.etag...)
 	document := append(merged, TLV{Tag: configEtagTag, Val: etag})
 	return cfgSnapshot{body: encodeTLVs(document), etag: etag}
-}
-
-// ServedCalibOffset returns the correction 0140, in centi-degrees, of the
-// d/config document freedo serves to target, and false when the document holds
-// none. Modes config and dbg2 keep the correction there.
-func (e *EmuState) ServedCalibOffset(target string) (int, bool) {
-	wire, _, err := e.resolve(target)
-	if err != nil {
-		return 0, false
-	}
-	for _, t := range parseTLVList(e.cfgDoc[hexEUI(wire)].body) {
-		if t.Tag == "0140" && len(t.Val) == 2 {
-			return int(int16(uint16(t.Val[0])<<8 | uint16(t.Val[1]))), true
-		}
-	}
-	return 0, false
 }
 
 // DeviceTemp returns the calibrated temperature 012d that target last reported,

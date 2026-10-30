@@ -193,6 +193,10 @@ func checkImport(path string) (importInfo, error) {
 		if err := in.ValidateCommissionable(true); err != nil {
 			return err
 		}
+		// The valves hold what the running daemon wrote, not the shifts of the file.
+		if err := store.ClearShiftRelease(ctx); err != nil {
+			return err
+		}
 		for key, dst := range map[string]*string{metaExportedBy: &info.ExportedBy, metaExportedAt: &info.ExportedAt} {
 			err := store.db.QueryRowContext(ctx, `SELECT value FROM meta WHERE key = ?`, key).Scan(dst)
 			if err != nil && !errors.Is(err, sql.ErrNoRows) {

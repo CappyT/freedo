@@ -209,45 +209,6 @@ func TestPlantHeatUpEndings(t *testing.T) {
 	})
 }
 
-// TestPlantHeatUpCorrectedScale: in mode setpoint with a -0.5 C shift the
-// target 21 C is on the corrected scale, so the samples are too: the wire
-// 21.2 C at 08:00 is 20.7 C and does not cross, the wire 21.5 C at 08:30 does.
-func TestPlantHeatUpCorrectedScale(t *testing.T) {
-	store := newTestStore(t, t.TempDir()+"/state.db")
-	d, _, clock, in := newEarlyDaemon(t, false, store, func(in *tado.Install) {
-		in.Options.ZoneOffsets = map[int]tado.ZoneOffset{3: {Mode: tado.OffsetModeSetpoint, SetpointCenti: -50}}
-	})
-	at(t, d, in, clock, "06:50", 17.5, 0)
-	at(t, d, in, clock, "07:00", math.NaN(), 0)
-	at(t, d, in, clock, "07:30", 18.5, 80)
-	at(t, d, in, clock, "08:00", 21.2, 40)
-	at(t, d, in, clock, "08:30", 21.5, 10)
-	at(t, d, in, clock, "09:00", 21.6, 0)
-	eps := plantEpisodesOf(t, store, 3)
-	if len(eps) != 1 || eps[0].Kind != plantHeat || eps[0].EndReason != "settled" || eps[0].TargetC == nil || *eps[0].TargetC != 21 {
-		t.Fatalf("episodes = %+v, want one heat-up at 21 C, settled at 09:00", eps)
-	}
-	heat := eps[0]
-	want := []float64{17.0, 18.0, 20.7, 21.0, 21.1}
-	if len(heat.Samples) != len(want) {
-		t.Fatalf("heat-up samples = %+v, want %v", heat.Samples, want)
-	}
-	for i, s := range heat.Samples {
-		if s.TempC != want[i] {
-			t.Errorf("sample %d tempC = %g, want the corrected %g", i, s.TempC, want[i])
-		}
-	}
-	if heat.CrossedMs == nil || *heat.CrossedMs != ms("08:30") {
-		t.Errorf("crossed = %v, want 08:30", heat.CrossedMs)
-	}
-	if heat.OvershootC == nil || *heat.OvershootC != 0.1 {
-		t.Errorf("overshoot = %v, want 0.1 C", heat.OvershootC)
-	}
-	if heat.SettlingSec == nil || *heat.SettlingSec != 0 {
-		t.Errorf("settling = %v, want 0 s: the crossing report is in the band", heat.SettlingSec)
-	}
-}
-
 // TestPlantCoolDownSegmentation: demand ends a cool-down, a short one is not
 // kept, and an open window stops one.
 func TestPlantCoolDownSegmentation(t *testing.T) {

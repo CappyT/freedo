@@ -162,10 +162,24 @@ func (d *daemon) ownerTempC(e *tado.EmuState, inst *tado.Install, zone int, now 
 	if c, ok := d.freshRoomTemp(inst, zone); ok {
 		return c, "external", true
 	}
-	if c, ok := measuredC(e, inst, zone, time.Time{}, now); ok {
+	if c, ok := measuredC(e, inst, zone, now); ok {
 		return c, "device", true
 	}
 	return 0, "", false
+}
+
+// measuredC is the calibrated temperature 012d of the measuring device of
+// zone, while that device sends frames.
+func measuredC(e *tado.EmuState, inst *tado.Install, zone int, now time.Time) (float64, bool) {
+	dev, err := inst.MeasuringDevice(zone)
+	if err != nil {
+		return 0, false
+	}
+	c, _, seen, ok := e.DeviceTemp(hex.EncodeToString(dev.WireEUI()))
+	if !ok || now.Sub(seen) > inst.Options.OfflineAfter() {
+		return 0, false
+	}
+	return c, true
 }
 
 // ownerHumidityDeci is the humidity the measure carries in tag 0135, in tenths

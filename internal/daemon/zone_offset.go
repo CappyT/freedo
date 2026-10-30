@@ -1,123 +1,86 @@
 package daemon
 
-// zone_offset: the room temperature correction of a heating zone in mode
-// setpoint (tado.OffsetModeSetpoint). The valve keeps its 0140. The daemon
-// works on the corrected scale, corrected = reported + shift, as 0140 does on
-// the valve (012d = 012e + 0140, the heat-demand capture). The valve reaches
-// a target T on that scale when it regulates to T - shift, so every setpoint
-// the daemon writes to the zone goes out shifted, and every zone temperature
-// and target it reports comes back corrected. The node API stays on the wire
-// scale. The shift is the stored correction, or the one an external room
-// temperature holds while it is on (room_temp.go).
+// zone_offset: what the manual room temperature correction of a heating zone
+// changes in the daemon, and the release of the setpoint shift a zone in offset
+// mode setpoint carried before the store moved it to mode config
+// (install.ShiftReleaseKey).
 
 import (
+	"context"
+	"errors"
 	"log"
-	"math"
-	"net/http"
-	"time"
+	"maps"
+	"slices"
 
 	"freedo/tado"
 )
 
-// shiftC is the shift of zone: the manual correction of mode setpoint, or the
-// one an external room temperature holds while it is on (room_temp.go), which
-// replaces the manual one. A zone in another mode has none.
-func (d *daemon) shiftC(inst *tado.Install, zone int) float64 {
-	if x := d.roomTemps[zone]; x != nil && x.on && inst.Options.ZoneOffset(zone).Mode == tado.OffsetModeSetpoint {
-		return x.shiftC
+// noteOffsetChange records that the correction of zone moved, on the engine
+// goroutine. Unless the learners read the external reading, it rejects a
+// running heat-up episode and ends a running plant heat episode: the write
+// moves 4060 by the delta, so an episode that spans it would read a step that
+// is not from the plant.
+func (d *daemon) noteOffsetChange(inst *tado.Install, zone int) {
+	if d.learnerReadsExternal(inst, zone) {
+		return
 	}
-	return inst.Options.SetpointShiftC(zone)
-}
-
-// rawSetpointC maps a target of zone on the corrected scale to the setpoint
-// the valve takes, inside the range of a room setpoint.
-func (d *daemon) rawSetpointC(inst *tado.Install, zone int, c float64) float64 {
-	if inst == nil {
-		return c
+	if d.heating[zone] != nil {
+		d.rejectHeatUp(zone, "offset changed")
 	}
-	shift := d.shiftC(inst, zone)
-	if shift == 0 {
-		return c
-	}
-	return min(max(roundCenti(c-shift), zoneMinC), zoneMaxC)
-}
-
-// correctedC maps a temperature of zone on the wire scale to the corrected one.
-func (d *daemon) correctedC(inst *tado.Install, zone int, c float64) float64 {
-	if inst == nil {
-		return c
-	}
-	shift := d.shiftC(inst, zone)
-	if shift == 0 {
-		return c
-	}
-	return roundCenti(c + shift)
-}
-
-func roundCenti(c float64) float64 { return math.Round(c*100) / 100 }
-
-// zoneReport is tado.EmuState.ZoneReport with the temperature corrected.
-func (d *daemon) zoneReport(e *tado.EmuState, zone int) (float64, int, time.Time, bool) {
-	tempC, demand, updated, ok := e.ZoneReport(zone)
-	return d.roomTempC(d.inst.Load(), zone, tempC), demand, updated, ok
-}
-
-// correctedZoneViews returns the zone reports with each temperature corrected.
-func (d *daemon) correctedZoneViews(zones []tado.ZoneView) []tado.ZoneView {
-	inst := d.inst.Load()
-	out := make([]tado.ZoneView, len(zones))
-	for i, z := range zones {
-		out[i] = z
-		out[i].TempC = d.roomTempC(inst, z.Number, z.TempC)
-	}
-	return out
-}
-
-// postSetpointOffset stores the correction of a zone in mode setpoint. The
-// reload restates the zone with it (restateShiftedZones).
-func (d *daemon) postSetpointOffset(w http.ResponseWriter, r *http.Request, zone, centi int) {
-	d.mutateInstall(w, "zone", func(store *stateStore) (installResult, any, error) {
-		res, err := store.PatchZone(r.Context(), zone, zonePatch{SetpointOffsetCenti: &centi})
-		if err != nil {
-			return res, nil, err
-		}
-		return res, viewZoneOf(res.Install, zone), nil
-	})
-}
-
-// restateShiftedZones writes every zone whose shift moved between two
-// installations again, so the valves take the setpoints on the new scale.
-func (d *daemon) restateShiftedZones(e *tado.EmuState, before, after *tado.Install) {
-	for i := range after.Zones {
-		zone := after.Zones[i].Number
-		if delta := d.shiftC(after, zone) - d.shiftC(before, zone); delta != 0 {
-			d.restateZoneShift(e, after, zone, delta)
-		}
+	if run := d.plant[zone]; run != nil && run.ep.Kind == plantHeat {
+		d.endPlant(zone, "offset changed", d.retryNow())
 	}
 }
 
-// restateZoneShift writes zone again to each of its zoneWriteTargets after its
-// shift moved by delta.
-func (d *daemon) restateZoneShift(e *tado.EmuState, inst *tado.Install, zone int, delta float64) {
+// releaseShifts writes each zone in install.ShiftReleaseKey again to each of
+// its zoneWriteTargets: its valves still hold setpoints shifted by the old
+// correction. It runs once every state is restored and before the engine
+// starts, so nothing is delivered before the key goes, and it deletes the key
+// only once the owed writes are stored: a start that dies first releases on the
+// next start. transmit says the start reaches the valves. Without it the key
+// waits for a start that does, because a write never delivered comes back as a
+// plain rewrite of the held block, which keeps the shift of an overlay.
+func (d *daemon) releaseShifts(e *tado.EmuState, transmit bool) error {
+	if d.state == nil {
+		return nil
+	}
+	ctx := context.Background()
+	released, err := d.state.ShiftRelease(ctx)
+	if err != nil || len(released) == 0 {
+		return err
+	}
+	zones := slices.Sorted(maps.Keys(released))
+	if !transmit {
+		log.Printf("zones %v: the release of the setpoint shift waits for a start that transmits", zones)
+		return nil
+	}
 	d.applyHomeState(e)
-	for _, target := range d.zoneWriteTargets(e, zone) {
-		if err := d.restateZone(e, inst, zone, target, delta); err != nil {
-			log.Printf("zone %d offset restate: %v", zone, err)
-			continue
+	for _, zone := range zones {
+		shiftC := float64(released[zone]) / 100
+		for _, target := range d.zoneWriteTargets(e, zone) {
+			if err := d.releaseShift(e, zone, target, shiftC); err != nil {
+				log.Printf("zone %d shift release: %v", zone, err)
+				continue
+			}
+			d.oweProgramWrite(e, zone, target)
+			d.requestQueuedDispatch(target)
 		}
-		d.oweProgramWrite(e, zone, target)
-		d.requestQueuedDispatch(target)
+		d.markPushed(zone)
 	}
-	d.markPushed(zone)
+	d.saveProgramBlocks()
+	if d.schedUnsaved {
+		return errors.New("shift release: the owed zone rewrites are not stored")
+	}
+	return d.state.ClearShiftRelease(ctx)
 }
 
-// restateZone rewrites zone on target after its correction moved by delta. A
-// running setpoint overlay keeps its target on the corrected scale and its
-// deadline, so its wire setpoint moves by -delta. Any other block is a plain
-// rewrite, which carries the new 6200. The block is the one a write still
-// queued to target sets, else the one the zone holds: a restate of the held
-// overlay would replace a queued return to schedule and keep the overlay on.
-func (d *daemon) restateZone(e *tado.EmuState, inst *tado.Install, zone int, target string, delta float64) error {
+// releaseShift rewrites zone on target without the shift shiftC its setpoints
+// carry. A running setpoint overlay keeps its target and its deadline, so its
+// setpoint moves by shiftC. Any other block is a plain rewrite, which carries
+// the 6200 of the program. The block is the one a write still queued to target
+// sets, else the one the zone holds: a rewrite of the held overlay would
+// replace a queued return to schedule and keep the overlay on.
+func (d *daemon) releaseShift(e *tado.EmuState, zone int, target string, shiftC float64) error {
 	block, known := e.PendingZoneBlock(target, zone)
 	if !known {
 		block, known = e.ZoneBlock(zone)
@@ -131,13 +94,13 @@ func (d *daemon) restateZone(e *tado.EmuState, inst *tado.Install, zone int, tar
 	}
 	sp := tado.SetpointParams{
 		ID:             zone,
-		Setpoint:       min(max(roundCenti(*block.SetpointC-delta), zoneMinC), zoneMaxC),
+		Setpoint:       min(max(roundCenti(*block.SetpointC+shiftC), zoneMinC), zoneMaxC),
 		Overlay:        block.Overlay,
 		RunningOverlay: true,
 		EndRule:        timer.Rule,
 	}
 	if program, ok := d.zoneSched[zone]; ok {
-		sp.Sched = d.rawSetpointC(inst, zone, program.c)
+		sp.Sched = program.c
 	}
 	if timed {
 		sp.Duration = remaining

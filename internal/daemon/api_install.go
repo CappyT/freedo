@@ -169,10 +169,6 @@ type zonePatch struct {
 	DeviceOverlayEnd    *string `json:"device_overlay_end"`
 	DeviceOverlayEndSec *int    `json:"device_overlay_end_sec"`
 	OffsetMode          *string `json:"offset_mode"`
-	// AutoOffset turns the automatic temperature-correction calibration of the
-	// zone on or off; AutoOffsetIntervalSec sets how often at most it writes.
-	AutoOffset            *bool `json:"auto_offset"`
-	AutoOffsetIntervalSec *int  `json:"auto_offset_interval_sec"`
 	// Owner names who owns the zone: "device" or "coordinator". See
 	// tado/zone_owner.go.
 	Owner *string `json:"owner"`
@@ -185,8 +181,6 @@ type zonePatch struct {
 	// HAArea is the Home Assistant area of the zone, {"id", "name"}; null
 	// clears it. The dashboard shows it, and the coordinator never acts on it.
 	HAArea optHAArea `json:"ha_area"`
-	// SetpointOffsetCenti is set by POST /api/zones/{number}/offset alone.
-	SetpointOffsetCenti *int `json:"-"`
 }
 
 type membersPut struct {
@@ -251,9 +245,6 @@ func zoneView(in *tado.Install, z *tado.Zone) map[string]any {
 		"device_overlay_end":       nil,
 		"device_overlay_end_sec":   nil,
 		"offset_mode":              nil,
-		"setpoint_offset_c":        nil,
-		"auto_offset":              nil,
-		"auto_offset_interval_sec": nil,
 		"owner":                    nil,
 		"pid":                      nil,
 		"away_temperature_c":       nil,
@@ -265,14 +256,7 @@ func zoneView(in *tado.Install, z *tado.Zone) map[string]any {
 		if end.Mode == tado.OverlayEndTimer {
 			out["device_overlay_end_sec"] = end.DurationSec
 		}
-		off := in.Options.ZoneOffset(z.Number)
-		out["offset_mode"] = off.Mode
-		if off.Mode == tado.OffsetModeSetpoint {
-			out["setpoint_offset_c"] = in.Options.SetpointShiftC(z.Number)
-		}
-		auto := in.Options.AutoOffset(z.Number)
-		out["auto_offset"] = auto.Enabled
-		out["auto_offset_interval_sec"] = auto.IntervalSec
+		out["offset_mode"] = in.Options.ZoneOffset(z.Number).Mode
 		out["pid"] = in.Options.ZonePID(z.Number)
 		out["owner"] = in.Options.ZoneOwner(z.Number)
 		if c, ok := in.Options.AwayTemperatures[z.Number]; ok {

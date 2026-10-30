@@ -544,6 +544,7 @@ CREATE TABLE zone (
 	for _, stmt := range []string{
 		stateSchemaDDL,
 		noOpenWindow,
+		`CREATE TABLE install (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
 		`INSERT INTO meta (key, value) VALUES ('schema_version', '2')`,
 		`INSERT INTO zone (number, name, kind) VALUES (4, 'study', 'heating')`,
 	} {

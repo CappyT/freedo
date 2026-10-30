@@ -243,47 +243,6 @@ func TestAwaySwitchMarksOnlyMovedTargets(t *testing.T) {
 	}
 }
 
-// TestAwayTemperatureChangeOnTheSameWireValue: two away temperatures that reach
-// the valve as the same value, here 24.5 and 25 C past the clamp of a
-// correction of -0.70 C, still write the zone, because the setting changed. The
-// second write moves nothing on the wire and carries no 6440. The same setting
-// again writes nothing at all (TestAwayTemperatureWrites).
-func TestAwayTemperatureChangeOnTheSameWireValue(t *testing.T) {
-	a := newInstallAPIOn(t, windowInstall(t, func(in *tado.Install) {
-		in.Options.ZoneOffsets = map[int]tado.ZoneOffset{3: {Mode: tado.OffsetModeSetpoint, SetpointCenti: -70}}
-	}))
-	in := a.d.inst.Load()
-	office := wireOf(t, in, "VA1000000002")
-	seedBlock(t, a.d, in, "VA1000000002", 3, reportedBlock(0x07d0)...)
-	if code, res := a.call(http.MethodPatch, "/api/home", map[string]any{"away": true}); code != http.StatusOK {
-		t.Fatalf("away: code=%d %v", code, res)
-	}
-	dropAllQueues(t, a)
-	for _, c := range []float64{24.5, 25} {
-		a.mutate(http.MethodPatch, "/api/install/zones/3", map[string]any{"away_temperature_c": c})
-	}
-	if n := pending(t, a.d, office); n != 2 {
-		t.Fatalf("%s holds %d queued writes, want the two changes", office, n)
-	}
-	wantTags(t, "24.5 C", deliverAck(t, a.d, in, office), map[string]string{"61e0": "01", "6200": "09c4", "6440": "0001"})
-	wantTags(t, "25 C", deliverAck(t, a.d, in, office), map[string]string{"61e0": "01", "6200": "09c4"}, "6440")
-}
-
-// TestAwayTemperatureGoesOutOnTheValveScale: the away temperature is a target on
-// the corrected scale, so a zone in correction mode setpoint gets it shifted
-// like every other setpoint the daemon writes.
-func TestAwayTemperatureGoesOutOnTheValveScale(t *testing.T) {
-	a := newInstallAPIOn(t, windowInstall(t, func(in *tado.Install) {
-		in.Options.ZoneOffsets = map[int]tado.ZoneOffset{3: {Mode: tado.OffsetModeSetpoint, SetpointCenti: -70}}
-		in.Options.AwayTemperatures = map[int]float64{3: 15}
-	}))
-	if code, res := a.call(http.MethodPatch, "/api/home", map[string]any{"away": true}); code != http.StatusOK {
-		t.Fatalf("away: code=%d %v", code, res)
-	}
-	wantTags(t, "the switch to away in correction mode setpoint", nextZoneWrite(t, a.d, wireOf(t, a.d.inst.Load(), "VA1000000002")),
-		map[string]string{"6160": "02", "61e0": "01", "6200": "0622"})
-}
-
 // TestAwayTemperatureSurvivesRestart: the value lives in the installation rows,
 // so a daemon started on them serves it and writes it on the next switch to
 // away.

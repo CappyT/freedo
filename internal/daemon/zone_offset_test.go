@@ -1,13 +1,18 @@
 package daemon
 
-// zone_offset_test: the three correction modes of POST /api/zones/{n}/offset.
-// Frames and installation are synthetic.
+// zone_offset_test: the two correction modes of POST /api/zones/{n}/offset,
+// what a manual offset does to the learners, and the release of the setpoint
+// shift a zone carried in offset mode setpoint. Frames and installation are
+// synthetic.
 
 import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"math"
 	"net/http"
+	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -63,10 +68,9 @@ func served0140(doc tado.DesiredConfigDocument) string {
 // TestZoneOffsetModes: zone 3 starts in mode config. Each mode turns one
 // offset of -0.7 C into its own writes on the zone's only valve: config one
 // full PUT d/config with a new 015a, dbg2 one PUT d/dbg2/tlvs with the single
-// record 0140 under the ETag already served, setpoint no device write at all
-// but a zone rewrite and a zone setpoint shifted by +0.7 C.
+// record 0140 under the ETag already served.
 func TestZoneOffsetModes(t *testing.T) {
-	for _, mode := range []string{tado.OffsetModeConfig, tado.OffsetModeDbg2, tado.OffsetModeSetpoint} {
+	for _, mode := range []string{tado.OffsetModeConfig, tado.OffsetModeDbg2} {
 		t.Run(mode, func(t *testing.T) {
 			a := newInstallAPIOn(t, windowInstall(t, nil))
 			d := a.d
@@ -77,14 +81,6 @@ func TestZoneOffsetModes(t *testing.T) {
 			}
 			if mode != tado.OffsetModeConfig {
 				a.mutate(http.MethodPatch, "/api/install/zones/3", map[string]any{"offset_mode": mode})
-			}
-			if mode == tado.OffsetModeSetpoint {
-				var view map[string]any
-				if code := postJSON(t, http.MethodPut, a.base+"/api/zones/3/schedule",
-					allDayProgram(map[string]any{"minute": 0, "setpoint_c": 19.5}), &view); code != http.StatusOK {
-					t.Fatalf("schedule: code=%d %v", code, view)
-				}
-				seedBlock(t, d, in, "VA1000000002", 3)
 			}
 			dropQueue(t, d, valve)
 			before := configDocOf(t, d, valve)
@@ -114,25 +110,6 @@ func TestZoneOffsetModes(t *testing.T) {
 				}
 				if string(after.ETag) != string(before.ETag) || served0140(after) != "ffba" {
 					t.Errorf("served d/config: etag %x 0140 %q, want %x and ffba", after.ETag, served0140(after), before.ETag)
-				}
-			case tado.OffsetModeSetpoint:
-				if res["zone"].(map[string]any)["setpoint_offset_c"] != -0.7 {
-					t.Errorf("offset answer = %v, want setpoint_offset_c -0.7", res)
-				}
-				if uri != "z/s?id=3" || tags["6200"] != "07e4" {
-					t.Errorf("setpoint restate = %s %v, want z/s with 6200=07e4 (19.5 + 0.7)", uri, tags)
-				}
-				if string(after.ETag) != string(before.ETag) || served0140(after) != served0140(before) {
-					t.Errorf("served d/config moved: %x -> %x", before.Body, after.Body)
-				}
-				if _, code := postZone(t, a.base, 3, "setpoint", map[string]any{"setpointC": 21.0}); code != http.StatusOK {
-					t.Fatalf("zone setpoint: code=%d", code)
-				}
-				wantTags(t, "shifted setpoint", deliverAck(t, d, in, valve),
-					map[string]string{"6240": "02", "6280": "087a", "6200": "07e4"})
-				target := mustTarget(t, a.base, 3)
-				if target["targetC"] != 21.0 || target["programC"] != 19.5 {
-					t.Errorf("target = %v, want 21 on the corrected scale and program 19.5", target)
 				}
 			}
 			if n := pending(t, d, valve); n != 0 {
@@ -231,24 +208,16 @@ func deliverAck(t *testing.T, d *daemon, in *tado.Install, target string) map[st
 	return tags
 }
 
-// TestZoneOffsetModePersists: the mode and the coordinator's own correction
-// live in the installation rows, so a daemon started on them keeps both, and
-// leaving mode setpoint drops the correction and restates the zone unshifted.
+// TestZoneOffsetModePersists: the mode lives in the installation rows, so a
+// daemon started on them keeps it. The rows carry no field of the setpoint
+// shift or of the valve calibration, offset_mode takes config and dbg2 alone,
+// and auto_offset and auto_offset_interval_sec are unknown fields.
 func TestZoneOffsetModePersists(t *testing.T) {
 	a := newInstallAPIOn(t, windowInstall(t, nil))
-	a.mutate(http.MethodPatch, "/api/install/zones/3", map[string]any{"offset_mode": "setpoint"})
-	if code, res := a.call(http.MethodPost, "/api/zones/3/offset", map[string]any{"offsetC": 1.5}); code != http.StatusOK {
-		t.Fatalf("offset: code=%d %v", code, res)
-	}
-	stored, _, err := a.store.LoadInstall(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := stored.ValidateCommissionable(true); err != nil {
-		t.Fatal(err)
-	}
-	if got := stored.Options.ZoneOffset(3); got != (tado.ZoneOffset{Mode: tado.OffsetModeSetpoint, SetpointCenti: 150}) {
-		t.Errorf("stored zone 3 offset = %+v, want setpoint 150", got)
+	a.mutate(http.MethodPatch, "/api/install/zones/3", map[string]any{"offset_mode": "dbg2"})
+	stored := loadStored(t, a)
+	if got := stored.Options.ZoneOffset(3); got != (tado.ZoneOffset{Mode: tado.OffsetModeDbg2}) {
+		t.Errorf("stored zone 3 offset = %+v, want dbg2", got)
 	}
 
 	d, url := newWindowDaemon(t, stored, newTestClock(windowStart), a.store)
@@ -256,22 +225,18 @@ func TestZoneOffsetModePersists(t *testing.T) {
 	if code := getJSON(t, url+"/api/install/zones/3", &zone); code != http.StatusOK {
 		t.Fatalf("zone after restart: code=%d", code)
 	}
-	if z := zone["zone"].(map[string]any); z["offset_mode"] != "setpoint" || z["setpoint_offset_c"] != 1.5 {
-		t.Errorf("zone after restart = %v, want setpoint 1.5", z)
+	z := zone["zone"].(map[string]any)
+	if z["offset_mode"] != "dbg2" {
+		t.Errorf("zone after restart = %v, want dbg2", z)
+	}
+	for _, key := range []string{"setpoint_offset_c", "auto_offset", "auto_offset_interval_sec"} {
+		if _, present := z[key]; present {
+			t.Errorf("zone row carries %s: %v", key, z)
+		}
 	}
 
 	valve := wireOf(t, stored, "VA1000000002")
-	seedBlock(t, d, stored, "VA1000000002", 3)
 	var res map[string]any
-	if code := postJSON(t, http.MethodPatch, url+"/api/install/zones/3", map[string]any{"offset_mode": "dbg2"}, &res); code != http.StatusOK {
-		t.Fatalf("dbg2: code=%d %v", code, res)
-	}
-	if z := res["zone"].(map[string]any); z["offset_mode"] != "dbg2" || z["setpoint_offset_c"] != nil {
-		t.Errorf("zone in dbg2 = %v, want no setpoint offset", z)
-	}
-	if uri, tags := deliverRequest(t, d, stored, valve); uri != "z/s?id=3" || tags["6200"] != "07d0" {
-		t.Errorf("leaving setpoint writes %s %v, want the z/s restate with the wire 6200=07d0", uri, tags)
-	}
 	if code := postJSON(t, http.MethodPost, url+"/api/zones/3/offset", map[string]any{"offsetC": -0.7}, &res); code != http.StatusOK {
 		t.Fatalf("offset: code=%d %v", code, res)
 	}
@@ -279,46 +244,27 @@ func TestZoneOffsetModePersists(t *testing.T) {
 		t.Errorf("dbg2 offset after restart = %s %v, want d/dbg2/tlvs 0140=ffba", uri, tags)
 	}
 
-	if code := postJSON(t, http.MethodPatch, url+"/api/install/zones/3", map[string]any{"offset_mode": "cloud"}, &res); code != http.StatusBadRequest {
-		t.Errorf("bad mode: code=%d %v, want 400", code, res)
-	}
-}
-
-// TestSetpointShiftScale: a target on the corrected scale goes out as target -
-// shift inside the room range, and a reported temperature comes back + shift.
-func TestSetpointShiftScale(t *testing.T) {
-	in := windowInstall(t, func(in *tado.Install) {
-		in.Options.ZoneOffsets = map[int]tado.ZoneOffset{3: {Mode: tado.OffsetModeSetpoint, SetpointCenti: -70}}
-	})
-	d, _ := newWindowDaemon(t, in, newTestClock(windowStart), nil)
-	for _, tc := range []struct {
-		zone     int
-		c, raw   float64
-		reported float64
-	}{
-		{3, 21, 21.7, 20.3},
-		{3, 24.5, 25, 23.8},
-		{5, 21, 21, 21},
+	for _, body := range []map[string]any{
+		{"offset_mode": "setpoint"},
+		{"offset_mode": "cloud"},
+		{"auto_offset": true},
+		{"auto_offset_interval_sec": 3600},
 	} {
-		if got := d.rawSetpointC(in, tc.zone, tc.c); got != tc.raw {
-			t.Errorf("zone %d: raw of %v = %v, want %v", tc.zone, tc.c, got, tc.raw)
-		}
-		if got := d.correctedC(in, tc.zone, tc.c); got != tc.reported {
-			t.Errorf("zone %d: corrected of %v = %v, want %v", tc.zone, tc.c, got, tc.reported)
+		if code := postJSON(t, http.MethodPatch, url+"/api/install/zones/3", body, &res); code != http.StatusBadRequest {
+			t.Errorf("%v: code=%d %v, want 400", body, code, res)
 		}
 	}
-	views := d.correctedZoneViews([]tado.ZoneView{{Number: 3, TempC: 22}, {Number: 5, TempC: 22}})
-	if views[0].TempC != 21.3 || views[1].TempC != 22 {
-		t.Errorf("zone views = %+v, want 21.3 on zone 3 and 22 on zone 5", views)
+	if got := loadStored(t, a).Options.ZoneOffset(3).Mode; got != tado.OffsetModeDbg2 {
+		t.Errorf("mode after the refused patches = %s, want dbg2", got)
 	}
 }
 
-// TestRestateKeepsQueuedReturn: the correction of a zone moves while its
-// return to schedule still waits in the queue. The restate restates that
+// TestShiftReleaseKeepsQueuedReturn: a shift is released while the return to
+// schedule of the zone still waits in the queue. The release rewrites that
 // return, not the overlay the valve still runs, whether the return is the
 // expiry of the timer (no 6440) or a cancel (6440). The deadline ends with the
 // delivered return.
-func TestRestateKeepsQueuedReturn(t *testing.T) {
+func TestShiftReleaseKeepsQueuedReturn(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
 		queue func(t *testing.T, d *daemon, url string, clock *testClock)
@@ -346,7 +292,7 @@ func TestRestateKeepsQueuedReturn(t *testing.T) {
 			}
 			deliverAck(t, d, in, valve)
 			tc.queue(t, d, url, clock)
-			if _, err := d.do(func(e *tado.EmuState) (any, error) { return nil, d.restateZone(e, in, 3, valve, 0.5) }); err != nil {
+			if _, err := d.do(func(e *tado.EmuState) (any, error) { return nil, d.releaseShift(e, 3, valve, 0.5) }); err != nil {
 				t.Fatal(err)
 			}
 			var last map[string]string
@@ -365,5 +311,258 @@ func TestRestateKeepsQueuedReturn(t *testing.T) {
 				t.Error("the delivered return left the deadline")
 			}
 		})
+	}
+}
+
+// heatUpRunning reports whether zone runs a heat-up episode now.
+func heatUpRunning(t *testing.T, d *daemon, zone int) bool {
+	t.Helper()
+	v, err := d.do(func(*tado.EmuState) (any, error) { return d.heating[zone] != nil, nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	return v.(bool)
+}
+
+// heatRig starts a daemon whose zone 3 runs 17 C then 21 C, with the store
+// backing the management routes.
+func heatRig(t *testing.T) (*daemon, string, *testClock, *tado.Install, *installAPI) {
+	t.Helper()
+	a := newInstallAPIOn(t, windowInstall(t, func(in *tado.Install) {
+		in.Options.EarlyStartZones = map[int]bool{3: true}
+	}))
+	stored := loadStored(t, a)
+	clock := newTestClock(windowStart)
+	d, url := newWindowDaemon(t, stored, clock, a.store)
+	var view map[string]any
+	if code := postJSON(t, http.MethodPut, url+"/api/zones/3/schedule", allDayProgram(
+		map[string]any{"minute": 0, "setpoint_c": 17.0},
+		map[string]any{"minute": 420, "setpoint_c": 21.0},
+	), &view); code != http.StatusOK {
+		t.Fatalf("schedule: code=%d %v", code, view)
+	}
+	seedBlock(t, d, stored, earlyValve, 3)
+	return d, url, clock, stored, a
+}
+
+// TestManualOffsetRejectsHeatUp: a manual offset in mode config moves 4060 and
+// rejects the running heat-up episode when the learner reads 4060.
+func TestManualOffsetRejectsHeatUp(t *testing.T) {
+	d, url, clock, in, _ := heatRig(t)
+	at(t, d, in, clock, "06:50", 17.0, 0)
+	at(t, d, in, clock, "07:00", math.NaN(), 0)
+	at(t, d, in, clock, "07:30", 18.0, 80)
+	if !heatUpRunning(t, d, 3) {
+		t.Fatal("no heat-up episode to reject")
+	}
+	var res map[string]any
+	if code := postJSON(t, http.MethodPost, url+"/api/zones/3/offset", map[string]any{"offsetC": 0.5}, &res); code != http.StatusOK {
+		t.Fatalf("offset: code=%d %v", code, res)
+	}
+	if heatUpRunning(t, d, 3) {
+		t.Error("the manual offset did not reject the heat-up episode")
+	}
+}
+
+// TestManualOffsetKeepsHeatUp: with the coordinator as owner and a fresh
+// reading, the learner reads the external temperature and the offset does not
+// reject the running episode.
+func TestManualOffsetKeepsHeatUp(t *testing.T) {
+	d, url, clock, in, _ := heatRig(t)
+	var res map[string]any
+	if code := postJSON(t, http.MethodPatch, url+"/api/install/zones/3", map[string]any{"owner": tado.ZoneOwnerCoordinator}, &res); code != http.StatusOK {
+		t.Fatalf("owner: code=%d %v", code, res)
+	}
+	at(t, d, in, clock, "06:50", 17.0, 0)
+	at(t, d, in, clock, "07:00", math.NaN(), 0)
+	at(t, d, in, clock, "07:30", 18.0, 80)
+	if !heatUpRunning(t, d, 3) {
+		t.Fatal("no heat-up episode to keep")
+	}
+	if code := postJSON(t, http.MethodPost, url+"/api/zones/3/temperature", map[string]any{"tempC": 20}, &res); code != http.StatusOK {
+		t.Fatalf("temperature: code=%d %v", code, res)
+	}
+	if code := postJSON(t, http.MethodPost, url+"/api/zones/3/offset", map[string]any{"offsetC": 0.5}, &res); code != http.StatusOK {
+		t.Fatalf("offset: code=%d %v", code, res)
+	}
+	if !heatUpRunning(t, d, 3) {
+		t.Error("a fresh external reading must keep the heat-up episode")
+	}
+}
+
+// legacyStateFile writes a state database that holds zone 3 in offset mode
+// setpoint at -0.7 C with an applied shift of -1.2 C, as the version before the
+// migration left it, and returns its path.
+func legacyStateFile(t *testing.T) string {
+	t.Helper()
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "state.db")
+	legacy, err := openStateStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := legacy.EnsureIdentity(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := legacy.ReplaceInstall(ctx, windowInstall(t, nil)); err != nil {
+		t.Fatal(err)
+	}
+	for _, stmt := range []string{
+		`INSERT INTO install (key, value) VALUES ('zone_offset.3', '{"mode":"setpoint","setpoint_centi":-70}')`,
+		`INSERT INTO meta (key, value) VALUES ('room_shift', '{"3":-120}')`,
+	} {
+		if _, err := legacy.db.Exec(stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := legacy.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// shiftReleaseOf reads install.ShiftReleaseKey from store.
+func shiftReleaseOf(t *testing.T, store *stateStore) map[int]int {
+	t.Helper()
+	released, err := store.ShiftRelease(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return released
+}
+
+// startReleased starts a daemon on the state database at path, with an all-day
+// program at 19.5 C and the valve block known. The store holds the release of
+// zone 3 at -1.2 C.
+func startReleased(t *testing.T, path string) (*daemon, string, *tado.Install, *stateStore, string) {
+	t.Helper()
+	store, err := openStateStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
+	if got := shiftReleaseOf(t, store); len(got) != 1 || got[3] != -120 {
+		t.Fatalf("shift release = %v, want zone 3 at -120", got)
+	}
+	in, _, err := store.LoadInstall(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := in.ValidateCommissionable(true); err != nil {
+		t.Fatal(err)
+	}
+	d, url := newWindowDaemon(t, in, newTestClock(windowStart), store)
+	var view map[string]any
+	if code := postJSON(t, http.MethodPut, url+"/api/zones/3/schedule",
+		allDayProgram(map[string]any{"minute": 0, "setpoint_c": 19.5}), &view); code != http.StatusOK {
+		t.Fatalf("schedule: code=%d %v", code, view)
+	}
+	valve := wireOf(t, in, "VA1000000002")
+	seedBlock(t, d, in, "VA1000000002", 3)
+	dropQueue(t, d, valve)
+	return d, url, in, store, valve
+}
+
+// TestReleaseShifts: a start that transmits writes a zone the store moved off
+// offset mode setpoint again, without the shift its valve still holds. The
+// program goes out as it is, and the 23.2 C a running overlay of 22 C carried
+// on the wire moves back to 22 C. The owed write is stored and the release key
+// is gone before the engine runs. A start that dies before the release, or one
+// that does not transmit, leaves the key, and the next start releases.
+func TestReleaseShifts(t *testing.T) {
+	release := func(t *testing.T, d *daemon, transmit bool) error {
+		t.Helper()
+		_, err := d.do(func(e *tado.EmuState) (any, error) { return nil, d.releaseShifts(e, transmit) })
+		return err
+	}
+	released := func(t *testing.T, d *daemon, store *stateStore, valve string) {
+		t.Helper()
+		if err := release(t, d, true); err != nil {
+			t.Fatal(err)
+		}
+		owed, err := store.ProgramOwed(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Contains(owed, programWrite{zone: 3, target: valve}) {
+			t.Errorf("stored owed writes = %v, want zone 3 on %s", owed, valve)
+		}
+		if got := shiftReleaseOf(t, store); got != nil {
+			t.Errorf("shift release after the release = %v, want none", got)
+		}
+	}
+	wantProgram := func(t *testing.T, d *daemon, in *tado.Install, valve string) {
+		t.Helper()
+		if uri, tags := deliverRequest(t, d, in, valve); uri != "z/s?id=3" || tags["6200"] != "079e" {
+			t.Errorf("release = %s %v, want z/s with the program 6200=079e", uri, tags)
+		}
+	}
+	t.Run("program", func(t *testing.T) {
+		d, _, in, store, valve := startReleased(t, legacyStateFile(t))
+		released(t, d, store, valve)
+		wantProgram(t, d, in, valve)
+	})
+	t.Run("overlay", func(t *testing.T) {
+		d, url, in, store, valve := startReleased(t, legacyStateFile(t))
+		if _, code := postZone(t, url, 3, "setpoint", map[string]any{"setpointC": 23.2}); code != http.StatusOK {
+			t.Fatalf("overlay: code=%d", code)
+		}
+		deliverAck(t, d, in, valve)
+		released(t, d, store, valve)
+		wantTags(t, "the release", deliverAck(t, d, in, valve), map[string]string{"6280": "0898", "6200": "079e"})
+	})
+	t.Run("a start that dies before the release", func(t *testing.T) {
+		path := legacyStateFile(t)
+		dead, err := openStateStore(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := dead.Close(); err != nil {
+			t.Fatal(err)
+		}
+		d, _, in, store, valve := startReleased(t, path)
+		released(t, d, store, valve)
+		wantProgram(t, d, in, valve)
+	})
+	t.Run("a start that does not transmit", func(t *testing.T) {
+		path := legacyStateFile(t)
+		d, _, _, store, valve := startReleased(t, path)
+		if err := release(t, d, false); err != nil {
+			t.Fatal(err)
+		}
+		pending, err := d.do(func(e *tado.EmuState) (any, error) { return e.Pending(valve), nil })
+		if err != nil {
+			t.Fatal(err)
+		}
+		if pending != 0 {
+			t.Errorf("%v writes queued without transmit, want none", pending)
+		}
+		if got := shiftReleaseOf(t, store); len(got) != 1 || got[3] != -120 {
+			t.Errorf("shift release without transmit = %v, want zone 3 at -120", got)
+		}
+	})
+}
+
+// TestImportReleasesNoShift: an import migrates the staged file and drops its
+// release, because the valves hold what the running daemon wrote.
+func TestImportReleasesNoShift(t *testing.T) {
+	path := legacyStateFile(t)
+	if _, err := checkImport(path); err != nil {
+		t.Fatal(err)
+	}
+	store, err := openStateStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if got := shiftReleaseOf(t, store); got != nil {
+		t.Errorf("shift release of the imported file = %v, want none", got)
+	}
+	in, _, err := store.LoadInstall(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := in.Options.ZoneOffset(3).Mode; got != tado.OffsetModeConfig {
+		t.Errorf("imported zone 3 offset mode = %s, want config", got)
 	}
 }

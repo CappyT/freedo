@@ -8,10 +8,14 @@ package install
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
+	"maps"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -106,6 +110,10 @@ func Open(path string) (*Store, error) {
 	// keeps the writers serialised.
 	db.SetMaxOpenConns(1)
 	if err := initStateSchema(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("state database %s: %w", path, err)
+	}
+	if err := dropRoomCorrections(db); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("state database %s: %w", path, err)
 	}
@@ -253,6 +261,152 @@ func reencodeLegacySchedules(tx *sql.Tx) error {
 		if _, err := tx.Exec(`UPDATE sched_doc SET body = ?, etag = ? WHERE key = ?`, body, etag, d.key); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// The values of the two room temperature corrections that freedo no longer
+// runs: offset mode setpoint, which shifted the setpoints, and the automatic
+// valve calibration under the install key auto_offset.<zone>.
+const (
+	legacyOffsetModeSetpoint = "setpoint"
+	legacyAutoOffsetPrefix   = "auto_offset."
+)
+
+// ShiftReleaseKey is the meta key of the shifts, per zone in centi-degrees,
+// that the valve setpoints of the zones dropRoomCorrections moved still carry.
+// The daemon deletes it once it has queued and stored the writes without them.
+const ShiftReleaseKey = "shift_release"
+
+// metaIntMap decodes the meta value under key, a JSON map of zone to
+// centi-degrees. A missing row, or a value that does not decode, gives nil.
+func metaIntMap(ctx context.Context, tx *sql.Tx, key string) (map[int]int, error) {
+	var raw string
+	switch err := tx.QueryRowContext(ctx, `SELECT value FROM meta WHERE key = ?`, key).Scan(&raw); {
+	case errors.Is(err, sql.ErrNoRows):
+		return nil, nil
+	case err != nil:
+		return nil, err
+	}
+	var m map[int]int
+	if json.Unmarshal([]byte(raw), &m) != nil {
+		return nil, nil
+	}
+	return m, nil
+}
+
+// dropRoomCorrections moves each zone in offset mode setpoint to the default
+// mode config and deletes the auto_offset rows and meta room_shift and
+// auto_offset, in one transaction, with one log line per changed zone. A
+// changed row moves install_rev. The same transaction stores under
+// ShiftReleaseKey the shift each moved zone still carries: the applied one in
+// meta room_shift, else setpoint_centi. A database that holds none of the
+// legacy rows stays as it is, so a second open does nothing and keeps the key.
+func dropRoomCorrections(db *sql.DB) error {
+	ctx := context.Background()
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	kv, err := installValues(ctx, tx)
+	if err != nil {
+		return err
+	}
+	// A room_shift value that does not decode only loses the applied shift:
+	// the zone falls back to setpoint_centi.
+	roomShift, err := metaIntMap(ctx, tx, "room_shift")
+	if err != nil {
+		return err
+	}
+	var drop []string
+	notes := map[int][]string{}
+	released := map[int]int{}
+	for key, value := range kv {
+		if rest, ok := strings.CutPrefix(key, legacyAutoOffsetPrefix); ok {
+			drop = append(drop, key)
+			if zone, err := strconv.Atoi(rest); err == nil {
+				notes[zone] = append(notes[zone], "auto_offset "+value+" removed")
+			}
+			continue
+		}
+		rest, ok := strings.CutPrefix(key, zoneOffsetPrefix)
+		if !ok {
+			continue
+		}
+		zone, err := strconv.Atoi(rest)
+		if err != nil {
+			continue
+		}
+		var off struct {
+			Mode          string `json:"mode"`
+			SetpointCenti int    `json:"setpoint_centi"`
+		}
+		if json.Unmarshal([]byte(value), &off) != nil || off.Mode != legacyOffsetModeSetpoint {
+			continue
+		}
+		drop = append(drop, key)
+		shift, on := roomShift[zone]
+		if !on {
+			shift = off.SetpointCenti
+		}
+		if shift != 0 {
+			released[zone] = shift
+		}
+		notes[zone] = append(notes[zone],
+			fmt.Sprintf("offset_mode setpoint (setpoint_centi %d, applied shift %d) is now config", off.SetpointCenti, shift))
+	}
+	for _, key := range drop {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM install WHERE key = ?`, key); err != nil {
+			return err
+		}
+	}
+	res, err := tx.ExecContext(ctx, `DELETE FROM meta WHERE key IN ('room_shift', 'auto_offset')`)
+	if err != nil {
+		return err
+	}
+	metaDropped, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if len(drop) == 0 && metaDropped == 0 {
+		return nil
+	}
+	if len(drop) > 0 {
+		rev, _, err := ReadMetaUint(ctx, tx, "install_rev")
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT OR REPLACE INTO meta (key, value) VALUES ('install_rev', ?)`,
+			strconv.FormatUint(rev+1, 10)); err != nil {
+			return err
+		}
+	}
+	if len(released) > 0 {
+		// A release that a dead start left owed keeps its other zones.
+		pending, err := metaIntMap(ctx, tx, ShiftReleaseKey)
+		if err != nil {
+			return err
+		}
+		if pending == nil {
+			pending = map[int]int{}
+		}
+		maps.Copy(pending, released)
+		raw, err := json.Marshal(pending)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)`,
+			ShiftReleaseKey, string(raw)); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	for _, zone := range slices.Sorted(maps.Keys(notes)) {
+		log.Printf("zone %d: %s: freedo no longer runs the setpoint shift and the valve calibration",
+			zone, strings.Join(notes[zone], ", "))
 	}
 	return nil
 }

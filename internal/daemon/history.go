@@ -573,7 +573,7 @@ func (d *daemon) tickHistory(e *tado.EmuState) {
 // member that reports one; the target of zoneTargetView.
 func (d *daemon) historyZones(e *tado.EmuState, inst *tado.Install, snap tado.Snapshot, now time.Time) []zoneSample {
 	reports := make(map[int]tado.ZoneView, len(snap.Zones))
-	for _, z := range d.correctedZoneViews(snap.Zones) {
+	for _, z := range d.roomZoneViews(snap.Zones) {
 		reports[z.Number] = z
 	}
 	valves := make(map[string]tado.ValveView, len(snap.Valves))

@@ -163,19 +163,12 @@ type daemon struct {
 	windows    map[int]zoneWindow
 	windowOwed map[windowWrite]*windowOwed
 	// roomTemps holds the external room temperature of each zone that has one,
-	// roomUnsaved says whether the applied shifts moved since the last save and
 	// roomTempsSaved holds the readings last stored and roomRefused the last
 	// push each zone refused. All belong to the engine goroutine; see
 	// room_temp.go.
 	roomTemps      map[int]*roomTemp
-	roomUnsaved    bool
 	roomTempsSaved []storedRoomTemp
 	roomRefused    map[int]roomRefusal
-	// autoOffsets holds the automatic temperature-correction calibration of each
-	// zone that states it and autoUnsaved says whether it moved since the last
-	// save. Both belong to the engine goroutine; see auto_offset.go.
-	autoOffsets map[int]*autoOffset
-	autoUnsaved bool
 	// zoneOwners holds the controller of each zone the coordinator owns. It
 	// belongs to the engine goroutine; see zone_owner.go. zoneObsSaved holds
 	// the observe registrations last stored.
@@ -312,7 +305,6 @@ func newDaemon(in *tado.Install, emu *tado.EmuState, radio radio.Radio, dryRun b
 		windowOwed:       make(map[windowWrite]*windowOwed),
 		roomTemps:        make(map[int]*roomTemp),
 		roomRefused:      make(map[int]roomRefusal),
-		autoOffsets:      make(map[int]*autoOffset),
 		zoneOwners:       make(map[int]*zoneOwner),
 		flowChanged:      make(map[int]time.Time),
 		flowAdapt:        make(map[int]*flowAdapt),
@@ -348,7 +340,6 @@ func (d *daemon) setInstall(in *tado.Install) (added, removed []string, err erro
 	d.releaseFlowLimits(d.emu, before, in)
 	d.reconcile(added, removed)
 	if before != nil {
-		d.restateShiftedZones(d.emu, before, in)
 		d.restateAwayZones(d.emu, before, in)
 		d.forgetRemovedZones(before, in)
 		d.forgetZonePrograms(before, in)
@@ -359,7 +350,6 @@ func (d *daemon) setInstall(in *tado.Install) (added, removed []string, err erro
 			log.Printf("program presets: serving the home programs after the installation change: %v", err)
 		}
 		d.dropRoomTemps(in)
-		d.dropAutoOffsets(in)
 		d.dropZoneOwners(d.emu, in)
 		d.saveZoneObservers(d.emu, in)
 	}
@@ -469,8 +459,6 @@ func (d *daemon) run(ctx context.Context) {
 			}
 			d.tickCounters(d.emu)
 			d.tickHomeState(d.emu)
-			d.tickRoomTemps(d.emu)
-			d.tickAutoOffsets(d.emu)
 			d.tickZoneOwners(d.emu)
 			d.tickWindows(d.emu)
 			d.tickPairWindow(d.emu)
@@ -2370,7 +2358,7 @@ func (d *daemon) getZones(w http.ResponseWriter, r *http.Request) {
 		return map[string]any{
 			"zones":    e.ZoneDirectory(),
 			"declared": d.declaredZones(e),
-			"demand":   d.correctedZoneViews(e.Snapshot().Zones),
+			"demand":   d.roomZoneViews(e.Snapshot().Zones),
 		}, nil
 	})
 	write(w, v, err)
@@ -2415,7 +2403,6 @@ func (d *daemon) declaredZones(e *tado.EmuState) []map[string]any {
 		zone["target"] = d.zoneTargetView(e, z)
 		if z.Kind == tado.ZoneHeating {
 			zone["externalTemp"] = d.roomTempView(e, z.Number)
-			zone["autoOffset"] = d.autoOffsetView(inst, z.Number)
 			zone["owner"] = d.zoneOwnerView(e, inst, z.Number)
 		}
 		out = append(out, zone)
@@ -2464,7 +2451,7 @@ func (d *daemon) zoneScheduledBlock(e *tado.EmuState, inst *tado.Install, zone i
 		return block, true, ok
 	}
 	c, ok := e.ZoneSchedC(zone)
-	return scheduledBlock{c: d.correctedC(inst, zone, c)}, false, ok
+	return scheduledBlock{c: c}, false, ok
 }
 
 // nextZoneBlock returns the instant the program in force of zone moves to its
@@ -2519,20 +2506,20 @@ func (d *daemon) applyHomeState(e *tado.EmuState) []int {
 			zones = append(zones, zone)
 			_, hasAwayProgram := d.awayProgramOf(zone)
 			if c, fallback := inst.Options.AwayTemperature(zone); fallback && !hasAwayProgram {
-				away[zone] = d.rawSetpointC(inst, zone, c)
+				away[zone] = c
 			}
 			block, program, ok := d.zoneScheduledBlock(e, inst, zone, now)
 			if !ok {
 				continue
 			}
 			block = d.earlyBlock(e, inst, zone, block, now)
-			blocks[zone], sched[zone], off[zone] = block, d.rawSetpointC(inst, zone, block.c), block.off
+			blocks[zone], sched[zone], off[zone] = block, block.c, block.off
 			programs[zone] = program
 			// In away a zone with an away program follows it: the block in
 			// force takes the place of the fixed away temperature, and an off
 			// block writes the off of the away fallback.
 			if d.away && hasAwayProgram && !block.off {
-				away[zone] = d.rawSetpointC(inst, zone, block.c)
+				away[zone] = block.c
 			}
 		}
 	}
@@ -2715,8 +2702,8 @@ func (d *daemon) tickHomeState(e *tado.EmuState) {
 
 // restoreHomeState loads the home state the engine keeps in the database: the
 // away flag, the program presets, the windows, the heat-up models, the
-// adapted flow limits, the room shifts, the observe registrations of the owned
-// zones, the block each zone last took, the
+// adapted flow limits, the room temperatures, the observe registrations of the
+// owned zones, the block each zone last took, the
 // zone rewrites still owed and the early starts running. With that baseline the
 // first tick writes each zone whose program moved while the daemon was down, and
 // each owed write, and no other.
@@ -2741,13 +2728,7 @@ func (d *daemon) restoreHomeState(e *tado.EmuState) error {
 	if err := d.restoreFlowAdapt(); err != nil {
 		return err
 	}
-	if err := d.restoreRoomShifts(); err != nil {
-		return err
-	}
 	if err := d.restoreRoomTemps(); err != nil {
-		return err
-	}
-	if err := d.restoreAutoOffsets(); err != nil {
 		return err
 	}
 	if err := d.restoreZoneObservers(e); err != nil {
@@ -3794,10 +3775,6 @@ func (d *daemon) postZoneOffset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	mode := inst.Options.ZoneOffset(zoneNumber).Mode
-	if mode == tado.OffsetModeSetpoint {
-		d.postSetpointOffset(w, r, zoneNumber, offset)
-		return
-	}
 	targetDevice, err := inst.MeasuringDevice(zoneNumber)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
@@ -3806,9 +3783,7 @@ func (d *daemon) postZoneOffset(w http.ResponseWriter, r *http.Request) {
 	target := hex.EncodeToString(targetDevice.WireEUI())
 	extra := map[string]any{"zone": zoneNumber, "target": targetName(targetDevice), "offsetC": *b.OffsetC, "mode": mode}
 	d.configWrite(w, r, target, extra, func(e *tado.EmuState) error {
-		// A manual offset moves 4060 as an automatic one does: reject the
-		// episodes that span it, unless the learners read the external reading.
-		d.noteOffsetChange(inst, zoneNumber, offset)
+		d.noteOffsetChange(inst, zoneNumber)
 		if mode == tado.OffsetModeDbg2 {
 			return e.EnqueueCalibOffsetDbg2(target, zoneNumber, offset)
 		}
@@ -4485,6 +4460,10 @@ flags:
 	if err := d.restoreHistory(); err != nil {
 		closeStore(store)
 		die("statistics: %v", err)
+	}
+	if err := d.releaseShifts(emu, *doTx && mode == "live"); err != nil {
+		closeStore(store)
+		die("state database %s: %v", dbPath, err)
 	}
 	d.applyHomeState(emu)
 	unknownModules := emu.UnknownInterfaceModules()

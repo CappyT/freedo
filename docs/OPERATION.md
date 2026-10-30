@@ -231,18 +231,21 @@ room form the last group, No room. The page and the settings of a room do these 
 - A removal shows the effects that the daemon reports and asks before the delete. A device that is the
   heat source of a circuit cannot be removed. The delete sends no frame, and the device keeps talking on
   the network.
-- In the settings of a room: choose the circuit, the measuring device and the demand reporter, and add a
-  device that the installation already holds. A room takes a device that is in no room. The wall
+- In the settings of a room: choose the circuit and the demand reporter, and add a device that the
+  installation already holds. A room takes a device that is in no room. The wall
   thermostat is the exception: it can be in the hot water room and in one heated room.
+- In the settings of a heated room, under Room temperature: one list chooses who measures the room,
+  a device of the room or the Home Assistant thermometer. A device becomes the measuring device and
+  the device owns the zone. The thermometer gives the zone to the coordinator, which regulates on the
+  reading and falls back to the measuring device while the reading is stale or missing. The list
+  saves at once. The note under the list gives the last reading and its age. The closed section
+  Advanced under the list holds the offset and the offset mode.
 - In the settings of a heated room, under Room options: the open window detection and its time, the
-  away temperature, the end rule of a change made on a device, the early start, the offset mode, the
-  offset and the valve calibration. One save sends the changed options in one
+  away temperature, the end rule of a change made on a device and the early start. One save sends the changed options in one
   `PATCH /api/install/zones/{n}`, and a typed offset in one `POST /api/zones/{n}/offset`. The page keeps
-  the ranges of the daemon. In the offset mode Valve configuration each offset write, by hand or by the
-  valve calibration, makes the valve do one full motor stroke; the page says so at that field. The
-  valve holds the offset in the modes Valve configuration and Valve debug record and does not report
-  it, so the page shows the offset only in the mode Setpoint shift. The hot water room has none of
-  these options.
+  the ranges of the daemon. In the offset mode Valve configuration each offset write makes the valve
+  do one full motor stroke; the page says so at that field. The valve holds the offset and does not
+  report it, so the page does not show it. The hot water room has none of these options.
 
 The page Boiler shows the fault codes that the boiler reports, as numbers, and every page shows them in
 a banner while there is one. A code is a number of the boiler maker: freedo gives it no meaning.

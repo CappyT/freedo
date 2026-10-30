@@ -88,69 +88,43 @@ func TestZoneOwnerPatch(t *testing.T) {
 			t.Errorf("zone %s owner %q: code=%d %v, want 400", tc.zone, tc.owner, code, res)
 		}
 	}
-	// An owned zone takes no correction of the valve sensor, and the other
-	// way round.
-	for _, body := range []map[string]any{{"auto_offset": true}, {"offset_mode": "setpoint"}} {
-		if code := postJSON(t, http.MethodPatch, a.base+"/api/install/zones/3", body, &res); code != http.StatusBadRequest {
-			t.Errorf("owned zone %v: code=%d %v, want 400", body, code, res)
-		}
-	}
 	if code := postJSON(t, http.MethodPatch, a.base+"/api/install/zones/3", map[string]any{"owner": "device"}, &res); code != http.StatusOK {
 		t.Fatalf("owner device: code=%d %v", code, res)
-	}
-	for _, body := range []map[string]any{{"auto_offset": true}, {"offset_mode": "setpoint"}} {
-		if code := postJSON(t, http.MethodPatch, a.base+"/api/install/zones/3", body, &res); code != http.StatusOK {
-			t.Fatalf("zone 3 %v: code=%d %v", body, code, res)
-		}
-		if code := postJSON(t, http.MethodPatch, a.base+"/api/install/zones/3", map[string]any{"owner": "coordinator"}, &res); code != http.StatusBadRequest {
-			t.Errorf("owner with %v: code=%d %v, want 400", body, code, res)
-		}
-		if code := postJSON(t, http.MethodPatch, a.base+"/api/install/zones/3", map[string]any{"auto_offset": false, "offset_mode": "config"}, &res); code != http.StatusOK {
-			t.Fatalf("zone 3 reset: code=%d %v", code, res)
-		}
 	}
 	if got := loadStored(t, a).Options.ZoneOwners; len(got) != 0 {
 		t.Errorf("stored owners = %v, want none", got)
 	}
 }
 
-// TestZoneOwnerPatchOneRequest: one request moves a zone between the
-// correction methods, and the owner is checked against the values the request
-// leaves.
+// TestZoneOwnerPatchOneRequest: the manual correction keeps both its modes on
+// an owned zone, and one request carries owner and offset_mode together, in
+// both directions.
 func TestZoneOwnerPatchOneRequest(t *testing.T) {
 	a := newInstallAPIOn(t, windowInstall(t, nil))
 	url := a.base + "/api/install/zones/3"
 	var res map[string]any
-	patch := func(body map[string]any, want int) {
+	patch := func(body map[string]any) {
 		t.Helper()
-		if code := postJSON(t, http.MethodPatch, url, body, &res); code != want {
-			t.Fatalf("%v: code=%d %v, want %d", body, code, res, want)
+		if code := postJSON(t, http.MethodPatch, url, body, &res); code != http.StatusOK {
+			t.Fatalf("%v: code=%d %v, want 200", body, code, res)
 		}
 	}
-	owner := func(want string) {
+	want := func(owner, mode string) {
 		t.Helper()
-		if got := loadStored(t, a).Options.ZoneOwner(3); got != want {
-			t.Fatalf("stored owner = %q, want %q", got, want)
+		stored := loadStored(t, a)
+		if got := stored.Options.ZoneOwner(3); got != owner {
+			t.Errorf("stored owner = %q, want %q", got, owner)
+		}
+		if got := stored.Options.ZoneOffset(3).Mode; got != mode {
+			t.Errorf("stored offset mode = %q, want %q", got, mode)
 		}
 	}
-	// shift -> coordinator, and back to shift.
-	patch(map[string]any{"offset_mode": "setpoint"}, http.StatusOK)
-	patch(map[string]any{"offset_mode": "config", "owner": "coordinator"}, http.StatusOK)
-	owner(tado.ZoneOwnerCoordinator)
-	patch(map[string]any{"owner": "device", "offset_mode": "setpoint"}, http.StatusOK)
-	owner(tado.ZoneOwnerDevice)
-	// calibration -> coordinator, and back to calibration.
-	patch(map[string]any{"offset_mode": "config", "auto_offset": true}, http.StatusOK)
-	patch(map[string]any{"auto_offset": false, "owner": "coordinator"}, http.StatusOK)
-	owner(tado.ZoneOwnerCoordinator)
-	patch(map[string]any{"owner": "device", "auto_offset": true}, http.StatusOK)
-	owner(tado.ZoneOwnerDevice)
-	// The request still cannot hold both.
-	patch(map[string]any{"auto_offset": false, "offset_mode": "setpoint"}, http.StatusOK)
-	patch(map[string]any{"owner": "coordinator", "offset_mode": "setpoint"}, http.StatusBadRequest)
-	patch(map[string]any{"offset_mode": "config", "auto_offset": true}, http.StatusOK)
-	patch(map[string]any{"owner": "coordinator", "auto_offset": true}, http.StatusBadRequest)
-	owner(tado.ZoneOwnerDevice)
+	patch(map[string]any{"owner": "coordinator", "offset_mode": "dbg2"})
+	want(tado.ZoneOwnerCoordinator, tado.OffsetModeDbg2)
+	patch(map[string]any{"offset_mode": "config"})
+	want(tado.ZoneOwnerCoordinator, tado.OffsetModeConfig)
+	patch(map[string]any{"owner": "device", "offset_mode": "dbg2"})
+	want(tado.ZoneOwnerDevice, tado.OffsetModeDbg2)
 }
 
 // TestZoneOwnerPushesMeasure: an owned zone with a fresh external reading

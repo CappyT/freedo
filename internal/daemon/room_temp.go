@@ -1,29 +1,12 @@
 package daemon
 
 // room_temp: the room temperature an external sensor measures for a heating
-// zone in offset mode setpoint, pushed over HTTP. The valve regulates on its
-// own sensor and the daemon cannot change what it measures, so the daemon moves
-// the setpoint it writes: the zone shift (zone_offset.go) becomes the external
-// temperature minus the one the zone reports, and the zone reports the external
-// temperature as its own while the reading is fresh. Mode config and dbg2 keep
-// the correction in tag 0140 on the valve, so they take no reading. Mode config
-// also makes a valve home its motor on each write. Mode dbg2 does not.
-//
-// It is a slow outer correction on the regulation of the valve:
-//   - the wanted shift is that difference, within roomShiftMaxC of the manual
-//     offset, smoothed by a first order filter of time constant roomShiftTau;
-//   - the applied shift moves by one roomShiftStepC toward it, and only when
-//     the two differ by more than roomShiftHystC;
-//   - each move is a zone rewrite on air to battery devices, so two moves of
-//     one zone are roomShiftMinInterval apart. The engine start opens the
-//     interval, as it does for a flow limit.
-//
-// The applied shift replaces the manual offset while it holds. A reading older
-// than options.room_temp_max_age_sec ends the correction: the wanted shift
-// goes back to the manual offset through the same filter and the applied shift
-// follows, one step at a time. The last reading and the applied shift are stored,
-// because the setpoints on the valves carry the shift and a restart must not
-// leave the zone without a measure until the sensor pushes again.
+// zone the coordinator owns, pushed over HTTP. While the reading is fresh the
+// zone controller regulates on it (zone_owner.go), the zone reports it as its
+// own temperature and the learners read it. A zone its device owns takes no
+// reading: its valves regulate on their own sensor, with the manual correction
+// in tag 0140. The last reading is stored, so a restart does not leave the zone
+// without a measure until the sensor pushes again.
 
 import (
 	"context"
@@ -49,55 +32,25 @@ const (
 	// roomTempSourceMaxLen bounds the label of the sensor that sends a reading,
 	// in bytes.
 	roomTempSourceMaxLen = 255
-	// roomShiftMaxC bounds the correction around the manual offset. A valve
-	// sensor next to a radiator reads a few degrees off the room, and a larger
-	// gap is more likely a bad external value than a real one: it would send a
-	// zone to the end of its setpoint range.
-	roomShiftMaxC = 5.0
-	// roomShiftTau is long against the heating cycle of a valve next to a
-	// radiator, whose sensor swings by degrees over tens of minutes: a swing of
-	// 2 C peak to peak that flips every 30 minutes leaves a ripple of 0.12 C
-	// around the mean on the filter, inside roomShiftHystC. A correction of 2 C
-	// is within a step after about four hours, and the release takes as long.
-	roomShiftTau = 2 * time.Hour
-	// roomShiftStepC is how far one move shifts the setpoint of a zone, above
-	// the accuracy of the sensor of a valve.
-	roomShiftStepC = 0.2
-	// roomShiftHystC is below a step, so the applied shift ends within it of the
-	// wanted one, and above the ripple the filter leaves, so the shift does not
-	// move back and forth.
-	roomShiftHystC = 0.15
-	// roomShiftMinInterval bounds the zone rewrites to four an hour.
-	roomShiftMinInterval = 15 * time.Minute
-	// roomTempEvery paces the filter of each zone.
-	roomTempEvery = time.Minute
 )
 
 var (
 	errRoomTempZone = errors.New("only a heating zone takes an external room temperature")
-	errRoomTempMode = errors.New("an external room temperature needs offset_mode setpoint, auto_offset or the coordinator as owner: " +
-		"the other modes keep the correction in tag 0140 on the valve, and mode config also makes a valve home its motor")
+	errRoomTempMode = errors.New("an external room temperature needs the coordinator as owner: " +
+		"a zone its device owns regulates on the valve sensor, with the correction in tag 0140")
 )
 
-// roomTemp is the external room temperature of one zone and the correction it
-// drives. at is zero without a reading. source labels the sensor of the reading
-// for display, empty when the push named none. on says that shiftC, the shift applied
-// to the zone, replaces the manual offset. wantedC is the filtered shift, evalAt
-// the last filter step and wroteAt the last change of shiftC. All belong to the
-// engine goroutine.
+// roomTemp is the external room temperature of one zone. at is zero without a
+// reading. source labels the sensor of the reading for display, empty when the
+// push named none. It belongs to the engine goroutine.
 type roomTemp struct {
-	tempC   float64
-	source  string
-	at      time.Time
-	on      bool
-	shiftC  float64
-	wantedC float64
-	evalAt  time.Time
-	wroteAt time.Time
+	tempC  float64
+	source string
+	at     time.Time
 }
 
-// roomRefusal is the last push a zone refused because no mode of the zone takes
-// a reading. It stays in memory and shows while younger than
+// roomRefusal is the last push a zone refused because the coordinator does not
+// own it. It stays in memory and shows while younger than
 // options.room_temp_max_age_sec: the integration pushes every 15 minutes while
 // the mapping lives.
 type roomRefusal struct {
@@ -134,20 +87,52 @@ func (d *daemon) freshRoomTemp(inst *tado.Install, zone int) (float64, bool) {
 	return x.tempC, true
 }
 
-// roomTempC is the room temperature of zone on the corrected scale: the
-// external one while the learners read it, else the wire temperature c with the
-// shift.
+// learnerReadsExternal reports whether the learners of zone read the external
+// room temperature now: with the coordinator as owner, while the reading is
+// fresh. The reading does not move when the correction is written, so a write
+// does not disturb a running episode then.
+func (d *daemon) learnerReadsExternal(inst *tado.Install, zone int) bool {
+	if inst == nil {
+		return false
+	}
+	if _, ok := d.freshRoomTemp(inst, zone); !ok {
+		return false
+	}
+	return zoneTakesReading(inst, zone)
+}
+
+// roomTempC is the room temperature of zone: the external one while the
+// learners read it, else the temperature c the zone reports.
 func (d *daemon) roomTempC(inst *tado.Install, zone int, c float64) float64 {
 	if d.learnerReadsExternal(inst, zone) {
 		t, _ := d.freshRoomTemp(inst, zone)
 		return t
 	}
-	return d.correctedC(inst, zone, c)
+	return c
 }
+
+// zoneReport is tado.EmuState.ZoneReport with the room temperature of the zone.
+func (d *daemon) zoneReport(e *tado.EmuState, zone int) (float64, int, time.Time, bool) {
+	tempC, demand, updated, ok := e.ZoneReport(zone)
+	return d.roomTempC(d.inst.Load(), zone, tempC), demand, updated, ok
+}
+
+// roomZoneViews returns the zone reports with the room temperature of each zone.
+func (d *daemon) roomZoneViews(zones []tado.ZoneView) []tado.ZoneView {
+	inst := d.inst.Load()
+	out := make([]tado.ZoneView, len(zones))
+	for i, z := range zones {
+		out[i] = z
+		out[i].TempC = d.roomTempC(inst, z.Number, z.TempC)
+	}
+	return out
+}
+
+func roundCenti(c float64) float64 { return math.Round(c*100) / 100 }
 
 // postZoneTemperature stores the external room temperature of a zone,
 // {"tempC": number, "source": string}. source is optional and only labels the
-// sensor in the view. The correction follows on the next steps of the filter.
+// sensor in the view.
 func (d *daemon) postZoneTemperature(w http.ResponseWriter, r *http.Request) {
 	zone, _, ok := d.pathZoneMembers(w, r)
 	if !ok {
@@ -180,13 +165,7 @@ func (d *daemon) postZoneTemperature(w http.ResponseWriter, r *http.Request) {
 			return nil, fmt.Errorf("zone %d: %w", z.Number, errRoomTempMode)
 		}
 		delete(d.roomRefused, z.Number)
-		x := d.roomTemps[z.Number]
-		if x == nil {
-			manual := inst.Options.SetpointShiftC(z.Number)
-			x = &roomTemp{shiftC: manual, wantedC: manual, evalAt: now}
-			d.roomTemps[z.Number] = x
-		}
-		x.tempC, x.at, x.source = roundCenti(*b.TempC), now, b.Source
+		d.roomTemps[z.Number] = &roomTemp{tempC: roundCenti(*b.TempC), at: now, source: b.Source}
 		d.saveRoomTemps()
 		return d.roomTempView(e, z.Number), nil
 	})
@@ -215,7 +194,8 @@ func checkRoomTempSource(source string) string {
 }
 
 // deleteZoneTemperature drops the external room temperature of a zone. The
-// correction it holds is released as it is when the reading goes stale.
+// controller falls back to the measuring device, as it does when the reading
+// goes stale.
 func (d *daemon) deleteZoneTemperature(w http.ResponseWriter, r *http.Request) {
 	zone, _, ok := d.pathZoneMembers(w, r)
 	if !ok {
@@ -227,9 +207,7 @@ func (d *daemon) deleteZoneTemperature(w http.ResponseWriter, r *http.Request) {
 			return nil, err
 		}
 		delete(d.roomRefused, z.Number)
-		if x := d.roomTemps[z.Number]; x != nil {
-			x.at = time.Time{}
-		}
+		delete(d.roomTemps, z.Number)
 		d.saveRoomTemps()
 		return d.roomTempView(e, z.Number), nil
 	})
@@ -239,108 +217,11 @@ func (d *daemon) deleteZoneTemperature(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, v)
 }
 
-// tickRoomTemps steps the correction of every zone with a reading and stores
-// the applied shifts that moved.
-func (d *daemon) tickRoomTemps(e *tado.EmuState) {
-	inst := d.inst.Load()
-	if inst == nil {
-		return
-	}
-	now := d.retryNow()
-	zones := make([]int, 0, len(d.roomTemps))
-	for zone := range d.roomTemps {
-		zones = append(zones, zone)
-	}
-	slices.Sort(zones)
-	for _, zone := range zones {
-		x := d.roomTemps[zone]
-		if x.at.IsZero() && !x.on {
-			delete(d.roomTemps, zone)
-			continue
-		}
-		d.stepRoomTemp(e, inst, zone, x, now)
-	}
-	d.saveRoomShifts()
-}
-
-// stepRoomTemp advances the filter of zone and, when the applied shift is more
-// than roomShiftHystC from the wanted one and roomShiftMinInterval has passed
-// since its last move, moves it by a step and restates the zone. With no fresh
-// reading the shift ends on the manual offset.
-func (d *daemon) stepRoomTemp(e *tado.EmuState, inst *tado.Install, zone int, x *roomTemp, now time.Time) {
-	// Only mode setpoint shifts the setpoints. A reading in mode config or dbg2
-	// with auto_offset on drives the learners alone.
-	if inst.Options.ZoneOffset(zone).Mode != tado.OffsetModeSetpoint {
-		return
-	}
-	manual := inst.Options.SetpointShiftC(zone)
-	if !x.on {
-		x.shiftC = manual
-	}
-	dt := now.Sub(x.evalAt)
-	if dt < roomTempEvery {
-		return
-	}
-	x.evalAt = now
-	fresh := roomTempFresh(inst, x, now)
-	var wanted float64
-	switch {
-	case fresh:
-		wire, _, updated, ok := e.ZoneReport(zone)
-		if !ok || now.Sub(updated) > inst.Options.OfflineAfter() {
-			return
-		}
-		wanted = manual + min(max(x.tempC-wire-manual, -roomShiftMaxC), roomShiftMaxC)
-	case x.on:
-		if x.shiftC == manual {
-			x.on, x.wantedC = false, manual
-			d.roomUnsaved = true
-			return
-		}
-		// The release never goes farther from the manual offset than the
-		// applied shift is.
-		x.wantedC = min(max(x.wantedC, min(x.shiftC, manual)), max(x.shiftC, manual))
-		wanted = manual
-	default:
-		x.wantedC = manual
-		return
-	}
-	x.wantedC += (wanted - x.wantedC) * (1 - math.Exp(-dt.Seconds()/roomShiftTau.Seconds()))
-
-	next := x.shiftC
-	switch {
-	case !fresh && math.Abs(x.shiftC-manual) <= roomShiftStepC:
-		next = manual
-	case x.wantedC-x.shiftC > roomShiftHystC:
-		next += roomShiftStepC
-	case x.shiftC-x.wantedC > roomShiftHystC:
-		next -= roomShiftStepC
-	}
-	next = roundCenti(next)
-	if next == x.shiftC {
-		return
-	}
-	last := x.wroteAt
-	if last.IsZero() {
-		last = d.flowEpoch
-	}
-	if now.Sub(last) < roomShiftMinInterval {
-		return
-	}
-	delta := roundCenti(next - x.shiftC)
-	prev := x.shiftC
-	x.shiftC, x.wroteAt, x.on = next, now, fresh || next != manual
-	d.roomUnsaved = true
-	d.restateZoneShift(e, inst, zone, delta)
-	log.Printf("zone %d room temperature %.2f C: shift %+.2f -> %+.2f C", zone, x.tempC, prev, next)
-}
-
 // dropRoomTemps forgets the zones the installation no longer lets take an
-// external room temperature: removed, no longer heating, in mode config or dbg2
-// without auto_offset, or no longer in mode setpoint. restateShiftedZones has
-// restated them before.
+// external room temperature: removed, no longer heating, or no longer owned by
+// the coordinator.
 func (d *daemon) dropRoomTemps(inst *tado.Install) {
-	for zone, x := range d.roomTemps {
+	for zone := range d.roomTemps {
 		z, err := inst.ZoneByNumber(zone)
 		kept := err == nil && z.Kind == tado.ZoneHeating &&
 			zoneTakesReading(inst, zone)
@@ -348,7 +229,6 @@ func (d *daemon) dropRoomTemps(inst *tado.Install) {
 			continue
 		}
 		delete(d.roomTemps, zone)
-		d.roomUnsaved = d.roomUnsaved || x.on
 	}
 	for zone := range d.roomRefused {
 		if z, err := inst.ZoneByNumber(zone); err != nil || z.Kind != tado.ZoneHeating ||
@@ -356,7 +236,6 @@ func (d *daemon) dropRoomTemps(inst *tado.Install) {
 			delete(d.roomRefused, zone)
 		}
 	}
-	d.saveRoomShifts()
 	d.saveRoomTemps()
 }
 
@@ -397,9 +276,9 @@ func (d *daemon) saveRoomTemps() {
 	d.roomTempsSaved = rows
 }
 
-// restoreRoomTemps loads the stored readings after the shifts, with their
-// original time. A reading that is stale, or of a zone that cannot take one
-// any more, is dropped.
+// restoreRoomTemps loads the stored readings with their original time. A
+// reading that is stale, or of a zone that cannot take one any more, is
+// dropped.
 func (d *daemon) restoreRoomTemps() error {
 	inst := d.inst.Load()
 	if d.state == nil || inst == nil {
@@ -416,17 +295,9 @@ func (d *daemon) restoreRoomTemps() error {
 		if err != nil || z.Kind != tado.ZoneHeating || !zoneTakesReading(inst, s.Zone) {
 			continue
 		}
-		x := d.roomTemps[s.Zone]
-		if x == nil {
-			manual := inst.Options.SetpointShiftC(s.Zone)
-			x = &roomTemp{shiftC: manual, wantedC: manual, evalAt: now}
-		}
-		x.tempC, x.at, x.source = s.TempC, time.UnixMilli(s.AtMs), s.Source
+		x := &roomTemp{tempC: s.TempC, at: time.UnixMilli(s.AtMs), source: s.Source}
 		if !roomTempFresh(inst, x, now) {
-			x.at = time.Time{}
-			if !x.on {
-				continue
-			}
+			continue
 		}
 		d.roomTemps[s.Zone] = x
 	}
@@ -434,69 +305,19 @@ func (d *daemon) restoreRoomTemps() error {
 	return nil
 }
 
-// saveRoomShifts stores the applied shifts once they moved. A failed save stays
-// owed to the next tick.
-func (d *daemon) saveRoomShifts() {
-	if !d.roomUnsaved {
-		return
-	}
-	if d.state != nil {
-		shifts := make(map[int]int, len(d.roomTemps))
-		for zone, x := range d.roomTemps {
-			if x.on {
-				shifts[zone] = int(math.Round(x.shiftC * 100))
-			}
-		}
-		if err := d.state.SetRoomShifts(context.Background(), shifts); err != nil {
-			log.Printf("persist the room shifts: %v", err)
-			return
-		}
-	}
-	d.roomUnsaved = false
-}
-
-// restoreRoomShifts loads the stored shifts before the engine starts.
-// restoreRoomTemps then restores the readings, so a shift without a fresh
-// reading is released. A shift of a zone that cannot take one any more is
-// dropped.
-func (d *daemon) restoreRoomShifts() error {
-	inst := d.inst.Load()
-	if d.state == nil || inst == nil {
-		return nil
-	}
-	stored, err := d.state.RoomShifts(context.Background())
-	if err != nil {
-		return err
-	}
-	for zone, centi := range stored {
-		z, err := inst.ZoneByNumber(zone)
-		if err != nil || z.Kind != tado.ZoneHeating || inst.Options.ZoneOffset(zone).Mode != tado.OffsetModeSetpoint {
-			d.roomUnsaved = true
-			continue
-		}
-		shift := float64(centi) / 100
-		d.roomTemps[zone] = &roomTemp{on: true, shiftC: shift, wantedC: shift, evalAt: d.retryNow()}
-	}
-	return nil
-}
-
 // roomTempView renders the external room temperature of one heating zone.
-// tempC, at, ageSec and source describe the last reading and stale says it is too old
-// to drive the zone; inUse says that it does, and then the zone reports tempC as
-// its temperature. learnInUse says that the early start, the plant episodes and
-// the flow adaptation read tempC: the same as inUse in mode setpoint, and with
-// auto_offset on in the modes config and dbg2. deviceC is the temperature the
-// zone reports on the wire scale and wantedC the filtered shift. shiftC is the
-// shift applied to the zone, and offsetC the manual one it returns to. refused
-// is the last push the zone refused for want of a mode that takes a reading,
-// {source, at, ageSec}, or nil once that push is older than the limit for a
-// reading. A zone with no reading carries it too.
+// tempC, at, ageSec and source describe the last reading and stale says it is
+// too old to drive the zone; inUse says that it does: the controller, the early
+// start, the plant episodes and the flow adaptation read tempC, and the zone
+// reports it as its temperature. deviceC is the temperature the zone reports.
+// refused is the last push the zone refused because the coordinator does not
+// own it, {source, at, ageSec}, or nil once that push is older than the limit
+// for a reading. A zone with no reading carries it too.
 func (d *daemon) roomTempView(e *tado.EmuState, zone int) map[string]any {
 	inst := d.inst.Load()
 	view := map[string]any{
-		"tempC": nil, "at": nil, "ageSec": nil, "source": nil, "stale": false, "inUse": false, "learnInUse": false,
-		"deviceC": nil, "wantedC": nil, "refused": d.roomRefusedView(inst, zone),
-		"shiftC": d.shiftC(inst, zone), "offsetC": inst.Options.SetpointShiftC(zone),
+		"tempC": nil, "at": nil, "ageSec": nil, "source": nil, "stale": false, "inUse": false,
+		"deviceC": nil, "refused": d.roomRefusedView(inst, zone),
 	}
 	if deviceC, _, _, ok := e.ZoneReport(zone); ok {
 		view["deviceC"] = deviceC
@@ -513,10 +334,6 @@ func (d *daemon) roomTempView(e *tado.EmuState, zone int) map[string]any {
 			view["source"] = x.source
 		}
 		view["ageSec"], view["stale"], view["inUse"] = int(age/time.Second), !fresh, fresh
-	}
-	view["learnInUse"] = d.learnerReadsExternal(inst, zone)
-	if x.on || view["inUse"] == true {
-		view["wantedC"] = roundCenti(x.wantedC)
 	}
 	return view
 }
@@ -540,8 +357,7 @@ func (d *daemon) roomRefusedView(inst *tado.Install, zone int) any {
 }
 
 // zoneTakesReading reports whether zone takes an external room temperature:
-// in mode setpoint, with auto_offset on, or with the coordinator as owner.
+// with the coordinator as owner.
 func zoneTakesReading(inst *tado.Install, zone int) bool {
-	o := inst.Options
-	return o.ZoneOffset(zone).Mode == tado.OffsetModeSetpoint || o.AutoOffset(zone).Enabled || o.CoordinatorOwns(zone)
+	return inst.Options.CoordinatorOwns(zone)
 }

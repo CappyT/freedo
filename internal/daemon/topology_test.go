@@ -148,7 +148,6 @@ func TestTopologies(t *testing.T) {
 				d := a.d
 				d.tickCounters(e)
 				d.tickHomeState(e)
-				d.tickRoomTemps(e)
 				d.tickWindows(e)
 				d.tickPairWindow(e)
 				d.tickEnergy()

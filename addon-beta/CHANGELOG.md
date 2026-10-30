@@ -199,3 +199,26 @@ pre-release has its notes here.
   sensor does, what freedo writes, radio, and state on air.
 - Run on a real plant with 0.11.0-beta.10: six rooms on the coordinator as owner, on the Home
   Assistant thermometers. The wall thermostat holds one observe registration for each room.
+
+## Unreleased
+
+- A heating room has one room temperature source: a device of the room, or the Home Assistant
+  thermometer with the coordinator as owner. freedo no longer runs Continuous shift (offset mode
+  `setpoint`) and Valve calibration (`auto_offset`). A Home Assistant automation or Better
+  Thermostat writes a correction from a sensor through the Offset number entity.
+- Daemon: the first start of this version moves each room in offset mode `setpoint` to `config`.
+  It deletes the `auto_offset` options, the stored shifts and the stored calibration, and logs one
+  line for each room it changes. The first start that transmits writes the valves of those rooms
+  again without the shift. An import releases no shift.
+- Daemon: `PATCH /api/install/zones/{n}` refuses `offset_mode` `setpoint`, `auto_offset` and
+  `auto_offset_interval_sec`. `POST /api/zones/{n}/temperature` takes a reading only on a room the
+  coordinator owns. `GET /api/zones` drops `autoOffset` and, in `externalTemp`, `shiftC`,
+  `wantedC`, `offsetC` and `learnInUse`: `inUse` says that the controller and the learners read
+  the reading.
+- Home Assistant: the select Temperature source of a room lists the devices of the room and the
+  Home Assistant sensors. A sensor makes the coordinator the owner of the room, a device gives the
+  room back to that device. The select Room temperature correction, the switch Valve calibration
+  and the number Calibration are gone: delete their entities from the registry. The sensor
+  Temperature source state says `device` for a room a device owns.
+- Dashboard: the room settings show one select, who measures the room: the devices of the room,
+  or the Home Assistant thermometer. The offset and the offset mode sit under Advanced.

@@ -756,21 +756,17 @@ func (s *stateStore) SetFlowAdapt(ctx context.Context, stored map[int]storedFlow
 	return err
 }
 
-// RoomShifts returns the setpoint shift in centi-degrees that an external room
-// temperature holds on each zone, see room_temp.go.
-func (s *stateStore) RoomShifts(ctx context.Context) (map[int]int, error) {
+// ShiftRelease returns the shifts, per zone in centi-degrees, that the store
+// migration left to release (install.ShiftReleaseKey).
+func (s *stateStore) ShiftRelease(ctx context.Context) (map[int]int, error) {
 	var stored map[int]int
-	err := s.metaJSON(ctx, "room_shift", &stored)
+	err := s.metaJSON(ctx, install.ShiftReleaseKey, &stored)
 	return stored, err
 }
 
-// SetRoomShifts replaces the stored room shifts.
-func (s *stateStore) SetRoomShifts(ctx context.Context, stored map[int]int) error {
-	raw, err := json.Marshal(stored)
-	if err != nil {
-		return err
-	}
-	_, err = s.db.ExecContext(ctx, `INSERT OR REPLACE INTO meta (key, value) VALUES ('room_shift', ?)`, string(raw))
+// ClearShiftRelease deletes install.ShiftReleaseKey.
+func (s *stateStore) ClearShiftRelease(ctx context.Context) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM meta WHERE key = ?`, install.ShiftReleaseKey)
 	return err
 }
 
@@ -789,25 +785,6 @@ func (s *stateStore) SetRoomTemps(ctx context.Context, stored []storedRoomTemp) 
 		return err
 	}
 	_, err = s.db.ExecContext(ctx, `INSERT OR REPLACE INTO meta (key, value) VALUES ('room_temps', ?)`, string(raw))
-	return err
-}
-
-// AutoOffsets returns the tracked correction (in centi-degrees) and the last
-// automatic write time of each zone with an automatic temperature calibration,
-// see auto_offset.go.
-func (s *stateStore) AutoOffsets(ctx context.Context) (map[int]storedAutoOffset, error) {
-	var stored map[int]storedAutoOffset
-	err := s.metaJSON(ctx, "auto_offset", &stored)
-	return stored, err
-}
-
-// SetAutoOffsets replaces the stored automatic calibration state.
-func (s *stateStore) SetAutoOffsets(ctx context.Context, stored map[int]storedAutoOffset) error {
-	raw, err := json.Marshal(stored)
-	if err != nil {
-		return err
-	}
-	_, err = s.db.ExecContext(ctx, `INSERT OR REPLACE INTO meta (key, value) VALUES ('auto_offset', ?)`, string(raw))
 	return err
 }
 

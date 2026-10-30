@@ -275,8 +275,8 @@ transaction that applies the rows, rebuilds the installation, validates it and r
 The database holds more than the installation. It also keeps the desired state of the
 devices and the learned state. These are the away state, the program presets with the home
 and away programs of each zone, the program
-blocks of each zone, the early start models, the adapted flow limits, the setpoint shifts
-from an outside temperature, the boiler counters, the resume points of the frame counters
+blocks of each zone, the early start models, the adapted flow limits, the last external
+room temperature of each zone the coordinator owns, the boiler counters, the resume points of the frame counters
 and the radio calibration. The node state, the learned zone members and the command queue
 are caches. Device reports rebuild them, so a restart repairs them.
 
@@ -324,10 +324,8 @@ allows it.
 | `open_window_detection`, `open_window_duration_sec` | `true`, 900 | Window detection of the valves and the time the zone stays open. |
 | `early_start` | `false` | Early start for the zone. |
 | `device_overlay_end`, `device_overlay_end_sec` | `until_next` | End rule of a change made on a device: `manual`, `until_next` or `timer` with a duration. |
-| `offset_mode` | `config` | How the temperature correction reaches the zone: `config`, `dbg2` or `setpoint`. |
-| `auto_offset` | `false` | Automatic calibration of the zone correction (valve offset) from an external room temperature. Only a heating zone in `offset_mode` `config` or `dbg2` takes it. |
-| `auto_offset_interval_sec` | 86400 | Shortest interval between two automatic corrections, 3600 to 604800 seconds. |
-| `owner` | `device` | Who owns the zone: `device` (the elected demand reporter) or `coordinator`, which runs the zone controller on the external room temperature. Only a heating zone in `offset_mode` `config` or `dbg2` with `auto_offset` off takes it. Unverified on air. |
+| `offset_mode` | `config` | How the temperature correction reaches the zone: `config` or `dbg2`. |
+| `owner` | `device` | Who owns the zone: `device` (the elected demand reporter) or `coordinator`, which runs the zone controller on the external room temperature. Only a heating zone takes it. Unverified on air. |
 | `pid` | 1000, 500, 1500 | Controller gains `kp`, `ki`, `kd` of the valve, each 0 to 65535. `kp` and `ki` cannot both be 0. `null` restores the defaults. |
 | `away_temperature_c` | `null` | Temperature in away, 5 to 25 C with at most two decimals. `null` and 5 mean off in away. The hot water zone refuses it. An away program of the zone replaces the fixed temperature while the home is away. |
 | `ha_area` | `null` | Home Assistant area of the zone, `{"id": "...", "name": "..."}`, each 1 to 255 bytes with no control character. `null` clears it. The integration writes it and the dashboard shows it. The daemon never acts on it. `GET /api/zones` shows it in `declared[].haArea`. |
@@ -599,58 +597,10 @@ state from an outside source, for example a Home Assistant sensor.
   the daemon puts it in the served `d/config` under the same ETag. A `4.xx` answer or a lost
   write leaves the document unchanged. The valve does not home. No capture shows this on
   air. The wall thermostat has no `d/dbg2/tlvs`, so its zone refuses this mode.
-- `setpoint` leaves `0140` unchanged. The daemon stores `setpoint_offset_c`, subtracts it
-  from every setpoint it writes to the zone and adds it to the temperature and target of the
-  zone in `GET /api/zones`. Node views keep the valve scale.
 
-### Automatic calibration
-
-`auto_offset` calibrates the correction of a heating zone from an external room temperature,
-at most once per `auto_offset_interval_sec`. It applies in `offset_mode` `config` and `dbg2`,
-where the correction is tag `0140` on the valve. A zone in `setpoint` refuses the option: that
-mode already corrects continuously from the reading. The hot water zone refuses it. `PATCH
-/api/install/zones/{n}` writes it, and the daemon refuses a later switch to `setpoint` while
-it is on.
-
-`POST /api/zones/{n}/temperature` feeds the reading. It is accepted in `config` and `dbg2`
-with `auto_offset` on, and refused with `409` otherwise.
-
-- The daemon filters the difference between the external reading and the calibrated
-  temperature `012d` of the measuring device, with the same first-order filter as `setpoint`
-  (2 hour time constant). The correction goes to that device, and `012d = 012e + 0140`, so a
-  write moves `012d` by the written delta. The zone temperature `4060` comes from the member
-  that pushed it last, which a write to another member does not move.
-- It takes no sample while the reading is stale (`room_temp_max_age_sec`), while the measuring
-  device sends no frame for `offline_after_sec`, before the device reports `012d` after the
-  last correction change, while the zone window is open, or while a heat-up episode of the
-  learner runs. A device report carries only the tags that changed, so `012d` holds while the
-  device sends frames.
-- At most once per interval per zone, once the filter holds two hours of samples since its
-  last restart, it takes the new correction as the current one plus the filtered difference,
-  rounds it to 0.1 C and clamps it to -5 to +5 C. It writes it through the path of
-  `POST /api/zones/{n}/offset`, and only when it differs from the current correction by at
-  least 0.3 C.
-- After each write the filter restarts, because the write moves `012d` by the written delta.
-  A manual offset in `config` or `dbg2` restarts it too.
-- When the filter next holds two hours of samples, the absolute filtered difference must be
-  at least 0.15 C smaller than at the write. If it is not, the write did not move the
-  temperature the filter reads: the daemon stops the automatic writes of the zone, and
-  `stopReason` says why. A further write would grow the correction to the bound and, in mode
-  `config`, home the motor each time. A change of the difference in the two hours before a
-  write can also stop it. Switch `auto_offset` off and on to start the writes again. A
-  manual offset drops the check.
-- The interval starts at the last write, and at daemon start before the first write. The
-  last write time, the tracked correction, the pending check and the stop survive a restart,
-  so a restart causes no extra write and does not move the interval. A daemon that restarts
-  more often than the interval still calibrates, after two hours of samples.
-
-Mode `config` homes the motor of the valve on each write, so the battery and the noise pay
-for every calibration. The default interval of a day bounds that cost, and the deadband keeps
-a change inside the noise of the difference away from the valve.
-
-`declared[].autoOffset` in `GET /api/zones` shows `enabled`, `intervalSec`, `lastWriteAt`,
-`nextAt`, `filteredDiffC`, `sampleSpanSec` and `stopReason`. `stopReason` is null while the
-writes run. A stopped zone has `nextAt` null.
+To correct a zone from a room thermometer, give the zone to the coordinator (see "Coordinator
+as zone owner"), or let a Home Assistant automation or Better Thermostat write the correction
+through the Offset number entity.
 
 ### Coordinator as zone owner
 
@@ -704,12 +654,8 @@ With the daemon as owner:
   heating zone it serves. A change of `owner`, or a new form of the endpoint after an update,
   moves the ETag and sends the thermostat its `d/config` re-read trigger: it reads the new
   zone documents within seconds and registers on the new endpoints.
-- The zone takes `POST /api/zones/{n}/temperature` with no other option. `offset_mode`
-  `setpoint` and `auto_offset` are refused on an owned zone, and the owner is refused while
-  the zone holds one of them: the valves follow our measure, so a correction of their own
-  sensor has nothing left to correct.
-  The daemon checks the fields of one request against the values the request leaves, so one
-  request can carry `owner`, `offset_mode` and `auto_offset` together.
+- Only an owned zone takes `POST /api/zones/{n}/temperature`. One request can carry `owner`
+  and `offset_mode` together.
 - `declared[].owner` in `GET /api/zones` shows `mode`, and for an owned zone `tempC`, `source`
   (`external` or `device`), `demandPct`, `pushedAt` and `observers`: one entry per observe
   registration, with `device`, `token` (hex), `seq` (the last Observe value sent) and
@@ -736,50 +682,27 @@ cannot show it.
 gives the zone the room temperature that an outside sensor measures. `DELETE` removes it.
 `tempC` stays in -10 to 50 and the daemon rounds it to 0.01 C. `source` is optional: it names
 the sensor for display, at most 255 bytes with no control character. A push without it clears
-the name. A zone must be a heating zone in mode `setpoint`, in mode `config` or `dbg2` with
-`auto_offset` on, or with the coordinator as owner. Hot water gets `400`, an unknown zone
-`404`, and a zone with no mode that takes the reading gets `409`. The daemon remembers that
-refused push in memory (the time and the `source`) and shows it as `refused`. The last reading
-survives a restart of the daemon while it is fresh.
+the name. A zone must be a heating zone with the coordinator as owner. Hot water gets `400`, an unknown
+zone `404`, and a zone its device owns gets `409`. The daemon remembers that refused push in
+memory (the time and the `source`) and shows it as `refused`. The last reading survives a
+restart of the daemon while it is fresh.
 
-The valve controls on its own sensor, and the daemon cannot change that value. The daemon
-shifts the setpoints it writes instead. The shift is the external temperature minus the zone
-temperature `4060`. A zone with several valves has one shift, because the write goes to the
-writer and the other members take the block from its echo.
-
-The shift moves slowly, because a valve near a radiator swings by several degrees:
-
-- A first-order filter with a 2 hour time constant smooths the difference.
-- The difference stays within 5 C of the manual correction.
-- The applied shift changes by 0.2 C at a time, and only when it is more than 0.15 C from
-  the filtered value.
-- Two shifts of one zone are at least 15 minutes apart. The interval also starts at daemon
-  start.
-- A shift that does not change the setpoint writes nothing.
-
-A correction of 2 C needs about 4 hours. These constants are design estimates. No test on air
-verifies them.
-
-While the reading is fresh, the shift replaces the manual correction. An older reading than
-`room_temp_max_age_sec`, or a `DELETE`, ends it. The shift then returns to the manual
-correction at the same pace. A zone that leaves the mode `setpoint` gets setpoints without a
-shift and forgets the reading. The reading is not stored. The applied shift is stored in
-`meta.room_shift`.
+While the reading is fresh, the zone controller regulates on it (see "Coordinator as zone
+owner") and the zone reports it as its temperature. An older reading than
+`room_temp_max_age_sec`, or a `DELETE`, ends it: the controller then reads the measuring
+device. A zone that leaves the coordinator forgets the reading.
 
 `declared[].externalTemp` in `GET /api/zones` shows `tempC`, `at`, `ageSec`, `source`, `stale`,
-`inUse`, `learnInUse`, `deviceC`, `shiftC`, `offsetC`, `wantedC` and `refused`. `refused` is
-`{"source": string|null, "at": RFC3339, "ageSec": int}` for the last push that got `409`, or
-`null`. An accepted push, a `DELETE`, a mode of the zone that takes the reading and the removal
-of the zone clear it. A refusal older than `room_temp_max_age_sec` does not show. It also
-shows on a zone that has no reading, so a mapping on a zone with no mode that takes it is
-visible. A restart of the daemon clears it. `inUse` says the reading
-drives the zone and the zone reports `tempC` as its temperature; that holds in mode `setpoint`
-and in `config` or `dbg2` with `auto_offset` on. `learnInUse` says the early start, the flow
-adaptation and the plant episodes read `tempC` instead of `4060`: the same as `inUse` in mode
-`setpoint`, and with `auto_offset` on in `config` and `dbg2` while the reading is fresh. While
-`learnInUse` is true, a manual offset write keeps a running heat-up episode and a running
-plant heat episode, because the write moves `4060` and not the external reading (see Early
-start). The automatic calibration writes no correction while one of them runs.
+`inUse`, `deviceC` and `refused`. `deviceC` is the temperature the zone reports from its
+devices. `refused` is `{"source": string|null, "at": RFC3339, "ageSec": int}` for the last
+push that got `409`, or `null`. An accepted push, a `DELETE`, the coordinator as owner and the
+removal of the zone clear it. A refusal older than `room_temp_max_age_sec` does not show. It
+also shows on a zone that has no reading, so a mapping on a zone its device owns is visible. A
+restart of the daemon clears it. `inUse` says the reading drives the zone: the controller, the
+early start, the flow adaptation and the plant episodes read `tempC` instead of `4060`, and the
+zone reports `tempC` as its temperature. While `inUse` is true, a manual offset write keeps a
+running heat-up episode and a running plant heat episode, because the write moves `4060` and
+not the external reading (see Early start).
 
 ### Early start
 
@@ -790,10 +713,10 @@ block early.
   report reaches the target. The daemon discards an episode that has any of these: an open
   window, an overlay, away, an off block, a target change, a correction change, no report for
   `offline_after_sec`, no demand `40a0`, a length over 6 hours, or a rate outside 0.1 to 10 C/h.
-- A correction change is a manual or automatic offset write in mode `config` or `dbg2`. It
-  moves `4060` by the delta, so the learner reads the step as the plant. It rejects a running
-  episode only when the learner reads `4060`; with a fresh external reading in mode `setpoint`,
-  or with `auto_offset` on, it reads the external reading, which the write does not move.
+- A correction change is a manual offset write. It moves `4060` by the delta, so the learner
+  reads the step as the plant. It rejects a running episode only when the learner reads
+  `4060`. On an owned zone with a fresh external reading the learner reads that reading, which
+  the write does not move.
 - The model keeps the last 10 episodes and uses the median. With a fresh outdoor temperature
   it prefers the episodes nearest to that temperature. It is stored in the `meta` table.
 - With at least `early_start_min_episodes` episodes, the daemon sends the `6200` of a warmer
