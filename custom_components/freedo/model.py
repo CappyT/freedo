@@ -42,14 +42,9 @@ DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 
 # The daemon rejects a zone temperature correction beyond +-10 C (tag 0140).
 OFFSET_LIMIT_C = 10.0
-OFFSET_MODE_SETPOINT = "setpoint"
-# GET /api/install/zones offset_mode: how the correction of a zone reaches it.
-OFFSET_MODES = ("config", "dbg2", OFFSET_MODE_SETPOINT)
-
-# The daemon rejects an auto_offset_interval_sec outside this range with 400:
-# one hour to one week.
-AUTO_OFFSET_INTERVAL_MIN_SEC = 3600
-AUTO_OFFSET_INTERVAL_MAX_SEC = 604800
+# GET /api/install/zones offset_mode: how the manual correction of a zone
+# reaches the valve.
+OFFSET_MODES = ("config", "dbg2")
 
 # The end rules of a change made on a device (GET /api/install/zones
 # device_overlay_end), and the timer length the daemon accepts in seconds.
@@ -73,23 +68,13 @@ ROOM_TEMP_MAX_C = 50.0
 
 # The state of the external room temperature of a zone: in use, or the cause it
 # is not. See room_temp_state.
-ROOM_TEMP_STATES = ("active", "no_correction", "no_reading", "stale")
+ROOM_TEMP_STATES = ("active", "no_reading", "stale", "device")
 
-# How a heating zone corrects its regulation with a room temperature: not at
-# all, by a continuous shift of the setpoints (offset_mode setpoint), or by
-# calibrating the valve offset (auto_offset in offset_mode config or dbg2).
-CORRECTION_NONE = "none"
-CORRECTION_SHIFT = "continuous_shift"
-CORRECTION_CALIBRATION = "valve_calibration"
-CORRECTION_COORDINATOR = "coordinator_measure"
-CORRECTIONS = (
-    CORRECTION_NONE,
-    CORRECTION_SHIFT,
-    CORRECTION_CALIBRATION,
-    CORRECTION_COORDINATOR,
-)
-# The offset mode a zone takes when it leaves setpoint: the daemon default.
-OFFSET_MODE_DEFAULT = "config"
+# GET /api/install/zones owner: who runs the zone controller. The Home Assistant
+# thermometer is the room temperature source of a zone the coordinator owns, a
+# device of the room (measuring_device) the source of a zone a device owns.
+OWNER_COORDINATOR = "coordinator"
+OWNER_DEVICE = "device"
 
 # The daemon rejects a pair window longer than this with 400.
 PAIR_WINDOW_MAX_SEC = 600
@@ -145,11 +130,6 @@ class Zone:
     members: tuple[str, ...]
     measuring: str | None = None
     reporter: str | None = None
-    # GET /api/install/zones setpoint_offset_c: the correction of a zone in
-    # offset mode setpoint. The daemon reports the zone temperature and target
-    # on the corrected scale, corrected = wire + shift_c, and GET /api/nodes on
-    # the wire scale.
-    shift_c: float = 0.0
 
 
 @dataclass
@@ -163,8 +143,6 @@ class FreedoData:
     windows: dict[int, dict[str, Any]] = field(default_factory=dict)
     # GET /api/zones "declared"[].externalTemp, heating zones only.
     room_temps: dict[int, dict[str, Any]] = field(default_factory=dict)
-    # GET /api/zones "declared"[].autoOffset, heating zones only.
-    auto_offsets: dict[int, dict[str, Any]] = field(default_factory=dict)
     # GET /api/zones "declared"[].target: what the zone targets now.
     targets: dict[int, dict[str, Any]] = field(default_factory=dict)
     # GET /api/nodes: ValveView by short address.
@@ -250,7 +228,6 @@ def parse(
         for c in (circuits or {}).get("circuits") or []
         if c.get("heat_source")
     }
-    shifts = {n: float(row.get("setpoint_offset_c") or 0) for n, row in rows.items()}
     for z in zones.get("declared") or []:
         number = int(z["number"])
         data.zones[number] = Zone(
@@ -260,14 +237,11 @@ def parse(
             members=tuple(z.get("members") or ()),
             measuring=z.get("measuringDevice"),
             reporter=z.get("reporter"),
-            shift_c=shifts.get(number, 0.0),
         )
         if isinstance(z.get("window"), Mapping):
             data.windows[number] = dict(z["window"])
         if isinstance(z.get("externalTemp"), Mapping):
             data.room_temps[number] = dict(z["externalTemp"])
-        if isinstance(z.get("autoOffset"), Mapping):
-            data.auto_offsets[number] = dict(z["autoOffset"])
         if isinstance(z.get("target"), Mapping):
             data.targets[number] = dict(z["target"])
     for view in zones.get("demand") or []:
@@ -326,19 +300,18 @@ def node_firmware(data: FreedoData, short: str) -> str | None:
 
 
 def zone_current_temperature(data: FreedoData, zone: Zone) -> float | None:
-    """Tag 4060 of the zone report, else the first zone device with a 012d,
-    both on the corrected scale."""
+    """Tag 4060 of the zone report, else the first zone device with a 012d."""
     report = data.demand.get(zone.number)
     if report and report.get("UpdatedUnix"):
         temp = float(report["TempC"])
-        # A 40a0 or 4160 alone also sets UpdatedUnix, and TempC then reads
-        # 0 + shift: the demand view has no field that says 4060 is missing.
-        if round(temp - zone.shift_c, 2) != 0:
+        # A 40a0 or 4160 alone also sets UpdatedUnix, and TempC then reads 0:
+        # the demand view has no field that says 4060 is missing.
+        if round(temp, 2) != 0:
             return temp
     for node in _zone_nodes(data, zone):
         temp = _node_temperature(node)
         if temp is not None:
-            return round(temp + zone.shift_c, 2)
+            return temp
     return None
 
 
@@ -562,84 +535,22 @@ def zone_setting(data: FreedoData, zone: Zone, key: str) -> Any:
 
 
 def zone_offset_mode(data: FreedoData, zone: Zone) -> str | None:
-    """GET /api/install/zones offset_mode: config, dbg2 or setpoint."""
+    """GET /api/install/zones offset_mode: config or dbg2."""
     return (data.zone_settings.get(zone.number) or {}).get("offset_mode")
 
 
-def zone_auto_offset(data: FreedoData, zone: Zone) -> bool:
-    """GET /api/install/zones auto_offset: the daemon calibrates the correction
-    of the zone from an external room temperature, in mode config or dbg2."""
-    return bool((data.zone_settings.get(zone.number) or {}).get("auto_offset"))
+def zone_owner(data: FreedoData, zone: Zone) -> str | None:
+    """GET /api/install/zones owner: coordinator or device."""
+    return (data.zone_settings.get(zone.number) or {}).get("owner")
 
 
 def zone_owned(data: FreedoData, zone: Zone) -> bool:
-    """GET /api/install/zones owner coordinator: the daemon runs the zone
-    controller on the external room temperature and the valves follow it."""
-    return (data.zone_settings.get(zone.number) or {}).get("owner") == "coordinator"
-
-
-def zone_takes_reading(data: FreedoData, zone: Zone) -> bool:
-    """Whether the daemon accepts POST /api/zones/{n}/temperature for the zone:
-    offset_mode setpoint, auto_offset on, or the coordinator as the owner."""
-    return (
-        zone_offset_mode(data, zone) == OFFSET_MODE_SETPOINT
-        or zone_auto_offset(data, zone)
-        or zone_owned(data, zone)
-    )
-
-
-def zone_correction(data: FreedoData, zone: Zone) -> str | None:
-    """The correction method of the zone from its owner, offset_mode and
-    auto_offset, None when the daemon serves no offset mode for it."""
-    mode = zone_offset_mode(data, zone)
-    if mode not in OFFSET_MODES:
-        return None
-    if zone_owned(data, zone):
-        return CORRECTION_COORDINATOR
-    if zone_auto_offset(data, zone):
-        return CORRECTION_CALIBRATION
-    return CORRECTION_SHIFT if mode == OFFSET_MODE_SETPOINT else CORRECTION_NONE
-
-
-def correction_patch(
-    mode: str | None, auto: bool, method: str, owned: bool = False
-) -> dict[str, Any]:
-    """The PATCH /api/install/zones/{n} fields that move a zone from offset_mode
-    mode, auto_offset auto and owner coordinator (owned) to the correction
-    method, empty when it holds it. The daemon refuses offset_mode setpoint
-    while auto_offset is on, and auto_offset in mode setpoint, against the
-    values the request leaves. It also refuses owner coordinator together with
-    either, and either on an owned zone. So one request carries every field
-    that changes."""
-    fields: dict[str, Any] = {}
-    if method == CORRECTION_COORDINATOR:
-        if not owned:
-            fields["owner"] = "coordinator"
-            if auto:
-                fields["auto_offset"] = False
-            if mode == OFFSET_MODE_SETPOINT:
-                fields["offset_mode"] = OFFSET_MODE_DEFAULT
-        return fields
-    if owned:
-        fields["owner"] = "device"
-    if method == CORRECTION_SHIFT:
-        if auto:
-            fields["auto_offset"] = False
-        if mode != OFFSET_MODE_SETPOINT:
-            fields["offset_mode"] = OFFSET_MODE_SETPOINT
-    elif method == CORRECTION_CALIBRATION:
-        if mode == OFFSET_MODE_SETPOINT:
-            fields["offset_mode"] = OFFSET_MODE_DEFAULT
-        if not auto:
-            fields["auto_offset"] = True
-    elif method == CORRECTION_NONE:
-        if auto:
-            fields["auto_offset"] = False
-        if mode == OFFSET_MODE_SETPOINT:
-            fields["offset_mode"] = OFFSET_MODE_DEFAULT
-    else:
-        raise ValueError(f"unknown correction method {method!r}")
-    return fields
+    """GET /api/install/zones owner coordinator: the Home Assistant thermometer
+    is the room temperature source, and the daemon runs the zone controller on
+    the external room temperature and the valves follow it. Any other owner is
+    a device: the measuring device is the source, and the daemon refuses a
+    pushed reading (409)."""
+    return zone_owner(data, zone) == OWNER_COORDINATOR
 
 
 def device_zones(data: FreedoData) -> dict[str, int]:
@@ -672,20 +583,18 @@ def device_zones(data: FreedoData) -> dict[str, int]:
 
 def room_temp_state(data: FreedoData, zone: Zone) -> str | None:
     """"active" while the zone regulates on the external room temperature, else
-    the cause: the zone has no correction (the daemon refuses a reading then),
-    no reading came, or the reading is older than room_temp_max_age_sec. None
-    when the daemon does not serve the view or the offset mode. Modes config and
-    dbg2 take the reading too while auto_offset is on, and an owned zone always."""
+    the cause: a device owns the zone (the daemon refuses a reading then), no
+    reading came, or the reading is older than room_temp_max_age_sec. None when
+    the daemon does not serve the view or the zone row."""
     view = data.room_temps.get(zone.number)
     if view is None:
         return None
     if view.get("inUse"):
         return "active"
-    mode = zone_offset_mode(data, zone)
-    if mode is None:
+    if not data.zone_settings.get(zone.number):
         return None
-    if not zone_takes_reading(data, zone):
-        return "no_correction"
+    if not zone_owned(data, zone):
+        return "device"
     if view.get("tempC") is None:
         return "no_reading"
     return "stale" if view.get("stale") else None

@@ -189,7 +189,7 @@ class FreedoClient:
     async def patch_install_zone(self, zone: int, **fields: Any) -> dict[str, Any]:
         """Write fields of a zone row: early_start, open_window_detection,
         open_window_duration_sec, device_overlay_end, device_overlay_end_sec,
-        offset_mode, away_temperature_c."""
+        offset_mode, owner, away_temperature_c."""
         return await self._request("PATCH", f"/api/install/zones/{int(zone)}", fields)
 
     async def set_zone_measuring(self, zone: int, ref: str) -> dict[str, Any]:

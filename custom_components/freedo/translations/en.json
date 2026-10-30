@@ -53,17 +53,15 @@
       },
       "room": {
         "title": "Room {room}",
-        "description": "Submit saves this room and returns to the list of rooms. When you select a Home Assistant sensor as the temperature source and the room has no correction, freedo sets the correction Continuous shift.",
+        "description": "Submit saves this room and returns to the list of rooms.",
         "data": {
           "area": "Area",
           "temperature_source": "Temperature source",
-          "correction": "Room temperature correction",
           "windows": "Window and door sensors"
         },
         "data_description": {
           "area": "The room device moves to the area. Its valves and thermostats move too, unless you placed them in another area. You can also set the area on the device page.",
-          "temperature_source": "What measures the room temperature: a device of the room or a Home Assistant sensor. The list shows the devices of the room first, then the sensors of the area that the room has now, then the other sensors with their area. After you change the area, submit and open the room again to see the sensors of the new area first.",
-          "correction": "None: the valves regulate on their own sensor and freedo ignores the room sensor.\nContinuous shift: the valves regulate on their own sensor and freedo shifts the setpoints from the room sensor.\nValve calibration: freedo writes the valve offset from the room sensor, at most once per interval.\nCoordinator measures the room: freedo regulates the room on the room sensor and the valves follow its demand.",
+          "temperature_source": "What measures the room temperature: a device of the room or a Home Assistant sensor. With a sensor, freedo reads its measure and tells the valves how far to open, and the room falls back to the measuring device while the sensor is silent. The list shows the devices of the room first, then the sensors of the area that the room has now, then the other sensors with their area. After you change the area, submit and open the room again to see the sensors of the new area first.",
           "windows": "The heating of the room stops while one of these sensors is open. A sensor serves one room: a sensor that another room uses shows that room in square brackets, and it moves to this room."
         }
       },
@@ -162,9 +160,9 @@
         "name": "Temperature source state",
         "state": {
           "active": "In use",
-          "no_correction": "No correction",
           "no_reading": "No reading",
-          "stale": "Reading too old"
+          "stale": "Reading too old",
+          "device": "Device measures"
         }
       },
       "calibration": {
@@ -185,7 +183,6 @@
       "open_window_duration": { "name": "Window time" },
       "device_overlay_timer": { "name": "Change timer" },
       "away_temperature": { "name": "Away" },
-      "auto_offset_interval": { "name": "Calibration" },
       "flow_limit": { "name": "Flow limit {circuit}" },
       "boiler_max_power": { "name": "Max power" },
       "boiler_min_power": { "name": "Min power" },
@@ -212,17 +209,7 @@
         "name": "Offset mode",
         "state": {
           "config": "Valve configuration (full motor stroke)",
-          "dbg2": "Valve debug record",
-          "setpoint": "Setpoint shift"
-        }
-      },
-      "room_temperature_correction": {
-        "name": "Room temperature correction",
-        "state": {
-          "none": "None",
-          "continuous_shift": "Continuous shift",
-          "valve_calibration": "Valve calibration",
-          "coordinator_measure": "Coordinator measures the room"
+          "dbg2": "Valve debug record"
         }
       },
       "temperature_source": {
@@ -241,8 +228,7 @@
       "notification": { "name": "Change notification" },
       "child_lock": { "name": "Child lock" },
       "early_start": { "name": "Early start" },
-      "open_window_detection": { "name": "Open window detection" },
-      "auto_offset": { "name": "Valve calibration" }
+      "open_window_detection": { "name": "Open window detection" }
     }
   },
   "services": {
@@ -383,14 +369,6 @@
         "done": "Done"
       }
     },
-    "correction_method": {
-      "options": {
-        "none": "None",
-        "continuous_shift": "Continuous shift",
-        "valve_calibration": "Valve calibration",
-        "coordinator_measure": "Coordinator measures the room"
-      }
-    },
     "overlay_hvac_mode": {
       "options": {
         "heat": "Heat",
@@ -413,7 +391,7 @@
     },
     "room_sensor_ignored": {
       "title": "Room thermometers ignored",
-      "description": "freedo ignores the room temperature sensor of these rooms, because their Room temperature correction is None: {rooms}. Choose a correction on the page of the room in Configure, or select Temperature source a device of the room to stop sending the sensor."
+      "description": "freedo ignores the room temperature sensor of these rooms, because a device of the room measures them: {rooms}. Select the Home Assistant sensor as Temperature source on the page of the room in Configure, or select a device of the room to stop sending the sensor."
     }
   },
   "exceptions": {

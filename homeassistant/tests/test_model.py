@@ -8,12 +8,8 @@ import copy
 import pytest
 
 from model import (
-    CORRECTION_CALIBRATION,
-    CORRECTION_COORDINATOR,
-    CORRECTION_NONE,
-    CORRECTION_SHIFT,
+    OFFSET_MODES,
     boiler_energy,
-    correction_patch,
     device_zones,
     boiler_gas,
     boiler_unsupported,
@@ -34,14 +30,12 @@ from model import (
     room_temp_paused,
     room_temp_payload,
     room_temp_state,
-    zone_takes_reading,
     room_temp_zones,
     schedule_payload,
     schedule_programs,
     window_payload,
     window_zones,
     zone_boost,
-    zone_correction,
     zone_current_temperature,
     zone_demand_pct,
     zone_has_program,
@@ -52,6 +46,8 @@ from model import (
     zone_operation,
     zone_overlay_end,
     zone_overlay_rule,
+    zone_owned,
+    zone_owner,
     zone_program_temperature,
     zone_reported_setpoint,
     zone_target_source,
@@ -84,11 +80,8 @@ ZONES = {
                     "overlay": {"kind": "boost", "on": True, "setpointC": 25.0,
                                 "endsAt": "2026-01-01T00:30:00Z"}},
          "externalTemp": {"tempC": 21.4, "at": "2026-01-01T00:00:00Z", "ageSec": 120,
-                          "source": "Living thermometer", "stale": False, "inUse": True, "deviceC": 20.9, "wantedC": 0.4,
-                          "shiftC": 0.2, "offsetC": 0.0},
-         "autoOffset": {"enabled": False, "intervalSec": 86400, "lastWriteAt": None,
-                        "nextAt": None, "filteredDiffC": 0.0, "sampleSpanSec": 0,
-                        "stopReason": None}},
+                          "source": "Living thermometer", "stale": False, "inUse": True, "deviceC": 20.9,
+                          "refused": None}},
         {"number": 2, "name": "Bedroom", "kind": "heating", "members": ["dddd"],
          "window": {"open": False, "source": None, "since": None, "deadline": None,
                     "undelivered": []},
@@ -97,11 +90,7 @@ ZONES = {
                     "overlay": None},
          "externalTemp": {"tempC": None, "at": None, "ageSec": None, "source": None,
                           "stale": False,
-                          "inUse": False, "deviceC": None, "wantedC": None, "shiftC": 0.0,
-                          "offsetC": 0.0},
-         "autoOffset": {"enabled": False, "intervalSec": 43200, "lastWriteAt": None,
-                        "nextAt": None, "filteredDiffC": 0.0, "sampleSpanSec": 0,
-                        "stopReason": "the filtered difference did not shrink after the last write"}},
+                          "inUse": False, "deviceC": None, "refused": None}},
         {"number": 9, "name": "DHW", "kind": "hotwater", "members": ["cccc"],
          "target": {"targetC": None, "source": "overlay", "programC": 55.0,
                     "programOff": False, "hasProgram": True, "boost": False, "known": True,
@@ -137,29 +126,27 @@ NODES = [
 BOILER = {"Present": True, "FlowC": 45.0, "DHWC": 48.0,
           "flowLimit": {"outdoor": None, "circuits": [], "defaultC": 48}}
 HOME = {"away": True, "scheduled": {"1": 20}}
-# GET /api/install/zones: zone 1 corrects its temperature by +0.5 C (mode setpoint).
+# GET /api/install/zones: the coordinator owns zone 1, a device owns zone 2.
 INSTALL_ZONES = {
     "rev": 7,
     "zones": [
         {"number": 1, "name": "Living", "kind": "heating", "members": ["VA0000000001"],
          "circuit": 1, "reporter": "VA0000000001", "measuring_device": None,
-         "offset_mode": "setpoint", "setpoint_offset_c": 0.5,
-         "auto_offset": False, "auto_offset_interval_sec": 86400,
+         "offset_mode": "config", "owner": "coordinator",
          "open_window_detection": True, "open_window_duration_sec": 900,
          "early_start": False, "device_overlay_end": "until_next",
          "device_overlay_end_sec": None, "away_temperature_c": 21.5,
          "ha_area": None},
         {"number": 2, "name": "Bedroom", "kind": "heating", "members": ["VA0000000002"],
          "circuit": 1, "reporter": None, "measuring_device": None,
-         "offset_mode": "config", "setpoint_offset_c": None,
-         "auto_offset": False, "auto_offset_interval_sec": 43200,
+         "offset_mode": "config", "owner": "device",
          "open_window_detection": False, "open_window_duration_sec": 600,
          "early_start": True, "device_overlay_end": "timer",
          "device_overlay_end_sec": 1800, "away_temperature_c": None,
          "ha_area": None},
         {"number": 9, "name": "DHW", "kind": "hotwater", "members": ["RU0000000001"],
          "circuit": None, "reporter": None, "measuring_device": None,
-         "offset_mode": None, "setpoint_offset_c": None,
+         "offset_mode": None,
          "open_window_detection": True, "open_window_duration_sec": 900,
          "early_start": False, "device_overlay_end": None,
          "device_overlay_end_sec": None, "away_temperature_c": None,
@@ -364,23 +351,16 @@ def test_zone_temperature_waits_for_4060():
     zones = _zones_with(1, TempC=0, UpdatedUnix=1700000000)
     d = parse(HEALTH, zones, NODES, BOILER, HOME)
     assert zone_current_temperature(d, d.zones[1]) == 20.7
-    # On the corrected scale the daemon adds the shift to the missing 0.
-    zones = _zones_with(1, TempC=0.5, UpdatedUnix=1700000000)
-    d = parse(HEALTH, zones, NODES, BOILER, HOME, INSTALL_ZONES)
-    assert zone_current_temperature(d, d.zones[1]) == 21.2
-    # A reported 4060 comes corrected from the daemon.
+    # A reported 4060 shows as it is.
     zones = _zones_with(1, TempC=21.0, UpdatedUnix=1700000000)
     d = parse(HEALTH, zones, NODES, BOILER, HOME, INSTALL_ZONES)
     assert zone_current_temperature(d, d.zones[1]) == 21.0
 
 
-def test_member_temperature_corrected_scale():
-    zones = _zones_with(1, TempC=0.5, UpdatedUnix=0)
+def test_member_temperature():
+    zones = _zones_with(1, TempC=0, UpdatedUnix=0)
     d = parse(HEALTH, zones, NODES, BOILER, HOME, INSTALL_ZONES)
-    assert d.zones[1].shift_c == 0.5
-    assert d.zones[2].shift_c == 0.0
-    # bbbb reports 20.7 on the wire scale.
-    assert zone_current_temperature(d, d.zones[1]) == 21.2
+    assert zone_current_temperature(d, d.zones[1]) == 20.7
     assert zone_current_temperature(d, d.zones[2]) == 18.2
 
 
@@ -583,8 +563,8 @@ def test_valve_device_values():
 def test_zone_settings_rows():
     d = parse(HEALTH, ZONES, NODES, BOILER, HOME, INSTALL_ZONES)
     assert sorted(d.zone_settings) == [1, 2, 9]
-    assert d.zone_settings[1]["offset_mode"] == "setpoint"
-    assert zone_offset_mode(d, d.zones[1]) == "setpoint"
+    assert d.zone_settings[1]["owner"] == "coordinator"
+    assert zone_offset_mode(d, d.zones[1]) == "config"
     assert zone_offset_mode(d, d.zones[2]) == "config"
     # No installation read (503): no row.
     assert zone_offset_mode(data(), d.zones[1]) is None
@@ -601,8 +581,8 @@ def test_room_temp_state():
     d = parse(HEALTH, ZONES, NODES, BOILER, HOME, INSTALL_ZONES)
     assert sorted(d.room_temps) == [1, 2]
     assert room_temp_state(d, d.zones[1]) == "active"
-    # Zone 2 is in mode config: the daemon takes no reading.
-    assert room_temp_state(d, d.zones[2]) == "no_correction"
+    # A device owns zone 2: the daemon takes no reading.
+    assert room_temp_state(d, d.zones[2]) == "device"
     # The hot water zone has no view.
     assert room_temp_state(d, d.zones[9]) is None
 
@@ -611,13 +591,11 @@ def test_room_temp_state():
     stale = _room_temp(inUse=False, stale=True, ageSec=1900)
     assert room_temp_state(stale, d.zones[1]) == "stale"
     assert room_temp_state(_room_temp(inUse=False), d.zones[1]) is None
-    # An owned zone takes the reading with no correction of its own.
+    # The coordinator owns zone 2: it takes the reading.
     owned = copy.deepcopy(INSTALL_ZONES)
     owned["zones"][1]["owner"] = "coordinator"
     o = parse(HEALTH, ZONES, NODES, BOILER, HOME, owned)
-    assert zone_takes_reading(o, o.zones[2])
     assert room_temp_state(o, o.zones[2]) == "no_reading"
-    assert zone_correction(o, o.zones[2]) == CORRECTION_COORDINATOR
     # A fresh reading on the owned zone is in use.
     fresh = copy.deepcopy(ZONES)
     fresh["declared"][1]["externalTemp"].update(
@@ -625,14 +603,8 @@ def test_room_temp_state():
     )
     f = parse(HEALTH, fresh, NODES, BOILER, HOME, owned)
     assert room_temp_state(f, f.zones[2]) == "active"
-    # No installation read: the mode is unknown, and so is the cause.
+    # No installation read: the owner is unknown, and so is the cause.
     assert room_temp_state(parse(HEALTH, ZONES, NODES, BOILER, HOME), d.zones[2]) is None
-    # Mode config with auto_offset on takes the reading: the cause is not the
-    # mode, and no reading came yet.
-    auto = copy.deepcopy(INSTALL_ZONES)
-    next(r for r in auto["zones"] if r["number"] == 2)["auto_offset"] = True
-    d2 = parse(HEALTH, ZONES, NODES, BOILER, HOME, auto)
-    assert room_temp_state(d2, d2.zones[2]) == "no_reading"
 
 
 WEEK = [
@@ -778,7 +750,6 @@ def test_device_readings():
     build = [dict(NODES[0])]
     build[0]["Telemetry"] = {"fw_build_hash": "73b9b52"}
     assert node_firmware(parse(HEALTH, ZONES, build, BOILER, HOME), "aaaa") == "73b9b52"
-    # The wire scale: no zone correction.
     assert node_temperature(d, "aaaa") == 20.9
     assert node_temperature(d, "eeee") is None
     assert node_temperature(d, "zzzz") is None
@@ -875,95 +846,21 @@ def test_install_settings():
     assert data().settings == {}
 
 
-@pytest.mark.parametrize(
-    ("mode", "auto", "want"),
-    [
-        ("setpoint", False, CORRECTION_SHIFT),
-        ("config", False, CORRECTION_NONE),
-        ("dbg2", False, CORRECTION_NONE),
-        ("config", True, CORRECTION_CALIBRATION),
-        ("dbg2", True, CORRECTION_CALIBRATION),
-        (None, False, None),
-    ],
-)
-def test_zone_correction(mode, auto, want):
+def test_zone_owner():
     install = copy.deepcopy(INSTALL_ZONES)
-    install["zones"][1].update(offset_mode=mode, auto_offset=auto)
     d = parse(HEALTH, ZONES, NODES, BOILER, HOME, install)
-    assert zone_correction(d, d.zones[2]) == want
+    assert zone_owner(d, d.zones[1]) == "coordinator"
+    assert zone_owned(d, d.zones[1])
+    assert zone_owner(d, d.zones[2]) == "device"
+    assert not zone_owned(d, d.zones[2])
+    # No installation read (503): no row, no owner.
+    bare = parse(HEALTH, ZONES, NODES, BOILER, HOME)
+    assert zone_owner(bare, bare.zones[1]) is None
+    assert not zone_owned(bare, bare.zones[1])
 
 
-def test_zone_correction_coordinator():
-    install = copy.deepcopy(INSTALL_ZONES)
-    install["zones"][1].update(offset_mode="config", auto_offset=False, owner="coordinator")
-    d = parse(HEALTH, ZONES, NODES, BOILER, HOME, install)
-    assert zone_correction(d, d.zones[2]) == CORRECTION_COORDINATOR
-    install["zones"][1]["owner"] = "device"
-    d = parse(HEALTH, ZONES, NODES, BOILER, HOME, install)
-    assert zone_correction(d, d.zones[2]) == CORRECTION_NONE
-
-
-@pytest.mark.parametrize(
-    ("mode", "auto", "owned", "method", "want"),
-    [
-        ("config", False, False, CORRECTION_COORDINATOR, {"owner": "coordinator"}),
-        ("dbg2", False, False, CORRECTION_COORDINATOR, {"owner": "coordinator"}),
-        (
-            "setpoint", False, False, CORRECTION_COORDINATOR,
-            {"owner": "coordinator", "offset_mode": "config"},
-        ),
-        (
-            "config", True, False, CORRECTION_COORDINATOR,
-            {"owner": "coordinator", "auto_offset": False},
-        ),
-        ("config", False, True, CORRECTION_COORDINATOR, {}),
-        ("config", False, True, CORRECTION_NONE, {"owner": "device"}),
-        (
-            "config", False, True, CORRECTION_SHIFT,
-            {"owner": "device", "offset_mode": "setpoint"},
-        ),
-        (
-            "config", False, True, CORRECTION_CALIBRATION,
-            {"owner": "device", "auto_offset": True},
-        ),
-    ],
-)
-def test_correction_patch_coordinator(mode, auto, owned, method, want):
-    assert correction_patch(mode, auto, method, owned) == want
-
-
-def test_correction_patch_leaves_no_state_the_daemon_refuses():
-    # The daemon refuses offset_mode setpoint with auto_offset on, against the
-    # values a request leaves. Every move ends on the method and passes.
-    methods = (CORRECTION_NONE, CORRECTION_SHIFT, CORRECTION_CALIBRATION, CORRECTION_COORDINATOR)
-    for mode in ("config", "dbg2", "setpoint"):
-        for auto in (False, True):
-            if mode == "setpoint" and auto:
-                continue
-            for owned in (False, True):
-                if owned and (auto or mode == "setpoint"):
-                    continue
-                for method in methods:
-                    check(mode, auto, owned, method)
-    assert correction_patch("setpoint", False, CORRECTION_SHIFT) == {}
-    with pytest.raises(ValueError):
-        correction_patch("config", False, "cloud")
-
-
-def check(mode, auto, owned, method):
-    fields = correction_patch(mode, auto, method, owned)
-    new_mode = fields.get("offset_mode", mode)
-    new_auto = fields.get("auto_offset", auto)
-    new_owned = fields.get("owner", "coordinator" if owned else "device") == "coordinator"
-    assert not (new_mode == "setpoint" and new_auto), (mode, auto, owned, method)
-    assert not (new_owned and (new_auto or new_mode == "setpoint")), (mode, auto, owned, method)
-    if new_owned:
-        reached = CORRECTION_COORDINATOR
-    elif new_auto:
-        reached = CORRECTION_CALIBRATION
-    else:
-        reached = CORRECTION_SHIFT if new_mode == "setpoint" else CORRECTION_NONE
-    assert reached == method, (mode, auto, owned, method)
+def test_offset_modes():
+    assert OFFSET_MODES == ("config", "dbg2")
 
 
 def test_device_zones():

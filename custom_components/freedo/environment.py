@@ -6,10 +6,10 @@
   so the periodic push also covers a daemon restart.
 - The temperature sensor of a heating zone goes to POST /api/zones/{n}/temperature
   on every state change and every ROOM_TEMP_PUSH_INTERVAL. The daemon keeps the
-  reading in memory only and ends the correction when the reading is older than
-  room_temp_max_age_sec, so the periodic push also covers a daemon restart. The
-  push names the sensor as its source. A failed push is logged once until a push
-  succeeds. See RoomTemps.
+  reading in memory only and falls back to the measuring device when the
+  reading is older than room_temp_max_age_sec, so the periodic push also covers
+  a daemon restart. The push names the sensor as its source. A failed push is
+  logged once until a push succeeds. See RoomTemps.
 - The window sensors of a zone go to POST /api/zones/{n}/window. See Windows.
 
 Unavailable or unknown states are never pushed.

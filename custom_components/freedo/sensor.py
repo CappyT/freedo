@@ -56,8 +56,7 @@ from .model import (
     node_temperature,
     room_temp_state,
     zone_demand_pct,
-    zone_correction,
-    zone_offset_mode,
+    zone_owner,
 )
 
 
@@ -538,8 +537,8 @@ class FirmwareSensor(FreedoNodeEntity, SensorEntity):
 
 
 class DeviceTemperatureSensor(FreedoNodeEntity, SensorEntity):
-    """The temperature one device reads (tag 012d), on the wire scale: without
-    the correction of the zone. The climate entity shows the zone temperature."""
+    """The temperature one device reads (tag 012d). The climate entity shows the
+    zone temperature."""
 
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
@@ -593,11 +592,10 @@ class ZoneDemandSensor(FreedoEntity, SensorEntity):
 class ZoneRoomTemperatureSensor(FreedoEntity, SensorEntity):
     """GET /api/zones declared[].externalTemp: whether the zone regulates on the
     room temperature of an external sensor, and the cause when it does not.
-    The state is a short cause; the attributes give the detail: the correction
-    method and the view of the daemon, in degrees Celsius: the reading
-    (source, temperature_c, age_sec), the temperature the zone reports on the wire scale
-    (device_temperature_c), the shift applied to the setpoints (shift_c) and
-    the filtered one it moves toward (wanted_shift_c)."""
+    The state is a short cause; the attributes give the detail: the owner of the
+    zone (coordinator or device) and the view of the daemon, in degrees Celsius:
+    the reading (source, temperature_c, age_sec) and the temperature of the
+    measuring device (device_temperature_c)."""
 
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = list(ROOM_TEMP_STATES)
@@ -628,12 +626,9 @@ class ZoneRoomTemperatureSensor(FreedoEntity, SensorEntity):
         zone = self._zone
         view = data.room_temps.get(self._number) or {}
         return {
-            "correction": zone_correction(data, zone) if zone else None,
-            "offset_mode": zone_offset_mode(data, zone) if zone else None,
+            "owner": zone_owner(data, zone) if zone else None,
             "source": view.get("source"),
             "temperature_c": view.get("tempC"),
             "age_sec": view.get("ageSec"),
             "device_temperature_c": view.get("deviceC"),
-            "shift_c": view.get("shiftC"),
-            "wanted_shift_c": view.get("wantedC"),
         }

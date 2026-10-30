@@ -53,17 +53,15 @@
       },
       "room": {
         "title": "Raum {room}",
-        "description": "Absenden speichert diesen Raum und kehrt zur Liste der Räume zurück. Wenn du einen Home Assistant-Sensor als Temperaturquelle auswählst und der Raum keine Korrektur hat, setzt freedo die Korrektur Kontinuierliche Verschiebung.",
+        "description": "Absenden speichert diesen Raum und kehrt zur Liste der Räume zurück.",
         "data": {
           "area": "Bereich",
           "temperature_source": "Temperaturquelle",
-          "correction": "Raumtemperaturkorrektur",
           "windows": "Fenster- und Türsensoren"
         },
         "data_description": {
           "area": "Das Gerät des Raums kommt in den Bereich. Seine Ventile und Thermostate kommen auch dorthin, außer du hast sie in einen anderen Bereich gesetzt. Du kannst den Bereich auch auf der Geräteseite setzen.",
-          "temperature_source": "Was die Temperatur des Raums misst: ein Gerät des Raums oder ein Home Assistant-Sensor. Die Liste zeigt zuerst die Geräte des Raums, dann die Sensoren des Bereichs, den der Raum jetzt hat, dann die anderen Sensoren mit ihrem Bereich. Nach einer Änderung des Bereichs: absenden und den Raum erneut öffnen, um die Sensoren des neuen Bereichs zuerst zu sehen.",
-          "correction": "Keine: Die Ventile regeln nach ihrem eigenen Sensor, und freedo ignoriert den Raumsensor.\nKontinuierliche Verschiebung: Die Ventile regeln nach ihrem eigenen Sensor, und freedo verschiebt die Sollwerte nach dem Raumsensor.\nVentilkalibrierung: freedo schreibt den Ventiloffset nach dem Raumsensor, höchstens einmal pro Intervall.\nKoordinator misst den Raum: freedo regelt den Raum nach dem Raumsensor, und die Ventile folgen seinem Bedarf.",
+          "temperature_source": "Was die Temperatur des Raums misst: ein Gerät des Raums oder ein Home Assistant-Sensor. Mit einem Sensor liest freedo dessen Messwert und sagt den Ventilen, wie weit sie öffnen, und der Raum fällt auf das Messgerät zurück, solange der Sensor schweigt. Die Liste zeigt zuerst die Geräte des Raums, dann die Sensoren des Bereichs, den der Raum jetzt hat, dann die anderen Sensoren mit ihrem Bereich. Nach einer Änderung des Bereichs: absenden und den Raum erneut öffnen, um die Sensoren des neuen Bereichs zuerst zu sehen.",
           "windows": "Die Heizung des Raums stoppt, solange einer dieser Sensoren offen ist. Ein Sensor dient einem Raum: Ein Sensor, den ein anderer Raum verwendet, zeigt diesen Raum in eckigen Klammern und wechselt zu diesem Raum."
         }
       },
@@ -212,9 +210,9 @@
         "name": "Status Temperaturquelle",
         "state": {
           "active": "In Verwendung",
-          "no_correction": "Keine Korrektur",
           "no_reading": "Kein Messwert",
-          "stale": "Messwert zu alt"
+          "stale": "Messwert zu alt",
+          "device": "Gerät misst"
         }
       },
       "calibration": {
@@ -244,9 +242,6 @@
       },
       "away_temperature": {
         "name": "Abwesend"
-      },
-      "auto_offset_interval": {
-        "name": "Kalibrierung"
       },
       "flow_limit": {
         "name": "Vorlaufgrenze {circuit}"
@@ -284,17 +279,7 @@
         "name": "Offset-Modus",
         "state": {
           "config": "Ventilkonfiguration (voller Motorhub)",
-          "dbg2": "Debug-Datensatz des Ventils",
-          "setpoint": "Sollwertverschiebung"
-        }
-      },
-      "room_temperature_correction": {
-        "name": "Raumtemperaturkorrektur",
-        "state": {
-          "none": "Keine",
-          "continuous_shift": "Kontinuierliche Verschiebung",
-          "valve_calibration": "Ventilkalibrierung",
-          "coordinator_measure": "Koordinator misst den Raum"
+          "dbg2": "Debug-Datensatz des Ventils"
         }
       },
       "temperature_source": {
@@ -331,9 +316,6 @@
       },
       "open_window_detection": {
         "name": "Fenster-offen-Erkennung"
-      },
-      "auto_offset": {
-        "name": "Ventilkalibrierung"
       }
     }
   },
@@ -475,14 +457,6 @@
         "done": "Fertig"
       }
     },
-    "correction_method": {
-      "options": {
-        "none": "Keine",
-        "continuous_shift": "Kontinuierliche Verschiebung",
-        "valve_calibration": "Ventilkalibrierung",
-        "coordinator_measure": "Koordinator misst den Raum"
-      }
-    },
     "overlay_hvac_mode": {
       "options": {
         "heat": "Heizen",
@@ -505,7 +479,7 @@
     },
     "room_sensor_ignored": {
       "title": "Raumthermometer ignoriert",
-      "description": "freedo ignoriert den Raumtemperatursensor dieser Räume, weil ihre Raumtemperaturkorrektur Keine ist: {rooms}. Wähle eine Korrektur auf der Seite des Raums unter Konfigurieren, oder wähle als Temperaturquelle ein Gerät des Raums, damit der Sensor nicht mehr gesendet wird."
+      "description": "freedo ignoriert den Raumtemperatursensor dieser Räume, weil ein Gerät des Raums sie misst: {rooms}. Wähle den Home Assistant-Sensor auf der Seite des Raums unter Konfigurieren als Temperaturquelle, oder wähle ein Gerät des Raums, damit der Sensor nicht mehr gesendet wird."
     }
   },
   "exceptions": {

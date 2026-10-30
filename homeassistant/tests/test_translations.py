@@ -96,9 +96,7 @@ ROOM_KEYS = [
     ("options", "step", "room"),
     ("options", "step", "outdoor"),
     ("options", "error", "write_failed"),
-    ("selector", "correction_method"),
     ("selector", "room_choice"),
-    ("entity", "select", "room_temperature_correction"),
     ("entity", "select", "temperature_source"),
     ("issues", "rooms_no_area"),
     ("issues", "room_sensor_ignored"),
@@ -132,21 +130,14 @@ def test_room_texts_name_rooms_and_freedo(language):
             assert ZONE_WORD[language].lower() not in text.lower(), (path, text)
     # The repair issue points to the branch Rooms of Configure.
     assert ROOMS_PATH[language] in tree["issues"]["rooms_no_area"]["description"]
-    # One name for the temperature source and one for the correction, in the
-    # page of a room and on the select entities.
+    # One name for the temperature source, in the page of a room and on the
+    # select entity.
     room = tree["options"]["step"]["room"]
     select = tree["entity"]["select"]
     assert room["data"]["temperature_source"] == select["temperature_source"]["name"]
-    assert room["data"]["correction"] == select["room_temperature_correction"]["name"]
-    # The help text of the correction names the four methods, as the options
-    # of the select call them.
-    for option in tree["selector"]["correction_method"]["options"].values():
-        assert option in room["data_description"]["correction"]
-    # The repair issue about an ignored room sensor names the same two fields.
+    # The repair issue about an ignored room sensor names the same field.
     issue = tree["issues"]["room_sensor_ignored"]["description"]
-    assert select["room_temperature_correction"]["name"] in issue
     assert select["temperature_source"]["name"] in issue
-    assert tree["selector"]["correction_method"]["options"]["none"] in issue
 
 
 @pytest.mark.parametrize("language", ("en", *LANGUAGES))

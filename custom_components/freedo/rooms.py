@@ -13,17 +13,18 @@ device page both set that area; the integration reads it at each poll.
   its translated name.
 - The heating zones without an area raise one repair issue per entry, which
   lists them and which the user can ignore.
-- The heating zones that map a room sensor, with its pushes running, and have
-  no correction raise a second repair issue per entry: the daemon refuses
-  their readings, so the sensor changes nothing. The issue lists the rooms and
-  follows each poll and each change of the sensor mapping.
+- The heating zones that map a room sensor, with its pushes running, and show
+  a refused push raise a second repair issue per entry: a device owns the
+  zone, so the daemon refuses the readings and the sensor changes nothing. The
+  issue lists the rooms and follows each poll and each change of the sensor
+  mapping.
 - The area goes to the daemon as the display field ha_area of the zone row, on a
   daemon that serves it. The stored value is also the previous area of the zone
   after a restart.
-- The temperature source of a heating zone is a device of the room or a Home
-  Assistant sensor. The options step of a room and the select Temperature
-  source both read it with current_source, list it with source_choices and
-  write it with async_set_source.
+- The temperature source of a heating zone is a device of the room (owner
+  device) or a Home Assistant sensor (owner coordinator). The options step of
+  a room and the select Temperature source both read it with current_source,
+  list it with source_choices and write it with async_set_source.
 """
 
 from __future__ import annotations
@@ -47,24 +48,19 @@ from homeassistant.util import dt as dt_util
 
 from .api import FreedoError
 from .const import CONF_ROOM_TEMP_PAUSED, CONF_ROOM_TEMPS, DOMAIN
-from .coordinator import FreedoConfigEntry, FreedoCoordinator
+from .coordinator import FreedoConfigEntry, FreedoCoordinator, FreedoRuntime
 from .model import (
-    CORRECTION_NONE,
-    CORRECTION_SHIFT,
     KIND_HEATING,
+    OWNER_COORDINATOR,
+    OWNER_DEVICE,
     FreedoData,
     Zone,
-    correction_patch,
     device_option_label,
     device_zones,
     room_temp_paused,
     room_temp_zones,
-    zone_auto_offset,
-    zone_correction,
     zone_measuring_candidates,
-    zone_offset_mode,
     zone_owned,
-    zone_takes_reading,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -106,8 +102,8 @@ def sensor_issue_id(entry_id: str) -> str:
 
 def ignored_sensor_rooms(entry: FreedoConfigEntry, data: FreedoData) -> list[str]:
     """The names of the heating rooms that map a sensor, with its pushes not
-    paused, and have the correction None: the daemon refuses the readings. A
-    room whose correction the daemon does not serve is left out."""
+    paused, and that a device owns: the daemon refuses the readings and shows
+    the last refused push as externalTemp.refused."""
     mapped = room_temp_zones(entry.options.get(CONF_ROOM_TEMPS) or {})
     paused = room_temp_paused(entry.options.get(CONF_ROOM_TEMP_PAUSED) or [])
     return [
@@ -116,7 +112,8 @@ def ignored_sensor_rooms(entry: FreedoConfigEntry, data: FreedoData) -> list[str
         if zone.kind == KIND_HEATING
         and zone.number in mapped
         and zone.number not in paused
-        and zone_correction(data, zone) == CORRECTION_NONE
+        and not zone_owned(data, zone)
+        and (data.room_temps.get(zone.number) or {}).get("refused")
     ]
 
 
@@ -445,13 +442,21 @@ def current_source(
     entry: FreedoConfigEntry, data: FreedoData, zone: Zone
 ) -> tuple[str, str] | None:
     """The source the zone regulates on, as (kind, target): the mapped sensor
-    while its pushes are not paused and the zone takes the reading, else the
+    while its pushes are not paused and the coordinator owns the zone, else the
     device the zone measures on."""
     mapped = room_temp_zones(entry.options.get(CONF_ROOM_TEMPS) or {}).get(zone.number)
     paused = room_temp_paused(entry.options.get(CONF_ROOM_TEMP_PAUSED) or [])
-    if mapped and zone.number not in paused and zone_takes_reading(data, zone):
+    if mapped and zone.number not in paused and zone_owned(data, zone):
         return (SOURCE_SENSOR, mapped)
     return (SOURCE_DEVICE, zone.measuring) if zone.measuring else None
+
+
+async def _write_owner(runtime: FreedoRuntime, number: int, owner: str) -> None:
+    """PATCH the owner of zone number and keep the row the daemon answers."""
+    result = await runtime.client.patch_install_zone(number, owner=owner)
+    row = result.get("zone") if isinstance(result, Mapping) else None
+    if isinstance(row, Mapping):
+        runtime.coordinator.data.zone_settings[number] = dict(row)
 
 
 async def async_set_source(
@@ -460,15 +465,16 @@ async def async_set_source(
     """Make a device of the room or a Home Assistant sensor the temperature
     source of zone number. It raises FreedoError when the daemon refuses.
 
-    A sensor is mapped to the zone in the options, its pushes resume and its
-    reading goes out at once. A zone that takes no reading gets the continuous
-    shift, because the daemon refuses a reading (409) there; an owned zone takes
-    it as it is.
-
     A device becomes the measuring device of the zone (PUT
-    /api/install/zones/{n}/measuring). When a sensor is mapped, its pushes
-    pause and the zone reading is cleared, so the daemon returns to the manual
-    correction. The correction does not change."""
+    /api/install/zones/{n}/measuring), and a zone the coordinator owns goes back
+    to its devices (owner device), because the daemon refuses a pushed reading
+    there (409). When a sensor is mapped, its pushes pause and the zone reading
+    is cleared.
+
+    A sensor is mapped to the zone in the options, its pushes resume and its
+    reading goes out at once. The coordinator becomes the owner of the zone
+    (owner coordinator). The measuring device stays: the daemon regulates on it
+    while the reading is missing or stale."""
     runtime = entry.runtime_data
     client = runtime.client
     data = runtime.coordinator.data
@@ -494,6 +500,8 @@ async def async_set_source(
 
     if kind == SOURCE_DEVICE:
         await client.set_zone_measuring(number, target)
+        if zone_owned(data, zone):
+            await _write_owner(runtime, number, OWNER_DEVICE)
         if room_temp_zones(entry.options.get(CONF_ROOM_TEMPS) or {}).get(number):
             # The lock keeps a push that started earlier from landing after
             # the clear.
@@ -501,14 +509,8 @@ async def async_set_source(
                 save(paused=True)
                 await client.clear_room_temp(number)
         return
-    if zone_correction(data, zone) == CORRECTION_NONE and not zone_owned(data, zone):
-        fields = correction_patch(
-            zone_offset_mode(data, zone), zone_auto_offset(data, zone), CORRECTION_SHIFT
-        )
-        result = await client.patch_install_zone(number, **fields)
-        row = result.get("zone") if isinstance(result, Mapping) else None
-        if isinstance(row, Mapping):
-            data.zone_settings[number] = dict(row)
+    if not zone_owned(data, zone):
+        await _write_owner(runtime, number, OWNER_COORDINATOR)
     save(paused=False, sensor=target)
     if runtime.room_temps is not None:
         runtime.room_temps.async_remap()

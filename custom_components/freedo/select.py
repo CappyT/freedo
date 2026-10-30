@@ -1,7 +1,7 @@
 """Display orientation of each valve (d/config tag 0149). End rule of a change
-made on a device, room temperature correction and offset mode, of each heating
-zone. Temperature source: a device of the room or a Home Assistant sensor that
-measures the room temperature of a heating zone. Active program preset of the
+made on a device and offset mode of each heating zone. Temperature source: a
+device of the room or a Home Assistant sensor that measures the room
+temperature of a heating zone. Active program preset of the
 daemon: the home and away program of every zone."""
 
 from __future__ import annotations
@@ -14,19 +14,13 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from .coordinator import FreedoConfigEntry, FreedoCoordinator
 from .entity import FreedoDisplayEntity, FreedoEntity, FreedoZoneSettingEntity, call_api
 from .model import (
-    CORRECTIONS,
     KIND_VALVE,
     OFFSET_MODES,
     ORIENTATIONS,
     OVERLAY_END_DEFAULT_SEC,
     OVERLAY_END_RULES,
     Zone,
-    correction_patch,
     in_zone,
-    zone_auto_offset,
-    zone_correction,
-    zone_offset_mode,
-    zone_owned,
     zone_setting,
 )
 from .rooms import async_set_source, current_source, source_choices, zone_area
@@ -54,7 +48,6 @@ async def async_setup_entry(
     for zone in coordinator.data.heating_zones():
         if zone_setting(coordinator.data, zone, "offset_mode") in OFFSET_MODES:
             entities.append(ZoneOffsetModeSelect(coordinator, zone))
-            entities.append(RoomTemperatureCorrectionSelect(coordinator, zone))
         entities.append(ZoneTemperatureSourceSelect(coordinator, zone))
     async_add_entities(entities)
 
@@ -140,18 +133,13 @@ class DeviceOverlayEndSelect(FreedoZoneSettingEntity, SelectEntity):
 
 
 class ZoneOffsetModeSelect(FreedoZoneSettingEntity, SelectEntity):
-    """How the temperature correction of the zone reaches it (offset_mode).
-    config writes the whole d/config document, and a valve homes its motor, a
-    full stroke, on each change of the offset. dbg2 writes one record and the
-    valve does not home. setpoint shifts the setpoints in the daemon and writes
-    nothing to the device. Leaving setpoint drops the correction of the daemon
-    and rewrites the zone. The room temperature sensors of the options need
-    setpoint. The change moves the temperatures of the zone, so it asks for a
-    new poll."""
+    """How the manual correction of the zone (the Offset number) reaches the
+    valve (offset_mode). config writes the whole d/config document, and a valve
+    homes its motor, a full stroke, on each change of the offset. dbg2 writes
+    one record and the valve does not home. The change moves the temperatures
+    of the zone, so it asks for a new poll."""
 
     _attr_translation_key = "offset_mode"
-    # Select Room temperature correction replaces it for the user. It stays for
-    # the automations that use it.
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_entity_registry_enabled_default = False
     _attr_options = list(OFFSET_MODES)
@@ -167,49 +155,6 @@ class ZoneOffsetModeSelect(FreedoZoneSettingEntity, SelectEntity):
     async def async_select_option(self, option: str) -> None:
         await self._write(offset_mode=option)
         await self.coordinator.async_request_refresh()
-
-
-class RoomTemperatureCorrectionSelect(FreedoZoneSettingEntity, SelectEntity):
-    """How the zone corrects its regulation with the room temperature: none,
-    a continuous shift of the setpoints (offset_mode setpoint), or a
-    calibration of the valve offset (auto_offset on, offset_mode config), or
-    the coordinator as the owner of the zone (owner coordinator). It
-    replaces, for the user, the pair select Temperature offset mode and switch
-    Automatic correction, which exclude each other. One PATCH carries both
-    fields, which the daemon checks against the values the request leaves, so
-    the switch never meets its refusal. The change moves the temperatures of
-    the zone, so it asks for a new poll."""
-
-    _attr_translation_key = "room_temperature_correction"
-    _attr_entity_category = EntityCategory.CONFIG
-    _attr_options = list(CORRECTIONS)
-
-    def __init__(self, coordinator: FreedoCoordinator, zone: Zone) -> None:
-        super().__init__(coordinator, zone, "room_temperature_correction")
-
-    @property
-    def _zone(self) -> Zone | None:
-        return self.coordinator.data.zones.get(self._number)
-
-    @property
-    def current_option(self) -> str | None:
-        zone = self._zone
-        return zone_correction(self.coordinator.data, zone) if zone else None
-
-    async def async_select_option(self, option: str) -> None:
-        zone = self._zone
-        if zone is None:
-            return
-        data = self.coordinator.data
-        fields = correction_patch(
-            zone_offset_mode(data, zone),
-            zone_auto_offset(data, zone),
-            option,
-            zone_owned(data, zone),
-        )
-        if fields:
-            await self._write(**fields)
-            await self.coordinator.async_request_refresh()
 
 
 class ZoneTemperatureSourceSelect(FreedoEntity, SelectEntity):

@@ -31,19 +31,11 @@ from .const import (
     DOMAIN,
 )
 from .model import (
-    CORRECTION_NONE,
-    CORRECTION_SHIFT,
-    CORRECTIONS,
     FreedoData,
     Zone,
-    correction_patch,
     room_temp_paused,
     room_temp_zones,
     window_zones,
-    zone_auto_offset,
-    zone_correction,
-    zone_offset_mode,
-    zone_owned,
 )
 from .rooms import (
     SOURCE_SENSOR,
@@ -62,7 +54,6 @@ _LOGGER = logging.getLogger(__name__)
 CONF_ROOM = "room"
 CONF_AREA = "area"
 CONF_SOURCE = "temperature_source"
-CONF_CORRECTION = "correction"
 # The choice of the step Rooms that ends the options.
 ROOM_DONE = "done"
 
@@ -192,8 +183,8 @@ class FreedoConfigFlow(ConfigFlow, domain=DOMAIN):
 
 class FreedoOptionsFlow(OptionsFlowWithReload):
     """A menu of two branches. Rooms lists the heating zones, each with what it
-    uses, and opens the page of one: area, temperature source, window sensors
-    and correction. A page writes its room on submit, with no reload, and
+    uses, and opens the page of one: area, temperature source and window
+    sensors. A page writes its room on submit, with no reload, and
     returns to the list. Outdoor maps the outdoor temperature sensor and
     reloads the entry."""
 
@@ -340,17 +331,6 @@ class FreedoOptionsFlow(OptionsFlowWithReload):
                     options=sources, mode=selector.SelectSelectorMode.DROPDOWN
                 )
             )
-        method = zone_correction(data, zone)
-        if method is not None:
-            # In the open, not in a collapsed section: a room that ignores its
-            # sensor must show why.
-            fields[vol.Required(CONF_CORRECTION, default=method)] = selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=list(CORRECTIONS),
-                    translation_key="correction_method",
-                    mode=selector.SelectSelectorMode.DROPDOWN,
-                )
-            )
         fields[vol.Optional(CONF_WINDOWS)] = self._window_selector(data, zone, area_id)
         windows = window_zones(entry.options.get(CONF_WINDOWS) or {}).get(zone.number, [])
         return self.async_show_form(
@@ -412,9 +392,8 @@ class FreedoOptionsFlow(OptionsFlowWithReload):
     async def _apply_room(
         self, data: FreedoData, zone: Zone, user_input: dict[str, Any]
     ) -> bool:
-        """Write what the page changes in one zone: the correction, the
-        temperature source, the area and the window sensors. False when the
-        daemon refuses the correction or the source."""
+        """Write what the page changes in one zone: the temperature source, the
+        area and the window sensors. False when the daemon refuses the source."""
         entry = self.config_entry
         runtime = entry.runtime_data
         kind, _, target = (user_input.get(CONF_SOURCE) or "").partition(":")
@@ -424,32 +403,10 @@ class FreedoOptionsFlow(OptionsFlowWithReload):
             or zone.number not in room_temp_zones(entry.options.get(CONF_ROOM_TEMPS) or {})
         ):
             # The page shows the source in use. A mapped sensor that is not in
-            # use, because the room has no correction, still sends readings:
-            # the device choice pauses it, so a later correction does not
-            # bring it back unseen.
+            # use, because a device owns the room, still sends readings: the
+            # device choice pauses it, so the sensor does not come back unseen.
             kind = ""
-        method = user_input.get(CONF_CORRECTION)
         try:
-            if method is not None:
-                # A new sensor needs a correction to change the regulation, so
-                # it starts the continuous shift where none was set.
-                if (
-                    kind == SOURCE_SENSOR
-                    and method == CORRECTION_NONE
-                    and zone_correction(data, zone) == CORRECTION_NONE
-                ):
-                    method = CORRECTION_SHIFT
-                fields = correction_patch(
-                    zone_offset_mode(data, zone),
-                    zone_auto_offset(data, zone),
-                    method,
-                    zone_owned(data, zone),
-                )
-                if fields:
-                    result = await runtime.client.patch_install_zone(zone.number, **fields)
-                    row = result.get("zone") if isinstance(result, Mapping) else None
-                    if isinstance(row, Mapping):
-                        data.zone_settings[zone.number] = dict(row)
             if kind:
                 await async_set_source(self.hass, entry, zone.number, kind, target)
         except FreedoError as err:

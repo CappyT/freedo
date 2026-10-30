@@ -1,4 +1,4 @@
-"""Numbers: the temperature correction of each heating zone, its open window
+"""Numbers: the manual temperature correction of each heating zone, its open window
 detection time, its away temperature and the timer of a change made on a
 device, the flow limit of each circuit, and the power and the gas flow of the
 boiler."""
@@ -25,15 +25,12 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from .coordinator import FreedoConfigEntry, FreedoCoordinator
 from .entity import FUEL_FLOW_UNITS, FreedoEntity, FreedoZoneSettingEntity, call_api
 from .model import (
-    AUTO_OFFSET_INTERVAL_MAX_SEC,
-    AUTO_OFFSET_INTERVAL_MIN_SEC,
     BOILER_GAS_MAX_M3H,
     FUEL_KG,
     BOILER_POWER_MAX_KW,
     FLOW_LIMIT_MAX_C,
     FLOW_LIMIT_MIN_C,
     OFFSET_LIMIT_C,
-    OFFSET_MODE_SETPOINT,
     OPEN_WINDOW_MAX_SEC,
     OVERLAY_END_MAX_SEC,
     ZONE_MAX_C,
@@ -42,8 +39,6 @@ from .model import (
     flow_circuit,
     flow_managed,
     fuel_unit,
-    zone_auto_offset,
-    zone_offset_mode,
     zone_setting,
 )
 
@@ -57,18 +52,14 @@ async def async_setup_entry(
     data = coordinator.data
     entities: list[NumberEntity] = []
     for zone in data.heating_zones():
-        # The route writes the measuring device, or the daemon itself in mode
-        # setpoint: a zone with neither has no correction to set.
-        if zone.measuring or zone_offset_mode(data, zone) == OFFSET_MODE_SETPOINT:
+        # The route writes the measuring device: a zone without one has no
+        # correction to set.
+        if zone.measuring:
             entities.append(ZoneOffsetNumber(coordinator, zone))
         if zone_setting(data, zone, "open_window_duration_sec") is not None:
             entities.append(OpenWindowDurationNumber(coordinator, zone))
         if zone_setting(data, zone, "device_overlay_end") is not None:
             entities.append(DeviceOverlayTimerNumber(coordinator, zone))
-        # The daemon refuses an automatic correction on the hot water zone, and
-        # the heating zone loop leaves it out.
-        if zone_setting(data, zone, "auto_offset_interval_sec") is not None:
-            entities.append(AutoOffsetIntervalNumber(coordinator, zone))
         # The row carries the field, null when unset, from a daemon that has the
         # away temperature.
         if "away_temperature_c" in (data.zone_settings.get(zone.number) or {}):
@@ -92,16 +83,15 @@ async def async_setup_entry(
 
 
 class ZoneOffsetNumber(FreedoEntity, RestoreNumber):
-    """POST /api/zones/{n}/offset: the correction of the room temperature.
+    """POST /api/zones/{n}/offset: the manual correction of the room
+    temperature.
 
     No device class: HA would convert a temperature difference as an absolute
-    temperature. Only mode setpoint reports the value (GET /api/install/zones
-    setpoint_offset_c). In mode config and dbg2 the correction goes to the
-    measuring device and the daemon reports nothing: no captured device frame
-    carries tag 0140, so the node Telemetry calib_offset stays empty. The
-    entity shows the last value set from Home Assistant and restores it after
-    a restart, so it is empty until the first write. It is unavailable during
-    the valve calibration.
+    temperature. The correction goes to the measuring device and the daemon
+    reports nothing: no captured device frame carries tag 0140, so the node
+    Telemetry calib_offset stays empty. The entity shows the last value set
+    from Home Assistant and restores it after a restart, so it is empty until
+    the first write.
     """
 
     _attr_translation_key = "temperature_offset"
@@ -118,21 +108,6 @@ class ZoneOffsetNumber(FreedoEntity, RestoreNumber):
         self._attr_device_info = self.zone_device(zone)
         self._written: float | None = None
 
-    @property
-    def _zone(self) -> Zone | None:
-        return self.coordinator.data.zones.get(self._number)
-
-    @property
-    def available(self) -> bool:
-        # The valve calibration writes the valve offset itself and would
-        # overwrite a manual one.
-        zone = self._zone
-        return (
-            super().available
-            and zone is not None
-            and not zone_auto_offset(self.coordinator.data, zone)
-        )
-
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
         if (last := await self.async_get_last_number_data()) is not None:
@@ -140,9 +115,6 @@ class ZoneOffsetNumber(FreedoEntity, RestoreNumber):
 
     @property
     def native_value(self) -> float | None:
-        zone = self._zone
-        if zone and zone_offset_mode(self.coordinator.data, zone) == OFFSET_MODE_SETPOINT:
-            return zone.shift_c
         return self._written
 
     async def async_set_native_value(self, value: float) -> None:
@@ -194,37 +166,6 @@ class DeviceOverlayTimerNumber(_MinutesNumber):
     @property
     def available(self) -> bool:
         return super().available and (self._setting or {}).get("device_overlay_end") == "timer"
-
-
-class AutoOffsetIntervalNumber(FreedoZoneSettingEntity, NumberEntity):
-    """The shortest interval between two automatic corrections of the zone
-    (auto_offset_interval_sec), shown in hours. In mode config each write homes
-    the motor of the valve, so the interval bounds that cost. It applies to the
-    correction valve calibration alone, so it is unavailable with another one."""
-
-    _attr_device_class = NumberDeviceClass.DURATION
-    _attr_entity_category = EntityCategory.CONFIG
-    _attr_native_unit_of_measurement = UnitOfTime.HOURS
-    _attr_translation_key = "auto_offset_interval"
-    _attr_native_min_value = AUTO_OFFSET_INTERVAL_MIN_SEC // 3600
-    _attr_native_max_value = AUTO_OFFSET_INTERVAL_MAX_SEC // 3600
-    _attr_native_step = 1
-    _attr_mode = NumberMode.BOX
-
-    def __init__(self, coordinator: FreedoCoordinator, zone: Zone) -> None:
-        super().__init__(coordinator, zone, "auto_offset_interval_sec")
-
-    @property
-    def available(self) -> bool:
-        return super().available and bool((self._setting or {}).get("auto_offset"))
-
-    @property
-    def native_value(self) -> float | None:
-        seconds = (self._setting or {}).get("auto_offset_interval_sec")
-        return None if seconds is None else round(seconds / 3600, 2)
-
-    async def async_set_native_value(self, value: float) -> None:
-        await self._write(auto_offset_interval_sec=round(value * 3600))
 
 
 class AwayTemperatureNumber(FreedoZoneSettingEntity, NumberEntity):

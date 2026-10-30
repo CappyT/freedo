@@ -61,7 +61,7 @@ async def async_setup_entry(
             if node_child_lock(coordinator.data, short) is not None:
                 entities.append(ChildLockSwitch(coordinator, short))
     for zone in coordinator.data.heating_zones():
-        for switch in (EarlyStartSwitch, OpenWindowDetectionSwitch, AutoOffsetSwitch):
+        for switch in (EarlyStartSwitch, OpenWindowDetectionSwitch):
             if zone_setting(coordinator.data, zone, switch.field) is not None:
                 entities.append(switch(coordinator, zone))
     async_add_entities(entities)
@@ -306,30 +306,3 @@ class OpenWindowDetectionSwitch(_ZoneFlagSwitch):
 
     _attr_translation_key = "open_window_detection"
     field = "open_window_detection"
-
-
-class AutoOffsetSwitch(_ZoneFlagSwitch):
-    """The daemon calibrates the correction of the zone from an external room
-    temperature, at most once per auto_offset_interval_sec. It applies in mode
-    config and dbg2, where the correction is tag 0140 on the valve: in mode
-    config each write homes the motor. The daemon refuses it on the hot water
-    zone and in mode setpoint. The attributes are the autoOffset view of
-    GET /api/zones."""
-
-    _attr_translation_key = "auto_offset"
-    # Select Room temperature correction replaces it for the user. It stays for
-    # the automations that use it.
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_entity_registry_enabled_default = False
-    field = "auto_offset"
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        view = self.coordinator.data.auto_offsets.get(self._number) or {}
-        return {
-            "last_write_at": view.get("lastWriteAt"),
-            "next_at": view.get("nextAt"),
-            "filtered_diff_c": view.get("filteredDiffC"),
-            "sample_span_sec": view.get("sampleSpanSec"),
-            "stop_reason": view.get("stopReason"),
-        }

@@ -53,17 +53,15 @@
       },
       "room": {
         "title": "Stanza {room}",
-        "description": "Invia salva questa stanza e torna all'elenco delle stanze. Quando selezioni un sensore di Home Assistant come sorgente della temperatura e la stanza non ha correzione, freedo imposta la correzione Spostamento continuo.",
+        "description": "Invia salva questa stanza e torna all'elenco delle stanze.",
         "data": {
           "area": "Area",
           "temperature_source": "Sorgente della temperatura",
-          "correction": "Correzione della temperatura ambiente",
           "windows": "Sensori di finestre e porte"
         },
         "data_description": {
           "area": "Il dispositivo della stanza passa all'area. Le sue valvole e i suoi termostati passano anche loro, se non li hai messi in un'altra area. Puoi impostare l'area anche nella pagina del dispositivo.",
-          "temperature_source": "Ciò che misura la temperatura della stanza: un dispositivo della stanza oppure un sensore di Home Assistant. L'elenco mostra prima i dispositivi della stanza, poi i sensori dell'area che la stanza ha ora, poi gli altri sensori con la loro area. Dopo aver cambiato l'area, invia e riapri la stanza per vedere prima i sensori della nuova area.",
-          "correction": "Nessuna: le valvole regolano sul proprio sensore e freedo ignora il sensore della stanza.\nSpostamento continuo: le valvole regolano sul proprio sensore e freedo sposta i setpoint in base al sensore della stanza.\nCalibrazione della valvola: freedo scrive l'offset della valvola in base al sensore della stanza, al massimo una volta per intervallo.\nIl coordinatore misura la stanza: freedo regola la stanza sul sensore della stanza e le valvole seguono la sua richiesta.",
+          "temperature_source": "Ciò che misura la temperatura della stanza: un dispositivo della stanza oppure un sensore di Home Assistant. Con un sensore, freedo legge la sua misura e dice alle valvole quanto aprire, e la stanza torna al dispositivo di misura mentre il sensore tace. L'elenco mostra prima i dispositivi della stanza, poi i sensori dell'area che la stanza ha ora, poi gli altri sensori con la loro area. Dopo aver cambiato l'area, invia e riapri la stanza per vedere prima i sensori della nuova area.",
           "windows": "Il riscaldamento della stanza si ferma finché uno di questi sensori è aperto. Un sensore serve una sola stanza: un sensore usato da un'altra stanza la mostra tra parentesi quadre, e passa a questa stanza."
         }
       },
@@ -212,9 +210,9 @@
         "name": "Stato della sorgente",
         "state": {
           "active": "In uso",
-          "no_correction": "Nessuna correzione",
           "no_reading": "Nessuna lettura",
-          "stale": "Lettura vecchia"
+          "stale": "Lettura vecchia",
+          "device": "Misura il dispositivo"
         }
       },
       "calibration": {
@@ -244,9 +242,6 @@
       },
       "away_temperature": {
         "name": "Fuori casa"
-      },
-      "auto_offset_interval": {
-        "name": "Calibra ogni"
       },
       "flow_limit": {
         "name": "Mandata max {circuit}"
@@ -284,17 +279,7 @@
         "name": "Modalità offset",
         "state": {
           "config": "Configurazione della valvola (corsa completa del motore)",
-          "dbg2": "Record di debug della valvola",
-          "setpoint": "Spostamento del setpoint"
-        }
-      },
-      "room_temperature_correction": {
-        "name": "Correzione della temperatura ambiente",
-        "state": {
-          "none": "Nessuna",
-          "continuous_shift": "Spostamento continuo",
-          "valve_calibration": "Calibrazione della valvola",
-          "coordinator_measure": "Il coordinatore misura la stanza"
+          "dbg2": "Record di debug della valvola"
         }
       },
       "temperature_source": {
@@ -331,9 +316,6 @@
       },
       "open_window_detection": {
         "name": "Rilevamento finestra aperta"
-      },
-      "auto_offset": {
-        "name": "Calibrazione della valvola"
       }
     }
   },
@@ -475,14 +457,6 @@
         "done": "Fine"
       }
     },
-    "correction_method": {
-      "options": {
-        "none": "Nessuna",
-        "continuous_shift": "Spostamento continuo",
-        "valve_calibration": "Calibrazione della valvola",
-        "coordinator_measure": "Il coordinatore misura la stanza"
-      }
-    },
     "overlay_hvac_mode": {
       "options": {
         "heat": "Riscaldamento",
@@ -505,7 +479,7 @@
     },
     "room_sensor_ignored": {
       "title": "Termometri delle stanze ignorati",
-      "description": "freedo ignora il sensore di temperatura di queste stanze, perché la loro Correzione della temperatura ambiente è Nessuna: {rooms}. Scegli una correzione nella pagina della stanza in Configura, oppure seleziona come Sorgente della temperatura un dispositivo della stanza per smettere di inviare il sensore."
+      "description": "freedo ignora il sensore di temperatura di queste stanze, perché le misura un dispositivo della stanza: {rooms}. Seleziona il sensore di Home Assistant come Sorgente della temperatura nella pagina della stanza in Configura, oppure seleziona un dispositivo della stanza per smettere di inviare il sensore."
     }
   },
   "exceptions": {
