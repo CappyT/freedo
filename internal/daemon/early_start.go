@@ -122,11 +122,20 @@ func (d *daemon) freshOutdoor(o tado.Options, now time.Time) *float64 {
 // nodeOverlays maps the short address of each node to whether it runs an
 // overlay.
 func nodeOverlays(e *tado.EmuState) map[string]bool {
-	out := make(map[string]bool)
-	for _, n := range e.Nodes() {
-		out[n.Short] = n.LastOverlay != overlayAutoMode
+	overlays, _ := nodeReports(e)
+	return overlays
+}
+
+// nodeReports maps the short address of each node to whether it runs an
+// overlay and to the time of its last frame, from one copy of the node list.
+func nodeReports(e *tado.EmuState) (map[string]bool, map[string]time.Time) {
+	nodes := e.Nodes()
+	overlays, seen := make(map[string]bool, len(nodes)), make(map[string]time.Time, len(nodes))
+	for _, n := range nodes {
+		overlays[n.Short] = n.LastOverlay != overlayAutoMode
+		seen[n.Short] = n.LastSeen
 	}
-	return out
+	return overlays, seen
 }
 
 func zoneOverlay(inst *tado.Install, zone int, overlays map[string]bool) bool {
@@ -170,13 +179,13 @@ func (d *daemon) observeHeatUps(e *tado.EmuState) {
 		return
 	}
 	now := d.retryNow()
-	overlays := nodeOverlays(e)
+	overlays, seen := nodeReports(e)
 	heating := make(map[int]bool)
 	for i := range inst.Zones {
 		if z := &inst.Zones[i]; z.Kind == tado.ZoneHeating {
 			heating[z.Number] = true
 			d.observeHeatUp(e, inst, z.Number, now, overlays)
-			d.recordPlant(e, inst, z.Number, now, overlays)
+			d.recordPlant(e, inst, z.Number, now, overlays, seen)
 		}
 	}
 	for zone := range d.heating {

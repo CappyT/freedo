@@ -329,7 +329,7 @@ fixed address `172.30.32.2`. The developer documentation for apps tells an app t
 connections from that address only and to treat the user as authenticated. The daemon follows it:
 
 - The flag `--ingress` makes the daemon accept the calls of the dashboard from the connection address
-  `172.30.32.2` without a token. Only the 55 method and path pairs of
+  `172.30.32.2` without a token. Only the 59 method and path pairs of
   [`internal/daemon/ingress_routes.json`](../internal/daemon/ingress_routes.json) qualify. They include
   the installation and pairing calls of the pages Rooms and devices and First setup, so those pages need no token
   under the add-on. Every other request from that address needs the token. [SECURITY.md](../SECURITY.md#home-assistant-ingress) lists
@@ -349,8 +349,8 @@ connections from that address only and to treat the user as authenticated. The d
   header such as `X-Forwarded-For` or `X-Ingress-Path` has no effect. `X-Remote-User-Id` counts for the
   2 backup pairs only, and only on a connection from the gateway address.
 
-For the 55 pairs the daemon does not tell the Home Assistant users apart. Every user who can open the panel can use those
-calls, and the project accepts this. Home Assistant lets every user open an ingress session, so the
+For the 59 pairs the daemon does not tell the Home Assistant users apart. Every user who can
+open the panel can use those calls, and the project accepts this. Home Assistant lets every user open an ingress session, so the
 add-on option `panel_admin` (default `true`) hides only the sidebar entry. The Supervisor adds the
 headers `X-Remote-User-Id`, `X-Remote-User-Name` and `X-Remote-User-Display-Name`, and none of them
 says whether the user is an administrator. Do not set `--ingress` in

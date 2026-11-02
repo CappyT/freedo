@@ -21,7 +21,7 @@ the routes. For the radio facts behind a rule, see [PROTOCOL.md](PROTOCOL.md).
 - `--health-public` makes `GET /api/health` readable without a token, for a container
   health check. The default is off.
 - `--ingress` makes the daemon accept the calls of the dashboard from the connection address
-  `172.30.32.2`, the Home Assistant ingress gateway, without a token. It covers 55 method and path
+  `172.30.32.2`, the Home Assistant ingress gateway, without a token. It covers 59 method and path
   pairs only. Only the add-on start script sets it, and it has no effect unless `SUPERVISOR_TOKEN` is
   set. With the flag, the gateway also reaches the two routes of the
   [state export and import](#state-export-and-import) for a Home Assistant administrator. Every other
@@ -733,20 +733,53 @@ block early.
 ### Plant episodes and controller suggestion
 
 The daemon records plant episodes for an offline fit of the valve controller. Each zone
-report adds a sample with `4060`, `40a0`, `4160` and the fresh outdoor temperature.
-`GET /api/zones/{n}/episodes` returns the last 20 episodes per zone and kind.
+report adds a sample with `4060`, `40a0`, `4160` and the fresh outdoor temperature. On a zone
+the coordinator owns, each controller step adds the sample instead, with the temperature and
+the demand of that step: the members echo pushed measures minutes late, between fresh ones.
+Until the controller has a temperature (the first step after a restart), the zone takes no
+sample. Each episode stores `owner`, who ran the zone controller, and `onset: true` when the
+controller onset opened it. `GET /api/zones/{n}/episodes` returns the stored episodes: the
+last 20 per zone and kind, plus the last 8 onset heat-ups.
 
 - A `heat` episode starts with the heating episode and continues after the target. It ends
   when `4060` stays within 0.2 C of the target for 30 minutes, or 2 hours after the crossing.
   It also ends on an open window, an overlay, away, a target change, a correction change
   (`offset changed`, see Early start), no report for `offline_after_sec`, 6 hours without
   reaching the target, or 1440 samples.
+- On a zone the coordinator owns, a `heat` episode also starts when the controller demand
+  leaves 0 during a `cool` episode while the block target is above the room temperature,
+  whatever the rise. This onset episode starts at the last sample at 0 demand and carries
+  `onset: true`. A heat-up the learner opens comes first, so one onset makes one episode. The
+  daemon stores an onset episode only when `4060` rises at least 0.3 C above its first
+  sample; else it drops the episode and logs one line. Onset episodes have 8 slots of their
+  own: a new one evicts the oldest onset episode, never a heat-up of the learner. They stay
+  out of the statistics history, which lists the heat-ups of the program.
 - A `cool` episode covers a stretch of at least 30 minutes (at most 12 hours) with `40a0`
-  at 0 and `4160` absent or 0.
+  at 0 and `4160` absent or 0. On an owned zone `4160` does not count: it is the demand of the
+  other zones.
+- An episode of either kind ends with `owner changed` when the zone owner changes. On an
+  owned zone it ends with `source changed` when the controller changes its temperature
+  source: the first external reading, or the reading removed.
+- On an owned zone, an episode of either kind ends with `no zone report`, and none opens, while
+  no member device has sent a frame for `offline_after_sec` (the demand moves no valve), or
+  while the external reading is stale (`externalTemp.stale`: the controller reads the device
+  sensor).
 - `GET /api/zones/{n}/pid-suggestion` fits a first-order model with dead time and suggests
   `kp`, `ki` and `kd` with the SIMC rule. `confident` is true with at least 3 `heat`
   episodes used and R^2 of at least 0.8. The route writes nothing. Gains change only with
   `PATCH /api/install/zones/{n}`.
+- The gains map to the daemon's controller step: a 60 s tick and a 600 s `Tref`. Nobody has
+  measured the period and `Tref` of the valve's own controller on air, so `ki` and `kd` map
+  exactly only on a zone the coordinator owns. On a device-owned zone `confident` is always
+  false and `reason` is `valve controller period not verified`.
+- The plant input of a heat-up is `40a0` on an episode the coordinator owned: `4160` is the
+  circuit demand, the highest `40a0` of the circuit, and stays high while the valves of the
+  zone are shut. On a device-owned episode it is `4160` when the zone reported it, else
+  `40a0`. An episode stored without `owner` takes the current owner of the zone.
+- A heat-up is skipped with `too few samples`, `no demand onset` (the input is above 0 on the
+  first sample, or never), `driven by another zone` (`4160` input only), `no temperature rise`
+  (`4060` never rises 0.1 C), `no fit` or `poor fit`. A cool-down whose `4060` spans 0.1 C or
+  less is skipped with `no temperature change`: one step of the tag is no decay.
 
 ## Devices
 

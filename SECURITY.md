@@ -37,7 +37,8 @@ are the calls of the dashboard. The list is `internal/daemon/ingress_routes.json
 and `{ref}` stand for a zone number, a device and a device reference:
 
 - Read: `GET /api/health`, `/api/zones`, `/api/nodes`, `/api/home`, `/api/boiler`, `/api/circuits`,
-  `/api/zones/{n}/schedule`, `/api/presets` and `/api/presets/{id}/schedules`.
+  `/api/zones/{n}/schedule`, `/api/zones/{n}/pid-suggestion`, `/api/presets` and
+  `/api/presets/{id}/schedules`.
 - Zone: `POST /api/zones/{n}/setpoint`, `/off`, `/auto`, `/boost`, `/window` and `/offset`, and
   `PUT` and `DELETE /api/zones/{n}/schedule`.
 - Preset: `POST /api/presets`, `PATCH` and `DELETE /api/presets/{id}`, and

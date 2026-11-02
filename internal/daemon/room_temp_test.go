@@ -254,15 +254,19 @@ func TestRoomTempViews(t *testing.T) {
 // TestRoomTempFeedsTheLearners: the early start, the flow adaptation and the
 // plant episodes read the zone temperature through zoneReport and plantSample,
 // which give the external temperature while it is fresh and the valve's after.
+// On this owned zone plantSample reads the controller step, which reads the
+// valve sensor 012d once the reading is stale.
 func TestRoomTempFeedsTheLearners(t *testing.T) {
 	r := newRoomRig(t, nil)
 	zoneAct(t, r.d, r.in, 22, 50)
+	ownedSen(t, r.d, r.in, 22)
 	if _, code := r.push(20.4); code != http.StatusOK {
 		t.Fatal("push failed")
 	}
 	read := func() (float64, float64) {
 		v, err := r.d.do(func(e *tado.EmuState) (any, error) {
 			c, _, _, _ := r.d.zoneReport(e, 3)
+			r.d.tickZoneOwners(e)
 			s, _, ok := r.d.plantSample(e, r.d.inst.Load(), 3, r.d.retryNow())
 			if !ok {
 				return nil, context.Canceled

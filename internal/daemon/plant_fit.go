@@ -8,8 +8,7 @@ package daemon
 //
 //	4060(t) = y0 + K*x(t),  tau*dx/dt = u(t-theta) - x
 //
-// with u the plant input in percent held between reports: 4160, the demand
-// the valve motor follows, or 40a0 in a zone that never reported 4160. For a
+// with u the plant input in percent held between reports (plantHeatInput). For a
 // fixed (tau, theta) the model is linear in y0 and K; a grid over tau and
 // theta keeps the least squares minimum. One joint fit shares K, tau and theta
 // over the usable heat-ups, each with its own y0.
@@ -20,6 +19,9 @@ package daemon
 // Kp*e/2000 + Ki*integ/30000 - Kd*(T-Tref)/2000 in centi-degrees, with
 // integ += e per 60 s tick and Tref the temperature 600 s earlier, so
 // Kp = 20*Kc (Kc in %/C), Ki = 900*Kp/Ti and Kd = Kp*Td/600 (Ti, Td in s).
+// The 60 s tick and the 600 s Tref are the daemon's controller step on an
+// owned zone. The valve's own period is in no capture (zone_owner.go), so on
+// a device-owned zone Ki and Kd may map to other time constants.
 
 import (
 	"math"
@@ -42,6 +44,8 @@ const (
 	// time 4160 is above 0: 4160 is the max 40a0 over the circuit.
 	plantDrivenMarginPct = 5
 	plantDrivenMaxShare  = 0.25
+	// plantReasonValvePeriod makes the suggestion of a device-owned zone weak.
+	plantReasonValvePeriod = "valve controller period not verified"
 	// The grid bounds of the heat fit and of the cool-down time constant.
 	plantFitMaxDeadSec = 7200.0
 	plantFitTauMinSec  = 300.0
@@ -82,6 +86,7 @@ type plantLoss struct {
 // plantEpisodeFit is the fit of one stored episode, and why it was skipped.
 type plantEpisodeFit struct {
 	Kind        string      `json:"kind"`
+	Onset       bool        `json:"onset,omitempty"`
 	StartedMs   int64       `json:"startedMs"`
 	Used        bool        `json:"used"`
 	Skipped     string      `json:"skipped,omitempty"`
@@ -108,6 +113,7 @@ type plantPIDSuggestion struct {
 	HeatUsed    int               `json:"heatUsed"`
 	CoolUsed    int               `json:"coolUsed"`
 	Confident   bool              `json:"confident"`
+	Reason      string            `json:"reason,omitempty"`
 	Model       *plantFOPDT       `json:"model"`
 	LossPerHour *float64          `json:"lossPerHour"`
 	Suggested   *plantSuggestion  `json:"suggested"`
@@ -285,13 +291,23 @@ func fitPlantCool(s plantSeries, outdoorC *float64) (*plantLoss, bool) {
 	}, true
 }
 
-// plantHeatInput picks the plant input of a heat-up like plantDeadTime does:
-// 4160 when the zone reported it, else 40a0.
-func plantHeatInput(samples []plantSample) (string, func(plantSample) *int) {
-	if slices.ContainsFunc(samples, func(s plantSample) bool { return s.HeatPct != nil }) {
+// plantHeatInput picks the plant input of a heat-up. On a zone the daemon
+// owns it is 40a0, the demand of the daemon's controller that the members
+// follow: 4160 is the circuit demand, the highest 40a0 of the circuit, and
+// stays high while the zone's valves are shut. Elsewhere it is 4160 when the
+// zone reported it, else 40a0.
+func plantHeatInput(samples []plantSample, owner string) (string, func(plantSample) *int) {
+	if owner != tado.ZoneOwnerCoordinator && slices.ContainsFunc(samples, func(s plantSample) bool { return s.HeatPct != nil }) {
 		return "4160", func(s plantSample) *int { return s.HeatPct }
 	}
 	return "40a0", func(s plantSample) *int { return s.DemandPct }
+}
+
+// plantSpanC is how far 4060 moves from its first sample: the highest rise
+// and the widest span.
+func plantSpanC(y []float64) (rise, span float64) {
+	lo, hi := slices.Min(y), slices.Max(y)
+	return hi - y[0], hi - lo
 }
 
 // plantDrivenShare is the share of the time 4160 is above 0 that the zone's
@@ -315,8 +331,10 @@ func plantDrivenShare(samples []plantSample) float64 {
 	return driven / on
 }
 
-// suggestPlantPID fits the episodes of zone and maps the heat model to gains.
-func suggestPlantPID(zone int, episodes []plantEpisode, current tado.ZonePID) plantPIDSuggestion {
+// suggestPlantPID fits the episodes of zone and maps the heat model to gains
+// for the controller of owner, the current owner of the zone. On a
+// device-owned zone the suggestion is never confident (plantTune).
+func suggestPlantPID(zone int, owner string, episodes []plantEpisode, current tado.ZonePID) plantPIDSuggestion {
 	out := plantPIDSuggestion{
 		Zone: zone, MinEpisodes: plantFitMinEpisodes, MinR2: plantFitMinR2, Current: current,
 		Episodes: []plantEpisodeFit{},
@@ -325,7 +343,7 @@ func suggestPlantPID(zone int, episodes []plantEpisode, current tado.ZonePID) pl
 	var losses []float64
 	for i := range episodes {
 		ep := &episodes[i]
-		f := plantEpisodeFit{Kind: ep.Kind, StartedMs: ep.StartedMs}
+		f := plantEpisodeFit{Kind: ep.Kind, Onset: ep.Onset, StartedMs: ep.StartedMs}
 		switch ep.Kind {
 		case plantHeat:
 			s := fitPlantHeatEpisode(ep, &f)
@@ -360,13 +378,16 @@ func suggestPlantPID(zone int, episodes []plantEpisode, current tado.ZonePID) pl
 			out.Confident = len(heat) >= plantFitMinEpisodes && m.R2 >= plantFitMinR2
 		}
 	}
+	if owner != tado.ZoneOwnerCoordinator {
+		out.Confident, out.Reason = false, plantReasonValvePeriod
+	}
 	return out
 }
 
 // fitPlantHeatEpisode screens and fits one heat-up into f, and returns its
 // series for the joint fit.
 func fitPlantHeatEpisode(ep *plantEpisode, f *plantEpisodeFit) plantSeries {
-	from, input := plantHeatInput(ep.Samples)
+	from, input := plantHeatInput(ep.Samples, ep.Owner)
 	f.Input = from
 	s := newPlantSeries(ep, input)
 	if from == "4160" {
@@ -380,6 +401,9 @@ func fitPlantHeatEpisode(ep *plantEpisode, f *plantEpisodeFit) plantSeries {
 		f.Skipped = "no demand onset"
 	case f.DrivenShare != nil && *f.DrivenShare > plantDrivenMaxShare:
 		f.Skipped = "driven by another zone"
+	}
+	if rise, _ := plantSpanC(s.y); f.Skipped == "" && rise < plantRiseC-plantEps {
+		f.Skipped = "no temperature rise"
 	}
 	if f.Skipped != "" {
 		return s
@@ -402,6 +426,12 @@ func fitPlantCoolEpisode(ep *plantEpisode, f *plantEpisodeFit) {
 		f.Skipped = "too few samples"
 		return
 	}
+	s := newPlantSeries(ep, nil)
+	// One step of the tag or less is the sensor resolution, not a decay.
+	if _, span := plantSpanC(s.y); span <= plantRiseC+plantEps {
+		f.Skipped = "no temperature change"
+		return
+	}
 	var outdoor *float64
 	if !slices.ContainsFunc(ep.Samples, func(s plantSample) bool { return s.OutdoorC == nil }) {
 		var sum float64
@@ -411,7 +441,7 @@ func fitPlantCoolEpisode(ep *plantEpisode, f *plantEpisodeFit) {
 		mean := sum / float64(len(ep.Samples))
 		outdoor = &mean
 	}
-	m, ok := fitPlantCool(newPlantSeries(ep, nil), outdoor)
+	m, ok := fitPlantCool(s, outdoor)
 	switch {
 	case !ok:
 		f.Skipped = "no fit"
@@ -458,5 +488,10 @@ func (d *daemon) getPIDSuggestion(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, suggestPlantPID(zone, episodes, inst.Options.ZonePID(zone)))
+	for i := range episodes {
+		if episodes[i].Owner == "" {
+			episodes[i].Owner = inst.Options.ZoneOwner(zone)
+		}
+	}
+	writeJSON(w, http.StatusOK, suggestPlantPID(zone, inst.Options.ZoneOwner(zone), episodes, inst.Options.ZonePID(zone)))
 }

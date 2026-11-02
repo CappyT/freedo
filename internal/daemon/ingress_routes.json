@@ -20,6 +20,7 @@
 	"POST /api/zones/{n}/boost",
 	"POST /api/zones/{n}/window",
 	"POST /api/zones/{n}/offset",
+	"GET /api/zones/{n}/pid-suggestion",
 	"PATCH /api/home",
 	"POST /api/boiler/flow",
 	"POST /api/boiler/gas/meter",

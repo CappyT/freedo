@@ -829,11 +829,16 @@ func (s *stateStore) DeleteZoneLearning(ctx context.Context, zone int) error {
 }
 
 // AddPlantEpisode stores one recorded episode of zone and drops the oldest of
-// its kind past plantEpisodesKept, so the table stays bounded.
+// its kind past plantEpisodesKept, so the table stays bounded. An onset
+// heat-up is a kind of its own in the table, with plantOnsetKept slots.
 func (s *stateStore) AddPlantEpisode(ctx context.Context, zone int, ep *plantEpisode) error {
 	raw, err := json.Marshal(ep)
 	if err != nil {
 		return err
+	}
+	kind, kept := ep.Kind, plantEpisodesKept
+	if ep.Onset {
+		kind, kept = ep.Kind+"-onset", plantOnsetKept
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -841,12 +846,12 @@ func (s *stateStore) AddPlantEpisode(ctx context.Context, zone int, ep *plantEpi
 	}
 	defer tx.Rollback()
 	if _, err := tx.ExecContext(ctx, `INSERT INTO plant_episode (zone, kind, body) VALUES (?, ?, ?)`,
-		zone, ep.Kind, string(raw)); err != nil {
+		zone, kind, string(raw)); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM plant_episode WHERE zone = ? AND kind = ? AND id NOT IN
 		(SELECT id FROM plant_episode WHERE zone = ? AND kind = ? ORDER BY id DESC LIMIT ?)`,
-		zone, ep.Kind, zone, ep.Kind, plantEpisodesKept); err != nil {
+		zone, kind, zone, kind, kept); err != nil {
 		return err
 	}
 	return tx.Commit()

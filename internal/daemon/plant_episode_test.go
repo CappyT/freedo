@@ -290,7 +290,7 @@ func TestPlantDeadTime(t *testing.T) {
 		}, 0, "", false},
 	}
 	for _, tc := range cases {
-		sec, from, ok := plantDeadTime(tc.samples)
+		sec, from, ok := plantDeadTime(tc.samples, "")
 		if sec != tc.sec || from != tc.from || ok != tc.ok {
 			t.Errorf("%s: dead time = %g from %q ok=%t, want %g from %q ok=%t", tc.name, sec, from, ok, tc.sec, tc.from, tc.ok)
 		}
@@ -393,5 +393,369 @@ func TestOpenStateStoreMigratesPlantEpisode(t *testing.T) {
 	}
 	if err := store.AddPlantEpisode(context.Background(), 3, &plantEpisode{Kind: plantCool}); err != nil {
 		t.Fatalf("add after the migration: %v", err)
+	}
+}
+
+func TestPlantSampleOwnedZoneReadsController(t *testing.T) {
+
+	at := time.UnixMilli(1_000_000)
+	in := &tado.Install{Options: tado.Options{ZoneOwners: map[int]string{3: tado.ZoneOwnerCoordinator}}}
+	x := &zoneOwner{tempC: 19.4, pct: 37, haveOut: true, evalAt: at}
+	d := &daemon{zoneOwners: map[int]*zoneOwner{3: x}}
+	e := &tado.EmuState{}
+	s, updated, ok := d.plantSample(e, in, 3, at)
+	if !ok || !updated.Equal(at) || s.AtMs != at.UnixMilli() || s.TempC != 19.4 || s.DemandPct == nil || *s.DemandPct != 37 {
+		t.Errorf("owned sample = %+v at %v ok=%t, want the controller step 19.4 C 37 %%", s, updated, ok)
+	}
+	x.lost = true
+	if _, _, ok := d.plantSample(e, in, 3, at); ok {
+		t.Error("owned zone without a temperature: sample taken, want the zone report (none here)")
+	}
+	x.lost = false
+	in.Options.ZoneOwners = nil
+	if _, _, ok := d.plantSample(e, in, 3, at); ok {
+		t.Error("device zone: sample from the controller, want the zone report (none here)")
+	}
+}
+
+// ownedPlant is the early-start daemon with zone 3 owned by the coordinator:
+// 17 C from midnight, 21 C from 07:00, and a store.
+func ownedPlant(t *testing.T) (*daemon, string, *testClock, *tado.Install, *stateStore) {
+	t.Helper()
+	store := newTestStore(t, filepath.Join(t.TempDir(), "state.db"))
+	d, url, clock, in := newEarlyDaemon(t, false, store, func(in *tado.Install) {
+		in.Options.ZoneOwners = map[int]string{3: tado.ZoneOwnerCoordinator}
+	})
+	return d, url, clock, in, store
+}
+
+// ownedMinute advances one minute and runs a tick in engine order: the home
+// state with the recorder, then the controller. The valve of zone 3 sends a
+// frame when valve is true, and the room thermometer a reading when roomC is
+// not NaN.
+func ownedMinute(t *testing.T, d *daemon, url string, in *tado.Install, clock *testClock, roomC float64, valve bool) {
+	t.Helper()
+	clock.advance(time.Minute)
+	if valve {
+		zoneAct(t, d, in, 17, 0)
+	}
+	if !math.IsNaN(roomC) {
+		var view map[string]any
+		if code := postJSON(t, http.MethodPost, url+"/api/zones/3/temperature", map[string]any{"tempC": roomC}, &view); code != http.StatusOK {
+			t.Fatalf("temperature: code=%d %v", code, view)
+		}
+	}
+	tickHome(t, d)
+	if _, err := d.do(func(e *tado.EmuState) (any, error) { d.tickZoneOwners(e); return nil, nil }); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// ownedOnset runs 10 idle minutes at 17.2 C against the 17 C block, then
+// drops the room to 16.8 C: the controller demand leaves 0 with no target
+// rise.
+func ownedOnset(t *testing.T, d *daemon, url string, in *tado.Install, clock *testClock) {
+	t.Helper()
+	for range 10 {
+		ownedMinute(t, d, url, in, clock, 17.2, true)
+	}
+	for range 2 {
+		ownedMinute(t, d, url, in, clock, 16.8, true)
+	}
+}
+
+// ownedRise takes the room of zone 3 to 17.6 C, 0.4 C above the last idle
+// sample of ownedOnset: an onset heat-up that is stored.
+func ownedRise(t *testing.T, d *daemon, url string, in *tado.Install, clock *testClock) {
+	t.Helper()
+	for _, c := range []float64{17, 17.3, 17.6} {
+		ownedMinute(t, d, url, in, clock, c, true)
+	}
+}
+
+func plantRunOf(t *testing.T, d *daemon, zone int) *plantEpisode {
+	t.Helper()
+	v, err := d.do(func(*tado.EmuState) (any, error) {
+		if run := d.plant[zone]; run != nil {
+			ep := run.ep
+			return &ep, nil
+		}
+		return (*plantEpisode)(nil), nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return v.(*plantEpisode)
+}
+
+func TestPlantOwnedZoneOpensOnDemandOnset(t *testing.T) {
+	d, url, clock, in, store := ownedPlant(t)
+	ownedOnset(t, d, url, in, clock)
+	run := plantRunOf(t, d, 3)
+	if run == nil || run.Kind != plantHeat || run.Owner != tado.ZoneOwnerCoordinator || *run.TargetC != 17 ||
+		len(run.Samples) < 2 || *run.Samples[0].DemandPct != 0 || *run.Samples[1].DemandPct <= 0 {
+		t.Fatalf("record after the onset = %+v, want a coordinator heat-up to 17 C from an idle sample", run)
+	}
+	ownedRise(t, d, url, in, clock)
+	for range 31 {
+		ownedMinute(t, d, url, in, clock, 17.15, true)
+	}
+	eps := plantEpisodesOf(t, store, 3)
+	if len(eps) != 1 || eps[0].Kind != plantHeat || !eps[0].Onset || eps[0].EndReason != "settled" ||
+		eps[0].Owner != tado.ZoneOwnerCoordinator || eps[0].DeadTimeSec == nil || eps[0].DeadTimeFrom != "40a0" {
+		t.Fatalf("stored = %+v, want one settled onset heat-up with a dead time from 40a0", eps)
+	}
+	if run := plantRunOf(t, d, 3); run != nil && run.Kind == plantHeat {
+		t.Errorf("record after settling = %+v, want no heat-up", run)
+	}
+}
+
+// An onset heat-up whose room rises less than 0.3 C above its first sample
+// settles without a record: a small correction carries no step response.
+func TestPlantOwnedZoneDropsOnsetWithoutRise(t *testing.T) {
+	d, url, clock, in, store := ownedPlant(t)
+	ownedOnset(t, d, url, in, clock)
+	for _, c := range []float64{16.9, 17.1, 17.4} {
+		ownedMinute(t, d, url, in, clock, c, true)
+	}
+	for range 31 {
+		ownedMinute(t, d, url, in, clock, 17.1, true)
+	}
+	if eps := plantEpisodesOf(t, store, 3); len(eps) != 0 {
+		t.Fatalf("stored = %+v, want none", eps)
+	}
+	if run := plantRunOf(t, d, 3); run != nil && run.Kind == plantHeat {
+		t.Errorf("record after settling = %+v, want no heat-up", run)
+	}
+}
+
+func TestPlantOwnedZoneEndsWithoutValveOrReading(t *testing.T) {
+	cases := []struct {
+		name  string
+		roomC float64
+		valve bool
+		limit int
+	}{
+		{"valve silent", 17.3, false, tado.DefaultOfflineAfterSec / 60},
+		{"reading stale", math.NaN(), true, tado.DefaultRoomTempMaxAgeSec / 60},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			d, url, clock, in, store := ownedPlant(t)
+			ownedOnset(t, d, url, in, clock)
+			if run := plantRunOf(t, d, 3); run == nil || run.Kind != plantHeat {
+				t.Fatalf("record after the onset = %+v, want a heat-up", run)
+			}
+			ownedRise(t, d, url, in, clock)
+			for range tc.limit - 2 {
+				ownedMinute(t, d, url, in, clock, tc.roomC, tc.valve)
+			}
+			if eps := plantEpisodesOf(t, store, 3); len(eps) != 0 {
+				t.Fatalf("stored before the limit = %+v, want none", eps)
+			}
+			for range 3 {
+				ownedMinute(t, d, url, in, clock, tc.roomC, tc.valve)
+			}
+			eps := plantEpisodesOf(t, store, 3)
+			if len(eps) != 1 || eps[0].Kind != plantHeat || eps[0].EndReason != "no zone report" {
+				t.Fatalf("stored = %+v, want one heat-up ended with no zone report", eps)
+			}
+			if run := plantRunOf(t, d, 3); run != nil {
+				t.Errorf("record after the gap = %+v, want none", run)
+			}
+		})
+	}
+}
+
+// The onset heat-ups of a zone keep their own plantOnsetKept slots: they
+// evict the oldest onset and never a heat-up of the learner.
+func TestPlantOnsetEpisodesKeepOwnSlots(t *testing.T) {
+	store := newTestStore(t, filepath.Join(t.TempDir(), "state.db"))
+	ctx := context.Background()
+	add := func(startedMs int64, onset bool) {
+		t.Helper()
+		ep := plantEpisode{Kind: plantHeat, Onset: onset, StartedMs: startedMs, Samples: []plantSample{{}, {}}}
+		if err := store.AddPlantEpisode(ctx, 3, &ep); err != nil {
+			t.Fatal(err)
+		}
+	}
+	count := func() (learner, onset int, oldestOnset int64) {
+		t.Helper()
+		eps, err := store.PlantEpisodes(ctx, 3)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, ep := range eps {
+			if !ep.Onset {
+				learner++
+			} else if onset++; onset == 1 {
+				oldestOnset = ep.StartedMs
+			}
+		}
+		return learner, onset, oldestOnset
+	}
+	for i := range 3 {
+		add(int64(i), false)
+	}
+	for i := range plantOnsetKept + 2 {
+		add(int64(100+i), true)
+	}
+	if l, o, oldest := count(); l != 3 || o != plantOnsetKept || oldest != 102 {
+		t.Errorf("after %d onsets: learner=%d onset=%d oldest=%d, want 3, %d, 102", plantOnsetKept+2, l, o, oldest, plantOnsetKept)
+	}
+	for i := range plantEpisodesKept {
+		add(int64(200+i), false)
+	}
+	if l, o, _ := count(); l != plantEpisodesKept || o != plantOnsetKept {
+		t.Errorf("after %d heat-ups: learner=%d onset=%d, want %d, %d", plantEpisodesKept, l, o, plantEpisodesKept, plantOnsetKept)
+	}
+}
+
+// An onset heat-up follows no program block: it stays out of the history.
+func TestPlantOnsetEpisodeSkipsHistory(t *testing.T) {
+	d, url, clock, in, path := historyDaemon(t, func(in *tado.Install) {
+		in.Options.ZoneOwners = map[int]string{3: tado.ZoneOwnerCoordinator}
+	})
+	enableHistory(t, url)
+	ownedOnset(t, d, url, in, clock)
+	ownedRise(t, d, url, in, clock)
+	for range 31 {
+		ownedMinute(t, d, url, in, clock, 17.15, true)
+	}
+	store := d.state
+	if eps := plantEpisodesOf(t, store, 3); len(eps) != 1 || !eps[0].Onset {
+		t.Fatalf("stored in %s = %+v, want one onset heat-up", path, eps)
+	}
+	v, err := d.do(func(*tado.EmuState) (any, error) {
+		return d.history.episodes(context.Background(), 3, windowStart.Add(-time.Hour), clock.now().Add(time.Hour))
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if eps := v.([]heatSummary); len(eps) != 0 {
+		t.Errorf("history heat-ups = %+v, want none", eps)
+	}
+}
+
+// ownedSen sends the 012d room temperature of the valve of zone 3, the
+// device sensor the controller reads without an external reading.
+func ownedSen(t *testing.T, d *daemon, in *tado.Install, tempC float64) {
+	t.Helper()
+	centi := int(math.Round(tempC * 100))
+	feed(t, d, in, earlyValve, false, tado.CoAPReq{
+		Type: "CON", Code: "0.03", MID: 0x6000 + uint16(earlyMID.Add(1)),
+		Path: []string{"d", earlyValve, "sen"}, Payload: tado.TLV{Tag: "012d", Val: []byte{byte(centi >> 8), byte(centi)}}.Encode(),
+	})
+}
+
+// A cool-down of zone 3 that runs 35 minutes and then sees change, in both
+// directions, ends with reason and is stored.
+func TestPlantEpisodeEndsOnOwnerOrSourceChange(t *testing.T) {
+	var d *daemon
+	patchOwner := func(t *testing.T, _, owner string) {
+		t.Helper()
+		next := windowInstall(t, func(in *tado.Install) { in.Options.ZoneOwners = map[int]string{3: owner} })
+		if _, err := d.do(func(*tado.EmuState) (any, error) { _, _, err := d.setInstall(next); return nil, err }); err != nil {
+			t.Fatalf("owner %s: %v", owner, err)
+		}
+	}
+	setTemp := func(t *testing.T, url string, set bool) {
+		t.Helper()
+		method, body := http.MethodDelete, map[string]any(nil)
+		if set {
+			method, body = http.MethodPost, map[string]any{"tempC": 17.4}
+		}
+		var res map[string]any
+		if code := postJSON(t, method, url+"/api/zones/3/temperature", body, &res); code != http.StatusOK {
+			t.Fatalf("%s temperature: code=%d %v", method, code, res)
+		}
+	}
+	cases := []struct {
+		name     string
+		owned    bool
+		external bool
+		change   func(t *testing.T, url string)
+		reason   string
+	}{
+		{"owner to device", true, true, func(t *testing.T, url string) { patchOwner(t, url, tado.ZoneOwnerDevice) }, "owner changed"},
+		{"owner to coordinator", false, false, func(t *testing.T, url string) { patchOwner(t, url, tado.ZoneOwnerCoordinator) }, "owner changed"},
+		{"first external reading", true, false, func(t *testing.T, url string) { setTemp(t, url, true) }, "source changed"},
+		{"external reading removed", true, true, func(t *testing.T, url string) { setTemp(t, url, false) }, "source changed"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			store := newTestStore(t, filepath.Join(t.TempDir(), "state.db"))
+			var url string
+			var clock *testClock
+			var in *tado.Install
+			d, url, clock, in = newEarlyDaemon(t, false, store, func(in *tado.Install) {
+				if tc.owned {
+					in.Options.ZoneOwners = map[int]string{3: tado.ZoneOwnerCoordinator}
+				}
+			})
+			minute := func() {
+				ownedSen(t, d, in, 17.4)
+				roomC := math.NaN()
+				if tc.external {
+					roomC = 17.4
+				}
+				ownedMinute(t, d, url, in, clock, roomC, true)
+			}
+			for range 35 {
+				minute()
+			}
+			if run := plantRunOf(t, d, 3); run == nil || run.Kind != plantCool {
+				t.Fatalf("record before the change = %+v, want a cool-down", run)
+			}
+			tc.change(t, url)
+			tc.external = tc.name == "first external reading"
+			for range 2 {
+				minute()
+			}
+			eps := plantEpisodesOf(t, store, 3)
+			if len(eps) != 1 || eps[0].Kind != plantCool || eps[0].EndReason != tc.reason {
+				t.Fatalf("stored = %+v, want one cool-down ended with %q", eps, tc.reason)
+			}
+		})
+	}
+}
+
+// Before the controller of an owned zone has a temperature, the recorder
+// takes no sample: the zone report would mix two time bases.
+func TestPlantOwnedZoneWaitsForController(t *testing.T) {
+	d, url, clock, in, _ := ownedPlant(t)
+	for range 3 {
+		clock.advance(time.Minute)
+		zoneAct(t, d, in, 17.2, 0)
+		tickHome(t, d)
+	}
+	if run := plantRunOf(t, d, 3); run != nil {
+		t.Errorf("record without a controller step = %+v, want none", run)
+	}
+	ownedMinute(t, d, url, in, clock, 17.2, true)
+	ownedMinute(t, d, url, in, clock, 17.2, true)
+	if run := plantRunOf(t, d, 3); run == nil || run.Kind != plantCool {
+		t.Errorf("record after a controller step = %+v, want a cool-down", run)
+	}
+}
+
+// Any member device of an owned zone keeps it reporting, a thermostat too:
+// a zone without a valve records.
+func TestPlantOwnerGapCountsEveryMember(t *testing.T) {
+	in := windowInstall(t, func(in *tado.Install) {
+		in.Options.ZoneOwners = map[int]string{1: tado.ZoneOwnerCoordinator}
+	})
+	ru, err := in.Resolve("RU1000000001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.UnixMilli(10_000_000)
+	d := &daemon{}
+	if gap := d.plantOwnerGap(in, 1, now, map[string]time.Time{ru.Short(): now.Add(-time.Minute)}); gap != "" {
+		t.Errorf("fresh thermostat, silent valve: gap %q, want none", gap)
+	}
+	stale := now.Add(-in.Options.OfflineAfter() - time.Minute)
+	if gap := d.plantOwnerGap(in, 1, now, map[string]time.Time{ru.Short(): stale}); gap != "no zone report" {
+		t.Errorf("silent members: gap %q, want no zone report", gap)
 	}
 }
