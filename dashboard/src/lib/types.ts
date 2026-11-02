@@ -37,6 +37,13 @@ export interface ZoneFallback {
 	since: string;
 }
 
+/** Where the receiver calibration stands. readings and want come only while it measures. */
+export interface Calibration {
+	state: 'stored' | 'measuring' | 'measured';
+	readings?: number;
+	want?: number;
+}
+
 export interface Health {
 	ok: boolean;
 	/** The version of the daemon, "dev" on a build with no release stamp. */
@@ -57,7 +64,8 @@ export interface Health {
 	/** Serial replies of the bridge lost since the start. Live mode only. */
 	serialErrors?: number;
 	calibrated?: boolean;
-	warning?: string;
+	/** The receiver calibration. Live mode only. */
+	calibration?: Calibration;
 	frames: number;
 	micFails: number;
 	routerAdvertsSent: number;

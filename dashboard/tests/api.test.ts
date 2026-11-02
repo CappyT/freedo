@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ApiError, createClient } from '../src/lib/api.ts';
+import { ApiError, createClient, recalibrate } from '../src/lib/api.ts';
+import { refusal } from '../src/lib/backup.ts';
 
 interface Call {
 	url: string;
@@ -199,5 +200,29 @@ describe('errors', () => {
 	it('read a missing schedule as null', async () => {
 		const { fetch } = stub(404, { error: 'zone 3 has no schedule' });
 		expect(await createClient({ base: 'http://h/', fetch }).schedule(3)).toBeNull();
+	});
+});
+
+describe('the receiver calibration', () => {
+	it('is started with a POST that carries the token and no body', async () => {
+		const { calls, fetch } = stub(202, { state: 'measuring', readings: 0, want: 20 });
+		const answer = await recalibrate({ base: 'http://daemon/', fetch, token: () => 'secret' });
+		expect(calls[0]).toMatchObject({ url: 'http://daemon/api/radio/calibrate', method: 'POST', body: undefined });
+		expect(calls[0]?.headers.Authorization).toBe('Bearer secret');
+		expect(answer).toEqual({ state: 'measuring', readings: 0, want: 20 });
+	});
+
+	it('reports a mode that is not live as a 409 with the text of the daemon', async () => {
+		const { fetch } = stub(409, { error: 'the radio is not live' });
+		await expect(recalibrate({ base: 'http://daemon/', fetch })).rejects.toMatchObject({ status: 409, message: 'the radio is not live' });
+	});
+
+	it.each([
+		[403, 'admin'],
+		[401, 'token']
+	])('tells a %i refusal apart for the page: %s', async (status, why) => {
+		const { fetch } = stub(status, { error: 'refused' });
+		const error = await recalibrate({ base: 'http://daemon/', fetch }).catch((e: unknown) => e);
+		expect(refusal(error)).toBe(why);
 	});
 });

@@ -70,8 +70,10 @@ export type StepState = 'done' | 'todo';
 
 export interface SetupState {
 	radio: StepState;
-	/** Why the radio step is open: no live radio, or a radio that is not calibrated. */
-	radioProblem: 'none' | 'noRadio' | 'notCalibrated';
+	/** Why the radio step is open: no live radio. */
+	radioProblem: 'none' | 'noRadio';
+	/** Where the receiver calibration stands. It is a line in the radio step and never keeps the step open. Null without a live radio. */
+	calibration: 'stored' | 'measuring' | 'measured' | null;
 	timezone: StepState;
 	rooms: StepState;
 	transmit: StepState;
@@ -87,12 +89,13 @@ export interface SetupState {
  */
 export function setupState(health: Health | null, zones: { kind: ZoneKind; circuit?: number }[]): SetupState {
 	const heating = zones.filter((z) => z.kind === 'heating');
-	const radioProblem = health?.mode !== 'live' ? 'noRadio' : health.calibrated === false ? 'notCalibrated' : 'none';
+	const radioProblem = health?.mode !== 'live' ? 'noRadio' : 'none';
 	const transmitProblem = health?.bridgePresent ? 'bridge' : health?.transmitAllowed ? 'none' : 'dryRun';
 	const done = (ok: boolean): StepState => (ok ? 'done' : 'todo');
 	return {
 		radio: done(radioProblem === 'none'),
 		radioProblem,
+		calibration: radioProblem === 'none' ? (health?.calibration?.state ?? null) : null,
 		timezone: done(health?.timezone !== undefined && !health.timezone.fallback),
 		rooms: done(heating.length > 0),
 		transmit: done(transmitProblem === 'none'),

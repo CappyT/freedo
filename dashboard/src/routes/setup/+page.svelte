@@ -1,15 +1,19 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
+	import { errorText } from '#lib/actions.ts';
 	import AddDevice from '#lib/AddDevice.svelte';
 	import CircuitForm from '#lib/CircuitForm.svelte';
+	import ConfirmDialog from '#lib/ConfirmDialog.svelte';
+	import { refusal } from '#lib/backup.ts';
 	import { data } from '#lib/data.svelte.ts';
 	import { t } from '#lib/i18n.svelte.ts';
 	import Icon from '#lib/Icon.svelte';
 	import { install, manage } from '#lib/install.svelte.ts';
 	import { setupState, type StepState } from '#lib/install.ts';
 	import RoomForm from '#lib/RoomForm.svelte';
-	import { api } from '#lib/session.ts';
+	import { api, calibrateAgain } from '#lib/session.ts';
+	import { toasts } from '#lib/toast.svelte.ts';
 	import { zoneName } from '#lib/zones.ts';
 
 	const health = $derived(data.health);
@@ -25,6 +29,8 @@
 	// The daemon names a set utc_offset_min "fixed offset", in English.
 	const zoneLabel = $derived(health?.timezone?.name === 'fixed offset' ? t('settings.timezone.fixed') : (health?.timezone?.name ?? ''));
 	let busy = $state(false);
+	let calibrateBusy = $state(false);
+	let calibrateDialog: ConfirmDialog | undefined = $state();
 
 	onMount(() => void install.load());
 
@@ -36,6 +42,25 @@
 		const done = await manage(() => api.setTimezone(name), t('setup.timezone.saved'));
 		busy = false;
 		if (done) zoneDraft = null;
+	}
+
+	// A refusal is a state of this step, not of the page: the token gate stays shut.
+	let calibrateError = $state<string | null>(null);
+
+	async function calibrate() {
+		calibrateBusy = true;
+		calibrateError = null;
+		try {
+			await calibrateAgain();
+			toasts.push('ok', t('setup.radio.again.started'));
+		} catch (error) {
+			const why = refusal(error);
+			if (why === 'admin') calibrateError = t('setup.radio.again.adminOnly');
+			else if (why === 'token') calibrateError = t('setup.radio.again.needsToken');
+			else toasts.push('error', errorText(error));
+		}
+		await Promise.all([data.refresh(), install.load()]);
+		calibrateBusy = false;
 	}
 </script>
 
@@ -61,10 +86,21 @@
 				<header><h2>{t('setup.radio')}</h2><div class="row">{@render badge(steps.radio, true)}</div></header>
 				{#if steps.radioProblem === 'noRadio'}
 					<p>{t('setup.radio.none')}</p>
-				{:else if steps.radioProblem === 'notCalibrated'}
-					<p>{t('setup.radio.calibrate')}</p>
 				{:else}
-					<p>{t('setup.radio.ok')}</p>
+					{#if steps.calibration === 'measuring'}
+						<p>{t('setup.radio.measuring', { readings: health?.calibration?.readings ?? 0, want: health?.calibration?.want ?? 0 })}</p>
+						<p class="small muted">{t('setup.radio.measuring.hint')}</p>
+					{:else}
+						<p>{t('setup.radio.ok')}</p>
+					{/if}
+					<div class="row">
+						<button class="btn" type="button" disabled={calibrateBusy} onclick={() => calibrateDialog?.show()}>
+							<Icon name="refresh" size={18} />{t('setup.radio.again')}
+						</button>
+					</div>
+					{#if calibrateError}
+						<p class="notice tone-fault" role="alert" data-testid="calibrate-error"><Icon name="fault" /><span>{calibrateError}</span></p>
+					{/if}
 				{/if}
 			</li>
 
@@ -138,6 +174,14 @@
 		</section>
 	{/if}
 </section>
+
+<ConfirmDialog
+	bind:this={calibrateDialog}
+	title={t('setup.radio.again.title')}
+	body={t('setup.radio.again.body')}
+	confirm={t('setup.radio.again')}
+	onconfirm={() => void calibrate()}
+/>
 
 <style>
 	.lead {

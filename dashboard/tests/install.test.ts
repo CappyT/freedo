@@ -174,6 +174,7 @@ describe('the steps of the first setup', () => {
 		({
 			mode: 'live',
 			calibrated: true,
+			calibration: { state: 'stored' },
 			bridgePresent: false,
 			transmitAllowed: true,
 			timezone: { name: 'Europe/Rome', offsetMin: 60, fallback: false },
@@ -201,9 +202,24 @@ describe('the steps of the first setup', () => {
 
 	it('name what keeps the radio and the transmit steps open', () => {
 		expect(setupState(health({ mode: 'mock' }), []).radioProblem).toBe('noRadio');
-		expect(setupState(health({ calibrated: false }), []).radioProblem).toBe('notCalibrated');
 		expect(setupState(health({ bridgePresent: true }), []).transmitProblem).toBe('bridge');
 		expect(setupState(health({ transmitAllowed: false }), []).transmitProblem).toBe('dryRun');
+	});
+
+	it('keep the radio step done while the radio is live, whatever the calibration says', () => {
+		for (const state of ['stored', 'measuring', 'measured'] as const) {
+			const calibration = { state, ...(state === 'measuring' ? { readings: 7, want: 20 } : {}) };
+			expect(setupState(health({ calibrated: state !== 'measuring', calibration }), [])).toMatchObject({
+				radio: 'done',
+				radioProblem: 'none',
+				calibration: state
+			});
+		}
+		expect(setupState(health({ mode: 'mock', calibration: { state: 'measuring' } }), [])).toMatchObject({
+			radio: 'todo',
+			radioProblem: 'noRadio',
+			calibration: null
+		});
 	});
 
 	it('keep the time zone open while the daemon follows its host', () => {

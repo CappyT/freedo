@@ -1,5 +1,6 @@
 import type {
 	Boiler,
+	Calibration,
 	BoilerPatch,
 	Circuit,
 	EndRule,
@@ -253,6 +254,15 @@ export function createClient(options: ClientOptions = {}) {
 }
 
 export type Client = ReturnType<typeof createClient>;
+
+/**
+ * Forgets the stored receiver calibration and starts a new measurement. It is not a method of the
+ * client: under Home Assistant ingress the daemon serves it to an administrator only, like the backup,
+ * and elsewhere it needs the token.
+ */
+export function recalibrate(options: ClientOptions = {}): Promise<Calibration> {
+	return transport(options).request<Calibration>('POST', 'radio/calibrate');
+}
 
 /** timer carries durationSec; the other rules carry none. */
 function endBody(end: EndSpec): { mode: EndRule; durationSec?: number } {

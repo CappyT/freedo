@@ -269,9 +269,6 @@
 			{#if !health}
 				<p class="muted">{t('state.loading')}</p>
 			{:else}
-				{#if health.warning}
-					<p class="notice tone-warning" role="status"><Icon name="warning" /><span>{health.warning}</span></p>
-				{/if}
 				{#if link === 'warning'}
 					<p class="notice tone-warning" role="status">
 						<Icon name="warning" /><span>{t('settings.serialErrors.notice', { n: fmt.number(health.serialErrors, 0) })}</span>
@@ -302,7 +299,13 @@
 										<span class="num">{fmt.number(health.serialErrors, 0)}</span>{/if}
 								</span>
 							</span>
-							<span class="list-value value">{health.calibrated ? t('state.yes') : t('state.no')}</span>
+							<span class="list-value value">
+								{#if health.calibration?.state === 'measuring'}
+									{t('settings.calibrated.measuring', { readings: health.calibration.readings ?? 0, want: health.calibration.want ?? 0 })}
+								{:else}
+									{health.calibrated ? t('settings.calibrated.done') : t('state.no')}
+								{/if}
+							</span>
 						{:else}
 							<span class="list-main"><span class="list-label">{t('settings.radio')}</span></span>
 							<span class="list-value value">{health.radioError ?? t('settings.radio.ok')}</span>

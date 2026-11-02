@@ -114,9 +114,10 @@ writes a field that ingress must not reach, the client calls a route that carrie
 
 The backup is a class of its own. `src/lib/backup.ts` calls `GET /api/state/export` and
 `POST /api/state/import`, which are not in that list and are not methods of the client in `api.ts`. They
-are the two pairs of `../internal/daemon/ingress_admin_routes.json`: the file holds the network key, so
-under the add-on the daemon serves them to a Home Assistant administrator only, and elsewhere they need
-the token. `tests/backup.test.ts` pins the two pairs and checks that they are in no other list. The
+are in `../internal/daemon/ingress_admin_routes.json` with `POST /api/radio/calibrate` of
+`src/lib/api.ts` `recalibrate`: the backup holds the network key and the calibration moves the receiver,
+so under the add-on the daemon serves them to a Home Assistant administrator only, and elsewhere they
+need the token. `tests/backup.test.ts` pins the three pairs and checks that they are in no other list. The
 section Backup of Settings shows a `403` as "only a Home Assistant administrator" and a `401` as a
 missing token, and does not open the token form of the whole page.
 See [`docs/OPERATION.md`](../docs/OPERATION.md#dashboard).

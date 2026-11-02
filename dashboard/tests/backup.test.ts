@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ApiError } from '../src/lib/api.ts';
+import { ApiError, recalibrate } from '../src/lib/api.ts';
 import { exportState, fileName, importState, refusal, waitForRestart } from '../src/lib/backup.ts';
 import adminRoutes from '../../internal/daemon/ingress_admin_routes.json';
 import routes from '../../internal/daemon/ingress_routes.json';
@@ -81,8 +81,9 @@ describe('the backup calls', () => {
 		}) as unknown as typeof fetch;
 		await exportState({ base: 'http://daemon/', fetch: fetchStub });
 		await importState(new Blob(['x']), { base: 'http://daemon/', fetch: fetchStub });
+		await recalibrate({ base: 'http://daemon/', fetch: fetchStub });
 		expect(seen.sort()).toEqual([...adminRoutes].sort());
-		expect(adminRoutes).toEqual(['GET /api/state/export', 'POST /api/state/import']);
+		expect(adminRoutes).toEqual(['GET /api/state/export', 'POST /api/state/import', 'POST /api/radio/calibrate']);
 		expect(routes.filter((r) => adminRoutes.includes(r) || r.includes('/api/state'))).toEqual([]);
 	});
 
