@@ -249,7 +249,7 @@ pre-release has its notes here.
   the count of the readings while it measures, and a button Calibrate again. The Settings page shows
   the state in the row Radio calibrated.
 
-## Unreleased
+## 0.12.0-beta.2
 
 - Daemon: without a stored calibration the receiver starts on FSCTRL0 0x34, the register of this
   radio module, and the measurement starts from there.
