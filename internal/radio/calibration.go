@@ -53,6 +53,7 @@ type liveCalibration struct {
 	usable  int
 	total   int
 	round   int
+	reset   bool // the loop writes TuneDefault before the measurement samples
 	due     bool // the round is complete; the loop evaluates it at its next idle step
 	session uint64
 }
@@ -78,13 +79,15 @@ func (r *Live) calibrationLocked() Calibration {
 func (r *Live) CalibrationResults() <-chan CalibrationResult { return r.calResults }
 
 // Recalibrate drops the readings of the current measurement, if any, and starts
-// a new one from the register the radio holds now. A radio that cannot move its
+// a new one from cc1101.TuneDefault: the loop writes that register at its next
+// idle step, and samples only after the write. A radio that cannot move its
 // register stays as it is.
 func (r *Live) Recalibrate() Calibration {
 	r.calMu.Lock()
 	defer r.calMu.Unlock()
 	if r.tuner != nil {
 		r.startMeasureLocked()
+		r.cal.reset = true
 	}
 	return r.calibrationLocked()
 }
@@ -93,6 +96,7 @@ func (r *Live) startMeasureLocked() {
 	r.cal.session++
 	r.cal.state = CalibrationMeasuring
 	r.cal.round = 0
+	r.cal.reset = false
 	r.clearRoundLocked()
 }
 
@@ -118,7 +122,7 @@ func (r *Live) collectTune(frame *cc1101.RxFrame) {
 	}
 	r.calMu.Lock()
 	defer r.calMu.Unlock()
-	if r.cal.state != CalibrationMeasuring || r.cal.due {
+	if r.cal.state != CalibrationMeasuring || r.cal.due || r.cal.reset {
 		return
 	}
 	values := append(r.cal.samples[source], frame.FreqEst)
@@ -150,13 +154,19 @@ func tuneTarget(reg byte, correction int) byte {
 	return byte(int8(v))
 }
 
-// tuneStep evaluates a full round, the way Bridge.Autotune does: inside the
-// deadband the register is right, else the loop writes the correction and
-// measures one more round, at most TuneRounds rounds. The loop calls it only
-// when no CSL job is out and no transmission waits, so the write never lands
-// inside a transaction.
+// tuneStep evaluates a full round, the way Bridge.Autotune does, with the live
+// band cc1101.TuneAccept: inside it the register is right, else the loop writes
+// the correction and measures one more round, at most TuneRounds rounds. The
+// loop calls it only when no CSL job is out and no transmission waits, so a
+// write never lands inside a transaction.
 func (r *Live) tuneStep() {
 	r.calMu.Lock()
+	if r.cal.reset {
+		r.cal.reset = false
+		r.calMu.Unlock()
+		r.resetRegister()
+		return
+	}
 	if !r.cal.due {
 		r.calMu.Unlock()
 		return
@@ -171,7 +181,7 @@ func (r *Live) tuneStep() {
 	reg := r.FSCTRL0()
 	next := tuneTarget(reg, correction)
 	// A register at its limit cannot move further: it is the result.
-	if next != reg && (correction < -cc1101.TuneDeadband || correction > cc1101.TuneDeadband) {
+	if next != reg && (correction < -cc1101.TuneAccept || correction > cc1101.TuneAccept) {
 		if err := r.tuner.SetFSCTRL0(next); err != nil {
 			log.Printf("receiver calibration: FSCTRL0=%#02x: %v", next, err)
 			r.calMu.Lock()
@@ -209,6 +219,17 @@ func (r *Live) tuneStep() {
 	default:
 	}
 	r.calResults <- result
+}
+
+// resetRegister writes cc1101.TuneDefault for a new measurement. A write the
+// radio refuses is a log line: the measurement then starts from the register
+// as it stands.
+func (r *Live) resetRegister() {
+	if err := r.tuner.SetFSCTRL0(cc1101.TuneDefault); err != nil {
+		log.Printf("receiver calibration: FSCTRL0=%#02x: %v", cc1101.TuneDefault, err)
+		return
+	}
+	r.fsctrl0.Store(uint32(cc1101.TuneDefault))
 }
 
 // tuneSources counts the sources with at least one usable reading.

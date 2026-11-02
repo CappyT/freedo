@@ -112,44 +112,18 @@ func awaitCalibration(t *testing.T, r *Live) CalibrationResult {
 	}
 }
 
-// A module at -13 converges in one write; the next round confirms the register
-// inside the deadband and reports it.
-func TestLiveRadioCalibrationConvergesOnTheStream(t *testing.T) {
-	logs := captureLog(t)
-	br := newCarrierBridge(0x00, -13)
-	r := startCarrier(t, br, false)
-	if c := r.Calibration(); c.State != CalibrationMeasuring || c.Want != cc1101.TuneWant {
-		t.Fatalf("calibration at start=%+v, want measuring of %d", c, cc1101.TuneWant)
-	}
-	res := awaitCalibration(t, r)
-	writes, _ := br.snapshot()
-	if !bytes.Equal(writes, []byte{0xf3}) {
-		t.Fatalf("FSCTRL0 writes=%x, want f3", writes)
-	}
-	if res.FSCTRL0 != 0xf3 || res.Frames != cc1101.TuneWant || res.Sources != 4 {
-		t.Errorf("result=%+v, want FSCTRL0 0xf3 on %d frames of 4 sources", res, cc1101.TuneWant)
-	}
-	if c := r.Calibration(); c.State != CalibrationMeasured || c.Readings != 0 || c.Want != 0 {
-		t.Errorf("calibration=%+v, want measured without counts", c)
-	}
-	if got := r.FSCTRL0(); got != 0xf3 {
-		t.Errorf("FSCTRL0()=%#02x, want 0xf3", got)
-	}
-	if !strings.Contains(logs.String(), "receiver calibration: round 1: correction -13 on 20 frames of 4 sources, FSCTRL0 0x00 -> 0xf3") {
-		t.Errorf("log=%q, want the round line", logs.String())
-	}
-}
-
-// Readings inside the deadband leave the register alone and report it measured.
-func TestLiveRadioCalibrationInsideTheDeadbandWritesNothing(t *testing.T) {
-	br := newCarrierBridge(0x20, 0x20+3)
+// A -5 reading at the default register is inside the live band: the register
+// stays and is the result. The on-air measurement reads about that far off the
+// bench value.
+func TestLiveRadioCalibrationInsideTheBandWritesNothing(t *testing.T) {
+	br := newCarrierBridge(cc1101.TuneDefault, int(int8(cc1101.TuneDefault))-5)
 	r := startCarrier(t, br, false)
 	res := awaitCalibration(t, r)
 	if writes, _ := br.snapshot(); len(writes) != 0 {
 		t.Fatalf("FSCTRL0 writes=%x, want none", writes)
 	}
-	if res.FSCTRL0 != 0x20 || r.Calibration().State != CalibrationMeasured {
-		t.Errorf("result=%+v state=%s, want 0x20 measured", res, r.Calibration().State)
+	if res.FSCTRL0 != cc1101.TuneDefault || r.Calibration().State != CalibrationMeasured {
+		t.Errorf("result=%+v state=%s, want 0x34 measured", res, r.Calibration().State)
 	}
 }
 
@@ -197,53 +171,19 @@ func TestLiveRadioCalibrationIgnoresCSLInbound(t *testing.T) {
 	}
 }
 
-// A stored calibration collects nothing. Recalibrate starts a new session from
-// the current register and drops the readings of a measurement in progress.
-func TestLiveRadioRecalibrateRestartsTheSampling(t *testing.T) {
-	br := newCarrierBridge(0x00, -13)
-	r := startCarrier(t, br, true)
-	time.Sleep(20 * time.Millisecond)
-	before := r.Calibration()
-	if before.State != CalibrationStored || before.Readings != 0 {
-		t.Fatalf("calibration=%+v, want stored", before)
-	}
-	c := r.Recalibrate()
-	if c.State != CalibrationMeasuring || c.Session != before.Session+1 || c.Want != cc1101.TuneWant {
-		t.Fatalf("Recalibrate=%+v, want a new measuring session", c)
-	}
-	res := awaitCalibration(t, r)
-	if res.Session != c.Session || res.FSCTRL0 != 0xf3 {
-		t.Errorf("result=%+v, want 0xf3 of session %d", res, c.Session)
-	}
-
-	br.setQuiet(true)
-	partial := &Live{tuner: br, calResults: make(chan CalibrationResult, 1)}
-	partial.startMeasureLocked()
-	for range 5 {
-		partial.collectTune(tuneDataFrame("abcde", -13))
-	}
-	if got := partial.Calibration().Readings; got != 5 {
-		t.Fatalf("readings=%d, want 5", got)
-	}
-	again := partial.Recalibrate()
-	if again.Readings != 0 || again.State != CalibrationMeasuring {
-		t.Errorf("Recalibrate=%+v, want measuring from 0", again)
-	}
-}
-
 // A module more than 20 units off pins its readings at the FOC limit. The round
-// completes on the clipped readings, moves the register by the clip value, and
-// the next rounds measure the rest.
+// completes on the clipped readings and moves the register by the clip value;
+// the next round reads -5, inside the band.
 func TestLiveRadioCalibrationConvergesFromClippedReadings(t *testing.T) {
 	br := newCarrierBridge(0x00, -25)
 	r := startCarrier(t, br, false)
 	res := awaitCalibration(t, r)
 	writes, _ := br.snapshot()
-	if !bytes.Equal(writes, []byte{0xec, 0xe7}) {
-		t.Fatalf("FSCTRL0 writes=%x, want ec e7", writes)
+	if !bytes.Equal(writes, []byte{0xec}) {
+		t.Fatalf("FSCTRL0 writes=%x, want ec", writes)
 	}
-	if res.FSCTRL0 != 0xe7 {
-		t.Errorf("result=%+v, want FSCTRL0 0xe7", res)
+	if res.FSCTRL0 != 0xec {
+		t.Errorf("result=%+v, want FSCTRL0 0xec", res)
 	}
 }
 
@@ -295,5 +235,86 @@ func TestLiveRadioCalibrationSaturatesTheRegister(t *testing.T) {
 	}
 	if got := tuneTarget(0x10, -0x20); got != 0xf0 {
 		t.Errorf("tuneTarget(0x10, -32)=%#02x, want 0xf0", got)
+	}
+}
+
+// A module at -13 from the default start register moves in one write; the next
+// round confirms the register inside the band and reports it.
+func TestLiveRadioCalibrationConvergesOnTheStream(t *testing.T) {
+	logs := captureLog(t)
+	br := newCarrierBridge(cc1101.TuneDefault, int(int8(cc1101.TuneDefault))-13)
+	r := startCarrier(t, br, false)
+	if c := r.Calibration(); c.State != CalibrationMeasuring || c.Want != cc1101.TuneWant {
+		t.Fatalf("calibration at start=%+v, want measuring of %d", c, cc1101.TuneWant)
+	}
+	res := awaitCalibration(t, r)
+	writes, _ := br.snapshot()
+	if !bytes.Equal(writes, []byte{0x27}) {
+		t.Fatalf("FSCTRL0 writes=%x, want 27", writes)
+	}
+	if res.FSCTRL0 != 0x27 || res.Frames != cc1101.TuneWant || res.Sources != 4 {
+		t.Errorf("result=%+v, want FSCTRL0 0x27 on %d frames of 4 sources", res, cc1101.TuneWant)
+	}
+	if c := r.Calibration(); c.State != CalibrationMeasured || c.Readings != 0 || c.Want != 0 {
+		t.Errorf("calibration=%+v, want measured without counts", c)
+	}
+	if got := r.FSCTRL0(); got != 0x27 {
+		t.Errorf("FSCTRL0()=%#02x, want 0x27", got)
+	}
+	if !strings.Contains(logs.String(), "receiver calibration: round 1: correction -13 on 20 frames of 4 sources, FSCTRL0 0x34 -> 0x27") {
+		t.Errorf("log=%q, want the round line", logs.String())
+	}
+}
+
+// A stored calibration collects nothing. Recalibrate starts a new session: the
+// loop writes the default register first, and only then samples.
+func TestLiveRadioRecalibrateRestartsTheSampling(t *testing.T) {
+	br := newCarrierBridge(0x2f, int(int8(cc1101.TuneDefault))-5)
+	r := startCarrier(t, br, true)
+	time.Sleep(20 * time.Millisecond)
+	before := r.Calibration()
+	if before.State != CalibrationStored || before.Readings != 0 {
+		t.Fatalf("calibration=%+v, want stored", before)
+	}
+	c := r.Recalibrate()
+	if c.State != CalibrationMeasuring || c.Session != before.Session+1 || c.Want != cc1101.TuneWant {
+		t.Fatalf("Recalibrate=%+v, want a new measuring session", c)
+	}
+	res := awaitCalibration(t, r)
+	if res.Session != c.Session || res.FSCTRL0 != cc1101.TuneDefault {
+		t.Errorf("result=%+v, want 0x34 of session %d", res, c.Session)
+	}
+	if writes, _ := br.snapshot(); !bytes.Equal(writes, []byte{cc1101.TuneDefault}) {
+		t.Errorf("FSCTRL0 writes=%x, want 34", writes)
+	}
+
+	br.setQuiet(true)
+	partial := &Live{tuner: br, calResults: make(chan CalibrationResult, 1)}
+	partial.startMeasureLocked()
+	for range 5 {
+		partial.collectTune(tuneDataFrame("abcde", -13))
+	}
+	if got := partial.Calibration().Readings; got != 5 {
+		t.Fatalf("readings=%d, want 5", got)
+	}
+	if err := br.SetFSCTRL0(0x2f); err != nil {
+		t.Fatal(err)
+	}
+	partial.fsctrl0.Store(0x2f)
+	again := partial.Recalibrate()
+	if again.Readings != 0 || again.State != CalibrationMeasuring {
+		t.Errorf("Recalibrate=%+v, want measuring from 0", again)
+	}
+	partial.collectTune(tuneDataFrame("abcde", -13))
+	if got := partial.Calibration().Readings; got != 0 {
+		t.Fatalf("readings=%d before the reset write, want 0", got)
+	}
+	partial.tuneStep()
+	if got := partial.FSCTRL0(); got != cc1101.TuneDefault || br.FSCTRL0() != cc1101.TuneDefault {
+		t.Fatalf("FSCTRL0 after the reset=%#02x (bridge %#02x), want 0x34", got, br.FSCTRL0())
+	}
+	partial.collectTune(tuneDataFrame("abcde", -13))
+	if got := partial.Calibration().Readings; got != 1 {
+		t.Errorf("readings=%d after the reset write, want 1", got)
 	}
 }

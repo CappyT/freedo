@@ -1602,7 +1602,8 @@ func newLiveRadio(store *stateStore, port string, coordinator []byte, phase uint
 }
 
 // startSeededRadio seeds FSCTRL0 from the store, then starts the receive loop on
-// that register value. Without a stored calibration the loop measures one.
+// that register value. Without a stored calibration it seeds cc1101.TuneDefault
+// and the loop measures one from there.
 func startSeededRadio(store *stateStore, br radio.SeededBridge, coordinator []byte, phase uint16, autoAck, tuneDebug bool) (*radio.Live, error) {
 	stored := seedFSCTRL0(store, br)
 	return radio.StartSeeded(br, coordinator, phase, autoAck, tuneDebug, stored)
@@ -1611,25 +1612,25 @@ func startSeededRadio(store *stateStore, br radio.SeededBridge, coordinator []by
 // seedFSCTRL0 writes the stored receiver calibration into FSCTRL0 and reports
 // whether the register holds it. As in the Tado firmware, the register then
 // holds for the whole session and the hardware FOC absorbs the offset of each
-// transmitter. A seed the radio refuses is a log line, never a reason to refuse
-// to start: the radio measures the calibration instead.
+// transmitter. Without a stored value it writes cc1101.TuneDefault, the start
+// of the measurement. A seed the radio refuses is a log line, never a reason
+// to refuse to start: the radio measures the calibration instead.
 func seedFSCTRL0(store *stateStore, br radio.TunableBridge) bool {
-	if store == nil {
-		return false
-	}
-	seed, ok, err := store.FSCTRL0(context.Background())
-	switch {
-	case err != nil:
-		fmt.Fprintf(os.Stderr, "stored FSCTRL0: %v\n", err)
-		return false
-	case !ok:
-		return false
+	seed, stored := cc1101.TuneDefault, false
+	if store != nil {
+		value, ok, err := store.FSCTRL0(context.Background())
+		switch {
+		case err != nil:
+			fmt.Fprintf(os.Stderr, "stored FSCTRL0: %v\n", err)
+		case ok:
+			seed, stored = value, true
+		}
 	}
 	if err := br.SetFSCTRL0(seed); err != nil {
 		fmt.Fprintf(os.Stderr, "seed FSCTRL0=%#02x: %v\n", seed, err)
 		return false
 	}
-	return true
+	return stored
 }
 
 // storeCalibrations stores each calibration the live radio measures, so the
@@ -1694,7 +1695,7 @@ func (d *daemon) postRadioCalibrate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	c := cr.Recalibrate()
-	log.Printf("receiver calibration: stored value forgotten, measuring again")
+	log.Printf("receiver calibration: stored value forgotten, FSCTRL0 %#02x (default), measuring again", cc1101.TuneDefault)
 	writeJSON(w, http.StatusAccepted, calibrationHealth(c))
 }
 

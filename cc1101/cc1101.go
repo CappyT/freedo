@@ -255,6 +255,14 @@ const (
 	TuneMin      = 5  // fewest usable frames that still move FSCTRL0
 	TuneDeadband = 4  // per-packet jitter; below it the correction is noise, not drift
 	TuneRounds   = 3  // rounds one tune measures at most; after the last it takes the register as it stands
+	// TuneAccept is the band of the live measurement, half the FOC margin of 21
+	// units: on air it reads a few units off the passive bench value, so it
+	// moves the register only outside this band.
+	TuneAccept = 8
+	// TuneDefault is the register the receiver starts from without a stored
+	// calibration: the value this module class needs (the chip default 0x40
+	// belongs to the old module).
+	TuneDefault byte = 0x34
 )
 
 const (
