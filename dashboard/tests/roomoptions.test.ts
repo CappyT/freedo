@@ -18,6 +18,7 @@ const zone = (over: Partial<InstallZone> = {}): InstallZone => ({
 	offset_mode: 'config',
 	owner: 'device',
 	away_temperature_c: null,
+	pid: null,
 	...over
 });
 

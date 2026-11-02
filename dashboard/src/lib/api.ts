@@ -15,6 +15,7 @@ import type {
 	InstallInfo,
 	InstallZone,
 	NodeView,
+	PidSuggestion,
 	PairWindow,
 	Preset,
 	PresetSchedules,
@@ -230,6 +231,8 @@ export function createClient(options: ClientOptions = {}) {
 			request<{ zone: InstallZone }>('PATCH', installZone(n), patch),
 		/** The temperature correction of a heated room, -10 to 10 C. The offset mode of the room says how it applies. */
 		setOffset: (n: number, offsetC: number) => request<unknown>('POST', zone(n) + '/offset', { offsetC }),
+		/** The plant fit of a heated room and the gains it suggests. It writes nothing. */
+		pidSuggestion: (n: number) => request<PidSuggestion>('GET', zone(n) + '/pid-suggestion'),
 		deleteZone: (n: number) => request<{ rev: number }>('DELETE', installZone(n)),
 		addMember: (n: number, ref: string) => request<{ members: string[] }>('POST', installZone(n) + '/members', { ref }),
 		removeMember: (n: number, ref: string) =>

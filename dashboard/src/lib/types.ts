@@ -421,6 +421,33 @@ export interface InstallZone {
 	/** Null on the hot water zone. */
 	owner: ZoneOwner | null;
 	away_temperature_c: number | null;
+	/** The controller gains. Null on the hot water zone. */
+	pid: Pid | null;
+}
+
+/** The controller gains of a heating zone, each 0 to 65535. */
+export interface Pid {
+	kp: number;
+	ki: number;
+	kd: number;
+}
+
+/** GET /api/zones/{n}/pid-suggestion: the plant fit of a room and the gains it suggests. The route writes nothing. */
+export interface PidSuggestion {
+	zone: number;
+	minEpisodes: number;
+	minR2: number;
+	heatUsed: number;
+	coolUsed: number;
+	/** True with at least minEpisodes heat episodes used and R2 of at least minR2. */
+	confident: boolean;
+	/** Set for a zone that a device owns: the estimate is weak for this reason, whatever the fit. */
+	reason?: string;
+	model: { gainCPerPct: number; tauSec: number; deadTimeSec: number; rmseC: number; r2: number } | null;
+	lossPerHour: number | null;
+	suggested: (Pid & { tcSec: number; kcPctPerC: number; tiSec: number; tdSec: number }) | null;
+	current: Pid;
+	episodes: { kind: 'heat' | 'cool'; startedMs: number; used: boolean; skipped?: string }[];
 }
 
 /** Who owns a heating zone: the elected demand reporter, or freedo on the room temperature of Home Assistant. */
@@ -436,6 +463,8 @@ export interface ZoneOptionsPatch {
 	offset_mode?: 'config' | 'dbg2';
 	owner?: ZoneOwner;
 	away_temperature_c?: number;
+	/** Null restores the default gains. */
+	pid?: Pid | null;
 }
 
 export interface InstallCircuit {

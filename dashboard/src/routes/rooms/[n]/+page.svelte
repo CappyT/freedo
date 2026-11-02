@@ -2,7 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
-	import { tick } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import { act, errorText } from '#lib/actions.ts';
 	import ConfirmDialog from '#lib/ConfirmDialog.svelte';
 	import { data } from '#lib/data.svelte.ts';
@@ -10,6 +10,7 @@
 	import Icon from '#lib/Icon.svelte';
 	import { manage } from '#lib/install.svelte.ts';
 	import { canJoin, describeEffect, movePlan, moveTargets } from '#lib/install.ts';
+	import { gainsOf, parsePid, samePid, spanText, suggestionView } from '#lib/pid.ts';
 	import {
 		AWAY_C,
 		END_MINUTES,
@@ -23,7 +24,8 @@
 	import { COORDINATOR_SOURCE, electedDevice, readingUnix, sourceNote, sourceValue, sourceWrites } from '#lib/roomtemp.ts';
 	import { api } from '#lib/session.ts';
 	import { toasts } from '#lib/toast.svelte.ts';
-	import type { InstallCircuit, InstallDevice, InstallInfo, InstallZone, Removal } from '#lib/types.ts';
+	import type { InstallCircuit, InstallDevice, InstallInfo, InstallZone, Pid, PidSuggestion, Removal } from '#lib/types.ts';
+	import { DEFAULT_PID } from '#lib/pid.ts';
 	import { zoneName } from '#lib/zones.ts';
 
 	// The route "none" is the group of the devices in no room. It has members and no settings of a zone.
@@ -50,6 +52,13 @@
 	let options = $state<RoomOptions | null>(null);
 	let offsetText = $state('');
 	let optionsDirty = $state(false);
+	// The gains in the fields. They follow the room until the person types.
+	let gainsText = $state({ kp: '', ki: '', kd: '' });
+	let gainsDirty = $state(false);
+	let advancedOpen = $state(false);
+	let suggestion = $state<PidSuggestion | null>(null);
+	let suggestionProblem = $state<string | null>(null);
+	let suggesting = $state(false);
 	let confirmDelete: ConfirmDialog | undefined = $state();
 	let confirmRemove: ConfirmDialog | undefined = $state();
 	let confirmRestart: ConfirmDialog | undefined = $state();
@@ -86,10 +95,53 @@
 			problem = null;
 			if (!typed) name = zone?.name ?? '';
 			if (!optionsDirty) showOptions();
+			if (!gainsDirty) showGains();
 		} catch (error) {
 			problem = errorText(error);
 		}
 		loaded = true;
+	}
+
+	const currentGains = $derived(gainsOf(zone?.pid));
+	const gainsParsed = $derived(parsePid(gainsText));
+	const gainsChanged = $derived('pid' in gainsParsed && !samePid(gainsParsed.pid, currentGains));
+	const view = $derived(suggestion ? suggestionView(suggestion) : null);
+	const heating = $derived(zone?.kind === 'heating');
+	const gainsLine = (g: Pid) => ({ kp: fmt.number(g.kp, 0), ki: fmt.number(g.ki, 0), kd: fmt.number(g.kd, 0) });
+
+	function showGains() {
+		const g = gainsOf(zone?.pid);
+		gainsText = { kp: String(g.kp), ki: String(g.ki), kd: String(g.kd) };
+	}
+
+	async function loadSuggestion() {
+		if (number === null) return;
+		const room = number;
+		suggesting = true;
+		try {
+			const answer = await api.pidSuggestion(room);
+			if (room !== number) return;
+			suggestion = answer;
+			suggestionProblem = null;
+		} catch (error) {
+			if (room !== number) return;
+			suggestion = null;
+			suggestionProblem = errorText(error);
+		}
+		suggesting = false;
+	}
+
+	// The suggestion loads when the person opens the advanced block, and again for another room.
+	$effect(() => {
+		void number;
+		if (advancedOpen && heating) untrack(() => void loadSuggestion());
+	});
+
+	async function saveGains(pid: Pid | null) {
+		if (number === null) return;
+		const room = number;
+		gainsDirty = false;
+		await run(() => api.patchZone(room, { pid }), t('rooms.saved'));
 	}
 
 	const issues = $derived(options ? optionIssues(options, offsetText) : []);
@@ -168,6 +220,10 @@
 	// The first read, and one more when the person opens another room.
 	$effect(() => {
 		void number;
+		// Another room never shows the gains or the suggestion of this one.
+		gainsDirty = false;
+		suggestion = null;
+		suggestionProblem = null;
 		void load();
 	});
 
@@ -504,7 +560,7 @@
 							{#if note === 'no_reading'}<Icon name="warning" />{/if}
 							<span>{noteText}</span>
 						</p>
-						<details>
+						<details bind:open={advancedOpen}>
 							<summary>{t('roomSource.advanced')}</summary>
 							<div class="pair">
 								<label class="field">
@@ -523,6 +579,96 @@
 								</label>
 							</div>
 							<p class="note" data-testid="mode-hint">{t(`opt.mode.${options.offsetMode === 'dbg2' ? 'dbg2' : 'config'}.hint`)}</p>
+							<!-- The gains are not options of the form: their events stop here. -->
+							<div class="gains" data-testid="zone-gains" oninput={(e) => e.stopPropagation()} onchange={(e) => e.stopPropagation()}>
+								<h3>{t('gains.title')}</h3>
+								<p data-testid="gains-current">
+									<span class="num">{t('gains.current', gainsLine(currentGains))}</span>
+									{#if samePid(currentGains, DEFAULT_PID)}<span class="muted">{t('gains.defaults')}</span>{/if}
+								</p>
+								{#if !samePid(currentGains, DEFAULT_PID)}
+									<div class="row">
+										<button class="btn" type="button" disabled={busy} onclick={() => saveGains(null)}>{t('gains.restore')}</button>
+									</div>
+								{/if}
+								<div class="pair">
+									{#each ['kp', 'ki', 'kd'] as const as gain (gain)}
+										<label class="field">
+											<span>{gain === 'kp' ? 'Kp' : gain === 'ki' ? 'Ki' : 'Kd'}</span>
+											<input
+												class="input num"
+												inputmode="numeric"
+												autocomplete="off"
+												data-gain={gain}
+												bind:value={gainsText[gain]}
+												oninput={() => (gainsDirty = true)}
+												onkeydown={(e) => {
+													if (e.key !== 'Enter') return;
+													e.preventDefault();
+													if (gainsChanged && 'pid' in gainsParsed) void saveGains(gainsParsed.pid);
+												}}
+												aria-invalid={gainsDirty && 'issue' in gainsParsed}
+											/>
+										</label>
+									{/each}
+									<button
+										class="btn"
+										type="button"
+										data-testid="gains-save"
+										disabled={busy || !gainsChanged}
+										onclick={() => 'pid' in gainsParsed && saveGains(gainsParsed.pid)}
+									>
+										<Icon name="check" size={18} />{t('gains.save')}
+									</button>
+								</div>
+								{#if gainsDirty && 'issue' in gainsParsed}
+									<p class="small issue" role="alert">{t(`gains.issue.${gainsParsed.issue}`)}</p>
+								{/if}
+								<div data-testid="gains-suggestion">
+									{#if suggesting && !view}
+										<p class="muted">{t('state.loading')}</p>
+									{:else if suggestionProblem}
+										<p class="small issue" role="alert">{suggestionProblem}</p>
+									{:else if view?.state === 'none'}
+										<p>{t('gains.none', { minEpisodes: view.minEpisodes, heatUsed: view.heatUsed })}</p>
+										{#if view.noEpisodes}<p class="muted">{t('gains.noEpisodes')}</p>{/if}
+									{:else if view}
+										<p>
+											{#if view.state === 'confident'}
+												{t('gains.suggested', { ...gainsLine(view.gains), heatUsed: view.heatUsed, r2: fmt.number(view.r2, 2) })}
+											{:else if view.reason}
+												{t('gains.suggestedOnly', gainsLine(view.gains))}
+											{:else}
+												{t('gains.weak', { ...gainsLine(view.gains), heatUsed: view.heatUsed, minEpisodes: view.minEpisodes })}
+											{/if}
+										</p>
+										{#if view.state === 'weak' && view.reason}<p class="muted">{view.reason}</p>{/if}
+										{#if view.state === 'weak'}<p class="muted">{t('gains.weak.hint')}</p>{/if}
+										<div class="row">
+											<button
+												class={view.state === 'confident' ? 'btn primary' : 'btn'}
+												type="button"
+												data-testid="gains-apply"
+												disabled={busy}
+												onclick={() => saveGains(view.gains)}
+											>
+												{t('gains.apply')}
+											</button>
+										</div>
+									{/if}
+									{#if suggestion?.model}
+										<p class="small muted" data-testid="gains-model">
+											{t('gains.model', {
+												gain: fmt.number(suggestion.model.gainCPerPct, 3),
+												tau: spanText(suggestion.model.tauSec),
+												dead: spanText(suggestion.model.deadTimeSec)
+											})}
+										</p>
+									{/if}
+									<button class="reload small" type="button" disabled={suggesting} onclick={loadSuggestion}>{t('gains.reload')}</button>
+								</div>
+								<p class="note">{t('gains.hint')}</p>
+							</div>
 						</details>
 					</fieldset>
 
@@ -679,6 +825,42 @@
 
 	.num {
 		width: 8rem;
+	}
+
+	.gains {
+		display: grid;
+		gap: 0.6rem;
+		justify-items: start;
+		padding-top: 0.6rem;
+		border-top: 1px solid var(--border);
+	}
+
+	.gains h3 {
+		margin: 0;
+		font-family: var(--font-display);
+		font-weight: var(--weight-semibold);
+		font-size: inherit;
+	}
+
+	.gains p {
+		margin: 0;
+	}
+
+	.gains .pair .num {
+		width: 6rem;
+	}
+
+	.gains .issue {
+		color: var(--status-fault-text);
+	}
+
+	.reload {
+		padding: 0;
+		border: 0;
+		background: none;
+		color: var(--link);
+		text-decoration: underline;
+		cursor: pointer;
 	}
 
 	.issues {
