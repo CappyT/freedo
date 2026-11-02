@@ -231,7 +231,7 @@ The page First setup of the [dashboard](#dashboard) shows these steps with their
 1. Start the daemon in dry-run and read its log.
 2. Check `GET /api/health`. The field `mode` must be `live`. The field `calibrated` turns `true` once
    the radio has calibrated itself on the frames of the first paired device; until then the radio works
-   on the register default. See [Radio calibration](docs/OPERATION.md#radio-calibration). The field `timezone.name` must be the
+   on FSCTRL0 0x34, the start register. See [Radio calibration](docs/OPERATION.md#radio-calibration). The field `timezone.name` must be the
    time zone of the plant. If `timezone.fallback` is `true`, the daemon uses the zone of its host: set
    the time zone on the page, or see [Time zone](docs/OPERATION.md#time-zone).
 3. Add the rooms, on the page or through the API under `/api/install`. The daemon creates a network key

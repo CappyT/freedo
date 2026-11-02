@@ -248,3 +248,12 @@ pre-release has its notes here.
 - Dashboard: the setup page shows the state of the receiver calibration inside the Radio step, with
   the count of the readings while it measures, and a button Calibrate again. The Settings page shows
   the state in the row Radio calibrated.
+
+## Unreleased
+
+- Daemon: without a stored calibration the receiver starts on FSCTRL0 0x34, the register of this
+  radio module, and the measurement starts from there.
+- Daemon: the receiver calibration moves the register only for a correction outside +-8 units. On
+  air the measurement read about 5 units off the bench value, and a correction inside the band ends
+  the measurement on the current register.
+- Daemon: `POST /api/radio/calibrate` sets the register back to 0x34 before it measures again.

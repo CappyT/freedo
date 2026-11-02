@@ -1720,7 +1720,11 @@ sits about +81 kHz off (FSCTRL0 0x33), outside the FOC range, so it needs a stat
 The trim is a passive calibration, once per chip. Without a stored value, the live radio measures it
 from the CMD_RECV and AUTOACK frames with the same rounds as `Bridge.Autotune`: a round completes on
 `TuneWant` usable readings, or on `TuneWant` readings that clip on one side, and the write saturates
-at the int8 limits of the register. The daemon stores the result under `fsctrl0`. The CSL inbound frames stay out (see below). `freedo-dev autotune` runs
+at the int8 limits of the register. The live measurement starts from `TuneDefault` (0x34), which the
+daemon seeds without a stored value and `POST /api/radio/calibrate` writes back before it samples. It
+moves the register only for a correction outside `TuneAccept` (8 units, half the FOC margin of 21);
+`Bridge.Autotune` keeps `TuneDeadband`. The daemon stores the result under `fsctrl0`. The CSL inbound
+frames stay out (see below). `freedo-dev autotune` runs
 `Bridge.Autotune` on a bench, in receive only. `GET /api/health` reports `fsctrl0`, `calibrated` and
 `calibration` in live mode. The bootstrap key `radio_tune` is accepted and ignored, with one warning at start.
 
@@ -1730,3 +1734,11 @@ the previous frame of that source and since our own last transmission. A CSL inb
 right after our own transmission, before the FOC loop converges. With TX armed, those frames spread
 the per-source medians from -14 to +15 units. The same devices read 0 in passive receive at the same
 FSCTRL0.
+
+On air, the live measurement reads about -5 units against the passive bench value. Measurement of
+2026-11-02, release 0.12.0-beta.1, on the plant of the owner, with a module whose passive bench value
+is FSCTRL0 0x34: `POST /api/radio/calibrate` logged `round 1: correction -5 on 20 frames of 9
+sources, FSCTRL0 0x34 -> 0x2f`, then `FSCTRL0 0x2f measured on 20 frames of 8 sources, stored`. The
+readings came from the CMD_RECV and AUTOACK paths while the daemon transmitted. The cause is not
+known. The live measurement is therefore accepted only inside `TuneAccept`: from 0x34 that reading
+leaves the register where it is.

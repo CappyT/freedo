@@ -812,15 +812,18 @@ at least one alarm. `/api/nodes` shows the same data as `LowBattery`, `Fault`, `
 The live radio measures its frequency calibration (register FSCTRL0) from the frames it
 receives, while the daemon runs. See [Radio calibration](OPERATION.md#radio-calibration).
 
-- `fsctrl0` in `GET /api/health` is the register the receiver holds now, for example `0xf3`.
+- `fsctrl0` in `GET /api/health` is the register the receiver holds now, for example `0x34`.
+  Without a stored calibration the receiver starts on `0x34`.
 - `calibrated` is `true` when the register comes from a stored or a measured calibration.
 - `calibration` holds `state`: `stored` (the register came from the database at start),
   `measuring` (the radio collects readings) or `measured` (the radio measured the register in
-  this session). The daemon then stores a measured register and logs the result of the write. In `measuring` it also holds `readings`,
-  the usable readings of the round in progress, and `want`, the readings one round needs (20):
-  `{"state": "measuring", "readings": 7, "want": 20}`.
-- `POST /api/radio/calibrate` deletes the stored calibration and starts a new measurement from
-  the register the receiver holds now. It answers `202` with the `calibration` object, which is
+  this session). The daemon then stores a measured register and logs the result of the write.
+  In `measuring` it also holds `readings`, the usable readings of the round in progress, and
+  `want`, the readings one round needs (20): `{"state": "measuring", "readings": 7, "want": 20}`.
+  A round whose correction is inside +-8 units ends the measurement on the current register;
+  outside that band the radio moves the register and measures again, at most three rounds.
+- `POST /api/radio/calibrate` deletes the stored calibration, sets the register back to `0x34`
+  before the radio samples, and starts a new measurement from there. It answers `202` with the `calibration` object, which is
   `{"state": "measuring", "readings": 0, "want": 20}`. It answers `409` with `{"error": ...}` when
   the mode is not `live`. Under the Home Assistant add-on, ingress serves it without the token to
   an administrator only, like the export and the import of the state: see

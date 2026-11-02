@@ -406,20 +406,23 @@ queue stays bounded and can be emptied.
 The receiver needs a frequency calibration (register FSCTRL0) once for each chip. The receiver
 calibrates itself: you do not need a shell or a stopped daemon.
 
-Until the calibration, the radio works on the register default. The hardware frequency offset
-compensation absorbs up to 21 units of residual offset, and a typical module is about 13 units off,
-so the receiver hears the devices before the calibration. Nothing blocks pairing or transmit while
-`calibrated` is `false`.
+Without a stored calibration, the daemon starts the receiver on FSCTRL0 0x34, the register this
+radio module needs. The hardware frequency offset compensation absorbs up to 21 units of residual
+offset, so the receiver hears the devices before the calibration. Nothing blocks pairing or
+transmit while `calibrated` is `false`.
 
 When the database holds no calibration, the receiver calibrates itself on the frames of the paired
 devices. It reads the frequency error of each uplink that it receives in a plain receive window.
 A pairing request gives no reading, and the radio ignores the frames that answer its own
 transmission, because their reading is not a measurement. On an empty plant the readings therefore
 start when the first device is paired and sends its own uplinks. After 20 readings the radio
-corrects the register, and it measures one more round to confirm. After at most three rounds it
-keeps the register and the daemon stores it. The log shows one line for each register write,
-`receiver calibration: round 1: correction -13 on 20 frames of 4 sources, FSCTRL0 0x00 -> 0xf3`,
-and one line for the result: `receiver calibration: FSCTRL0 0xf3 measured on 20 frames of 4
+computes the correction. A correction inside +-8 units, half the compensation margin, ends the
+measurement on the current register. Outside that band the radio moves the register by the
+correction and measures one more round. After at most three rounds it keeps the register and the
+daemon stores it. The band is wide because the measurement on air reads a few units off the bench
+value: see [PROTOCOL.md](PROTOCOL.md#freqest-and-autotune). The log shows one line for each register
+write, `receiver calibration: round 1: correction -13 on 20 frames of 4 sources, FSCTRL0 0x34 ->
+0x27`, and one line for the result: `receiver calibration: FSCTRL0 0x27 measured on 20 frames of 4
 sources, stored`. At the next start the daemon writes the stored register once and the radio
 measures nothing. A session that hears too few frames stays in `measuring`, and the next start
 measures again.
@@ -432,8 +435,9 @@ setup shows the same count. The count stays at 0 until a device is paired and ta
 
 To measure again, for example after you change the bridge, press Calibrate again on the page First
 setup, or call `POST /api/radio/calibrate`. Under the add-on, only a Home Assistant administrator
-can do this without the token. The daemon forgets the stored value and the radio measures from the
-register it holds now.
+can do this without the token. The daemon forgets the stored value, the radio sets the register back
+to 0x34, and then it measures. The log shows `receiver calibration: stored value forgotten, FSCTRL0
+0x34 (default), measuring again`.
 
 For a bench without a running daemon, the developer tool `freedo-dev autotune` measures and stores
 the same value: see [CONTRIBUTING.md](../CONTRIBUTING.md#radio-calibration). The measurements are in
