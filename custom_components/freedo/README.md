@@ -829,7 +829,7 @@ chooses it. The API field is `owner` of `GET /api/install/zones`.
 | Source | `owner` | Who regulates the room | Role of the valve sensor | What freedo writes to the devices | Radio and battery | State on air |
 |---|---|---|---|---|---|---|
 | A device of the room (a valve or the wall thermostat) | `device` | The valve, on its own sensor. freedo answers 409 to a pushed reading. | Drives the regulation. | Only the manual offset. | No extra traffic. | Default. |
-| The Home Assistant thermometer | `coordinator` | freedo, on the thermometer while its reading is fresh. The valves follow its demand. | Drives the regulation only while the thermometer has no fresh reading: freedo then regulates on the measuring device. | The measure of the room, pushed to each member every minute. | The wall thermostat observes freedo on `/z<N>`, one registration per room. | Runs on one plant on six rooms, one with the wall thermostat and two with two valves, since version 0.11.0-beta.10. |
+| The Home Assistant thermometer | `coordinator` | freedo, on the thermometer while its reading is fresh. The valves follow its demand. | Drives the regulation only while the thermometer has no fresh reading: freedo then regulates on the measuring device. | The measure of the room, pushed to each member every minute. | The wall thermostat observes freedo on `/z<N>`, one registration per room. | Runs on one plant on six rooms, one with the wall thermostat and two with two valves, |
 
 A Home Assistant automation or Better Thermostat can correct the reading of a
 valve through the number Offset.

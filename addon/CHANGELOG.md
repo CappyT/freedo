@@ -1,5 +1,47 @@
 # Changelog
 
+## 0.11.0
+
+- A heating room has one room temperature source: a device of the room, or the Home Assistant
+  thermometer with freedo as the owner of the room. The owner runs the valve controller with the
+  gains of the room on that reading, answers the measure to the members of the room and pushes it
+  to them every minute, so the valves follow its demand and no offset on their sensor is needed.
+  The wall thermostat takes the demand of such a room from the CoAP observe notifications of the
+  coordinator, on one measure path `/z<N>` per room. The registrations and the fresh readings
+  survive a restart of the daemon.
+- Continuous shift (offset mode `setpoint`) and Valve calibration (`auto_offset`) are gone. The
+  first start of this version moves each room in offset mode `setpoint` to `config`, deletes the
+  `auto_offset` options, the stored shifts and the stored calibration, and logs one line for each
+  room it changes. The first start that transmits writes the valves of those rooms again without
+  the shift. A release write that a restart interrupts goes out again as a plain rewrite, so a
+  running manual overlay keeps the old shift until it ends. A Home Assistant automation or Better
+  Thermostat writes a correction from a sensor through the Offset number entity.
+- Daemon: `PATCH /api/install/zones/{n}` sets `owner` (`device` or `coordinator`) and refuses
+  `offset_mode` `setpoint`, `auto_offset` and `auto_offset_interval_sec`.
+  `POST /api/zones/{n}/temperature` takes a reading only on a room the coordinator owns.
+  `GET /api/zones` shows the owner and the observers of an owned room and, in `externalTemp`,
+  `inUse` and the last `refused` reading. It drops `autoOffset`, `shiftC`, `wantedC`, `offsetC`
+  and `learnInUse`.
+- Daemon: the flow limit moves only when the curve value before the rounding is
+  `flow_hysteresis_c` from the served one. Before, the default curve moved the limit between 48
+  and 49 C every 30 minutes at 13 C outdoor, and each change made the wall thermostat reload its
+  configuration and hold its rooms in frost fallback for up to 4 minutes.
+- Home Assistant: the select Temperature source of a room lists the devices of the room and the
+  Home Assistant sensors. A sensor makes the coordinator the owner of the room, a device gives the
+  room back to that device. The sensor Temperature source state says `device` for a room a device
+  owns. The select Room temperature correction, the switch Valve calibration and the number
+  Calibration are gone: the setup of the integration removes their entities from the registry.
+- Dashboard: the room settings show one select, who measures the room: the devices of the room,
+  or the Home Assistant thermometer. The note names the wall thermostat when it measures the
+  room. The offset and the offset mode sit under Advanced. The room screen shows the room
+  temperature from Home Assistant, its sensor, its age and whether freedo uses it.
+- Docs: the integration README says, for each temperature source, who regulates the room, what
+  the valve sensor does, what freedo writes and what goes on air. The default weather curve of the
+  flow limit is checked against eight monthly reports of the tado cloud of one plant.
+- Run on a real plant through the 0.11.0 pre-releases: six rooms on the coordinator as owner, on
+  the Home Assistant thermometers, one room with the wall thermostat and two rooms with two
+  valves. The last pre-release ran three days with no error.
+
 ## 0.10.3
 
 - Dashboard: the room report lists the heating periods of the day, the stretches with heat demand, also in a
