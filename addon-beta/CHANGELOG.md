@@ -257,3 +257,16 @@ pre-release has its notes here.
   air the measurement read about 5 units off the bench value, and a correction inside the band ends
   the measurement on the current register.
 - Daemon: `POST /api/radio/calibrate` sets the register back to 0x34 before it measures again.
+
+## 0.12.0-beta.3
+
+- Daemon: the controller gain suggestion (`GET /api/zones/{n}/pid-suggestion`) fits the heat-ups
+  of a room that freedo owns on the demand it pushes (`40a0`), with the episodes of the real plant
+  as test fixtures. On the plant two rooms give a confident suggestion. A room a device owns gives
+  a weak suggestion with a reason: the controller period of the valve is not verified on air.
+- Daemon: on a room freedo owns, the recorder samples the controller step, opens a heat episode at
+  each demand onset (stored with a rise of at least 0.3 C, at most 8 per room, outside the zone
+  report), and ends an episode when the owner or the temperature source changes, when the
+  members are silent or when the Home Assistant reading is stale.
+- Dashboard: the room settings show the controller gains under Advanced: the current gains, the
+  suggestion with the fit and the model, a button to apply it, and the defaults.
