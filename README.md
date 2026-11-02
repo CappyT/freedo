@@ -23,6 +23,7 @@ This is heavily AI-assisted work. The code and the documentation were written la
 - [Community](#community)
 - [Documentation](#documentation)
 - [Development](#development)
+- [Legal](#legal)
 - [Licence](#licence)
 
 ## What it is
@@ -35,7 +36,8 @@ keeps the plant under local control, with no cloud.
 freedo is not a way to use the tado app or the tado cloud. See [Scope and limits](#scope-and-limits).
 
 freedo is not affiliated with tado. tado is a trademark of its owner. This project uses the
-name only to describe which devices it works with.
+name only to describe which devices it works with. See [Legal](#legal) for the legal basis of the
+project.
 
 ## Status
 
@@ -377,6 +379,24 @@ go test ./...
 ```
 
 [`CONTRIBUTING.md`](CONTRIBUTING.md) describes the layout, the fixture rule and how to contribute a capture.
+
+## Legal
+
+freedo is an independently created program. Its purpose is interoperability: it lets tado V3+ devices
+work with a local coordinator and with Home Assistant.
+
+The protocol facts in this repository come from passive radio captures of the author's own plant and
+from the analysis of the firmware of devices that the author owns. tado does not publish this protocol.
+Article 6 of Directive 2009/24/EC permits this analysis without the authorisation of the rightholder
+when it is indispensable to get the information necessary for the interoperability of an independently
+created program. Italy implements that article in article 64-quater of Law 633/1941.
+
+The project uses that information only for interoperability. The repository contains no tado firmware
+image and no tado source code, only the protocol facts that a coordinator needs to talk to the devices.
+freedo does not connect to the tado cloud or to the tado app.
+
+This section gives the position of the project. It is not legal advice. If you hold rights on the tado
+devices or software and have a concern, open an issue and the maintainer arranges a private channel.
 
 ## Licence
 
