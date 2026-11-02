@@ -19,9 +19,10 @@ package daemon
 //     as X-Forwarded-For or X-Ingress-Path is under the control of the caller.
 //
 // A third class sits between the two: the pairs in ingress_admin_routes.json, the export
-// and the import of the state. The export holds the network key and the import replaces the
-// identity of the network, so a request from the gateway passes without the token only when
-// Home Assistant says that the user is an administrator. The Supervisor names the user of
+// and the import of the state and the receiver calibration. The export holds the network key,
+// the import replaces the identity of the network, and the calibration moves the radio
+// register, so a request from the gateway passes without the token only when Home Assistant
+// says that the user is an administrator. The Supervisor names the user of
 // the ingress session in X-Remote-User-Id and removes a copy that the browser sent. The
 // header counts only on a connection from the gateway address.
 
@@ -117,7 +118,7 @@ func requireAdmin(token string, admins adminChecker, next http.Handler) http.Han
 			next.ServeHTTP(w, r)
 			return
 		}
-		const who = "only a Home Assistant administrator can export or import the state"
+		who := "only a Home Assistant administrator can call " + r.Method + " " + r.URL.Path
 		id := r.Header.Get(remoteUserHeader)
 		if id == "" {
 			writeErr(w, http.StatusForbidden, who+": the request names no Home Assistant user")

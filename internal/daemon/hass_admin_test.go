@@ -198,7 +198,7 @@ func TestIngressAdminRoutes(t *testing.T) {
 	h := accessHandlerWith(testAPIToken, false, true, admins, okHandler())
 	bearer := "Bearer " + testAPIToken
 	const lan = "192.0.2.10:50000"
-	for _, pair := range []string{"GET /api/state/export", "POST /api/state/import"} {
+	for _, pair := range []string{"GET /api/state/export", "POST /api/state/import", "POST /api/radio/calibrate"} {
 		method, path, _ := strings.Cut(pair, " ")
 		for _, tc := range []struct {
 			name, peer string
@@ -267,14 +267,14 @@ func TestIngressAdminRoutesFailClosed(t *testing.T) {
 	}
 }
 
-// The class is exactly the export and the import. A new pair is a decision
-// about access: it must change this list too.
-func TestIngressAdminRoutesAreExactlyTheStateRoutes(t *testing.T) {
+// The class is exactly the export, the import and the receiver calibration. A
+// new pair is a decision about access: it must change this list too.
+func TestIngressAdminRoutesAreExactlyTheAdminRoutes(t *testing.T) {
 	var got []string
 	for _, rt := range ingressAdminRoutes {
 		got = append(got, rt.method+" /"+strings.Join(rt.segments, "/"))
 	}
-	want := []string{"GET /api/state/export", "POST /api/state/import"}
+	want := []string{"GET /api/state/export", "POST /api/state/import", "POST /api/radio/calibrate"}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Errorf("admin routes = %v, want %v", got, want)
 	}

@@ -522,6 +522,13 @@ func (s *Store) SetFSCTRL0(ctx context.Context, value byte) error {
 	return err
 }
 
+// ClearFSCTRL0 forgets the stored receiver calibration, so the next start
+// measures it again.
+func (s *Store) ClearFSCTRL0(ctx context.Context) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM meta WHERE key = 'fsctrl0'`)
+	return err
+}
+
 // StoreFSCTRL0 writes the passive receiver calibration into the database at
 // path, through the store code the daemon seeds from. A path that holds no
 // database is refused: creating one here would put the calibration in a file

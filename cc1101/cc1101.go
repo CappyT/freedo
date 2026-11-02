@@ -210,8 +210,8 @@ func (b *Bridge) setFSCTRL0(v byte) error {
 // FSCTRL0 returns the current frequency-offset register value.
 func (b *Bridge) FSCTRL0() byte { return b.curFSCTRL0 }
 
-// SetFSCTRL0 seeds the frequency-offset register. The daemon calls it once, at
-// start, with the passive calibration stored by `freedo-dev autotune`.
+// SetFSCTRL0 writes the frequency-offset register. The daemon seeds it at start
+// with the stored calibration, and the live radio moves it while it measures one.
 func (b *Bridge) SetFSCTRL0(v byte) error { return b.setFSCTRL0(v) }
 
 // medianInt returns the median of v (0 if empty). Median, not mean, so a single
@@ -254,17 +254,17 @@ const (
 	TuneWant     = 20 // usable frames one evaluation asks for; enough to outvote the scatter
 	TuneMin      = 5  // fewest usable frames that still move FSCTRL0
 	TuneDeadband = 4  // per-packet jitter; below it the correction is noise, not drift
+	TuneRounds   = 3  // rounds one tune measures at most; after the last it takes the register as it stands
 )
 
 const (
-	autotuneRounds      = 3
 	autotuneRoundBudget = 60 * time.Second
 	autotuneClip        = 20 // one below the FOC limit; the drop bounds a measured correction to +/-19
 )
 
-// autotuneUsable rejects a reading pinned to the FOC limit: it is clipped, not
+// TuneUsable rejects a reading pinned to the FOC limit: it is clipped, not
 // measured, so it would pull the median toward the limit.
-func autotuneUsable(freqEst int) bool {
+func TuneUsable(freqEst int) bool {
 	return freqEst > -autotuneClip && freqEst < autotuneClip
 }
 
@@ -294,7 +294,7 @@ func TuneCorrection(samples map[string][]int) (correction int, usable int, clipp
 		kept := make([]int, 0, len(values))
 		for _, v := range values {
 			switch {
-			case autotuneUsable(v):
+			case TuneUsable(v):
 				kept = append(kept, v)
 			case v < 0:
 				low++
@@ -358,12 +358,12 @@ func TuneLabel(source string) string {
 // into FSCTRL0, one round at a time, starting from the current register value.
 // A round streams up to autotuneRoundBudget for TuneWant usable
 // frames. It stops when the correction falls inside TuneDeadband, or after
-// autotuneRounds rounds. A round with fewer than TuneMin usable frames leaves
+// TuneRounds rounds. A round with fewer than TuneMin usable frames leaves
 // FSCTRL0 where it is and returns ok=false, unless its readings clip on one
 // side: that round moves the register by the clip value. The only error is a
 // serial fault.
 func (b *Bridge) Autotune() (fsctrl0 byte, ok bool, err error) {
-	for round := 0; round < autotuneRounds; round++ {
+	for round := 0; round < TuneRounds; round++ {
 		samples, serr := b.autotuneRound(autotuneRoundBudget, TuneWant)
 		if serr != nil {
 			return b.curFSCTRL0, false, serr
@@ -395,7 +395,7 @@ func (b *Bridge) autotuneRound(budget time.Duration, want int) (map[string][]int
 				return
 			}
 			samples[source] = append(samples[source], f.FreqEst)
-			if autotuneUsable(f.FreqEst) {
+			if TuneUsable(f.FreqEst) {
 				usable++
 			}
 		}); err != nil {

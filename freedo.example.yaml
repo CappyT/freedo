@@ -63,8 +63,8 @@ zone_proxy_timeout_sec: 10
 
 # Log one line per received frame that carries a FREQEST reading: the source,
 # the receive path, the RSSI, the reading, the time since the previous frame of
-# that source and since our own last transmission. FSCTRL0 holds the calibration
-# stored by `freedo-dev autotune` for the whole session.
+# that source and since our own last transmission. FSCTRL0 is the receiver
+# calibration: see "Radio calibration" in docs/OPERATION.md.
 tune_debug: false
 
 # Longest interval of the Router Advertisement we broadcast, in seconds. Each

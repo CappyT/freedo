@@ -44,8 +44,8 @@ type configuredBridge interface {
 	Configured() (bool, error)
 }
 
-// TunableBridge is the frequency-offset register of the radio. The daemon writes
-// it once, at start, and never while it runs.
+// TunableBridge is the frequency-offset register of the radio. The daemon seeds
+// it at start, and the live radio moves it while it measures a calibration.
 type TunableBridge interface {
 	FSCTRL0() byte
 	SetFSCTRL0(byte) error
@@ -78,8 +78,13 @@ type Live struct {
 	// tuneDebug logs the FREQEST reading of every received frame.
 	tuneDebug bool
 	txLastAt  time.Time
-	// fsctrl0 is set before the loop starts and never changes afterwards.
-	fsctrl0         byte
+	// fsctrl0 mirrors the register: the loop goroutine writes it, health reads it.
+	fsctrl0 atomic.Uint32
+	// tuner is the register of a seeded radio; nil when the bridge has none.
+	tuner           TunableBridge
+	calMu           sync.Mutex
+	cal             liveCalibration
+	calResults      chan CalibrationResult
 	clock           func() time.Time
 	cslPollTimeout  time.Duration
 	linkDeadAfter   time.Duration // zero: liveLinkDeadAfter
@@ -188,13 +193,20 @@ type SeededBridge interface {
 }
 
 // StartSeeded starts the receive loop on the frequency-offset register the
-// bridge holds now: the caller seeds it first.
-func StartSeeded(br SeededBridge, coordinator []byte, phase uint16, autoAck, tuneDebug bool) (*Live, error) {
+// bridge holds now: the caller seeds it first. stored says the register holds a
+// stored calibration; without one the loop measures it from the frames it hears.
+func StartSeeded(br SeededBridge, coordinator []byte, phase uint16, autoAck, tuneDebug, stored bool) (*Live, error) {
 	r, err := buildLiveRadio(br, coordinator, phase, autoAck)
 	if err != nil {
 		return nil, err
 	}
-	r.tuneDebug, r.fsctrl0 = tuneDebug, br.FSCTRL0()
+	r.tuneDebug, r.tuner = tuneDebug, br
+	r.fsctrl0.Store(uint32(br.FSCTRL0()))
+	if stored {
+		r.cal.state = CalibrationStored
+	} else {
+		r.startMeasureLocked()
+	}
 	go r.loop()
 	return r, nil
 }
@@ -229,6 +241,7 @@ func buildLiveRadio(br LiveBridge, coordinator []byte, phase uint16, autoAck boo
 		cslPending:           make(map[uint16]liveCSLPending),
 		cslGroups:            make(map[uint16]*liveCSLGroup),
 		cslDone:              make(chan CSLCompletion, 32),
+		calResults:           make(chan CalibrationResult, 1),
 		stop:                 make(chan struct{}),
 		gone:                 make(chan struct{}),
 		ended:                make(chan struct{}),
@@ -282,6 +295,9 @@ func (r *Live) loop() {
 			continue
 		}
 		r.drainAsync()
+		if r.tuner != nil {
+			r.tuneStep()
+		}
 		var frame *cc1101.RxFrame
 		if r.autoAck {
 			result, err := r.br.RecvAutoAck(liveReceiveWindow, r.coordinator, r.phase)
@@ -300,6 +316,7 @@ func (r *Live) loop() {
 			}
 			frame = result.Frame
 			r.tuneDebugFrame(frame, "autoack")
+			r.collectTune(frame)
 		} else {
 			f, err := r.br.RecvFW(liveReceiveWindow)
 			if err != nil {
@@ -311,6 +328,7 @@ func (r *Live) loop() {
 			}
 			frame = f
 			r.tuneDebugFrame(frame, "recv")
+			r.collectTune(frame)
 		}
 		errs = 0
 		r.rxOKAt = r.now()
@@ -369,8 +387,8 @@ func (r *Live) endedErr() error {
 
 func (r *Live) TXArmed() bool { return !r.ownerEnding.Load() }
 
-// FSCTRL0 reports the frequency-offset register the radio took at start.
-func (r *Live) FSCTRL0() byte { return r.fsctrl0 }
+// FSCTRL0 reports the frequency-offset register the radio holds now.
+func (r *Live) FSCTRL0() byte { return byte(r.fsctrl0.Load()) }
 
 // tuneDebugFrame logs the FREQEST reading of one received frame. The time since
 // the previous frame of the same source and since our own last transmission
@@ -718,8 +736,9 @@ func (r *Live) drainCSL() (bool, error) {
 			LogCRCDrop("csl inbound", "", event.Inbound)
 			return true, nil
 		}
-		// No tune here: the chip receives these frames right after its own TX,
-		// before the FOC loop converges, so their FREQEST is not a measurement.
+		// No calibration reading here: the chip receives these frames right
+		// after its own TX, before the FOC loop converges, so their FREQEST is
+		// not a measurement.
 		r.tuneDebugFrame(event.Inbound, "csl")
 		r.publishAcks([][]byte{event.Inbound.Payload})
 		return true, nil

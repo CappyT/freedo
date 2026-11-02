@@ -73,10 +73,18 @@ type liveRadioStatus interface {
 	RadioError() error
 }
 
-// liveRadioRegister reports the frequency-offset register the radio took at
-// start. Only a live radio has one, so health omits the field in the other modes.
+// liveRadioRegister reports the frequency-offset register the radio holds now.
+// Only a live radio has one, so health omits the field in the other modes.
 type liveRadioRegister interface {
 	FSCTRL0() byte
+}
+
+// calibratingRadio measures its receiver calibration from the frames it hears.
+// Only a live radio does.
+type calibratingRadio interface {
+	Calibration() radio.Calibration
+	Recalibrate() radio.Calibration
+	CalibrationResults() <-chan radio.CalibrationResult
 }
 
 // liveSerialErrors counts the serial replies the link to the bridge lost. Only a
@@ -208,11 +216,9 @@ type daemon struct {
 	historyDay  string
 	historyPrev historyCounters
 	started     time.Time
-	// calibrated says whether the database held a passive receiver calibration
-	// when the radio opened, and calPort is the serial port health names in the
-	// command that stores one.
-	calibrated bool
-	calPort    string
+	// calMu orders the store write of a measured calibration against a
+	// re-calibration request, so a stale result never lands after the clear.
+	calMu sync.Mutex
 	// pairBridgeOpen says that the bridge firmware took the open pair window
 	// and nobody closed it yet. It belongs to the engine goroutine.
 	pairBridgeOpen bool
@@ -1596,50 +1602,100 @@ func newLiveRadio(store *stateStore, port string, coordinator []byte, phase uint
 }
 
 // startSeededRadio seeds FSCTRL0 from the store, then starts the receive loop on
-// that register value.
+// that register value. Without a stored calibration the loop measures one.
 func startSeededRadio(store *stateStore, br radio.SeededBridge, coordinator []byte, phase uint16, autoAck, tuneDebug bool) (*radio.Live, error) {
-	seedFSCTRL0(store, br)
-	return radio.StartSeeded(br, coordinator, phase, autoAck, tuneDebug)
+	stored := seedFSCTRL0(store, br)
+	return radio.StartSeeded(br, coordinator, phase, autoAck, tuneDebug, stored)
 }
 
-// seedFSCTRL0 writes the passive calibration stored by `freedo-dev autotune`
-// into FSCTRL0. It is the only FSCTRL0 write of the daemon: as in the Tado
-// firmware, the register holds for the whole session and the hardware FOC
-// absorbs the offset of each transmitter. A seed the radio refuses is a log
-// line, never a reason to refuse to start.
-func seedFSCTRL0(store *stateStore, br radio.TunableBridge) {
+// seedFSCTRL0 writes the stored receiver calibration into FSCTRL0 and reports
+// whether the register holds it. As in the Tado firmware, the register then
+// holds for the whole session and the hardware FOC absorbs the offset of each
+// transmitter. A seed the radio refuses is a log line, never a reason to refuse
+// to start: the radio measures the calibration instead.
+func seedFSCTRL0(store *stateStore, br radio.TunableBridge) bool {
 	if store == nil {
-		return
+		return false
 	}
-	switch seed, ok, err := store.FSCTRL0(context.Background()); {
+	seed, ok, err := store.FSCTRL0(context.Background())
+	switch {
 	case err != nil:
 		fmt.Fprintf(os.Stderr, "stored FSCTRL0: %v\n", err)
-	case ok:
-		if err := br.SetFSCTRL0(seed); err != nil {
-			fmt.Fprintf(os.Stderr, "seed FSCTRL0=%#02x: %v\n", seed, err)
+		return false
+	case !ok:
+		return false
+	}
+	if err := br.SetFSCTRL0(seed); err != nil {
+		fmt.Fprintf(os.Stderr, "seed FSCTRL0=%#02x: %v\n", seed, err)
+		return false
+	}
+	return true
+}
+
+// storeCalibrations stores each calibration the live radio measures, so the
+// next start seeds it. It ends with ctx.
+func (d *daemon) storeCalibrations(ctx context.Context) {
+	cr, ok := d.radio.(calibratingRadio)
+	if !ok {
+		return
+	}
+	results := cr.CalibrationResults()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case res := <-results:
+			d.storeCalibration(cr, res)
 		}
 	}
 }
 
-// setCalibration records whether the database holds a passive receiver
-// calibration, and the port that stores one. It reports the seed the radio took
-// at start: a calibration stored while the daemon runs reaches the receiver at
-// the next start, so a later read would claim an offset the chip does not hold.
-func (d *daemon) setCalibration(store *stateStore, port string) {
-	d.calPort = port
-	if store == nil {
+func (d *daemon) storeCalibration(r calibratingRadio, res radio.CalibrationResult) {
+	d.calMu.Lock()
+	defer d.calMu.Unlock()
+	if r.Calibration().Session != res.Session {
 		return
 	}
-	_, ok, err := store.FSCTRL0(context.Background())
-	d.calibrated = err == nil && ok
+	if d.state == nil {
+		log.Printf("receiver calibration: FSCTRL0 %#02x measured on %d frames of %d sources, not stored: no database", res.FSCTRL0, res.Frames, res.Sources)
+		return
+	}
+	if err := d.state.SetFSCTRL0(context.Background(), res.FSCTRL0); err != nil {
+		log.Printf("receiver calibration: FSCTRL0 %#02x measured on %d frames of %d sources, store: %v", res.FSCTRL0, res.Frames, res.Sources, err)
+		return
+	}
+	log.Printf("receiver calibration: FSCTRL0 %#02x measured on %d frames of %d sources, stored", res.FSCTRL0, res.Frames, res.Sources)
 }
 
-// calibrationWarning names the command that stores a passive calibration. The
-// daemon holds the register it seeds, so a database with no calibration
-// leaves the receiver on the register default for the whole session.
-func calibrationWarning(port string) string {
-	return fmt.Sprintf("no receiver calibration stored: the receiver runs at the FSCTRL0 default. "+
-		"run 'freedo-dev autotune -p %s' to store one", port)
+// calibrationHealth renders the calibration state for health and for the
+// calibrate route.
+func calibrationHealth(c radio.Calibration) map[string]any {
+	out := map[string]any{"state": c.State}
+	if c.State == radio.CalibrationMeasuring {
+		out["readings"], out["want"] = c.Readings, c.Want
+	}
+	return out
+}
+
+// postRadioCalibrate forgets the stored calibration and has the live radio
+// measure it again from the register it holds now.
+func (d *daemon) postRadioCalibrate(w http.ResponseWriter, r *http.Request) {
+	cr, ok := d.radio.(calibratingRadio)
+	if d.mode != "live" || !ok || cr.Calibration().State == "" {
+		writeErr(w, http.StatusConflict, "the receiver calibrates only in live mode")
+		return
+	}
+	d.calMu.Lock()
+	defer d.calMu.Unlock()
+	if d.state != nil {
+		if err := d.state.ClearFSCTRL0(r.Context()); err != nil {
+			writeErr(w, http.StatusInternalServerError, "forget the stored calibration: "+err.Error())
+			return
+		}
+	}
+	c := cr.Recalibrate()
+	log.Printf("receiver calibration: stored value forgotten, measuring again")
+	writeJSON(w, http.StatusAccepted, calibrationHealth(c))
 }
 
 // --- HTTP ---
@@ -1918,6 +1974,7 @@ func (d *daemon) mux() *http.ServeMux {
 	m.HandleFunc("POST /api/pair/devices/{ref}", d.postPairDevice)
 	m.HandleFunc("GET /api/pair/window", d.getPairWindow)
 	m.HandleFunc("POST /api/pair/window", d.postPairWindow)
+	m.HandleFunc("POST /api/radio/calibrate", d.postRadioCalibrate)
 	// Active-GET returns the correlated response, or {"queued":true}.
 	m.HandleFunc("GET /api/nodes/{id}/fw", d.getNodeFw)
 	m.HandleFunc("POST /api/nodes/{id}/fw", d.postNodeFw)
@@ -2050,12 +2107,13 @@ func (d *daemon) healthBase() (map[string]any, bool) {
 	if radio, ok := d.radio.(liveSerialErrors); ok {
 		health["serialErrors"] = radio.SerialErrors()
 	}
-	// calibrated says the register came from a passive measurement. Only a live
-	// radio has one.
-	if d.mode == "live" {
-		health["calibrated"] = d.calibrated
-		if !d.calibrated {
-			health["warning"] = calibrationWarning(d.calPort)
+	// calibrated says the register comes from a stored or a measured
+	// calibration. Only a live radio has one.
+	// A live radio with no register to move reports neither field.
+	if cr, ok := d.radio.(calibratingRadio); ok && d.mode == "live" {
+		if c := cr.Calibration(); c.State != "" {
+			health["calibrated"] = c.State != radio.CalibrationMeasuring
+			health["calibration"] = calibrationHealth(c)
 		}
 	}
 	return health, txArmed
@@ -4427,9 +4485,6 @@ flags:
 	}
 
 	d := newDaemon(in, emu, link, !*doTx, mode)
-	if mode == "live" {
-		d.setCalibration(store, *port)
-	}
 	d.debugAPI = *debugAPI
 	if err := d.attachState(store); err != nil {
 		closeStore(store)
@@ -4469,6 +4524,7 @@ flags:
 	unknownModules := emu.UnknownInterfaceModules()
 	ctx, cancel := context.WithCancel(context.Background())
 	go d.run(ctx)
+	go d.storeCalibrations(ctx)
 
 	srv := newAPIServer(*addr, serverHandler(token, *healthPublic, *ingress, d.mux()))
 	// An open rx tap would otherwise hold the whole HTTP drain budget.
@@ -4487,8 +4543,8 @@ flags:
 	fmt.Printf("daemon: mode=%s tx=%s addr=%s home=%d devices=%d zones=%d coordinator=%s short=%s\n",
 		mode, txState, *addr, in.HomeID, len(in.Devices), len(in.Zones),
 		hex.EncodeToString(in.CoordinatorEUI()), tado.ShortFromWire(in.CoordinatorEUI()))
-	if mode == "live" && !d.calibrated {
-		fmt.Println(calibrationWarning(*port))
+	if cr, ok := d.radio.(calibratingRadio); ok && mode == "live" && cr.Calibration().State == radio.CalibrationMeasuring {
+		fmt.Println("receiver calibration: none stored, the receiver measures it on the first frames it hears")
 	}
 	if len(unknownModules) > 0 {
 		fmt.Printf("WARNING: no interface module id (tag 015d) known for %s: it is served its d/config without 015d until it reports one\n",

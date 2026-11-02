@@ -65,7 +65,7 @@ type Bootstrap struct {
 	// Unset takes the emulator default; zero or negative waits forever.
 	ZoneProxyTimeoutSec *int `yaml:"zone_proxy_timeout_sec"`
 	// RadioTune is accepted and ignored, so a file that still sets it loads:
-	// FSCTRL0 holds the stored calibration for the whole session.
+	// the receiver calibrates FSCTRL0 itself.
 	RadioTune *bool `yaml:"radio_tune"`
 	// TuneDebug logs the FREQEST reading of every received frame.
 	TuneDebug bool `yaml:"tune_debug"`
@@ -194,7 +194,7 @@ func (b *Bootstrap) Warnings() []string {
 	if b.RadioTune == nil {
 		return nil
 	}
-	return []string{"radio_tune is ignored: FSCTRL0 holds the calibration stored by 'freedo-dev autotune' for the whole session"}
+	return []string{"radio_tune is ignored: the receiver calibrates FSCTRL0 itself"}
 }
 
 // TxCounterSeed returns the initial downlink frame counter.

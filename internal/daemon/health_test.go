@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -30,16 +31,20 @@ type healthResp struct {
 	FSCTRL0         string `json:"fsctrl0"`
 	SerialErrors    *int   `json:"serialErrors"`
 	Calibrated      *bool  `json:"calibrated"`
-	Warning         string `json:"warning"`
-	Version         string `json:"version"`
-	StartedAt       string `json:"startedAt"`
-	UptimeSec       *int   `json:"uptimeSec"`
-	Unhandled       *int   `json:"unhandled"`
-	Frames          int    `json:"frames"`
-	MICFails        int    `json:"micFails"`
-	RXQueue         *int   `json:"rxQueue"`
-	Taps            *int   `json:"taps"`
-	Downlink        struct {
+	Calibration     *struct {
+		State    string `json:"state"`
+		Readings *int   `json:"readings"`
+		Want     *int   `json:"want"`
+	} `json:"calibration"`
+	Version   string `json:"version"`
+	StartedAt string `json:"startedAt"`
+	UptimeSec *int   `json:"uptimeSec"`
+	Unhandled *int   `json:"unhandled"`
+	Frames    int    `json:"frames"`
+	MICFails  int    `json:"micFails"`
+	RXQueue   *int   `json:"rxQueue"`
+	Taps      *int   `json:"taps"`
+	Downlink  struct {
 		Sent      int `json:"sent"`
 		Delivered int `json:"delivered"`
 		Dropped   int `json:"dropped"`
@@ -207,48 +212,90 @@ func TestHealthReportsSerialErrors(t *testing.T) {
 	}
 }
 
-// Health tells the operator that the receiver holds no measured offset, and
-// names the command that measures one. A database with a stored register keeps
-// the warning out.
+// calRadio is a live radio with a receiver calibration the test sets.
+type calRadio struct {
+	*radio.Mock
+	mu      sync.Mutex
+	cal     radio.Calibration
+	results chan radio.CalibrationResult
+	recals  int
+}
+
+func newCalRadio(cal radio.Calibration) *calRadio {
+	return &calRadio{Mock: radio.NewMock(nil), cal: cal, results: make(chan radio.CalibrationResult, 1)}
+}
+
+func (r *calRadio) Calibration() radio.Calibration {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.cal
+}
+
+func (r *calRadio) Recalibrate() radio.Calibration {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.recals++
+	r.cal = radio.Calibration{State: radio.CalibrationMeasuring, Want: 20, Session: r.cal.Session + 1}
+	return r.cal
+}
+
+func (r *calRadio) CalibrationResults() <-chan radio.CalibrationResult { return r.results }
+
+func serveCalDaemon(t *testing.T, r radio.Radio, mode string, store *stateStore) *httptest.Server {
+	t.Helper()
+	emu := tado.NewEmu(defaultInstall.EmuConfig(), tado.NewUnhandledLogger(io.Discard))
+	d := newDaemon(defaultInstall, emu, r, true, mode)
+	d.ulog = tado.NewUnhandledLogger(io.Discard)
+	if err := d.attachState(store); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	go d.run(ctx)
+	go d.storeCalibrations(ctx)
+	srv := httptest.NewServer(d.mux())
+	t.Cleanup(func() {
+		srv.Close()
+		cancel()
+	})
+	return srv
+}
+
+// Health reports where the register comes from, and the progress of a
+// measurement while it runs.
 func TestHealthReportsTheCalibration(t *testing.T) {
 	tests := []struct {
-		name   string
-		stored bool
+		state      radio.CalibrationState
+		readings   int
+		calibrated bool
 	}{
-		{name: "no calibration"},
-		{name: "stored calibration", stored: true},
+		{state: radio.CalibrationStored, calibrated: true},
+		{state: radio.CalibrationMeasuring, readings: 7},
+		{state: radio.CalibrationMeasured, calibrated: true},
 	}
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			store := newTestStore(t, filepath.Join(t.TempDir(), "state.db"))
-			if tt.stored {
-				if err := store.SetFSCTRL0(context.Background(), 0x33); err != nil {
-					t.Fatal(err)
-				}
+		t.Run(string(tt.state), func(t *testing.T) {
+			cal := radio.Calibration{State: tt.state}
+			if tt.state == radio.CalibrationMeasuring {
+				cal.Readings, cal.Want = tt.readings, 20
 			}
-			emu := tado.NewEmu(defaultInstall.EmuConfig(), tado.NewUnhandledLogger(io.Discard))
-			d := newDaemon(defaultInstall, emu, radio.NewMock(nil), true, "live")
-			d.ulog = tado.NewUnhandledLogger(io.Discard)
-			d.setCalibration(store, "/dev/ttyUSB0")
-			ctx, cancel := context.WithCancel(context.Background())
-			go d.run(ctx)
-			srv := httptest.NewServer(d.mux())
-			t.Cleanup(func() {
-				srv.Close()
-				cancel()
-			})
+			srv := serveCalDaemon(t, newCalRadio(cal), "live", nil)
 			var health healthResp
 			if code := getBounded(t, srv.URL+"/api/health", &health); code != http.StatusOK {
 				t.Fatalf("status=%d, want 200", code)
 			}
-			if health.Calibrated == nil || *health.Calibrated != tt.stored {
-				t.Fatalf("calibrated=%v want %t", health.Calibrated, tt.stored)
+			if health.Calibrated == nil || *health.Calibrated != tt.calibrated {
+				t.Fatalf("calibrated=%v want %t", health.Calibrated, tt.calibrated)
 			}
-			switch {
-			case tt.stored && health.Warning != "":
-				t.Errorf("warning=%q, want none", health.Warning)
-			case !tt.stored && !strings.Contains(health.Warning, "freedo-dev autotune -p /dev/ttyUSB0"):
-				t.Errorf("warning=%q, want the autotune command with the port", health.Warning)
+			c := health.Calibration
+			if c == nil || c.State != string(tt.state) {
+				t.Fatalf("calibration=%+v, want state %s", c, tt.state)
+			}
+			measuring := tt.state == radio.CalibrationMeasuring
+			if (c.Readings != nil) != measuring || (c.Want != nil) != measuring {
+				t.Fatalf("readings=%v want=%v, want both only in measuring", c.Readings, c.Want)
+			}
+			if measuring && (*c.Readings != tt.readings || *c.Want != 20) {
+				t.Errorf("readings=%d want=%d, want %d of 20", *c.Readings, *c.Want, tt.readings)
 			}
 		})
 	}
@@ -256,22 +303,122 @@ func TestHealthReportsTheCalibration(t *testing.T) {
 
 // The other modes have no receiver of their own, so they carry no calibration.
 func TestHealthOmitsTheCalibrationOffLive(t *testing.T) {
-	emu := tado.NewEmu(defaultInstall.EmuConfig(), tado.NewUnhandledLogger(io.Discard))
-	d := newDaemon(defaultInstall, emu, radio.NewMock(nil), true, "mock")
-	d.ulog = tado.NewUnhandledLogger(io.Discard)
-	ctx, cancel := context.WithCancel(context.Background())
-	go d.run(ctx)
-	srv := httptest.NewServer(d.mux())
-	t.Cleanup(func() {
-		srv.Close()
-		cancel()
-	})
+	srv := serveCalDaemon(t, newCalRadio(radio.Calibration{State: radio.CalibrationStored}), "mock", nil)
 	var health healthResp
 	if code := getBounded(t, srv.URL+"/api/health", &health); code != http.StatusOK {
 		t.Fatalf("status=%d, want 200", code)
 	}
-	if health.Calibrated != nil || health.Warning != "" {
-		t.Fatalf("calibrated=%v warning=%q, want both absent", health.Calibrated, health.Warning)
+	if health.Calibrated != nil || health.Calibration != nil {
+		t.Fatalf("calibrated=%v calibration=%+v, want both absent", health.Calibrated, health.Calibration)
+	}
+}
+
+// A live radio with no register to move has no calibration: health omits it
+// and the route refuses.
+func TestHealthOmitsTheCalibrationWithoutARegister(t *testing.T) {
+	store := newTestStore(t, filepath.Join(t.TempDir(), "state.db"))
+	if err := store.SetFSCTRL0(context.Background(), 0x33); err != nil {
+		t.Fatal(err)
+	}
+	srv := serveCalDaemon(t, newCalRadio(radio.Calibration{}), "live", store)
+	var health healthResp
+	if code := getBounded(t, srv.URL+"/api/health", &health); code != http.StatusOK {
+		t.Fatalf("status=%d, want 200", code)
+	}
+	if health.Calibrated != nil || health.Calibration != nil {
+		t.Fatalf("calibrated=%v calibration=%+v, want both absent", health.Calibrated, health.Calibration)
+	}
+	resp, err := boundedClient.Post(srv.URL+"/api/radio/calibrate", "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("status=%d, want 409", resp.StatusCode)
+	}
+	if _, ok, _ := store.FSCTRL0(context.Background()); !ok {
+		t.Error("the refused route forgot the stored calibration")
+	}
+}
+
+// The route forgets the stored value and starts a new measurement.
+func TestRadioCalibrateRoute(t *testing.T) {
+	store := newTestStore(t, filepath.Join(t.TempDir(), "state.db"))
+	if err := store.SetFSCTRL0(context.Background(), 0x33); err != nil {
+		t.Fatal(err)
+	}
+	r := newCalRadio(radio.Calibration{State: radio.CalibrationStored})
+	srv := serveCalDaemon(t, r, "live", store)
+
+	resp, err := boundedClient.Post(srv.URL+"/api/radio/calibrate", "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var body map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("status=%d body=%v, want 202", resp.StatusCode, body)
+	}
+	if body["state"] != "measuring" || body["readings"] != float64(0) || body["want"] != float64(20) {
+		t.Errorf("body=%v, want measuring 0 of 20", body)
+	}
+	if _, ok, err := store.FSCTRL0(context.Background()); err != nil || ok {
+		t.Errorf("stored FSCTRL0 ok=%t err=%v, want it forgotten", ok, err)
+	}
+	if r.recals != 1 {
+		t.Errorf("Recalibrate calls=%d, want 1", r.recals)
+	}
+}
+
+// Outside live mode there is no receiver to calibrate.
+func TestRadioCalibrateRouteRefusesOffLive(t *testing.T) {
+	store := newTestStore(t, filepath.Join(t.TempDir(), "state.db"))
+	if err := store.SetFSCTRL0(context.Background(), 0x33); err != nil {
+		t.Fatal(err)
+	}
+	srv := serveCalDaemon(t, radio.NewMock(nil), "mock", store)
+	resp, err := boundedClient.Post(srv.URL+"/api/radio/calibrate", "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var body map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusConflict || body["error"] == "" {
+		t.Fatalf("status=%d body=%v, want 409 with an error", resp.StatusCode, body)
+	}
+	if v, ok, _ := store.FSCTRL0(context.Background()); !ok || v != 0x33 {
+		t.Errorf("stored FSCTRL0=%#02x,%t, want 0x33 untouched", v, ok)
+	}
+}
+
+// The daemon stores a measured calibration and logs it. A result of a session
+// that a re-calibration replaced stays out of the store.
+func TestDaemonStoresTheMeasuredCalibration(t *testing.T) {
+	logs := captureLog(t)
+	store := newTestStore(t, filepath.Join(t.TempDir(), "state.db"))
+	r := newCalRadio(radio.Calibration{State: radio.CalibrationMeasured, Session: 2})
+	d := newDaemon(defaultInstall, nil, r, true, "live")
+	if err := d.attachState(store); err != nil {
+		t.Fatal(err)
+	}
+
+	d.storeCalibration(r, radio.CalibrationResult{FSCTRL0: 0x44, Frames: 20, Sources: 1, Session: 1})
+	if _, ok, _ := store.FSCTRL0(context.Background()); ok {
+		t.Fatal("the result of a replaced session was stored")
+	}
+	d.storeCalibration(r, radio.CalibrationResult{FSCTRL0: 0x33, Frames: 20, Sources: 4, Session: 2})
+	if v, ok, err := store.FSCTRL0(context.Background()); err != nil || !ok || v != 0x33 {
+		t.Fatalf("stored FSCTRL0=%#02x,%t,%v, want 0x33", v, ok, err)
+	}
+	want := "receiver calibration: FSCTRL0 0x33 measured on 20 frames of 4 sources, stored\n"
+	if !strings.HasSuffix(logs.String(), want) || strings.Count(logs.String(), "receiver calibration") != 1 {
+		t.Errorf("log=%q, want only %q", logs.String(), want)
 	}
 }
 

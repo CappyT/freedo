@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"freedo/cc1101"
+	"freedo/internal/radio"
 )
 
 // tunableLiveBridge is a live bridge with a frequency-offset register, like the
@@ -81,58 +82,87 @@ func captureLog(t *testing.T) *bytes.Buffer {
 	return &logs
 }
 
-// The daemon writes FSCTRL0 once, at start, from the stored calibration. A long
-// run of off-center FREQEST readings leaves the register and the store alone.
-func TestLiveRadioHoldsTheSeededFSCTRL0(t *testing.T) {
-	tests := []struct {
-		name   string
-		stored bool
-		writes []byte
-		reg    byte
-	}{
-		{name: "stored calibration", stored: true, writes: []byte{0x33}, reg: 0x33},
-		{name: "no calibration", reg: 0x40},
+// A stored calibration holds for the whole session: the daemon writes it once,
+// at start, and a long run of off-center FREQEST readings leaves the register
+// and the store alone.
+func TestLiveRadioHoldsTheStoredFSCTRL0(t *testing.T) {
+	store := newTestStore(t, filepath.Join(t.TempDir(), "state.db"))
+	if err := store.SetFSCTRL0(context.Background(), 0x33); err != nil {
+		t.Fatal(err)
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			store := newTestStore(t, filepath.Join(t.TempDir(), "state.db"))
-			if tt.stored {
-				if err := store.SetFSCTRL0(context.Background(), 0x33); err != nil {
-					t.Fatal(err)
-				}
-			}
-			bridge := &offCenterBridge{tunableLiveBridge: newTunableBridge(0x40)}
-			logs := captureLog(t)
+	bridge := &offCenterBridge{tunableLiveBridge: newTunableBridge(0x40)}
+	logs := captureLog(t)
 
-			radio, err := startSeededRadio(store, bridge, defaultInstall.CoordinatorEUI(), 0, false, true)
-			if err != nil {
-				t.Fatal(err)
-			}
-			want := 3 * cc1101.TuneWant
-			deadline := time.Now().Add(5 * time.Second)
-			for bridge.received() < want && time.Now().Before(deadline) {
-				time.Sleep(time.Millisecond)
-			}
-			if err := radio.Close(); err != nil {
-				t.Fatal(err)
-			}
-			if got := bridge.received(); got < want {
-				t.Fatalf("the loop received %d frames, want at least %d", got, want)
-			}
+	r, err := startSeededRadio(store, bridge, defaultInstall.CoordinatorEUI(), 0, false, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := 3 * cc1101.TuneWant
+	deadline := time.Now().Add(5 * time.Second)
+	for bridge.received() < want && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	state := r.Calibration().State
+	if err := r.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if got := bridge.received(); got < want {
+		t.Fatalf("the loop received %d frames, want at least %d", got, want)
+	}
+	if !bytes.Equal(bridge.writes, []byte{0x33}) {
+		t.Fatalf("FSCTRL0 writes=%x, want 33: the register moved after start", bridge.writes)
+	}
+	if got := r.FSCTRL0(); got != 0x33 {
+		t.Errorf("FSCTRL0()=%#02x want 0x33", got)
+	}
+	if state != radio.CalibrationStored {
+		t.Errorf("calibration state=%s, want stored", state)
+	}
+	if !strings.Contains(logs.String(), "tune frame src=6162636465 path=recv") {
+		t.Errorf("log=%q, want the FREQEST debug line", logs.String())
+	}
+}
 
-			if !bytes.Equal(bridge.writes, tt.writes) {
-				t.Fatalf("FSCTRL0 writes=%x, want %x: the register moved after start", bridge.writes, tt.writes)
+// Without a stored calibration the radio measures one from the frames it
+// hears, and the daemon stores the result for the next start.
+func TestLiveRadioMeasuresAndTheDaemonStores(t *testing.T) {
+	store := newTestStore(t, filepath.Join(t.TempDir(), "state.db"))
+	bridge := &offCenterBridge{tunableLiveBridge: newTunableBridge(0x40)}
+	captureLog(t)
+
+	r, err := startSeededRadio(store, bridge, defaultInstall.CoordinatorEUI(), 0, false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { r.Close() })
+	d := newDaemon(defaultInstall, nil, r, true, "live")
+	if err := d.attachState(store); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	go d.storeCalibrations(ctx)
+
+	// The bridge reads +15 whatever the register holds, so the radio writes
+	// TuneRounds corrections and takes the last one.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		v, ok, err := store.FSCTRL0(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ok {
+			if v != 0x6d {
+				t.Fatalf("stored FSCTRL0=%#02x, want 0x6d", v)
 			}
-			if got := radio.FSCTRL0(); got != tt.reg {
-				t.Errorf("FSCTRL0()=%#02x want %#02x", got, tt.reg)
-			}
-			value, ok, err := store.FSCTRL0(context.Background())
-			if err != nil || ok != tt.stored || (ok && value != 0x33) {
-				t.Errorf("stored FSCTRL0=%#02x,%t,%v, want the calibration untouched", value, ok, err)
-			}
-			if !strings.Contains(logs.String(), "tune frame src=6162636465 path=recv") {
-				t.Errorf("log=%q, want the FREQEST debug line", logs.String())
-			}
-		})
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("nothing stored, calibration %+v", r.Calibration())
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if c := r.Calibration(); c.State != radio.CalibrationMeasured {
+		t.Errorf("calibration=%+v, want measured", c)
 	}
 }

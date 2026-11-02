@@ -1,4 +1,5 @@
 [
 	"GET /api/state/export",
-	"POST /api/state/import"
+	"POST /api/state/import",
+	"POST /api/radio/calibrate"
 ]
