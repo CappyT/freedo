@@ -296,7 +296,7 @@ page does while the installation has no room. It shows six steps with their live
 
 | Step | Where | Done when |
 |---|---|---|
-| Radio | Outside: connect the bridge, pass `--port`, [calibrate](#radio-calibration) | `mode` is `live` and `calibrated` is not `false` |
+| Radio | Outside: connect the bridge, pass `--port`. The radio [calibrates itself](#radio-calibration) | `mode` is `live`. `calibration` shows the state of the receiver calibration |
 | Time zone | On the page: it writes `timezone` | `timezone.fallback` is `false` |
 | Rooms | On the page | The installation has a heating zone |
 | Transmit | Outside: switch the commercial bridge off, pass `--tx` | `transmitAllowed` is `true` and `bridgePresent` is `false` |
@@ -334,7 +334,8 @@ connections from that address only and to treat the user as authenticated. The d
   the installation and pairing calls of the pages Rooms and devices and First setup, so those pages need no token
   under the add-on. Every other request from that address needs the token. [SECURITY.md](../SECURITY.md#home-assistant-ingress) lists
   the pairs and what a user can do with them.
-- The export and the import of the state are not among them. They are the 2 pairs of
+- The export and the import of the state and `POST /api/radio/calibrate` are not among them. They
+  are the 3 pairs of
   [`internal/daemon/ingress_admin_routes.json`](../internal/daemon/ingress_admin_routes.json): from the
   gateway address the daemon serves them without a token only to a Home Assistant administrator. It
   reads the user from `X-Remote-User-Id`, which the Supervisor sets, and asks Home Assistant through
@@ -402,15 +403,41 @@ queue stays bounded and can be emptied.
 
 ## Radio calibration
 
-The receiver needs a frequency calibration once for each chip or installation. `GET /api/health`
-reports `calibrated`. While it is `false`, the daemon runs on the default register value, and
-`warning` names the calibration command. The daemon writes the calibrated register once at start
-and never while it runs.
+The receiver needs a frequency calibration (register FSCTRL0) once for each chip. The receiver
+calibrates itself: you do not need a shell or a stopped daemon.
 
-The calibration runs in receive only, with the daemon stopped. The tool is a developer tool: see
-[CONTRIBUTING.md](../CONTRIBUTING.md#radio-calibration). A passive measurement is enough, because
-the hardware frequency offset compensation absorbs up to 21 units of residual offset. The
-measurements are in [PROTOCOL.md](PROTOCOL.md#freqest-and-autotune).
+Until the calibration, the radio works on the register default. The hardware frequency offset
+compensation absorbs up to 21 units of residual offset, and a typical module is about 13 units off,
+so the receiver hears the devices before the calibration. Nothing blocks pairing or transmit while
+`calibrated` is `false`.
+
+When the database holds no calibration, the receiver calibrates itself on the frames of the paired
+devices. It reads the frequency error of each uplink that it receives in a plain receive window.
+A pairing request gives no reading, and the radio ignores the frames that answer its own
+transmission, because their reading is not a measurement. On an empty plant the readings therefore
+start when the first device is paired and sends its own uplinks. After 20 readings the radio
+corrects the register, and it measures one more round to confirm. After at most three rounds it
+keeps the register and the daemon stores it. The log shows one line for each register write,
+`receiver calibration: round 1: correction -13 on 20 frames of 4 sources, FSCTRL0 0x00 -> 0xf3`,
+and one line for the result: `receiver calibration: FSCTRL0 0xf3 measured on 20 frames of 4
+sources, stored`. At the next start the daemon writes the stored register once and the radio
+measures nothing. A session that hears too few frames stays in `measuring`, and the next start
+measures again.
+
+Read the state in `GET /api/health`: `calibrated` and `calibration.state`, which is `stored`,
+`measuring` or `measured`. In `measuring`, `calibration.readings` of `calibration.want` shows the
+progress. See [Receiver calibration](API.md#receiver-calibration). The radio step of the page First
+setup shows the same count. The count stays at 0 until a device is paired and talks. If it stays at
+0 after that, the bridge hears nothing: check the board and the antenna.
+
+To measure again, for example after you change the bridge, press Calibrate again on the page First
+setup, or call `POST /api/radio/calibrate`. Under the add-on, only a Home Assistant administrator
+can do this without the token. The daemon forgets the stored value and the radio measures from the
+register it holds now.
+
+For a bench without a running daemon, the developer tool `freedo-dev autotune` measures and stores
+the same value: see [CONTRIBUTING.md](../CONTRIBUTING.md#radio-calibration). The measurements are in
+[PROTOCOL.md](PROTOCOL.md#freqest-and-autotune).
 
 ## Serial link faults
 

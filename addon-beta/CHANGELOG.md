@@ -233,3 +233,18 @@ pre-release has its notes here.
   0.11.0-beta.12 binaries with a recorded bridge: the first start that transmits writes the program
   unshifted to the zone writer. A release write that a restart interrupts goes out again as a plain
   rewrite, so a running manual overlay keeps the old shift until it ends.
+
+## 0.12.0-beta.1
+
+- Daemon: the receiver calibrates itself. Without a stored calibration, the radio works on the
+  register default and measures FSCTRL0 on the uplinks of the paired devices, writes it while it
+  runs and stores it for the next start. You no longer stop the daemon to run `freedo-dev autotune`.
+- Daemon: `GET /api/health` replaces `warning` with `calibration`: `state` (`stored`, `measuring` or
+  `measured`) and, while it measures, `readings` and `want`. `calibrated` is `true` for a stored or
+  a measured calibration.
+- Daemon: `POST /api/radio/calibrate` forgets the stored calibration and measures it again. It
+  answers `409` outside live mode. Under ingress it needs no token for a Home Assistant
+  administrator, like the export and the import of the state.
+- Dashboard: the setup page shows the state of the receiver calibration inside the Radio step, with
+  the count of the readings while it measures, and a button Calibrate again. The Settings page shows
+  the state in the row Radio calibrated.

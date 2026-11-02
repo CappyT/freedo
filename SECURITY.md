@@ -95,7 +95,8 @@ Supervisor: the variable `SUPERVISOR_TOKEN` must be set. Outside the Supervisor 
 One route returns the network key: `GET /api/state/export`, the whole database. Its counterpart
 `POST /api/state/import` replaces the network key, the identity and the installation. Every Home
 Assistant user can reach ingress, so these two routes are a class of their own, listed in
-`internal/daemon/ingress_admin_routes.json`. The daemon serves them without the token only when all of
+`internal/daemon/ingress_admin_routes.json`. The same class holds `POST /api/radio/calibrate`, which
+forgets the receiver calibration and moves the radio register. The daemon serves them without the token only when all of
 this holds:
 
 - the TCP connection comes from the gateway address `172.30.32.2`;

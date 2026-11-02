@@ -196,6 +196,7 @@ banner.
 | `GET`, `POST /api/pair/window` | Read, open or close the pair window. |
 | `POST /api/pair` | Send the `d/pair` command to a device. |
 | `POST /api/pair/devices/{ref}` | Send the `d/pair` command to the named device, under the network key of the installation. No body. |
+| `POST /api/radio/calibrate` | Forget the stored receiver calibration and measure it again. No body. |
 
 ### Statistics
 
@@ -795,8 +796,8 @@ at least one alarm. `/api/nodes` shows the same data as `LowBattery`, `Fault`, `
   for a build without one.
 - `GET /api/health` answers within three seconds. It answers `503` with `"ok": false` when
   the engine is busy (`"engine": "busy"`) or when the live radio loop ended (`radioError`).
-  It reports `fsctrl0` and `calibrated` in live mode, and a `warning` that names the
-  calibration command when none is stored. While the daemon waits after an import it answers
+  It reports `fsctrl0`, `calibrated` and `calibration` in live mode: see
+  [Receiver calibration](#receiver-calibration). While the daemon waits after an import it answers
   `200` with `importWait` and no other state: see
   [State export and import](#state-export-and-import).
 - `serialErrors` in `GET /api/health` is the number of serial replies that the link to the
@@ -805,6 +806,25 @@ at least one alarm. `/api/nodes` shows the same data as `LowBattery`, `Fault`, `
   radio loop ends only when one kind of exchange, the queue poll or the receive window, failed
   every time for 30 s. A count that keeps growing points to the USB link: see
   [Serial link faults](OPERATION.md#serial-link-faults).
+
+### Receiver calibration
+
+The live radio measures its frequency calibration (register FSCTRL0) from the frames it
+receives, while the daemon runs. See [Radio calibration](OPERATION.md#radio-calibration).
+
+- `fsctrl0` in `GET /api/health` is the register the receiver holds now, for example `0xf3`.
+- `calibrated` is `true` when the register comes from a stored or a measured calibration.
+- `calibration` holds `state`: `stored` (the register came from the database at start),
+  `measuring` (the radio collects readings) or `measured` (the radio measured the register in
+  this session). The daemon then stores a measured register and logs the result of the write. In `measuring` it also holds `readings`,
+  the usable readings of the round in progress, and `want`, the readings one round needs (20):
+  `{"state": "measuring", "readings": 7, "want": 20}`.
+- `POST /api/radio/calibrate` deletes the stored calibration and starts a new measurement from
+  the register the receiver holds now. It answers `202` with the `calibration` object, which is
+  `{"state": "measuring", "readings": 0, "want": 20}`. It answers `409` with `{"error": ...}` when
+  the mode is not `live`. Under the Home Assistant add-on, ingress serves it without the token to
+  an administrator only, like the export and the import of the state: see
+  [State export and import](#state-export-and-import).
 
 ### Child lock, identify and calibration
 
@@ -1221,7 +1241,7 @@ without the token:
 | Home Assistant does not answer in 5 seconds, or its answer is not usable. | `503` |
 | The request comes from another address, with or without the header. | `401` |
 
-The two pairs are in `internal/daemon/ingress_admin_routes.json`. See
+The two pairs, with `POST /api/radio/calibrate`, are in `internal/daemon/ingress_admin_routes.json`. See
 [SECURITY.md](../SECURITY.md#backup-home-assistant-administrators-only).
 
 `GET /api/state/export` answers with one SQLite file. The daemon first saves its state, then writes

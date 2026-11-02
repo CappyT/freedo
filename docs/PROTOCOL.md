@@ -1711,17 +1711,20 @@ the instant the FIFO pump completes the frame, and every path copies that byte.
 `RxFrame.HasFreqEst` says whether a reading is there, so the host runs on v2 as
 well.
 
-The daemon writes FSCTRL0 once, at start, from the `meta` table under `fsctrl0`, and never while
-it runs. The Tado bridge, valve and thermostat firmware do the same: one constant register table
-with FSCTRL0 0, and the hardware FOC (FOCCFG 0x16) absorbs the offset of each device. This module
+The daemon seeds FSCTRL0 at start from the `meta` table under `fsctrl0`. With a stored value the
+register then holds; the live radio moves it only while it measures a calibration. The Tado bridge,
+valve and thermostat firmware keep one constant register table with FSCTRL0 0, and the hardware FOC
+(FOCCFG 0x16) absorbs the offset of each device. This module
 sits about +81 kHz off (FSCTRL0 0x33), outside the FOC range, so it needs a static trim.
 
-The trim is a passive calibration. Run it once per new chip or installation: `freedo-dev autotune`
-runs `Bridge.Autotune` in receive only and stores the result under `fsctrl0`. `GET /api/health`
-reports `fsctrl0` and `calibrated` in live mode and, without a stored value, a `warning` that names
-the command. The bootstrap key `radio_tune` is accepted and ignored, with one warning at start.
+The trim is a passive calibration, once per chip. Without a stored value, the live radio measures it
+from the CMD_RECV and AUTOACK frames with the same rounds as `Bridge.Autotune`: a round completes on
+`TuneWant` usable readings, or on `TuneWant` readings that clip on one side, and the write saturates
+at the int8 limits of the register. The daemon stores the result under `fsctrl0`. The CSL inbound frames stay out (see below). `freedo-dev autotune` runs
+`Bridge.Autotune` on a bench, in receive only. `GET /api/health` reports `fsctrl0`, `calibrated` and
+`calibration` in live mode. The bootstrap key `radio_tune` is accepted and ignored, with one warning at start.
 
-FREQEST is telemetry only. `tune_debug` (`--tune-debug`) logs one line per received frame that
+Apart from the calibration, FREQEST is telemetry. `tune_debug` (`--tune-debug`) logs one line per received frame that
 `TuneSample` labels, on the CMD_RECV, AUTOACK and CSL inbound paths. The line shows the time since
 the previous frame of that source and since our own last transmission. A CSL inbound frame arrives
 right after our own transmission, before the FOC loop converges. With TX armed, those frames spread

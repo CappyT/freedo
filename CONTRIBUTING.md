@@ -136,7 +136,9 @@ reads the installation from the database (`--state`), and never creates one.
 
 ### Radio calibration
 
-Stop the daemon, then run the calibration once for each chip or installation, in receive only:
+The daemon measures the calibration itself on the first frames it hears: see
+[Radio calibration](docs/OPERATION.md#radio-calibration). On a bench without a running daemon, stop
+the daemon and run the calibration in receive only:
 
 ```sh
 go run ./cmd/freedo-dev autotune -p /dev/ttyUSB0 --state freedo-state.db

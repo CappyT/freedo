@@ -115,8 +115,9 @@ thermostat. The same user can change the installation and pair a device: add, ch
 heating circuits, add, move and remove devices, set the time zone, open the pair window and send the pair
 command. The page needs this for the first setup, because the add-on keeps a token that it creates in its
 data folder. The identity of the network, the network key, a pairing with another key,
-calibration, firmware, raw device reads and the debug routes need the token, also from the page. The
-[backup](#backup) is for Home Assistant administrators only.
+calibration of a valve, firmware, raw device reads and the debug routes need the token, also from the
+page. The [backup](#backup) and the new measurement of the radio calibration are for Home Assistant
+administrators only.
 Give the right to open the page with care.
 
 The port 18080 does not share this rule: a client of that port needs the token for every API route. The
