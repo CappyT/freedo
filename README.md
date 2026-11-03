@@ -12,6 +12,7 @@ This is heavily AI-assisted work. The code and the documentation were written la
 - [Status](#status)
 - [Scope and limits](#scope-and-limits)
   - [Supported devices](#supported-devices)
+- [Compared with the tado cloud and HomeKit](#compared-with-the-tado-cloud-and-homekit)
 - [Requirements](#requirements)
 - [Install](#install)
   - [Home Assistant: add-on and integration](#home-assistant-add-on-and-integration)
@@ -165,6 +166,69 @@ devices reconnect by themselves, and because tado sold the same RU01 with both b
 tested a RU01 with freedo yet. The RU01 drives the boiler through the extension kit BU01, while
 freedo knows the RU02, which drives the boiler over OpenTherm by itself.
 
+## Compared with the tado cloud and HomeKit
+
+The table compares three ways to run a V3+ plant:
+
+- **tado cloud**: the tado Internet Bridge with the tado app. Some automations need the Auto-Assist
+  subscription.
+- **HomeKit**: the tado Internet Bridge with no internet access. Apple Home or the Home Assistant
+  integration HomeKit Device controls it. The tado app does not work in this setup.
+- **freedo**: this project, in place of the tado Internet Bridge.
+
+The values in the cells:
+
+- **Yes**: the setup has the function.
+- **Auto-Assist**: the tado cloud has the function only with the subscription.
+- **Automation**: you build the function yourself, with an Apple Home or Home Assistant automation or a
+  third-party integration.
+- **Blueprint**: a Home Assistant blueprint that freedo ships.
+- **Home Assistant**: a standard function of Home Assistant gives it, with no automation.
+- **Partial**: a part of the function is missing. The cell says which part.
+- **No**: the setup does not have the function.
+
+The tado columns come from the tado articles
+[How does tado° work with Apple HomeKit?](https://support.tado.com/en/articles/3387320-how-does-tado-work-with-apple-homekit),
+[What is Auto-Assist?](https://support.tado.com/en/articles/3387221-what-is-auto-assist) and
+[What are Quick Actions?](https://support.tado.com/en/articles/4996736-what-are-quick-actions-for-tado-v3).
+[Features](#features) gives the test status of each freedo function.
+
+| Function | tado cloud | HomeKit | freedo |
+|---|---|---|---|
+| Room temperature, humidity and target | Yes | Yes | Yes |
+| Off, heat and resume the schedule | Yes | Yes | Yes |
+| End rule of a manual change: timer, next block, next automatic change | Yes | Automation. A HomeKit change stays until the schedule resumes. | Yes |
+| Boost | Yes, all rooms for 30 minutes | Automation | Yes, one zone or all zones |
+| Weekly schedule | Yes | Automation. The schedule set before keeps running, but you cannot change it. | Yes |
+| Away schedule for each zone | No | Automation | Yes |
+| Program profiles, for example summer and winter | No | Automation | Yes |
+| Home and away, with an away temperature for each zone | Yes | Automation | Yes |
+| Geofencing | Auto-Assist. Without it, the app asks you to switch. | Automation | Blueprint |
+| Preheat before arrival | Auto-Assist | Automation | Blueprint. It reads the distance, not the travel time. |
+| Early start | Yes | No | Yes |
+| Open window detection | Yes. Without Auto-Assist, the app asks you to switch the heating off. | Automation, with a contact sensor | Yes, from the valves or from a contact sensor |
+| Hot water: on, temperature, schedule | Yes | No | Yes |
+| Room temperature from another sensor | No | Automation, with a third-party integration | Yes |
+| Auxiliary heat from another climate device | No | Automation | Blueprint |
+| Child lock, temperature offset, valve calibration, identify | Yes | No | Yes |
+| Flow temperature limit | Yes | No | Yes |
+| Flow temperature from the weather | Auto-Assist | No | Yes, with a local curve and controller |
+| Boiler data and fault codes | Partial. Care & Protect tells you that the boiler has a fault, with no fault code. | No | Yes. OpenTherm now, the other boiler buses when their integration is complete. |
+| Energy and gas report | Auto-Assist | No | Yes, from the boiler modulation, corrected by meter readings |
+| History | 1 day. 13 months with Auto-Assist. | Home Assistant, with no heating report | Yes, in the daemon and in Home Assistant |
+| Air comfort | Auto-Assist, with outdoor air freshness | No | Partial. No outdoor air freshness. |
+| Alerts: low battery, device offline, open window | Yes | Automation | Blueprint |
+| Several users | Yes | Yes, Apple Home sharing or Home Assistant users | Yes, the Home Assistant users |
+| Voice control | Yes: Alexa, Google Assistant, Siri | Yes: Siri | Home Assistant |
+| Remote access | Yes | Partial. It needs a home hub (Apple TV, HomePod, iPad) or Home Assistant. | Home Assistant |
+| Works without internet | No. The app and the automations need the cloud. | Yes | Yes |
+| Subscription | Auto-Assist, for the automations | No | No |
+| Rooms, devices and pairing | Yes | No | Yes. Every device pairs again from scratch. |
+| Device firmware updates | Yes | No | No |
+| Supported devices | All V3+ devices | The heating and cooling rooms of the bridge | V3+ valves and wired wall thermostat |
+| Extra hardware | No | No | An ESP32 with a CC1101 radio |
+| Maturity | Commercial product | Commercial product | Experimental |
+
 ## Requirements
 
 - Radio hardware: an ESP32 with a CC1101 module on a USB port, flashed with the bridge firmware
@@ -314,14 +378,14 @@ what is not verified on air. The routes are in [`docs/API.md`](docs/API.md). The
 | Remove a device | partial | The dashboard and the API report the effects first. The removal from the dashboard ran on one plant. The delete sends no frame. freedo has no remote detach: a device leaves its network only when you hold its button. |
 | Firmware version and update | partial | The daemon keeps the version of each device across restarts and reads it once after start from a device that never reported it. A transfer route exists. No block was sent on air. freedo distributes no image. |
 | Flow limit | equal | The fixed limit is verified on air through the OpenTherm reading. |
-| Weather curve and automatic flow adaptation | partial | The curve has two points. The adaptation is a local controller and not the cloud algorithm. It is off by default. Not verified on air. |
-| Default weather curve for the flow limit | partial | A built-in curve under `flow_limit_c`, fitted on one plant and one season of monthly means. It is not the cloud algorithm. Home Assistant must feed the outdoor temperature. It is off by default. The page Boiler setup switches it and draws it. On one plant since 2026-10-21. Checked against the monthly reduction of the tado cloud on the same plant over one season: within 0.6 C from 3.6 to 19 C outdoors, except one month of 1.8 C at the start of the season, and equal to the live cloud value at 8 C. Below 3 C it is an extrapolation. |
+| Weather curve and automatic flow adaptation | equal | The curve has two points. The adaptation is a local controller and not the cloud algorithm. It is off by default. Not verified on air. |
+| Default weather curve for the flow limit | equal | A built-in curve under `flow_limit_c`, fitted on one plant and one season of monthly means. It is not the cloud algorithm. Home Assistant must feed the outdoor temperature. It is off by default. The page Boiler setup switches it and draws it. On one plant since 2026-10-21. Checked against the monthly reduction of the tado cloud on the same plant over one season: within 0.6 C from 3.6 to 19 C outdoors, except one month of 1.8 C at the start of the season, and equal to the live cloud value at 8 C. Below 3 C it is an extrapolation. |
 | Boiler telemetry and faults | equal | The dashboard shows the boiler fault codes on the page Boiler and in a banner on every page. Home Assistant has the binary sensor Boiler fault with the codes. A code is a number of the boiler maker, and freedo gives it no meaning. Not seen on a real boiler fault. |
-| Energy and gas estimate | partial | Estimated from modulation and name-plate data. Not a measurement. The page Boiler setup holds the name-plate data, with a guide to the manual of the boiler. Gas meter readings, from the page Boiler or from Home Assistant, give an estimated meter value and, after two readings, a correction factor: 0.958 on one plant over 7 m3. With the statistics on, the page Consumption shows the fuel, the heat and the cost per day and per month from a price per unit. |
+| Energy and gas estimate | equal | Estimated from modulation and name-plate data. Not a measurement. The page Boiler setup holds the name-plate data, with a guide to the manual of the boiler. Gas meter readings, from the page Boiler or from Home Assistant, give an estimated meter value and, after two readings, a correction factor: 0.958 on one plant over 7 m3. With the statistics on, the page Consumption shows the fuel, the heat and the cost per day and per month from a price per unit. |
 | Air comfort | partial | The room screen judges the room from its temperature and humidity, with the ranges of EN 16798-1 category II, and warns of a mould risk from 70 %. The outdoor air freshness of the cloud needs outdoor data and is missing. |
 | History and reports | partial | Optional statistics in the daemon, off by default: a sample of each room and of the boiler every 5 minutes for 90 days, daily totals for 13 months, and the heat-ups of each room. The room report shows one day with the temperature, the target, the heating demand, the humidity and the heating periods, with their cause and, for a rise of the program, the time to reach the target. Runs on one plant with add-on 0.10.0. Home Assistant records the history of every entity as well. |
 | Notifications | equal | In Home Assistant, the event entity Alert raises one event when an alert starts, and the blueprint `alert_notification.yaml` sends a notification for a low battery, a device fault, a valve warning, an offline device, a boiler fault and a window that stays open. The texts are English. Needs Home Assistant: the daemon sends no notification. Not run on a real plant. |
-| Several users | not implemented | One bearer token. Under Home Assistant ingress every Home Assistant user can use the dashboard. |
+| Several users | equal | Through Home Assistant: under ingress every Home Assistant user can use the dashboard. The daemon API has one bearer token. |
 | HomeKit | not implemented | |
 | Duration of a change made on a valve | equal | The rule is applied by the daemon. No capture holds the thermostat buttons. |
 | Offline schedule on the devices | extra | Devices run the program alone after 25 minutes without a coordinator. The 25 minute test on a real plant is open. |
