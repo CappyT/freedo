@@ -1,9 +1,10 @@
 name: CI
 
+# The release workflow calls CI as its gate, so a push to main runs nothing.
 on:
-  push:
-    branches: [main]
   pull_request:
+  workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -63,12 +64,15 @@ jobs:
       - uses: astral-sh/setup-uv@v10.3.0
       - run: uv run --no-project --python 3.14 --with pytest-homeassistant-custom-component pytest homeassistant/tests
 
+  # Inside the release (event push) the release builds the firmware and the images itself.
   firmware:
+    if: github.event_name != 'push'
     uses: ./.github/workflows/firmware.yaml
     permissions:
       contents: read
 
   images:
+    if: github.event_name != 'push'
     runs-on: ubuntu-latest
     strategy:
       matrix:

@@ -18,7 +18,8 @@ go test ./...
 
 The three commands are the gate. A change passes when all three succeed. CI runs them, and
 it also runs the Home Assistant tests, compiles the bridge firmware and builds both container
-images.
+images. CI and the validation workflow run on a pull request and in the release workflow, not on a
+push to `main`.
 
 The dashboard needs Node 22.17 or later. The image and CI use the line in `ARG NODE_VERSION` of the
 `Dockerfile`. The three Go commands work without Node, because
@@ -77,10 +78,11 @@ never behind a stable release.
 
 To release, set the versions in one commit, push it, then push the tag. The Supervisor offers a
 version as soon as the commit is on `main`, and the update fails until the release workflow has
-pushed the image. So push the tag right after the commit.
+pushed the image. So push the tag right after the commit. The release workflow runs CI and the
+validation workflow first, and it builds and publishes nothing when one of them fails.
 
-`.github/scripts/check-versions.sh` checks these rules. The validation workflow runs it on every
-push, and the release workflow runs it with the tag and stops when a rule fails. The script also
+`.github/scripts/check-versions.sh` checks these rules. The validation workflow runs it on a pull
+request, and the release workflow runs it with the tag and stops when a rule fails. The script also
 checks that `icon.png` and `logo.png` are the same in both add-on folders: the Supervisor reads each
 folder on its own, so `addon-beta` holds copies.
 

@@ -8,7 +8,18 @@ permissions:
   contents: read
 
 jobs:
+  ci:
+    uses: ./.github/workflows/ci.yaml
+    permissions:
+      contents: read
+
+  validate:
+    uses: ./.github/workflows/validate.yaml
+    permissions:
+      contents: read
+
   images:
+    needs: [ci, validate]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -72,6 +83,7 @@ jobs:
           cache-to: type=gha,scope=${{ matrix.target }},mode=max
 
   firmware:
+    needs: [ci, validate]
     uses: ./.github/workflows/firmware.yaml
     with:
       version: ${{ github.ref_name }}
