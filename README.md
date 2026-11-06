@@ -262,7 +262,7 @@ The easiest way to run freedo is directly as a Home Assistant Add-on (called an 
 
 1. Add the freedo repository
 
-    ![Add Add-on Repository](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)
+    [![Add Add-on Repository](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FCappyT%2Ffreedo)
 
    Alternative manually:
     <details>
@@ -335,7 +335,7 @@ For volume configuration, time zone settings and building from source, see docs/
 1. Add the freedo repository
 
     
-    ![Add to HACS](https://my.home-assistant.io/badges/hacs_repository.svg)
+    [![Add to HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=CappyT&repository=freedo&category=integration)
     
     
     Alternative manually:
