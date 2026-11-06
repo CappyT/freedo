@@ -254,11 +254,13 @@ There are two ways to install freedo: using the quick installation buttons or fo
 
 #### Quick installation (recommended)
 
-**1. Add freedo repositories (Add-on and Hacs Integration)**
+**1. Add freedo repositories (Add-on and Hacs/Marketplace Integration)**
 
 [![Add Add-on Repository](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FCappyT%2Ffreedo)
 
 [![Add to HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=CappyT&repository=freedo&category=integration)
+
+Compatible with Home Assistant 2026.11 and newer (Marketplace) and older versions using HACS.
 
 **2. Import Home Assistant Blueprints**
 
@@ -291,9 +293,18 @@ If you prefer to install freedo manually, follow these steps.
 
 1. Open the add-on store, the menu, then Repositories. Enter `https://github.com/CappyT/freedo`.
 2. Install freedo. On the Configuration tab select the serial port of the ESP32 and save.
-3. Start the add-on and leave Protection mode on.
-4. In HACS, open the menu, then Custom repositories. Enter `https://github.com/CappyT/freedo` with
-   type Integration. Download freedo and restart Home Assistant.
+3. Start the add-on and leave Protection mode on.  
+4. Install the freedo integration:
+   **Home Assistant 2026.11 and newer (Marketplace):**
+   - Open Settings → Marketplace.
+   - Add `https://github.com/CappyT/freedo` as an Integration.
+   - Download freedo.
+   - Restart Home Assistant
+   **Home Assistant versions before 2026.11 (HACS):**
+   - Open HACS → menu → Custom repositories.
+   - Enter `https://github.com/CappyT/freedo`.
+   - Select `Integration`, add the repository and download freedo.
+   - Restart Home Assistant
 5. Home Assistant lists freedo as discovered. Confirm it. The discovery carries the host, the
    port and the token.
 
