@@ -15,7 +15,7 @@ This is heavily AI-assisted work. The code and the documentation were written la
 - [Compared with the tado cloud and HomeKit](#compared-with-the-tado-cloud-and-homekit)
 - [Requirements](#requirements)
 - [Install](#install)
-  - [Home Assistant: add-on + integration + Blueprints](#home-assistant-add-integration-blueprints)
+  - [Home Assistant: add-on + integration + Blueprints](#home-assistant-add-on--integration--blueprints)
   - [Container](#container)
 - [First setup](#first-setup)
 - [Dashboard](#dashboard)
