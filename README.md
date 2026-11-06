@@ -254,56 +254,36 @@ There are two ways to install freedo: using the quick installation buttons or fo
 
 #### Quick installation (recommended)
 
-**1. Add the freedo Add-on Repository**
+**1. Add freedo repositories**
 
 [![Add Add-on Repository](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FCappyT%2Ffreedo)
 
-
-**2. Add the freedo Integration to HACS**
-
 [![Add to HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=CappyT&repository=freedo&category=integration)
 
-**3. Import Home Assistant Blueprints**
+**2. Import Home Assistant Blueprints**
 
-Import the available freedo automations directly into Home Assistant using the buttons below.
+Import the available freedo automations directly into Home Assistant:
 
-Notifications and alerts (including low battery)
+| Blueprint | Import |
+|---|---|
+| Notifications and alerts (including low battery) | [![Import](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/CappyT/freedo/refs/heads/main/homeassistant/blueprints/automation/freedo/alert_notification.yaml) |
+| Presence Away | [![Import](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/CappyT/freedo/refs/heads/main/homeassistant/blueprints/automation/freedo/presence_away.yaml) |
+| Season Profile | [![Import](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/CappyT/freedo/refs/heads/main/homeassistant/blueprints/automation/freedo/season_profile.yaml) |
+| Distance Setback | [![Import](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/CappyT/freedo/refs/heads/main/homeassistant/blueprints/automation/freedo/distance_setback.yaml) |
+| Auxiliary Heat | [![Import](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/CappyT/freedo/refs/heads/main/homeassistant/blueprints/automation/freedo/auxiliary_heat.yaml) |
+| Valve Exercise | [![Import](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/CappyT/freedo/refs/heads/main/homeassistant/blueprints/automation/freedo/valve_exercise.yaml) |
 
-[![Import Blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/CappyT/freedo/refs/heads/main/homeassistant/blueprints/automation/freedo/alert_notification.yaml)
+**3. Configure and start freedo**
 
-Presence Away
+- Install the freedo add-on from the Add-on Store.
+- In Configuration, enable "Show unused optional configuration options", select the ESP32 serial port and save.
+- Start the add-on with Protection Mode enabled.
+- Download the freedo integration through HACS and restart Home Assistant.
+- Confirm the automatic discovery notification. It provides the host, port and token.
 
-[![Import Blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/CappyT/freedo/refs/heads/main/homeassistant/blueprints/automation/freedo/presence_away.yaml)
+The add-on starts in dry-run mode.
 
-Season Profile
-
-[![Import Blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/CappyT/freedo/refs/heads/main/homeassistant/blueprints/automation/freedo/season_profile.yaml)
-
-Distance Setback
-
-[![Import Blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/CappyT/freedo/refs/heads/main/homeassistant/blueprints/automation/freedo/distance_setback.yaml)
-
-Auxiliary Heat
-
-[![Import Blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/CappyT/freedo/refs/heads/main/homeassistant/blueprints/automation/freedo/auxiliary_heat.yaml)
-
-Valve Exercise
-
-[![Import Blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/CappyT/freedo/refs/heads/main/homeassistant/blueprints/automation/freedo/valve_exercise.yaml)
-
-**4. Complete the installation**
-
-- Install freedo from the Home Assistant Add-on Store.
-- Open the Configuration tab, enable "Show unused optional configuration options", select the ESP32 serial port, and click Save.
-- Start the add-on and leave Protection Mode enabled.
-- Open HACS and download the freedo integration.
-- Restart Home Assistant.
-Home Assistant should automatically discover freedo. Confirm the discovery notification.
-
-The discovery process provides the host, port and token required by the integration.
-
-The add-on starts in dry-run. See [`addon/DOCS.md`](addon/DOCS.md) for the options, the data and the
-backups.
+See [`addon/DOCS.md`](addon/DOCS.md) for configuration options, data and backups.
 
 #### Manual installation
 
