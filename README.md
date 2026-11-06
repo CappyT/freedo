@@ -252,7 +252,8 @@ freedo consists of a Home Assistant add-on (called an app in recent Home Assista
 
 There are two ways to install freedo: using the quick installation buttons or following the manual installation instructions.
 
-#### Quick installation (recommended)
+<details>
+<summary><strong>Quick installation (recommended)</strong></summary>
 
 **1. Add freedo repositories (Add-on and Hacs/Marketplace Integration)**
 
@@ -285,7 +286,10 @@ Import the available freedo automations directly into Home Assistant:
 
 The add-on starts in dry-run mode.
 
-#### Manual installation
+</details>
+
+<details>
+<summary><strong>Manual installation</strong></summary>
 
 If you prefer to install freedo manually, follow these steps.
 
@@ -306,7 +310,11 @@ If you prefer to install freedo manually, follow these steps.
 5. Home Assistant lists freedo as discovered. Confirm it. The discovery carries the host, the
    port and the token.
 
-##### Additional Infos 
+</details>
+
+<details>
+<summary><strong>Additional Infos </strong></summary>
+  
 The add-on and the integration follow two channels:
 - Stable: tags `vX.Y.Z`. The add-on freedo and HACS offer them by default.
 - Experimental: pre-release tags such as `vX.Y.Z-beta.N`, with less testing on a real plant. HACS
@@ -321,6 +329,8 @@ The add-on and the integration follow two channels:
 The add-on starts in dry-run. See [`addon/DOCS.md`](addon/DOCS.md) for the options, the data and the
 backups. See [`custom_components/freedo/README.md`](custom_components/freedo/README.md) for the
 entities, the services and the blueprints.
+
+</details>
 
 ### Container
 
