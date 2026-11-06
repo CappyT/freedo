@@ -245,7 +245,7 @@ Use one coordinator per radio network. Switch the commercial bridge off before f
 
 ## Install
 
-### Home Assistant: Add-on + Integration + Blueprints
+### Home Assistant: add-on + integration + Blueprints
 Home Assistant: add-on + integration + Blueprints
 
 freedo consists of a Home Assistant add-on (called an app in recent Home Assistant releases) and a HACS integration.
@@ -302,7 +302,7 @@ Home Assistant should automatically discover freedo. Confirm the discovery notif
 
 The discovery process provides the host, port and token required by the integration.
 
-Manual installation
+#### Manual installation
 
 If you prefer to install freedo manually, follow these steps.
 
