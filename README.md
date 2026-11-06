@@ -254,7 +254,7 @@ There are two ways to install freedo: using the quick installation buttons or fo
 
 #### Quick installation (recommended)
 
-**1. Add freedo repositories**
+**1. Add freedo repositories (Add-on and Hacs Integration)**
 
 [![Add Add-on Repository](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FCappyT%2Ffreedo)
 
