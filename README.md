@@ -243,8 +243,8 @@ Use one coordinator per radio network. Switch the commercial bridge off before f
 
 ## Install
 
-Home Assistant: Add-on/Container + Integration + Blueprints
-
+<details>
+<summary><strong>Info installation method</strong></summary>
 freedo consists of two components:
 
 freedo service: Handles communication with the ESP32 and provides the functionality required by Home Assistant.
@@ -257,6 +257,13 @@ Standalone Docker container: Runs independently of the Home Assistant Supervisor
 
 Both installation methods use the same freedo service and work with the same Home Assistant integration.
 
+</details>
+Install freedo (Add-On or Docker)
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
 <details>
 <summary><strong>Home Assistant Add-on (recommended)</strong></summary>
 
@@ -264,23 +271,28 @@ The easiest way to run freedo is directly as a Home Assistant Add-on (called an 
 
 1. Add the freedo repository
 
-![Add Add-on Repository](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)
+    ![Add Add-on Repository](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)
 
 2. Install and configure freedo
 
-Install the freedo add-on from the Add-on Store.
-In Configuration, enable "Show unused optional configuration options".
-Select the ESP32 serial port and save the configuration.
-Start the add-on with Protection Mode enabled.
+    - Go to **Settings → Add-ons → Add-on Store**.
+    - Search for **freedo** and install it.
+    - Go to **freedo → Configuration**.
+    - Enable **Show unused optional configuration options**.
+    - Select the ESP32 serial port and click **Save**.
+    - Go to **Info** and start freedo with **Protection Mode enabled**.
 
-The add-on starts in dry-run mode.
+    The add-on starts in dry-run mode.
 
 </details>
+
+</td>
+<td width="50%" valign="top">
 
 <details>
 <summary><strong>Standalone Docker container</strong></summary>
 
-You can also run the freedo service independently of Home Assistant using Docker.
+Run the freedo service independently of Home Assistant.
 
 This is useful if you run Home Assistant in a container, on a separate machine or without the Home Assistant Supervisor.
 
@@ -288,25 +300,25 @@ The image ghcr.io/cappyt/freedo is available for linux/amd64 and linux/arm64.
 
 1. Prepare the configuration
 
-sh
-cp docker-compose.example.yml docker-compose.yml
-openssl rand -hex 32 > freedo_api_token
+    sh
+    cp docker-compose.example.yml docker-compose.yml
+    openssl rand -hex 32 > freedo_api_token
 
 
-2. Configure and start the container
+2. Configure the container
 
-Before starting, edit docker-compose.yml and configure:
+    Before starting, edit docker-compose.yml and configure:
+    
+    The ESP32 serial device.
+    The serial device group ID.
+    The time zone (TZ).
+    
+    Without TZ, the container runs in UTC and the devices receive a UTC offset of 0.
 
-The ESP32 serial device.
-The serial device group ID.
-The time zone (TZ).
+3. Start the container
 
-Without TZ, the container runs in UTC and the devices receive a UTC offset of 0.
-
-Start the container:
-
-sh
-docker compose up -d
+    sh
+    docker compose up -d
 
 
 The container starts in dry-run mode.
@@ -315,35 +327,52 @@ For volume configuration, time zone settings and building from source, see docs/
 
 </details>
 
+</td>
+</tr>
+</table>
+
+
 <details>
-<summary><strong>Home Assistant Integration (required for both installation methods)</strong></summary>
+<summary><strong>Install Home Assistant Integration (required for both installation methods)</strong></summary>
 
-Regardless of how the freedo service is installed, the Home Assistant integration is required.
 
-1. Add the freedo integration repository
+1. Add the freedo repository
 
-![Add to HACS](https://my.home-assistant.io/badges/hacs_repository.svg)
+    
+    ![Add to HACS](https://my.home-assistant.io/badges/hacs_repository.svg)
+    
+    
+    If the button does not work, add the repository manually:
 
-Compatible with Home Assistant 2026.11 and newer (Marketplace) and older versions using HACS.
+    <details>
+    <summary><strong>Home Assistant 2026.11 and newer (Marketplace)</strong></summary>
+    
+    Open Settings → Marketplace.
+    Add https://github.com/CappyT/freedo as an Integration.
+    
+    </details>
+    
+    <details>
+    <summary><strong>Home Assistant versions before 2026.11 (HACS)</strong></summary>
+    
+    Open HACS → menu → Custom repositories.
+    Enter https://github.com/CappyT/freedo.
+    Select Integration and add the repository.
+    
+    </details>
 
-Home Assistant 2026.11 and newer (Marketplace):
+2. Download and install freedo integration
 
-Open Settings → Marketplace.
-Add https://github.com/CappyT/freedo as an Integration.
-Download freedo.
-Restart Home Assistant.
+    - Go to **HACS / Marketplace → Integrations**.
+    - Search for **freedo** and click **Download**.
+    - Restart Home Assistant.
 
-Home Assistant versions before 2026.11 (HACS):
+4. Connect to the freedo integration with freedo(Add-On or Docker) 
 
-Open HACS → menu → Custom repositories.
-Enter https://github.com/CappyT/freedo.
-Select Integration, add the repository and download freedo.
-Restart Home Assistant.
-
-2. Connect to the freedo service
-
-Home Assistant Add-on: Confirm the automatic discovery notification. It provides the host, port and token.
-Docker container: Add freedo manually through Settings → Devices & services. Enter the host, port and API token.
+    Home Assistant Add-on:
+       Confirm the automatic discovery notification. It provides the host, port and token.
+    Docker container:
+       Go to Settings → Devices & services → Add integration → freedo. Enter the host, port and API token manually.
 
 </details>
 
@@ -352,13 +381,14 @@ Docker container: Add freedo manually through Settings → Devices & services. E
 
 Import the available freedo automations directly into Home Assistant:
 
-Blueprint	Import
-Notifications and alerts (including low battery)	![Import](https://my.home-assistant.io/badges/blueprint_import.svg)
-Presence Away	[!Import
-Season Profile	![Import](https://my.home-assistant.io/badges/blueprint_import.svg)
-Distance Setback	![Import](https://my.home-assistant.io/badges/blueprint_import.svg)
-Auxiliary Heat	[!Import
-Valve Exercise	[!Import
+| Blueprint | Import |
+|---|---|
+| Notifications and alerts (including low battery) | [![Import](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/CappyT/freedo/refs/heads/main/homeassistant/blueprints/automation/freedo/alert_notification.yaml) |
+| Presence Away | [![Import](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/CappyT/freedo/refs/heads/main/homeassistant/blueprints/automation/freedo/presence_away.yaml) |
+| Season Profile | [![Import](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/CappyT/freedo/refs/heads/main/homeassistant/blueprints/automation/freedo/season_profile.yaml) |
+| Distance Setback | [![Import](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/CappyT/freedo/refs/heads/main/homeassistant/blueprints/automation/freedo/distance_setback.yaml) |
+| Auxiliary Heat | [![Import](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/CappyT/freedo/refs/heads/main/homeassistant/blueprints/automation/freedo/auxiliary_heat.yaml) |
+| Valve Exercise | [![Import](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/CappyT/freedo/refs/heads/main/homeassistant/blueprints/automation/freedo/valve_exercise.yaml) |
 
 </details>
 
