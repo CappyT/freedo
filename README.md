@@ -285,8 +285,6 @@ Import the available freedo automations directly into Home Assistant:
 
 The add-on starts in dry-run mode.
 
-See [`addon/DOCS.md`](addon/DOCS.md) for configuration options, data and backups.
-
 #### Manual installation
 
 If you prefer to install freedo manually, follow these steps.
@@ -308,8 +306,8 @@ If you prefer to install freedo manually, follow these steps.
 5. Home Assistant lists freedo as discovered. Confirm it. The discovery carries the host, the
    port and the token.
 
+##### Additional Infos 
 The add-on and the integration follow two channels:
-
 - Stable: tags `vX.Y.Z`. The add-on freedo and HACS offer them by default.
 - Experimental: pre-release tags such as `vX.Y.Z-beta.N`, with less testing on a real plant. HACS
   offers them to the integration when you turn on the beta versions of the freedo repository. The
