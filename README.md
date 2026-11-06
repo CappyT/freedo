@@ -245,17 +245,8 @@ Use one coordinator per radio network. Switch the commercial bridge off before f
 
 <details>
 <summary><strong>Info installation method</strong></summary>
-freedo consists of two components:
-
-freedo service: Handles communication with the ESP32 and provides the functionality required by Home Assistant.
-Home Assistant integration: Connects Home Assistant to the freedo service and provides entities, services and automations.
-
-The freedo service can be installed in two ways:
-
-Home Assistant Add-on (recommended): Managed directly by Home Assistant.
-Standalone Docker container: Runs independently of the Home Assistant Supervisor.
-
-Both installation methods use the same freedo service and work with the same Home Assistant integration.
+The freedo service can run as a Home Assistant Add-on (recommended) or a standalone Docker container. 
+Both use the same Home Assistant integration.
 
 </details>
 Install freedo (Add-On or Docker)
@@ -273,7 +264,12 @@ The easiest way to run freedo is directly as a Home Assistant Add-on (called an 
 
     ![Add Add-on Repository](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)
 
-2. Install and configure freedo
+   Alternative manually:
+    <details>
+    - Go to **Settings → Add-ons → Add-on Store**.
+    - Add Repositories **https://github.com/CappyT/freedo**
+    </details>
+3. Install and configure freedo
 
     - Go to **Settings → Add-ons → Add-on Store**.
     - Search for **freedo** and install it.
@@ -342,7 +338,7 @@ For volume configuration, time zone settings and building from source, see docs/
     ![Add to HACS](https://my.home-assistant.io/badges/hacs_repository.svg)
     
     
-    If the button does not work, add the repository manually:
+    Alternative manually:
 
     <details>
     <summary><strong>Home Assistant 2026.11 and newer (Marketplace)</strong></summary>
