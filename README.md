@@ -293,88 +293,45 @@ Valve Exercise
 
 4. Complete the installation
 
-Install freedo from the Home Assistant Add-on Store.
-Open the Configuration tab, select the serial port of the ESP32 and save.
-Start the add-on and leave Protection Mode enabled.
-Open HACS and download the freedo integration.
-Restart Home Assistant.
+- Install freedo from the Home Assistant Add-on Store.
+- Open the Configuration tab, enable "Show unused optional configuration options", select the ESP32 serial port, and click Save.
+- Start the add-on and leave Protection Mode enabled.
+- Open HACS and download the freedo integration.
+- Restart Home Assistant.
 Home Assistant should automatically discover freedo. Confirm the discovery notification.
 
 The discovery process provides the host, port and token required by the integration.
+
+The add-on starts in dry-run. See [`addon/DOCS.md`](addon/DOCS.md) for the options, the data and the
+backups.
 
 #### Manual installation
 
 If you prefer to install freedo manually, follow these steps.
 
-1. Install the Add-on
+1. Open the add-on store, the menu, then Repositories. Enter `https://github.com/CappyT/freedo`.
+2. Install freedo. On the Configuration tab select the serial port of the ESP32 and save.
+3. Start the add-on and leave Protection mode on.
+4. In HACS, open the menu, then Custom repositories. Enter `https://github.com/CappyT/freedo` with
+   type Integration. Download freedo and restart Home Assistant.
+5. Home Assistant lists freedo as discovered. Confirm it. The discovery carries the host, the
+   port and the token.
 
-Open the Home Assistant Add-on Store.
-Open the three-dot menu and select Repositories.
-Add the following repository:
+The add-on and the integration follow two channels:
 
-https://github.com/CappyT/freedo
+- Stable: tags `vX.Y.Z`. The add-on freedo and HACS offer them by default.
+- Experimental: pre-release tags such as `vX.Y.Z-beta.N`, with less testing on a real plant. HACS
+  offers them to the integration when you turn on the beta versions of the freedo repository. The
+  second add-on of the repository, freedo beta, runs them. It has its own data. To move the plant,
+  download a backup on the page Settings of one add-on, stop it, start the other one and restore
+  the backup there. The same steps go back. The two add-ons must not run at the same
+  time. See [`addon-beta/DOCS.md`](addon-beta/DOCS.md) for the move and the return. The daemon
+  images of a pre-release carry the version tag and `beta`, so a container installation can run
+  them.
 
-Install freedo.
-Open the Configuration tab, select the serial port of the ESP32 and save.
-Start the add-on and leave Protection Mode enabled.
-
-2. Install the HACS Integration
-
-Open HACS.
-Open the three-dot menu and select Custom repositories.
-Add the following repository:
-
-https://github.com/CappyT/freedo
-
-Select Integration as the category.
-Download freedo and restart Home Assistant.
-
-3. Complete the Setup
-
-Home Assistant should automatically discover freedo.
-
-Confirm the discovery notification. It provides the host, port and token required by the integration.
-
-Release channels
-
-The add-on and the integration follow two release channels:
-
-Stable
-
-Uses version tags such as vX.Y.Z.
-The freedo add-on and HACS offer stable releases by default.
-Recommended for regular use.
-
-Experimental (Beta)
-
-Uses pre-release tags such as vX.Y.Z-beta.N.
-These releases receive less testing on a real heating system.
-In HACS, enable beta versions for the freedo repository to receive experimental integration releases.
-The repository provides a separate add-on called freedo beta for experimental releases.
-
-The stable and beta add-ons have separate data.
-
-To move your installation between them:
-
-Download a backup on the Settings page of the currently installed add-on.
-Stop that add-on.
-Start the other add-on.
-Restore the backup there.
-
-The same procedure applies when moving back to stable.
-
-Important: Never run both add-ons at the same time.
-
-See addon-beta/DOCS.md for detailed migration and rollback instructions.
-
-The daemon images of pre-releases carry both the version tag and the beta tag, so container installations can also run experimental releases.
-
-Additional documentation
-addon/DOCS.md – Add-on options, data and backups.
-addon-beta/DOCS.md – Beta installation and migration.
-custom_components/freedo/README.md – Integration, entities, services and blueprints.
-
-Safety: The add-on starts in dry-run mode by default.
+The add-on starts in dry-run. See [`addon/DOCS.md`](addon/DOCS.md) for the options, the data and the
+backups. See [`custom_components/freedo/README.md`](custom_components/freedo/README.md) for the
+entities, the services and the blueprints.
 
 ### Container
 
