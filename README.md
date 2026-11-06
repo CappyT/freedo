@@ -291,7 +291,7 @@ Valve Exercise
 
 [![Import Blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/CappyT/freedo/refs/heads/main/homeassistant/blueprints/automation/freedo/valve_exercise.yaml)
 
-4. Complete the installation
+**4. Complete the installation**
 
 - Install freedo from the Home Assistant Add-on Store.
 - Open the Configuration tab, enable "Show unused optional configuration options", select the ESP32 serial port, and click Save.
