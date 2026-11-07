@@ -267,7 +267,7 @@ var tags = withHVACTags(map[string]tagInfo{
 	"4060": {"temp_aux2_C", div(100, "C")}, // another temperature (matched HA temp)
 	"0135": {"humidity_pct", div(10, "%")}, // = HA current_humidity
 	"0162": {"battery_mV", rawDec},         // 2467..2555 mV (valve = 2xAA)
-	"0136": {"flag0136", rawDec}, "0137": {"flag0137", rawDec}, "027a": {"flag027a", rawDec},
+	"0136": {"ambient_light_pct", rawDec}, "0137": {"dial_clicks", rawDec}, "027a": {"dial_pins", rawDec},
 	"0161": {"sen_0161", rawDec}, // one sample of 6205 in a thermostat d/<serial>/sen
 	// motor telemetry (d/<serial>/act), u16 each. 0265 and 0294 are two counters
 	// of the same unit that follow the valve travel; the capture does not
@@ -277,8 +277,8 @@ var tags = withHVACTags(map[string]tagInfo{
 	// s16 end-stop position error: 0294 before the end-stop latch minus the stored
 	// end-stop, below -100 an overshoot fault (motor_endstop_overshoot_cb@0xf4f6).
 	"028d": {"valve_travel_delta", sdec},
-	"0273": {"valve_ctr_0273", rawDec},   // moves with 027c, observed 2278..2347
-	"027c": {"valve_ctr_027c", rawDec},   // stays above 0273, observed 2300..2480
+	"0273": {"motor_load_mV", rawDec},    // ADC under motor load, raw*1875/1000 (@0x1d684)
+	"027c": {"motor_run_min_mV", rawDec}, // lowest averaged reading of the last motor run, same scale
 	"0280": {"valve_const_0280", rawDec}, // near constant, observed 1786..1794
 	// fault report (d/<serial>/err), u32. The capture holds no non-zero sample.
 	// The bits the valve firmware sets are the Fault* constants below.
@@ -603,8 +603,8 @@ var hvacTags = []hvacTag{
 	hvacRaw("0454", resHVACMon, "boiler", 2),
 	hvacRaw("0455", resHVACMon, "boiler", 1),
 	hvacRaw("0456", resHVACMon, "boiler", 1),
-	hvacNamed("0457", resHVACMon, "boiler_flag", 1),
-	hvacRaw("0458", resHVACMon, "boiler", 2),
+	hvacNamed("0457", resHVACMon, "flame_on", 1),
+	{tag: "0458", res: resHVACMon, name: "flame_current_uA", size: 2, scale: 10, unit: "uA"},
 	hvacRaw("0459", resHVACMon, "boiler", 1),
 	hvacRaw("048a", resHVACMon, "boiler", 2),
 	hvacRaw("048b", resHVACMon, "boiler", 2),
@@ -658,8 +658,8 @@ var hvacTags = []hvacTag{
 	hvacRaw("0469", resHVACConfig, "boiler", 1),
 	hvacRaw("046a", resHVACConfig, "boiler", 1),
 	hvacRaw("046b", resHVACConfig, "boiler", 1),
-	hvacNamed("046c", resHVACConfig, "slave_config", 1),
-	hvacNamed("046d", resHVACConfig, "slave_config_compl", 1),
+	hvacNamed("046c", resHVACConfig, "dhw_storage_tank", 1),
+	hvacNamed("046d", resHVACConfig, "dhw_instantaneous", 1),
 	hvacRaw("046e", resHVACConfig, "boiler", 2),
 	// MaxTSet as the boiler reads it back, stored by
 	// hvac_ot_read_sensors_pt@0x0800c230. hvac_ot_f88_to_centi adds 1, so 48 C

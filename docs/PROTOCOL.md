@@ -961,6 +961,19 @@ circuit. The code notes that the thermostat then applies a MaxTSet of 70 C when 
 interface starts. No capture or measurement on a boiler confirms this value. freedo serves the
 limit as set, inside the window of the daemon (30 to 75 C).
 
+### Boiler link tags
+
+These `hvac/mon` and `hvac/config` tags carry the boiler state. The Fact column names the
+OpenTherm data id that the thermostat reads.
+
+| Tag | Name | Resource | Fact |
+|---|---|---|---|
+| 0457 | `flame_on` | `hvac/mon` | OT0 slave status, bit 3 (flame) |
+| 0458 | `flame_current_uA` | `hvac/mon` | OT36 flame current. The wire value is in 0.1 uA |
+| 046c | `dhw_storage_tank` | `hvac/config` | OT3 high byte, bit 3: the boiler has a hot water storage tank |
+| 046d | `dhw_instantaneous` | `hvac/config` | the complement of `046c` |
+| 0471 | `dhw_setpoint_max_C` | `hvac/config` | OT48 high byte, the upper bound of the DHW setpoint |
+
 Tag `0460` in `hvac/codes` carries the fault and diagnostic codes, one TLV each. The thermostat
 coprocessor builds attribute `0478` as `(OT5 low byte << 16) | 0xffff` when the boiler reports
 a fault and answers OT5, as `0xff00ffff` when it reports a fault without answering OT5, and as
@@ -1153,8 +1166,9 @@ internals are not traced separately.
   byte-identical on the wire and both trigger a full valve stroke. A
   setpoint change (overlay `z/s`) does not stroke.
 
-The catalogue names the motor telemetry of `d/*/act`, the fault report of `d/*/err`
-and the three constants that carry no confirmed meaning. A name with a tag suffix
+The catalogue names the motor telemetry of `d/*/act`, the dial and light readings of the
+wall thermostat and the valve, the fault report of `d/*/err` and the three constants that carry
+no confirmed meaning. A name with a tag suffix
 marks a role that the capture shows but does not resolve.
 
 | Tag | Name | Type | Fact |
@@ -1162,8 +1176,11 @@ marks a role that the capture shows but does not resolve.
 | 0265 | `valve_travel_0265` | uint16 | travel counter, paired with `0294` |
 | 0294 | `valve_travel_0294` | uint16 | travel counter, paired with `0265` |
 | 028d | `valve_travel_delta` | uint16 | `0265 - 0294` in every frame that carries it |
-| 0273 | `valve_ctr_0273` | uint16 | 2278..2347, moves with `027c` |
-| 027c | `valve_ctr_027c` | uint16 | 2300..2480, always above `0273` |
+| 0273 | `motor_load_mV` | uint16 | ADC reading under motor load in mV, raw*1875/1000 (@0x1d684). Two readings of 2149 or less set fault code 13 (@0x1d618) |
+| 027c | `motor_run_min_mV` | uint16 | lowest averaged reading of the last motor run, same scale as `0273`. Reset to 0xffff after each report (@0xf0b0..0xf110) |
+| 0137 | `dial_clicks` | uint | detent clicks counted in the last user interface session, unsigned. Quadrature decoder on P0.25 and P0.26 (@0x2d224), counter at 0x254ac, reset after each report (@0x25038) |
+| 027a | `dial_pins` | uint | raw encoder pin state at report time: bit 0 = P0.25 low, bit 1 = P0.26 low. 0 at a detent |
+| 0136 | `ambient_light_pct` | uint | ambient light of the valve, 0..100 %. SAADC reading, x*100/3550 capped at 100 |
 | 0280 | `valve_const_0280` | uint16 | 1786..1794, near constant |
 | 01a3 | `device_fault_word` | uint32 | `d/*/err` fault word, `0` = no fault; bits below |
 | 0161 | `sen_0161` | uint16 | one sample of 6205 in a thermostat `d/*/sen` |
@@ -1490,8 +1507,8 @@ Heat demand chain, detail:
 
 Boiler link: `hvac/mon` frames carry only changed attributes. `0450` is the control
 setpoint and ramps (40, 46, 48 C), then falls to 0 when the burn ends. `044c` reads
-39.10 C and then 46.40 C during the burn and `0458` changes in most frames. The meaning
-of these two is not resolved. `2040` never appears in these frames.
+39.10 C and then 46.40 C during the burn. `0458` is the flame current (OT36), in 0.1 uA on
+the wire, and it changes in most frames. The meaning of `044c` is not resolved. `2040` never appears in these frames.
 
 Write bodies (decrypted, byte-exact). The home was in the state `6160=2` at capture. Tag
 `6200` is absent in both:

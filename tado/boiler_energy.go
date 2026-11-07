@@ -106,7 +106,7 @@ func (e *EmuState) BoilerSample() BoilerSample {
 	var b BoilerView
 	e.fillBoiler(&b, from)
 	s := BoilerSample{At: from.hvacMonAt, ModulationPct: b.ModulationPct}
-	if flag := b.Mon["boiler_flag"]; flag != nil {
+	if flag := b.Mon["flame_on"]; flag != nil {
 		on := *flag != 0
 		s.Burner = &on
 	}

@@ -36,7 +36,7 @@ export type BurnerState = 'on' | 'off' | 'unknown';
  * it can be off while a room asks. A boiler that reports no flag has an unknown state.
  */
 export function burnerState(boiler: Pick<Boiler, 'Present' | 'Active' | 'Mon'>): BurnerState {
-	if (!boiler.Present || typeof boiler.Mon?.boiler_flag !== 'number') return 'unknown';
+	if (!boiler.Present || typeof boiler.Mon?.flame_on !== 'number') return 'unknown';
 	return boiler.Active ? 'on' : 'off';
 }
 

@@ -920,11 +920,11 @@ try {
 		await sleep(300);
 		return tab.evaluate(`[document.querySelector('[data-testid=burner]').textContent.trim(), document.querySelector('[data-testid=heat-call]')?.textContent.trim() ?? null]`);
 	};
-	const hotWaterRun = await burner({ Present: true, Active: true, HeatActive: false, Mon: { boiler_flag: 1 } });
+	const hotWaterRun = await burner({ Present: true, Active: true, HeatActive: false, Mon: { flame_on: 1 } });
 	check(hotWaterRun.join() === 'Burner on,', `a burner that runs while no room asks for heat shows as on (${hotWaterRun})`);
-	const heatingRun = await burner({ Present: true, Active: true, HeatActive: true, Mon: { boiler_flag: 1 } });
+	const heatingRun = await burner({ Present: true, Active: true, HeatActive: true, Mon: { flame_on: 1 } });
 	check(heatingRun.join() === 'Burner on,Heating requested', `a burner that runs for the heating circuit shows both (${heatingRun})`);
-	const waiting = await burner({ Present: true, Active: false, HeatActive: true, Mon: { boiler_flag: 0 } });
+	const waiting = await burner({ Present: true, Active: false, HeatActive: true, Mon: { flame_on: 0 } });
 	check(waiting.join() === 'Burner off,Heating requested', `a call for heat with the burner off does not show the burner as on (${waiting})`);
 	const noFlag = await burner({ Present: true, Active: false, HeatActive: false, Mon: {} });
 	check(noFlag.join() === 'Burner state not reported,', `a boiler with no burner flag shows no burner state (${noFlag})`);

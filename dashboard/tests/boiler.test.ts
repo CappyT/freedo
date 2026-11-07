@@ -54,7 +54,7 @@ describe('the burner state', () => {
 	const boiler = (flag: number | null | undefined, active: boolean, present = true) => ({
 		Present: present,
 		Active: active,
-		Mon: flag === undefined ? null : { boiler_flag: flag }
+		Mon: flag === undefined ? null : { flame_on: flag }
 	});
 
 	it('follows the burner flag of the boiler', () => {

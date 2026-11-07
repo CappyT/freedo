@@ -451,7 +451,7 @@ func (b *BoilerView) deriveLegacy() {
 	b.OutsideC = b.Mon["outside_C"]
 	b.ControlSetpointC = b.Mon["control_setpoint_C"]
 	b.ModulationPct = intAttr(b.Mon["boiler_mod"])
-	b.Active = b.Mon["boiler_flag"] != nil && *b.Mon["boiler_flag"] != 0
+	b.Active = b.Mon["flame_on"] != nil && *b.Mon["flame_on"] != 0
 	b.DHWC = b.DHW["dhw_temp_C"]
 	b.DHWSetpointC = b.DHW["dhw_setpoint_C"]
 	b.DhwFlowLmin = b.DHW["dhw_flow_lmin"]

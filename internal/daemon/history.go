@@ -639,7 +639,7 @@ func historyHumidity(inst *tado.Install, zone int, valves map[string]tado.ValveV
 
 func historyBoiler(b tado.BoilerView, fuel, heat float64) boilerSample {
 	s := boilerSample{FlowC: b.FlowC, ModulationPct: b.ModulationPct, Fuel: fuel, HeatKWh: heat}
-	if b.Present && b.Mon["boiler_flag"] != nil {
+	if b.Present && b.Mon["flame_on"] != nil {
 		on := b.Active
 		s.Burner = &on
 	}

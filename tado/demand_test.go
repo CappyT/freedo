@@ -196,12 +196,12 @@ func TestBoilerReportMergesAsDelta(t *testing.T) {
 			[]string{"h", "7654321", "hvac", "mon"}, nil, body))
 	}
 
-	// 1787837678.326 control_setpoint_C=40.00C boiler_0458=5496
+	// 1787837678.326 control_setpoint_C=40.00C flame_current_uA=549.6
 	mon(concat(
 		TLV{Tag: "0450", Val: []byte{0x0f, 0xa0}}.Encode(),
 		TLV{Tag: "0458", Val: []byte{0x15, 0x78}}.Encode(),
 	))
-	// 1787837682.325 boiler_mod=53 boiler_flag=1
+	// 1787837682.325 boiler_mod=53 flame_on=1
 	mon(concat(
 		TLV{Tag: "0452", Val: []byte{0x00, 0x35}}.Encode(),
 		TLV{Tag: "0457", Val: []byte{0x01}}.Encode(),

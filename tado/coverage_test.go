@@ -83,7 +83,7 @@ func TestCatalogTagsNowDecoded(t *testing.T) {
 		"0265": {"073d", "valve_travel_0265=1853"},  // u16 travel counter
 		"0294": {"070b", "valve_travel_0294=1803"},  // u16 travel counter
 		"028d": {"0032", "valve_travel_delta=50"},   // s16, positive error
-		"0273": {"0920", "valve_ctr_0273=2336"},     // u16
+		"0273": {"0920", "motor_load_mV=2336"},      // u16
 		"0280": {"06fb", "valve_const_0280=1787"},   // u16
 		"01a3": {"00000000", "device_fault_word=0"}, // u32, no fault
 		"021a": {"0000", "dcfg_const_021a=0"},       // u16 d/config constant

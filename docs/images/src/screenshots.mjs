@@ -153,7 +153,7 @@ const patches = {
 			ModulationPct: 38,
 			Active: true,
 			HeatActive: true,
-			Mon: { ...(json.Mon ?? {}), boiler_flag: 10 },
+			Mon: { ...(json.Mon ?? {}), flame_on: 10 },
 			Fault: false,
 			FaultCodes: [],
 			DiagnosticCode: null
