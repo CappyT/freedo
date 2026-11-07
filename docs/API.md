@@ -990,7 +990,8 @@ session again. Each application closes and opens the session.
 - A circuit with an enabled curve, or with the adaptation on, falls back to 48 C while
   `flow_limit_c` is unset. The fallback applies to a stale outdoor reading and to the start of
   the adaptation.
-- The window is 30 to 75 C, and `POST /api/boiler/flow` accepts the whole window. freedo serves
+- The window is 30 to 75 C, and `POST /api/boiler/flow` accepts the whole window in whole
+  degrees. The thermostat divides `2040` by 100 and drops the fraction. freedo serves
   the requested limit without a cut to a boiler bound. The thermostat writes it to the boiler
   as MaxTSet (OpenTherm id 57) with no clamp, and the boiler enforces its own maximum. Tag
   `0471` is the DHW setpoint upper bound, not a CH bound.

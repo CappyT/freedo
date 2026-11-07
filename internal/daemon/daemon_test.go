@@ -3161,6 +3161,12 @@ func TestDaemonBoilerFlow(t *testing.T) {
 	if code != http.StatusBadRequest || set.Error == "" {
 		t.Fatalf("90 C should be refused, got %d %+v", code, set)
 	}
+	set.Error = ""
+	code = postJSON(t, http.MethodPost, srv.URL+"/api/boiler/flow",
+		map[string]any{"tempC": 45.5}, &set)
+	if code != http.StatusBadRequest || set.Error == "" {
+		t.Fatalf("45.5 C should be refused, got %d %+v", code, set)
+	}
 }
 
 // TestDaemonHoldsDelayedAction: an action carrying NotBefore does not go on air

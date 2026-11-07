@@ -3262,14 +3262,18 @@ func (e *EmuState) EnqueueDHWSchedule(target string, id int) error {
 // "h/<home>/c/<id>/config" (tag 2040). Unlike a room or DHW setpoint this is not a
 // queued downlink: the circuit config is cloud-hosted and the device pulls it, so
 // the value is delivered as the answer to that GET, not as a bridge PUT. target is
-// validated (the wall thermostat, the OpenTherm master); tempC must be within
-// FlowMinC..FlowMaxC.
+// validated (the wall thermostat, the OpenTherm master); tempC must be a whole
+// degree within FlowMinC..FlowMaxC.
 func (e *EmuState) EnqueueFlowSetpoint(target string, id int, tempC float64) error {
 	if _, _, err := e.resolve(target); err != nil {
 		return err
 	}
 	if err := flowInRange(tempC); err != nil {
 		return err
+	}
+	// The wall thermostat divides 2040 by 100 and writes whole degrees as MaxTSet.
+	if tempC != float64(int(tempC)) {
+		return errors.New("tado: CH flow setpoint must be a whole degree")
 	}
 	e.flowC[id] = tempC
 	e.flowFresh[id] = true
