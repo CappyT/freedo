@@ -399,6 +399,10 @@ type activeGet struct {
 	blockNum  uint32
 	blockSZX  byte
 	body      []byte
+	// post marks a POST d/dbg/m statistics read. A Block2 continuation would
+	// need a new POST, so an answer with more blocks ends the exchange under
+	// DebugStatsMoreBlocks.
+	post bool
 }
 
 type heatingBlock struct {
@@ -528,9 +532,12 @@ type EmuState struct {
 	flowFresh map[int]bool
 	// pendGet maps the device and the live request MID to one active GET
 	// exchange.
-	pendGet   map[midKey]*activeGet
-	getRes    map[string][]byte
-	getCode   map[string]string
+	pendGet map[midKey]*activeGet
+	getRes  map[string][]byte
+	getCode map[string]string
+	// dbgStats keeps the last two 2.05 answers of each debug statistics read
+	// (EnqueueDebugStats), keyed like getRes.
+	dbgStats  map[string][]DebugStatsSample
 	childLock map[string]bool
 	tempUnitF map[string]bool
 	// offlineSched holds, per device (wire EUI hex), the tag 02b3 an operator
@@ -717,6 +724,7 @@ func NewEmu(cfg EmuConfig, log *UnhandledLogger) *EmuState {
 		pendGet:        map[midKey]*activeGet{},
 		getRes:         map[string][]byte{},
 		getCode:        map[string]string{},
+		dbgStats:       map[string][]DebugStatsSample{},
 		childLock:      map[string]bool{},
 		tempUnitF:      map[string]bool{},
 		offlineSched:   map[string]bool{},
@@ -1851,6 +1859,12 @@ func (e *EmuState) recordGetResult(srcEUI []byte, m *CoAPMessage) (complete, acc
 	if err != nil {
 		return false, false
 	}
+	if hasBlock && more && pending.post {
+		e.getRes[pending.resultKey] = append([]byte{}, m.Payload...)
+		e.getCode[pending.resultKey] = DebugStatsMoreBlocks
+		delete(e.pendGet, midKey{hexEUI(srcEUI), m.MID})
+		return true, true
+	}
 	if hasBlock {
 		if m.Code != "2.05" || blockNum != pending.blockNum || (pending.blockNum > 0 && szx != pending.blockSZX) {
 			return false, false
@@ -1867,6 +1881,9 @@ func (e *EmuState) recordGetResult(srcEUI []byte, m *CoAPMessage) (complete, acc
 	pending.body = append(pending.body, m.Payload...)
 	e.getRes[pending.resultKey] = append([]byte{}, pending.body...)
 	e.getCode[pending.resultKey] = m.Code
+	if pending.post && m.Code == "2.05" {
+		e.recordDebugStats(pending.resultKey, pending.body)
+	}
 	if m.Code == "2.05" && pending.resultKey == hexEUI(srcEUI)+"|"+fwStateResource {
 		if _, err := ParseFwState(pending.body); err == nil {
 			e.noteFwState(e.fwGet, hexEUI(srcEUI), pending.body)
