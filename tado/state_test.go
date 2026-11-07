@@ -153,8 +153,8 @@ func TestSnapshotBoiler(t *testing.T) {
 	if !isPtr(b.BurnerStarts, 300) || !isPtr(b.BurnerHoursMin, 3600) {
 		t.Errorf("starts=%v minutes=%v, want 300 and 3600", b.BurnerStarts, b.BurnerHoursMin)
 	}
-	if b.SourceShort != "a205" || b.FaultCodes != nil || b.FaultCode != 0 {
-		t.Errorf("source=%s faults=%v fault=%d, want a205 and no codes report", b.SourceShort, b.FaultCodes, b.FaultCode)
+	if b.SourceShort != "a205" || b.FaultCodes != nil {
+		t.Errorf("source=%s faults=%v, want a205 and no codes report", b.SourceShort, b.FaultCodes)
 	}
 	if !isPtr(b.Mon["boiler_flow_C"], 40) || !isPtr(b.Maintenance["burner_starts"], 300) {
 		t.Errorf("mon=%v maint=%v, want the groups to carry the flat values", b.Mon, b.Maintenance)
@@ -183,8 +183,8 @@ func TestSnapshotBoilerIgnoresReportInterval(t *testing.T) {
 	ns := e.node(mustB("02a6cefa07c51b00"))
 	e.cacheTLVs(ns, []TLV{{Tag: "015d", Val: []byte{0x00, 0x70}}}, "", ClassData, "bedroom", "bridge", "")
 
-	if b := e.Snapshot().Boiler; b.Present || b.FaultCode != 0 {
-		t.Errorf("present=%v fault=%d, want false and 0", b.Present, b.FaultCode)
+	if b := e.Snapshot().Boiler; b.Present || b.FaultCodes != nil {
+		t.Errorf("present=%v faults=%v, want false and null", b.Present, b.FaultCodes)
 	}
 }
 

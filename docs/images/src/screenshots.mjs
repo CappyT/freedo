@@ -154,8 +154,9 @@ const patches = {
 			Active: true,
 			HeatActive: true,
 			Mon: { ...(json.Mon ?? {}), boiler_flag: 10 },
+			Fault: false,
 			FaultCodes: [],
-			FaultCode: 0
+			DiagnosticCode: null
 		})
 };
 

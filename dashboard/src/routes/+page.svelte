@@ -117,7 +117,9 @@
 		const burner = burnerState(b);
 		const fault = faults.state === 'fault';
 		const line = fault
-			? `${t('state.fault')} · ${faults.codes.join(', ')}`
+			? faults.codes.length > 0
+				? `${t('state.fault')} · ${faults.codes.join(', ')}`
+				: t('state.fault')
 			: burner === 'on'
 				? t('boiler.burnerOn')
 				: burner === 'off'

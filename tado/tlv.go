@@ -187,6 +187,49 @@ func div(scale float64, unit string) func([]byte) string {
 }
 func rawDec(v []byte) string { return fmt.Sprintf("%d", be(v)) }
 
+type hvacCodeKind int
+
+const (
+	hvacCodeSkipped      hvacCodeKind = iota // a value the radio leaves out
+	hvacCodeDiag                             // OEM diagnostic code, OpenTherm id 115, in code
+	hvacCodeFaultUnknown                     // a fault whose OEM code the boiler did not answer
+	hvacCodeFault                            // a fault with its OEM code (OpenTherm id 5, low byte)
+)
+
+// parseHVACCode reads one 0460 entry of hvac/codes, a big-endian u32 of 1 to 4
+// bytes: the firmware TLV writer may drop leading zero bytes. The high half 0xffff
+// marks a diagnostic code in the low half, 0xff00 a fault without a known OEM
+// code, any other value the OEM fault code itself. An empty or longer value is a
+// fault with an unknown code: bad data must not read as no fault.
+func parseHVACCode(v []byte) (kind hvacCodeKind, code uint16) {
+	if len(v) == 0 || len(v) > 4 {
+		return hvacCodeFaultUnknown, 0
+	}
+	n := uint32(be(v))
+	hi := uint16(n >> 16)
+	switch {
+	case n == 0xffffffff || n == 0x7fffffff:
+		return hvacCodeSkipped, 0
+	case hi == 0xffff:
+		return hvacCodeDiag, uint16(n)
+	case hi == 0xff00:
+		return hvacCodeFaultUnknown, 0
+	}
+	return hvacCodeFault, hi
+}
+
+func hvacCodeLabel(v []byte) string {
+	switch kind, code := parseHVACCode(v); kind {
+	case hvacCodeDiag:
+		return fmt.Sprintf("diag=%d", code)
+	case hvacCodeFaultUnknown:
+		return "fault=unknown"
+	case hvacCodeFault:
+		return fmt.Sprintf("fault=%d", code)
+	}
+	return "unset"
+}
+
 // sdec decodes a big-endian two's-complement integer of any width.
 func sdec(v []byte) string {
 	if len(v) == 0 || len(v) >= 8 {
@@ -261,9 +304,9 @@ var tags = withHVACTags(map[string]tagInfo{
 	// zone_heat_demand_report@0x2b69c on the valve; the thermostat folds it into
 	// 4080 by taking the max over the circuit's zones (zone_to_circuit_demand_update@0x2debc).
 	"40a0": {"zone_demand_pct", rawDec},
-	"0164": {"relay_state", rawDec}, // nRF latching relay (P0.25 set / P0.26 reset)
-	"0167": {"bus_detect", rawDec},  // hvac/det/bus detect flag, sent by eBus B only
-	"0460": {"fault_code", rawDec},  // hvac/codes, one TLV per active fault code
+	"0164": {"relay_state", rawDec},      // nRF latching relay (P0.25 set / P0.26 reset)
+	"0167": {"bus_detect", rawDec},       // hvac/det/bus detect flag, sent by eBus B only
+	"0460": {"hvac_code", hvacCodeLabel}, // hvac/codes, one TLV per fault or diagnostic code
 	"0481": {"unsupported", func(v []byte) string { return strings.Join(unsupportedTags(v), ",") }},
 	// join / auth (auth/token), confirmed on the captured cloud handshake
 	"0007": {"auth_token", hexVal},      // 16-byte session token

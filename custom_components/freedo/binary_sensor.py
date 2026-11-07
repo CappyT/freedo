@@ -15,7 +15,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import FreedoConfigEntry, FreedoCoordinator
 from .entity import FreedoEntity
-from .model import KIND_BRIDGE, KIND_VALVE, Zone, boiler_fault_codes, zone_heating
+from .model import KIND_BRIDGE, KIND_VALVE, Zone, boiler_fault, boiler_fault_codes, zone_heating
 
 
 async def async_setup_entry(
@@ -48,10 +48,10 @@ async def async_setup_entry(
 
 
 class BoilerFault(FreedoEntity, BinarySensorEntity):
-    """GET /api/boiler FaultCodes: on while the last report of the boiler holds
-    a fault code, unknown before a report. The attribute codes lists them. The
-    codes are those of the boiler maker: the manual of the boiler gives their
-    meaning."""
+    """GET /api/boiler Fault: on while the last report of the boiler holds a
+    fault, unknown before a report. A fault can come without a code. The
+    attribute codes lists the known ones. The codes are those of the boiler
+    maker: the manual of the boiler gives their meaning."""
 
     _attr_device_class = BinarySensorDeviceClass.PROBLEM
     _attr_entity_category = EntityCategory.DIAGNOSTIC
@@ -63,8 +63,7 @@ class BoilerFault(FreedoEntity, BinarySensorEntity):
 
     @property
     def is_on(self) -> bool | None:
-        codes = boiler_fault_codes(self.coordinator.data)
-        return bool(codes) if codes is not None else None
+        return boiler_fault(self.coordinator.data)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:

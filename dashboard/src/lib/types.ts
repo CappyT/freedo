@@ -287,8 +287,12 @@ export interface Boiler {
 	ChPressureBar: number | null;
 	BurnerStarts: number | null;
 	BurnerHoursMin: number | null;
+	/** True when the last hvac/codes report holds a fault, with or without a code. Null before a report. */
+	Fault: boolean | null;
+	/** The known fault codes of that report, null before one. A fault can have none. */
 	FaultCodes: number[] | null;
-	FaultCode: number;
+	/** The OEM diagnostic code of that report, null when it holds none. It is no fault. */
+	DiagnosticCode: number | null;
 	flowLimit: {
 		defaultC: number | null;
 		outdoor: { tempC: number; ageSec: number; stale: boolean } | null;

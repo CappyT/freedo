@@ -4130,22 +4130,28 @@ def test_translations_match_strings():
 # --- boiler fault ---
 
 
-async def test_boiler_fault_follows_the_codes(hass, client):
+async def test_boiler_fault_follows_the_fault(hass, client):
     entry = await setup_entry(hass, client)
     fault = entity_id(hass, entry, "binary_sensor", "boiler_fault")
     assert er.async_get(hass).async_get(fault).entity_category == "diagnostic"
     # No report of the boiler yet.
     assert hass.states.get(fault).state == "unknown"
-    client.boiler_json["FaultCodes"] = []
+    client.boiler_json.update(Fault=False, FaultCodes=[], DiagnosticCode=291)
     await refresh(hass, entry)
     assert hass.states.get(fault).state == "off"
     assert hass.states.get(fault).attributes["codes"] == []
-    client.boiler_json.update(FaultCodes=[291, 1110], FaultCode=291)
+    client.boiler_json.update(Fault=True, FaultCodes=[291, 1110])
     await refresh(hass, entry)
     state = hass.states.get(fault)
     assert state.state == "on"
     assert state.attributes["device_class"] == "problem"
     assert state.attributes["codes"] == [291, 1110]
+    # A fault the boiler did not name: on, with no code.
+    client.boiler_json.update(Fault=True, FaultCodes=[])
+    await refresh(hass, entry)
+    state = hass.states.get(fault)
+    assert state.state == "on"
+    assert state.attributes["codes"] == []
 
 
 # --- alert event ---
@@ -4173,7 +4179,7 @@ async def test_alert_event_announces_each_new_alert_once(hass, client):
     assert seen == []
 
     health_device(client, "aaaa").update(deviceWarnings=["notMounted"], offline=True)
-    client.boiler_json["FaultCodes"] = [291]
+    client.boiler_json.update(Fault=True, FaultCodes=[291])
     await refresh(hass, entry)
     # The alerts of one poll go out one second apart, so the state of the
     # entity, the time of its last event, changes at each one.

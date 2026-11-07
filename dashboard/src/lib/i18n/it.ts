@@ -662,6 +662,8 @@ export const it: Record<Key, string> = {
 	'boiler.faultState': 'Codici di guasto',
 	'boiler.faults.none': 'Nessuno',
 	'boiler.faults.unknown': 'Non riportati',
+	'boiler.faults.noCode': 'Guasto, nessun codice riportato',
+	'boiler.faults.noCodeBanner': 'La caldaia segnala un guasto senza codice.',
 	'boiler.faults.meaning': 'Un codice di guasto è un numero del produttore della caldaia. freedo non ne conosce il significato: vedi il manuale della caldaia.',
 	'opt.title': 'Opzioni della stanza',
 	'opt.save': 'Salva opzioni',

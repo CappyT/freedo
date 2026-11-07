@@ -460,9 +460,17 @@ def node_calibration(data: FreedoData, short: str) -> tuple[str | None, int | No
     return state, int(error) if error.isdigit() else None
 
 
+def boiler_fault(data: FreedoData) -> bool | None:
+    """GET /api/boiler Fault: whether the last report of the boiler holds a
+    fault, with or without a code, None before a report."""
+    fault = data.boiler.get("Fault")
+    return fault if isinstance(fault, bool) else None
+
+
 def boiler_fault_codes(data: FreedoData) -> list[int] | None:
-    """GET /api/boiler FaultCodes: the fault codes of the last report of the
-    boiler, None before one. The codes are those of the boiler maker."""
+    """GET /api/boiler FaultCodes: the known fault codes of the last report of
+    the boiler, None before one. The codes are those of the boiler maker. A
+    fault can have none."""
     codes = data.boiler.get("FaultCodes")
     return [int(code) for code in codes] if isinstance(codes, list) else None
 
@@ -506,10 +514,10 @@ def active_alerts(data: FreedoData) -> dict[tuple[str, str], dict[str, Any]]:
         ):
             if dev.get(field):
                 out[(alert, short)] = {**where, "details": list(dev.get(details) or []) if details else []}
-    codes = boiler_fault_codes(data)
-    if codes:
+    if boiler_fault(data):
         out[(ALERT_BOILER_FAULT, "")] = {
-            "room": None, "device": None, "details": [str(code) for code in codes],
+            "room": None, "device": None,
+            "details": [str(code) for code in boiler_fault_codes(data) or []],
         }
     return out
 

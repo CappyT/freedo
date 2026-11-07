@@ -91,7 +91,7 @@
 					<p class="notice tone-off" role="status"><Icon name="warning" /><span>{t('boiler.notReported')}</span></p>
 				{/if}
 				<!-- The banner of every page names the fault codes. Here the page says what a code is. -->
-				{#if faults.state === 'fault'}
+				{#if faults.state === 'fault' && faults.codes.length > 0}
 					<p class="notice tone-fault" data-testid="fault-meaning"><Icon name="fault" /><span>{t('boiler.faults.meaning')}</span></p>
 				{/if}
 
@@ -108,7 +108,7 @@
 						<li class="list-row">
 							<span class="list-main list-label">{t('boiler.faultState')}</span>
 							<span class="list-value" class:num={faults.state === 'fault'} data-testid="fault-state">
-								{faults.state === 'fault' ? faults.codes.join(', ') : faults.state === 'none' ? t('boiler.faults.none') : t('boiler.faults.unknown')}
+								{faults.state === 'fault' ? (faults.codes.length > 0 ? faults.codes.join(', ') : t('boiler.faults.noCode')) : faults.state === 'none' ? t('boiler.faults.none') : t('boiler.faults.unknown')}
 							</span>
 						</li>
 						<li class="list-row"><span class="list-main list-label">{t('boiler.starts')}</span><span class="list-value num">{fmt.number(boiler.BurnerStarts, 0)}</span></li>

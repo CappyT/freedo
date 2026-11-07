@@ -22,7 +22,7 @@
 // - The room screen shows the room temperature that Home Assistant pushes: the source, the reading, its age and the
 //   owner. A push that a device-owned room refuses shows as a warning there and next to the select of the room temperature source.
 // - The burner badge of the boiler page follows the burner flag, also while no room asks for heat.
-//   A boiler fault code shows on the boiler page and as a banner.
+//   A boiler fault, with or without a code, shows on the boiler page and as a banner.
 // - The boiler setup saves the energy data and the flow options, with a comma as the decimal separator,
 //   and refuses the default curve without a highest flow temperature. With a fuel flow set, the boiler
 //   page saves a meter reading, refuses a lower one before it is sent and undoes the last after a confirm.
@@ -929,7 +929,7 @@ try {
 	const noFlag = await burner({ Present: true, Active: false, HeatActive: false, Mon: {} });
 	check(noFlag.join() === 'Burner state not reported,', `a boiler with no burner flag shows no burner state (${noFlag})`);
 	// The fault codes of the boiler: a banner on every page, and the numbers on the boiler page.
-	boilerPatch = { Present: true, FaultCodes: [133, 28], FaultCode: 133 };
+	boilerPatch = { Present: true, Fault: true, FaultCodes: [133, 28] };
 	await open('#/boiler', `document.querySelector('[data-testid=fault-state]')`);
 	await tab.waitFor(`document.querySelector('[data-testid=fault-state]').textContent.trim() === '133, 28'`, 8000);
 	check(
@@ -938,12 +938,17 @@ try {
 	);
 	await open('#/', `[...document.querySelectorAll('main .notice')].some((n) => /fault codes: 133, 28/.test(n.textContent))`);
 	check(true, 'a boiler fault shows as a banner on the home page');
-	boilerPatch = { Present: true, FaultCodes: [], FaultCode: 0 };
+	boilerPatch = { Present: true, Fault: false, FaultCodes: [] };
 	await open('#/boiler', `document.querySelector('[data-testid=fault-state]')?.textContent.trim() === 'None'`);
 	check(
 		!(await tab.evaluate(`[...document.querySelectorAll('main .notice')].some((n) => /fault codes/.test(n.textContent))`)),
 		'a boiler with no fault code shows None and no banner'
 	);
+	boilerPatch = { Present: true, Fault: true, FaultCodes: [] };
+	await open('#/boiler', `document.querySelector('[data-testid=fault-state]')?.textContent.trim() === 'Fault, no code reported'`);
+	await open('#/', `[...document.querySelectorAll('main .notice')].some((n) => /fault without a code/.test(n.textContent))`);
+	check(true, 'a boiler fault without a code shows its own text on the boiler page and as a banner');
+	await open('#/boiler', `document.querySelectorAll('.hero dl > div').length === 3`);
 	// The readings under the flow temperature sit on the colour of the hero, not on a tile of the page.
 	check(
 		await tab.evaluate(`((cells) => cells.length === 3 && cells.every((d) => getComputedStyle(d).backgroundColor === 'rgba(0, 0, 0, 0)'))([...document.querySelectorAll('.hero dl > div')])`),

@@ -62,8 +62,8 @@ The integration and the options of the add-on have English, Italian, German and 
 | binary_sensor Fallback | zone | `/api/health` `zoneFallback` |
 | binary_sensor Low battery, Fault, Communication warning, Connectivity | device | `/api/health` `devices[]` (`commsWarnings`) |
 | binary_sensor Valve warning | valve | `/api/health` `devices[]` `deviceWarnings` |
-| binary_sensor Boiler fault | hub | `/api/boiler` `FaultCodes` |
-| event Alert | hub | `/api/health` `devices[]` `lowBattery`, `fault`, `deviceWarnings`, `offline`, `/api/boiler` `FaultCodes` |
+| binary_sensor Boiler fault | hub | `/api/boiler` `Fault`, `FaultCodes` |
+| event Alert | hub | `/api/health` `devices[]` `lowBattery`, `fault`, `deviceWarnings`, `offline`, `/api/boiler` `Fault`, `FaultCodes` |
 | sensor Battery, Battery voltage | device | `/api/nodes` `BatteryPct`, `/api/health` `batteryMV` |
 | sensor Firmware version, Temperature, Humidity | device | `/api/nodes` `Telemetry` `fw_run_version`, `TempC`, `HumidityPct` |
 | sensor Heating demand | heating zone | `/api/zones` `demand` `DemandPct` |
@@ -486,9 +486,10 @@ the devices with their kind, label and serial.
 ### Boiler fault and alerts
 
 - Binary sensor Boiler fault is on while the last report of the boiler holds a
-  fault code (`FaultCodes` of `GET /api/boiler`), and unknown before a report.
-  The attribute `codes` lists the codes. They are the codes of the boiler
-  maker: the manual of the boiler gives their meaning, and freedo gives none.
+  fault (`Fault` of `GET /api/boiler`), and unknown before a report. A fault can
+  come without a code. The attribute `codes` lists the known codes
+  (`FaultCodes`). They are the codes of the boiler maker: the manual of the
+  boiler gives their meaning, and freedo gives none.
 - Event Alert, on the hub device, raises one event when an alert starts:
   `low_battery`, `device_fault`, `valve_warning`, `device_offline` or
   `boiler_fault`. The event attributes are `room`, `device` and `details` (the

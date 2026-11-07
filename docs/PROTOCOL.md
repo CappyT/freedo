@@ -961,6 +961,16 @@ circuit. The code notes that the thermostat then applies a MaxTSet of 70 C when 
 interface starts. No capture or measurement on a boiler confirms this value. freedo serves the
 limit as set, inside the window of the daemon (30 to 75 C).
 
+Tag `0460` in `hvac/codes` carries the fault and diagnostic codes, one TLV each. The thermostat
+coprocessor builds attribute `0478` as `(OT5 low byte << 16) | 0xffff` when the boiler reports
+a fault and answers OT5, as `0xff00ffff` when it reports a fault without answering OT5, and as
+`0xffffffff` with no fault (STM32 0x0800b840). It builds attribute `0479` as `0xffff0000 | OT115`
+(0x0800b9f2). The radio side sends each attribute as tag `0460` and skips `0xffffffff` and
+`0x7fffffff` (nRF52 0x26ab8). The decode rule: high half `0xffff` is a diagnostic code in the low
+half, high half `0xff00` is a fault with an unknown code, any other value is a fault with the
+code in the high half. The value is a big-endian u32 of 1 to 4 bytes, because the TLV writer may
+drop leading zero bytes. A value of 0 or more than 4 bytes counts as a fault with an unknown code.
+
 ### Boiler energy
 
 The energy estimate (`internal/daemon/boiler_energy.go`) reads two `hvac/mon`

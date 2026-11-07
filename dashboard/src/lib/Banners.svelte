@@ -24,7 +24,7 @@
 		if (h && h.mode === 'live' && !h.tx) list.push({ tone: 'warning', icon: 'warning', text: t('banner.dryRun') });
 		if (h && h.mode !== 'live') list.push({ tone: 'warning', icon: 'warning', text: t('banner.noRadio') });
 		const faults = boilerFaults(data.boiler);
-		if (faults.state === 'fault') list.push({ tone: 'fault', icon: 'fault', text: t('boiler.faults', { codes: faults.codes.join(', ') }) });
+		if (faults.state === 'fault') list.push({ tone: 'fault', icon: 'fault', text: faults.codes.length > 0 ? t('boiler.faults', { codes: faults.codes.join(', ') }) : t('boiler.faults.noCodeBanner') });
 		return list;
 	});
 </script>

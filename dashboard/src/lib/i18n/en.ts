@@ -662,6 +662,8 @@ export const en = {
 	'boiler.faultState': 'Fault codes',
 	'boiler.faults.none': 'None',
 	'boiler.faults.unknown': 'Not reported',
+	'boiler.faults.noCode': 'Fault, no code reported',
+	'boiler.faults.noCodeBanner': 'The boiler reports a fault without a code.',
 	'boiler.faults.meaning': 'A fault code is a number of the boiler maker. freedo does not know its meaning: see the manual of the boiler.',
 	'opt.title': 'Room options',
 	'opt.save': 'Save options',

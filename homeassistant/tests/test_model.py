@@ -8,7 +8,9 @@ import copy
 import pytest
 
 from model import (
+    ALERT_BOILER_FAULT,
     OFFSET_MODES,
+    active_alerts,
     boiler_energy,
     device_zones,
     boiler_gas,
@@ -878,3 +880,17 @@ def test_device_zones():
     d = parse(HEALTH, ZONES, NODES, BOILER, HOME, install_devices=INSTALL_DEVICES)
     assert device_zones(d)["cccc"] == 9
 
+
+@pytest.mark.parametrize(
+    ("boiler", "alert"),
+    [
+        ({}, None),
+        ({"Fault": False, "FaultCodes": [], "DiagnosticCode": 291}, None),
+        ({"Fault": True, "FaultCodes": [42, 133]}, ["42", "133"]),
+        ({"Fault": True, "FaultCodes": []}, []),
+    ],
+)
+def test_boiler_fault_alert_follows_fault(boiler, alert):
+    d = parse(HEALTH, ZONES, NODES, dict(BOILER, **boiler), HOME)
+    got = active_alerts(d).get((ALERT_BOILER_FAULT, ""))
+    assert (got["details"] if got else None) == alert

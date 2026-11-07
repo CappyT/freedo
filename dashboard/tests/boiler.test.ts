@@ -75,19 +75,22 @@ describe('the burner state', () => {
 	});
 });
 
-describe('the fault codes of the boiler', () => {
-	it('are unknown before the boiler view and before the first fault report', () => {
+describe('the fault of the boiler', () => {
+	it('is unknown before the boiler view and before the first fault report', () => {
 		expect(boilerFaults(null)).toEqual({ state: 'unknown', codes: [] });
-		expect(boilerFaults({ FaultCodes: null, FaultCode: 0 })).toEqual({ state: 'unknown', codes: [] });
+		expect(boilerFaults({ Fault: null, FaultCodes: null })).toEqual({ state: 'unknown', codes: [] });
 	});
 
-	it('are none after a report with no code', () => {
-		expect(boilerFaults({ FaultCodes: [], FaultCode: 0 })).toEqual({ state: 'none', codes: [] });
+	it('is none after a report with no fault', () => {
+		expect(boilerFaults({ Fault: false, FaultCodes: [] })).toEqual({ state: 'none', codes: [] });
 	});
 
-	it('are the numbers the boiler reports, with no meaning added', () => {
-		expect(boilerFaults({ FaultCodes: [133, 28], FaultCode: 133 })).toEqual({ state: 'fault', codes: [133, 28] });
-		expect(boilerFaults({ FaultCodes: null, FaultCode: 133 })).toEqual({ state: 'fault', codes: [133] });
+	it('lists the numbers the boiler reports, with no meaning added', () => {
+		expect(boilerFaults({ Fault: true, FaultCodes: [133, 28] })).toEqual({ state: 'fault', codes: [133, 28] });
+	});
+
+	it('is a fault without a code when the boiler names none', () => {
+		expect(boilerFaults({ Fault: true, FaultCodes: [] })).toEqual({ state: 'fault', codes: [] });
 	});
 });
 

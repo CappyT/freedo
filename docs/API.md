@@ -1135,10 +1135,17 @@ is higher than the heating maximum, a hot water draw can read up to about 15 % l
 
 `energy.gas` has `running`, `reason` (`noGasFlow` replaces `noMaxPower`), `flowM3H`,
 `totalM3`, `maxFlowM3H`, `minFlowM3H` and `unit`. `GET /api/boiler` also shows the boiler counters
-`BurnerStarts`, `BurnerHoursMin` and the group `Maintenance`. `FaultCodes` lists the fault codes of
-the last `hvac/codes` report of the boiler, `null` before a report, and `FaultCode` is the first of
-them, 0 with none. A code is a number of the boiler maker. A value that the boiler
-declares unsupported (tag `0481`) is `null` and listed in `Unsupported`.
+`BurnerStarts`, `BurnerHoursMin` and the group `Maintenance`. Each `hvac/codes` report replaces
+the fault state:
+
+- `Fault` is `true` when the report holds any fault entry, with or without an OEM code. It is `null` before the first report.
+- `FaultCodes` lists the known OEM fault codes of the report, without duplicates, `[]` with none and `null` before the first
+  report. A fault the boiler did not name has no code: `Fault` is `true` and `FaultCodes` is `[]`. A code is a number of
+  the boiler maker. Code 0 is a valid maker code.
+- `DiagnosticCode` is the OEM diagnostic code (OpenTherm id 115) of the report, `null` when the
+  report holds none. A diagnostic code is no fault, also when it is 0.
+
+A value that the boiler declares unsupported (tag `0481`) is `null` and listed in `Unsupported`.
 
 ### Gas meter
 

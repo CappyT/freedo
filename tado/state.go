@@ -109,10 +109,13 @@ type BoilerView struct {
 	ChPressureBar    *float64 `json:"ChPressureBar"`
 	BurnerStarts     *uint32  `json:"BurnerStarts"`
 	BurnerHoursMin   *uint32  `json:"BurnerHoursMin"`
-	// FaultCodes are the 0460 codes of the last hvac/codes report, null before
-	// one. FaultCode is the first of them, 0 with none.
-	FaultCodes []uint32 `json:"FaultCodes"`
-	FaultCode  int      `json:"FaultCode"`
+	// Fault is true when the last hvac/codes report holds a fault entry, with
+	// or without an OEM code, and null before a report. FaultCodes are the known
+	// OEM fault codes of that report, null before one. DiagnosticCode is the OEM
+	// diagnostic code (OpenTherm id 115) of the report, null when it holds none.
+	Fault          *bool    `json:"Fault"`
+	FaultCodes     []uint32 `json:"FaultCodes"`
+	DiagnosticCode *uint16  `json:"DiagnosticCode"`
 	// Unsupported names, sorted, the attributes the boiler lists in tag 0481.
 	Unsupported []string `json:"Unsupported"`
 
@@ -406,6 +409,8 @@ func (e *EmuState) fillBoiler(b *BoilerView, ns *NodeState) {
 	sort.Strings(b.Unsupported)
 	if ns.faultCodes != nil {
 		b.FaultCodes = slices.Clone(ns.faultCodes)
+		b.Fault = new(ns.fault)
+		b.DiagnosticCode = ns.diagCode
 		present = true
 	}
 	if present {
@@ -454,10 +459,6 @@ func (b *BoilerView) deriveLegacy() {
 	b.BurnerStarts = u32Attr(b.Maintenance["burner_starts"])
 	b.BurnerHoursMin = u32Attr(b.Maintenance["burner_hours_min"])
 	b.MaxChSetpointC = b.Config["max_ch_setpoint_C"]
-	b.FaultCode = 0
-	if len(b.FaultCodes) > 0 {
-		b.FaultCode = int(b.FaultCodes[0])
-	}
 }
 
 func intAttr(v *float64) *int {
@@ -484,8 +485,8 @@ var hvacResources = map[string]bool{
 
 // noteHVAC keeps what the tag-keyed cache cannot hold of a boiler bus report:
 // the 0481 list of each resource, which every resource carries under the same
-// tag, and the repeated 0460 fault codes. Each hvac/codes report replaces the
-// fault list, so a report without 0460 clears it. A body with no request URI
+// tag, and the repeated 0460 entries. Each hvac/codes report replaces the
+// fault state, so a report without 0460 clears it. A body with no request URI
 // takes the resource of the attributes its 0481 names. at stamps an hvac/mon
 // report, even one with no attribute the boiler view reads: it shows the
 // thermostat alive.
@@ -524,16 +525,25 @@ func (ns *NodeState) noteHVAC(tlvs []TLV, uri string, at time.Time) {
 	if !codes {
 		return
 	}
-	faults := []uint32{}
+	faults, fault := []uint32{}, false
+	var diag *uint16
 	for _, t := range tlvs {
-		if t.Tag != "0460" || len(t.Val) == 0 || len(t.Val) > 4 {
+		if t.Tag != "0460" {
 			continue
 		}
-		if c := uint32(be(t.Val)); c != 0xffffffff && c != 0x7fffffff {
-			faults = append(faults, c)
+		switch kind, code := parseHVACCode(t.Val); kind {
+		case hvacCodeDiag:
+			diag = new(code)
+		case hvacCodeFaultUnknown:
+			fault = true
+		case hvacCodeFault:
+			fault = true
+			if !slices.Contains(faults, uint32(code)) {
+				faults = append(faults, uint32(code))
+			}
 		}
 	}
-	ns.faultCodes = faults
+	ns.faultCodes, ns.fault, ns.diagCode = faults, fault, diag
 }
 
 func modeString(overlay byte) string {

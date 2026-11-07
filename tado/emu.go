@@ -181,9 +181,13 @@ type NodeState struct {
 	blockZone    int
 	blockZoneSet bool
 	// unsupported holds, per boiler bus resource, the tags its last 0481
-	// lists. faultCodes holds the 0460 codes of the last hvac/codes report.
+	// lists. faultCodes holds the known OEM fault codes of the last hvac/codes
+	// report and is nil before one; fault is true when that report holds any
+	// fault entry; diagCode is its OEM diagnostic code, nil when it has none.
 	unsupported map[string][]string
 	faultCodes  []uint32
+	fault       bool
+	diagCode    *uint16
 	// hvacMonAt is when the last hvac/mon report arrived, zero before one.
 	hvacMonAt time.Time
 	// tempAt is when the last report carrying 012d arrived, zero before one.

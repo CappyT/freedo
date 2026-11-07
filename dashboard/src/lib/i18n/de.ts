@@ -662,6 +662,8 @@ export const de: Record<Key, string> = {
 	'boiler.faultState': 'Fehlercodes',
 	'boiler.faults.none': 'Keine',
 	'boiler.faults.unknown': 'Nicht gemeldet',
+	'boiler.faults.noCode': 'Fehler, kein Code gemeldet',
+	'boiler.faults.noCodeBanner': 'Der Kessel meldet einen Fehler ohne Code.',
 	'boiler.faults.meaning': 'Ein Fehlercode ist eine Nummer des Kesselherstellers. freedo kennt seine Bedeutung nicht: siehe das Handbuch des Kessels.',
 	'opt.title': 'Raumoptionen',
 	'opt.save': 'Optionen speichern',

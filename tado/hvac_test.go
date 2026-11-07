@@ -131,24 +131,53 @@ func TestHVACUnsupported(t *testing.T) {
 	}
 }
 
-// TestHVACFaultCodes: hvac/codes carries its fault codes as repeated 0460, and
-// each report replaces the list.
+// TestHVACFaultCodes: hvac/codes carries its codes as repeated 0460 u32, and
+// each report replaces the state. A high half of 0xffff is a diagnostic code, 0xff00
+// a fault without an OEM code, any other value the OEM fault code.
 func TestHVACFaultCodes(t *testing.T) {
-	e, _, _ := newTestEmu(t)
-	hvacReport(e, resHVACCodes,
-		TLV{Tag: "015d", Val: be16(71)},
-		TLV{Tag: "0460", Val: []byte{0x00, 0x00, 0x01, 0x23}},
-		TLV{Tag: "0460", Val: []byte{0xff, 0xff, 0xff, 0xff}},
-		TLV{Tag: "0460", Val: []byte{0x00, 0x00, 0x04, 0x56}},
-	)
-	b := e.Snapshot().Boiler
-	if !b.Present || !slices.Equal(b.FaultCodes, []uint32{0x123, 0x456}) || b.FaultCode != 0x123 {
-		t.Errorf("present=%v faults=%v fault=%d, want true [291 1110] 291", b.Present, b.FaultCodes, b.FaultCode)
+	code := func(v uint32) TLV {
+		return TLV{Tag: "0460", Val: []byte{byte(v >> 24), byte(v >> 16), byte(v >> 8), byte(v)}}
 	}
+	for _, tc := range []struct {
+		name  string
+		codes []TLV
+		fault bool
+		known []uint32
+		diag  *uint16
+	}{
+		{"fault 42", []TLV{code(0x002affff)}, true, []uint32{42}, nil},
+		{"fault without a code", []TLV{code(0xff00ffff)}, true, []uint32{}, nil},
+		{"diagnostic 0 is no fault", []TLV{code(0xffff0000)}, false, []uint32{}, new(uint16(0))},
+		{"diagnostic 291", []TLV{code(0xffff0123)}, false, []uint32{}, new(uint16(291))},
+		{"skipped", []TLV{code(0xffffffff), code(0x7fffffff)}, false, []uint32{}, nil},
+		{"two faults and a diagnostic", []TLV{code(0x002affff), code(0xff00ffff), code(0x0085ffff), code(0xffff0123)}, true, []uint32{42, 133}, new(uint16(291))},
+		{"three bytes drop the zero byte", []TLV{{Tag: "0460", Val: []byte{0x2a, 0xff, 0xff}}}, true, []uint32{42}, nil},
+		{"two bytes are fault code 0", []TLV{{Tag: "0460", Val: []byte{0xff, 0xff}}}, true, []uint32{0}, nil},
+		{"five bytes are an unknown fault", []TLV{{Tag: "0460", Val: []byte{0, 0, 0x2a, 0xff, 0xff}}}, true, []uint32{}, nil},
+		{"empty value is an unknown fault", []TLV{{Tag: "0460", Val: nil}}, true, []uint32{}, nil},
+		{"duplicate codes", []TLV{code(0x002affff), code(0x002affff)}, true, []uint32{42}, nil},
+		{"no entry", nil, false, []uint32{}, nil},
+	} {
+		e, _, _ := newTestEmu(t)
+		if b := e.Snapshot().Boiler; b.Fault != nil || b.FaultCodes != nil || b.DiagnosticCode != nil {
+			t.Fatalf("%s: before a report fault=%v codes=%v diag=%v, want all null", tc.name, b.Fault, b.FaultCodes, b.DiagnosticCode)
+		}
+		hvacReport(e, resHVACCodes, append([]TLV{{Tag: "015d", Val: be16(71)}}, tc.codes...)...)
+		b := e.Snapshot().Boiler
+		if !b.Present || b.Fault == nil || *b.Fault != tc.fault || !slices.Equal(b.FaultCodes, tc.known) || b.FaultCodes == nil {
+			t.Errorf("%s: present=%v fault=%v codes=%v, want fault=%v codes=%v",
+				tc.name, b.Present, b.Fault, b.FaultCodes, tc.fault, tc.known)
+		}
+		if (b.DiagnosticCode == nil) != (tc.diag == nil) || (tc.diag != nil && *b.DiagnosticCode != *tc.diag) {
+			t.Errorf("%s: diagnostic %v, want %v", tc.name, b.DiagnosticCode, tc.diag)
+		}
+	}
+
+	e, _, _ := newTestEmu(t)
+	hvacReport(e, resHVACCodes, TLV{Tag: "015d", Val: be16(71)}, code(0x002affff), code(0xffff0123))
 	hvacReport(e, resHVACCodes, TLV{Tag: "015d", Val: be16(71)})
-	b = e.Snapshot().Boiler
-	if b.FaultCodes == nil || len(b.FaultCodes) != 0 || b.FaultCode != 0 {
-		t.Errorf("faults=%v fault=%d after a clean report, want [] and 0", b.FaultCodes, b.FaultCode)
+	if b := e.Snapshot().Boiler; b.Fault == nil || *b.Fault || len(b.FaultCodes) != 0 || b.DiagnosticCode != nil {
+		t.Errorf("after a clean report: fault=%v codes=%v diag=%v, want false, [] and null", b.Fault, b.FaultCodes, b.DiagnosticCode)
 	}
 }
 

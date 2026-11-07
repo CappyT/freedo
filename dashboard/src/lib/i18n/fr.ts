@@ -662,6 +662,8 @@ export const fr: Record<Key, string> = {
 	'boiler.faultState': 'Codes de défaut',
 	'boiler.faults.none': 'Aucun',
 	'boiler.faults.unknown': 'Non rapportés',
+	'boiler.faults.noCode': 'Défaut, aucun code rapporté',
+	'boiler.faults.noCodeBanner': 'La chaudière signale un défaut sans code.',
 	'boiler.faults.meaning': 'Un code de défaut est un numéro du fabricant de la chaudière. freedo ne connaît pas sa signification : voir le manuel de la chaudière.',
 	'opt.title': 'Options de la pièce',
 	'opt.save': 'Enregistrer les options',
