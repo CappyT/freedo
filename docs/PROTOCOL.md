@@ -31,6 +31,15 @@ Tags `6340` and `6400` never appear on air. The reporter election travels in
 Tag `6060` is the zone to circuit binding. It lives in `h/<home>/z/N/config`,
 not in `z/s`.
 
+The wall thermostat reads each role bit of `015e` as follows (thermostat nRF52). No role bit
+makes it a sensor only.
+
+- Bit 3 with zone type 1: it acts on the zone. It observes `/z/N/s` (0x11688), PUTs or DELETEs
+  `/z/N/overlay` (0x11a94) and `/z/N/ow` (0x11930), and reads `/sched` (0x291f8).
+- Bit 1 without bit 3: a fallback member with an observe slot (0x236c6, 0x28da0).
+- `(role & 0xc) == 4`: it subscribes to reports (0x31e20).
+- Bit 0: the record is the device's own heating or hot water zone (0x24496).
+
 The chain:
 
 - The valve computes `40a0`.
@@ -42,6 +51,13 @@ The chain:
 - The thermostat pushes `z/cpe?lid=N` with `4160` (heat percent, the same
   circuit value for all zones).
 - The thermostat drives the boiler and reports `h/<home>/hvac/mon`.
+
+A valve stores zone attribute `4160` as min(v, 100), default 100 (@0x2f610). It scales the zone
+value `40a0` before it publishes it as `4080|c`: out = min(in * 100 / div, 100), where div is the
+stored `4160` (@0x2f4a4, caller @0x2f4dc). The scaling runs only when `d/config` tag `0298` is
+not 0. A divisor of 0 passes the value through. The scaling is skipped when the valve flag byte at
+0x20008790 is set: the valve then publishes the value as `4080|c` and `4140|c` unscaled. The
+meaning of that flag is unproven.
 
 The thermostat takes the demand of a zone from the owner alone. `zone_to_circuit_demand_update`
 (thermostat 0x2debc) aggregates the circuit demand from the `40a0` of the owner's `z/p`
