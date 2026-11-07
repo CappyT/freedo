@@ -209,6 +209,9 @@ type daemon struct {
 	energy energyMeter
 	// history is the open statistics file, nil while they are off. It and the
 	// fields after it belong to the engine goroutine; see history.go.
+	// adviceCache holds the last house model of the consumption advisor. The
+	// HTTP goroutines share it under its own lock; see advice.go.
+	adviceCache adviceCache
 	history     *historyStore
 	historyCfg  historySettings
 	historyErr  string
@@ -1970,6 +1973,7 @@ func (d *daemon) mux() *http.ServeMux {
 	m.HandleFunc("PUT /api/history", d.putHistory)
 	m.HandleFunc("GET /api/history/zones/{number}", d.getHistoryZone)
 	m.HandleFunc("GET /api/history/energy", d.getHistoryEnergy)
+	m.HandleFunc("GET /api/history/advice", d.getHistoryAdvice)
 	m.HandleFunc("POST /api/outdoor", d.postOutdoor)
 	m.HandleFunc("POST /api/pair", d.postPair)
 	m.HandleFunc("POST /api/pair/devices/{ref}", d.postPairDevice)

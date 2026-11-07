@@ -558,6 +558,8 @@ export interface HistoryInfo {
 	fuelPrice: number | null;
 	/** An ISO 4217 code. */
 	currency: string;
+	/** The comfort target from which the consumption advisor suggests a degree less. */
+	comfortMaxC?: number;
 }
 
 export interface HistoryPatch {
@@ -566,6 +568,8 @@ export interface HistoryPatch {
 	delete?: boolean;
 	fuelPrice?: number | null;
 	currency?: string;
+	/** 16 to 25 C; null returns to the default. */
+	comfortMaxC?: number | null;
 }
 
 /** One zone at one sample time. A null field had no value then. */

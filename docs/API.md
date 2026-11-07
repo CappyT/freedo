@@ -206,6 +206,7 @@ banner.
 | `GET`, `PUT /api/history` | Read or change the statistics: the switch, the fuel price and the currency. |
 | `GET /api/history/zones/{number}?date=` | The samples and the heat-ups of one zone over one local day. |
 | `GET /api/history/energy?from=&to=` | The fuel, heat and burner totals of each day. |
+| `GET /api/history/advice?days=` | Where the fuel of the last 7, 28 or 90 days went, and the heat-loss model of the house. |
 
 See [Statistics](#statistics).
 
@@ -1232,13 +1233,14 @@ Samples and episodes stay 90 days. Daily totals stay 13 calendar months: the cur
 `GET /api/history` answers `available` (false without a state database), `enabled`, `error` (why
 an enabled history has no file, else `null`), `since` (the oldest sample, RFC3339, or `null`),
 `sizeBytes`, `intervalSec` (300), `sampleDays` (90), `dayMonths` (13), `fuelPrice` (`null` while
-unset) and `currency` (`EUR` by default).
+unset), `currency` (`EUR` by default) and `comfortMaxC`, the comfort target from which the
+consumption advisor suggests a degree less (21 by default).
 
-`PUT /api/history` takes any of `enabled`, `delete`, `fuelPrice` and `currency`, and answers the
-same view. `delete: true` removes the history file and needs `enabled: false` in the same body or
-already stored: on is `400`. `fuelPrice` is the price of one `fuel_unit`, from 0 to 1000, or
-`null` to remove it. `currency` is an ISO 4217 code of three capital letters. Without a state
-database the route is `409`.
+`PUT /api/history` takes any of `enabled`, `delete`, `fuelPrice`, `currency` and `comfortMaxC`, and
+answers the same view. `comfortMaxC` is from 16 to 25, or `null` for the default. `delete: true`
+removes the history file and needs `enabled: false` in the same body or already stored: on is `400`.
+`fuelPrice` is the price of one `fuel_unit`, from 0 to 1000, or `null` to remove it. `currency` is
+an ISO 4217 code of three capital letters. Without a state database the route is `409`.
 
 `GET /api/history/zones/{number}?date=YYYY-MM-DD` returns one local day of a zone, today by default:
 `zone`, `date`, `from` and `to` (the bounds of the day, RFC3339), `intervalSec`, `first` (the local
@@ -1255,8 +1257,34 @@ included, by default the 13 months kept: `from`, `to`, `unit` (`fuel_unit`), `fu
 value), and `coverage`, the share of the 5-minute slots of the local day that have a sample. A
 sample without the start counter keeps the last one known for up to an hour. A day that began before these fields existed (statistics schema 1) has them all `null`. A day with no sample has no row.
 
-The three read routes answer `409` while the statistics are off, `400` for a date that is not
-`YYYY-MM-DD` or a `from` after `to`, and `404` for a zone that is not declared.
+`GET /api/history/advice?days=7|28|90` (28 by default) answers `days`, `from`, `to`, `unit`,
+`fuelPrice`, `currency`, `split` and `model`. `split` covers the local days from `days` - 1 days
+ago to today. `model` always covers the last 90 days, so a short window still gets it. The route
+writes nothing, and it keeps the model 15 minutes.
+
+- `split` is where the fuel went: `fuel` (the total of the days, with the meter factor),
+  `heating`, `hotWater` and `unattributed`, and `zones`, one row per heating zone with `zone`,
+  `fuel`, `share` of the heating fuel and `fuelPerDegreeHour`. Each 5-minute step takes the zone
+  state of its first sample. A step goes to heating when a heating zone has a demand, split between
+  those zones in proportion to the demand. With `radiator_w` on every heating zone the demand is
+  weighted by it and `weighted` is `true`; with one zone missing it, every zone weighs the same. A
+  step without demand goes to hot water when the burner is on and every heating zone reported its
+  demand. The rest is unattributed: a zone without a fresh report may have been heating. The parts
+  follow the samples and are scaled to `fuel`, so a zone carries the mean meter factor of the
+  window. The split is an estimate: no meter measures a room.
+- `model` fits the heating fuel of each day on its degree-hours, (indoor mean - outdoor mean) x
+  the hours sampled: `fuelPerDegreeHour`, its standard error `fuelPerDegreeHourErr`,
+  `fuelPerDayOffset` (internal and solar gains, usually negative) and `r2`. A day counts with 90 %
+  of its slots sampled, 90 % with an outdoor temperature, and some fuel for heating. `usable` needs
+  14 such days, degree-hours that span at least 30 % of their mean, a positive slope and an R^2
+  of 0.6; else `reason` says what is missing. A zone's `fuelPerDegreeHour` is the house slope times
+  its share of the heating fuel over its share of the degree-hours, both over the 90 days and over
+  the steps where the zone had a temperature. It is `null` while the model is not usable or the
+  zone has no temperature.
+
+The four read routes answer `409` while the statistics are off, `400` for a date that is not
+`YYYY-MM-DD`, a `from` after `to` or `days` other than 7, 28 and 90, and `404` for a zone that is
+not declared.
 
 ## Pairing
 

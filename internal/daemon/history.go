@@ -46,7 +46,15 @@ const (
 	historyEnabledKey      = "history_enabled"
 	historyPriceKey        = "history_fuel_price"
 	historyCurrencyKey     = "history_currency"
+	historyComfortKey      = "history_comfort_max_c"
 	historyDefaultCurrency = "EUR"
+
+	// historyDefaultComfortC is the comfort target from which the consumption
+	// advisor suggests a degree less; historyMinComfortC and historyMaxComfortC
+	// bound the setting.
+	historyDefaultComfortC = 21.0
+	historyMinComfortC     = 16.0
+	historyMaxComfortC     = 25.0
 )
 
 var (
@@ -119,12 +127,26 @@ var historyMigrate2 = []string{
 	`UPDATE meta SET value = '2' WHERE key = 'schema'`,
 }
 
-// historySettings are the switch and the fuel price. They live in the state
-// database, so they outlive a deleted history file and travel with a backup.
+// historySettings are the switch, the fuel price and the comfort threshold of
+// the advisor. They live in the state database, so they outlive a deleted
+// history file and travel with a backup. ComfortMaxC nil is the default.
 type historySettings struct {
-	Enabled   bool
-	FuelPrice *float64
-	Currency  string
+	Enabled     bool
+	FuelPrice   *float64
+	Currency    string
+	ComfortMaxC *float64
+}
+
+// comfortMax is the comfort threshold in force.
+func (h historySettings) comfortMax() float64 {
+	if h.ComfortMaxC == nil {
+		return historyDefaultComfortC
+	}
+	return *h.ComfortMaxC
+}
+
+func validComfort(v float64) bool {
+	return !math.IsNaN(v) && v >= historyMinComfortC && v <= historyMaxComfortC
 }
 
 // zoneSample is one zone at one sample time. A nil field had no value: no
@@ -511,8 +533,8 @@ func nullFloat(v sql.NullFloat64) *float64 {
 // when none are stored.
 func (s *stateStore) HistorySettings(ctx context.Context) (historySettings, error) {
 	out := historySettings{Currency: historyDefaultCurrency}
-	rows, err := s.db.QueryContext(ctx, `SELECT key, value FROM meta WHERE key IN (?, ?, ?)`,
-		historyEnabledKey, historyPriceKey, historyCurrencyKey)
+	rows, err := s.db.QueryContext(ctx, `SELECT key, value FROM meta WHERE key IN (?, ?, ?, ?)`,
+		historyEnabledKey, historyPriceKey, historyCurrencyKey, historyComfortKey)
 	if err != nil {
 		return out, err
 	}
@@ -536,6 +558,12 @@ func (s *stateStore) HistorySettings(ctx context.Context) (historySettings, erro
 				return out, fmt.Errorf("meta %s: %q is not a currency code", key, value)
 			}
 			out.Currency = value
+		case historyComfortKey:
+			v, err := strconv.ParseFloat(value, 64)
+			if err != nil || !validComfort(v) {
+				return out, fmt.Errorf("meta %s: %q is not a comfort temperature", key, value)
+			}
+			out.ComfortMaxC = &v
 		}
 	}
 	return out, rows.Err()
@@ -559,13 +587,18 @@ func (s *stateStore) SetHistorySettings(ctx context.Context, h historySettings) 
 	if _, err := tx.ExecContext(ctx, set, historyCurrencyKey, h.Currency); err != nil {
 		return err
 	}
-	if h.FuelPrice == nil {
-		_, err = tx.ExecContext(ctx, `DELETE FROM meta WHERE key = ?`, historyPriceKey)
-	} else {
-		_, err = tx.ExecContext(ctx, set, historyPriceKey, strconv.FormatFloat(*h.FuelPrice, 'f', -1, 64))
-	}
-	if err != nil {
-		return err
+	for _, opt := range []struct {
+		key   string
+		value *float64
+	}{{historyPriceKey, h.FuelPrice}, {historyComfortKey, h.ComfortMaxC}} {
+		if opt.value == nil {
+			_, err = tx.ExecContext(ctx, `DELETE FROM meta WHERE key = ?`, opt.key)
+		} else {
+			_, err = tx.ExecContext(ctx, set, opt.key, strconv.FormatFloat(*opt.value, 'f', -1, 64))
+		}
+		if err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }
@@ -831,6 +864,7 @@ func (d *daemon) historyView() map[string]any {
 		"available": d.state != nil, "enabled": d.historyCfg.Enabled, "error": nil, "since": nil, "sizeBytes": 0,
 		"intervalSec": int(historyEvery / time.Second), "sampleDays": historySampleDays,
 		"dayMonths": historyDayMonths, "fuelPrice": d.historyCfg.FuelPrice, "currency": d.historyCfg.Currency,
+		"comfortMaxC": d.historyCfg.comfortMax(),
 	}
 	if d.historyCfg.Currency == "" {
 		view["currency"] = historyDefaultCurrency
@@ -859,10 +893,11 @@ func (d *daemon) getHistory(w http.ResponseWriter, r *http.Request) {
 // historyPut is the body of PUT /api/history. Each field is optional; delete
 // removes the file and needs the statistics off.
 type historyPut struct {
-	Enabled   *bool    `json:"enabled"`
-	Delete    bool     `json:"delete"`
-	FuelPrice optFloat `json:"fuelPrice"`
-	Currency  *string  `json:"currency"`
+	Enabled     *bool    `json:"enabled"`
+	Delete      bool     `json:"delete"`
+	FuelPrice   optFloat `json:"fuelPrice"`
+	Currency    *string  `json:"currency"`
+	ComfortMaxC optFloat `json:"comfortMaxC"`
 }
 
 func (d *daemon) putHistory(w http.ResponseWriter, r *http.Request) {
@@ -870,12 +905,16 @@ func (d *daemon) putHistory(w http.ResponseWriter, r *http.Request) {
 	if !decodeBody(w, r, &b) {
 		return
 	}
-	if b.Enabled == nil && !b.Delete && !b.FuelPrice.set && b.Currency == nil {
+	if b.Enabled == nil && !b.Delete && !b.FuelPrice.set && b.Currency == nil && !b.ComfortMaxC.set {
 		writeErr(w, http.StatusBadRequest, "no statistics option given")
 		return
 	}
 	if v := b.FuelPrice.value; v != nil && !validPrice(*v) {
 		writeErr(w, http.StatusBadRequest, fmt.Sprintf("fuelPrice must be a number from 0 to %g, or null", historyMaxPrice))
+		return
+	}
+	if v := b.ComfortMaxC.value; v != nil && !validComfort(*v) {
+		writeErr(w, http.StatusBadRequest, fmt.Sprintf("comfortMaxC must be from %g to %g C, or null", historyMinComfortC, historyMaxComfortC))
 		return
 	}
 	if b.Currency != nil && !currencyCode.MatchString(*b.Currency) {
@@ -896,6 +935,9 @@ func (d *daemon) putHistory(w http.ResponseWriter, r *http.Request) {
 		}
 		if b.Currency != nil {
 			cfg.Currency = *b.Currency
+		}
+		if b.ComfortMaxC.set {
+			cfg.ComfortMaxC = b.ComfortMaxC.value
 		}
 		if cfg.Currency == "" {
 			cfg.Currency = historyDefaultCurrency

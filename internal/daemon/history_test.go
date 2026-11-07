@@ -566,3 +566,25 @@ func TestHistoryRestartKeepsTheSlot(t *testing.T) {
 		t.Fatalf("days = %+v, want one sample counted once", e.Days)
 	}
 }
+
+// TestHistoryComfortSetting: the comfort threshold of the advisor is 21 C until
+// set, stays within 16 to 25 C, survives a restart and returns to 21 C on null.
+func TestHistoryComfortSetting(t *testing.T) {
+	_, url, _, _, path := historyDaemon(t, nil)
+	if code, resp := putHistory(t, url, map[string]any{"comfortMaxC": 20.5}); code != http.StatusOK || resp["comfortMaxC"] != 20.5 {
+		t.Fatalf("set 20.5: code=%d %v", code, resp)
+	}
+	for _, bad := range []any{15.9, 25.1, "21"} {
+		if code, _ := putHistory(t, url, map[string]any{"comfortMaxC": bad}); code != http.StatusBadRequest {
+			t.Errorf("comfortMaxC %v: code=%d, want 400", bad, code)
+		}
+	}
+	store := newTestStore(t, path)
+	cfg, err := store.HistorySettings(context.Background())
+	if err != nil || cfg.ComfortMaxC == nil || *cfg.ComfortMaxC != 20.5 {
+		t.Fatalf("stored = %+v, %v", cfg, err)
+	}
+	if code, resp := putHistory(t, url, map[string]any{"comfortMaxC": nil}); code != http.StatusOK || resp["comfortMaxC"] != 21.0 {
+		t.Errorf("clear: code=%d %v, want 21", code, resp)
+	}
+}
