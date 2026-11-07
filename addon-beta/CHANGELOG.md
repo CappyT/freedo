@@ -270,3 +270,29 @@ pre-release has its notes here.
   members are silent or when the Home Assistant reading is stale.
 - Dashboard: the room settings show the controller gains under Advanced: the current gains, the
   suggestion with the fit and the model, a button to apply it, and the defaults.
+
+## 0.12.0-beta.4
+
+- Daemon: `GET /api/boiler` reports `Fault`, `true` for any fault of the last `hvac/codes` report,
+  also a fault without a code. `FaultCodes` lists the known codes, `[]` with none.
+  `DiagnosticCode` is the OEM diagnostic code (OpenTherm id 115), which is no fault. `FaultCode` is
+  removed.
+- Home Assistant: the binary sensor Boiler fault follows `Fault`, so a fault without a code turns it
+  on.
+- Daemon: the monitor values carry the names of the firmware. `flame_on` replaces `boiler_flag`,
+  `flame_current_uA` replaces `boiler`, and `dhw_storage_tank` and `dhw_instantaneous` replace
+  `slave_config` and `slave_config_compl`. On a valve, `ambient_light_pct`, `dial_clicks`,
+  `dial_pins`, `motor_load_mV` and `motor_run_min_mV` replace `flag0136`, `flag0137`, `flag027a`,
+  `valve_ctr_0273` and `valve_ctr_027c`.
+- Daemon: the flow limit is no longer cut to tag `0471`, which bounds the DHW setpoint and not the
+  heating. The boiler enforces its own maximum.
+- Daemon and dashboard: a flow limit is a whole degree. The thermostat drops the fraction.
+- Daemon: `PUT d/dbg2/tlvs` carries only the tags `0140`, `0149` and `0158`.
+  `GET /api/nodes/{id}/dbg/mem` reads only inside the mapped flash, FICR and UICR, SRAM and
+  external flash, and `/api/nodes/{id}/resource` refuses `d/dbg/m`.
+- Daemon: `GET` and `POST /api/nodes/{id}/dbg/stats?f=10` or `f=11` read the debug statistics of a
+  valve: the time in each state and the radio counters. `GET` sends nothing.
+- Dashboard: the open row of a valve folds a section Radio diagnostics: the awake, transmit and
+  receive time, the CRC errors, the missing ACKs, the MIC failures, the last RSSI and LQI, and every
+  value under Show all. It reads the valve only on request.
+- Not run on a real plant yet: the debug statistics. No capture holds functions 10 and 11.
