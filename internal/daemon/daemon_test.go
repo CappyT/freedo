@@ -1359,6 +1359,13 @@ func TestDaemonMemActiveGetValidatesQuery(t *testing.T) {
 		"adr=20007b40&len=256",
 		"adr=20007b40&len=16&refresh=0",
 		"adr=20007b40&len=16&other=1",
+		"adr=80000&len=1",
+		"adr=7ffff&len=2",
+		"adr=2000fff0&len=17",
+		"adr=40000000&len=4",
+		"adr=50000000&len=4",
+		"adr=10002000&len=1",
+		"adr=fffffff0&len=17",
 	} {
 		var response struct {
 			Error string `json:"error"`
@@ -1366,6 +1373,47 @@ func TestDaemonMemActiveGetValidatesQuery(t *testing.T) {
 		if code := getJSON(t, url+"/api/nodes/0a06/dbg/mem?"+query, &response); code != http.StatusBadRequest || response.Error == "" {
 			t.Fatalf("query %q: got %d %+v", query, code, response)
 		}
+	}
+}
+
+// TestDebugMemoryReadable: a d/dbg/m read stays inside one mapped region, so
+// the device never memcpys from an unmapped or peripheral address.
+func TestDebugMemoryReadable(t *testing.T) {
+	for _, tc := range []struct {
+		address, length uint64
+		want            bool
+	}{
+		{0x0, 255, true},
+		{0x7ffff, 1, true},
+		{0x7ffff, 2, false},
+		{0x80000, 1, false},
+		{0x10000000, 16, true},
+		{0x10001ff0, 16, true},
+		{0x10001ff0, 17, false},
+		{0x20007b40, 16, true},
+		{0x2000fff0, 16, true},
+		{0x2000fff0, 17, false},
+		{0x40000000, 4, false},
+		{0x50000000, 4, false},
+		{0x80000000, 255, true},
+		{0xffffff01, 255, true},
+		{0xffffff02, 255, false},
+	} {
+		if got := debugMemoryReadable(tc.address, tc.length); got != tc.want {
+			t.Errorf("%x+%d: readable %v, want %v", tc.address, tc.length, got, tc.want)
+		}
+	}
+}
+
+// TestDaemonResourceRefusesDebugMemory: the generic route does not read
+// d/dbg/m, so the address check of /dbg/mem has no way around it.
+func TestDaemonResourceRefusesDebugMemory(t *testing.T) {
+	_, url := newImmediateDaemon(t, tado.EmuConfig{TxCounter: 100000, NoAutoQueue: true}, newImmediateTestRadio(true, nil), false)
+	var response struct {
+		Error string `json:"error"`
+	}
+	if code := getJSON(t, url+"/api/nodes/0a06/resource?path=d%2Fdbg%2Fm&query=adr%3D1073741824%26len%3D4", &response); code != http.StatusBadRequest || response.Error == "" {
+		t.Fatalf("got %d %+v, want 400", code, response)
 	}
 }
 

@@ -3960,6 +3960,9 @@ func debugMemoryQuery(r *http.Request) ([]string, bool, error) {
 	if err != nil || length == 0 {
 		return nil, false, errors.New("len must be decimal 1-255")
 	}
+	if !debugMemoryReadable(address, length) {
+		return nil, false, errors.New("adr and len must stay inside flash 0-7ffff, FICR/UICR 10000000-10001fff, SRAM 20000000-2000ffff or external flash 80000000-ffffffff")
+	}
 	refresh := false
 	if values, ok := q["refresh"]; ok {
 		if values[0] != "1" {
@@ -3968,6 +3971,24 @@ func debugMemoryQuery(r *http.Request) ([]string, bool, error) {
 		refresh = true
 	}
 	return []string{"adr=" + strconv.FormatUint(address, 10), "len=" + strconv.FormatUint(length, 10)}, refresh, nil
+}
+
+// debugMemoryReadable reports whether a d/dbg/m read of length bytes at address
+// stays inside one region that the valve and thermostat nRF52 map. Below bit 31
+// the device does a plain memcpy, so an unmapped or peripheral address can
+// fault or clear a register. From bit 31 it reads the external SPI flash.
+func debugMemoryReadable(address, length uint64) bool {
+	for _, r := range [...]struct{ start, end uint64 }{
+		{0x00000000, 0x00080000},  // internal flash
+		{0x10000000, 0x10002000},  // FICR and UICR
+		{0x20000000, 0x20010000},  // SRAM
+		{0x80000000, 0x100000000}, // external flash
+	} {
+		if address >= r.start && address+length <= r.end {
+			return true
+		}
+	}
+	return false
 }
 
 func (d *daemon) getNodeResource(w http.ResponseWriter, r *http.Request) {
@@ -4002,6 +4023,9 @@ func activeResource(r *http.Request) (string, []string, []string, error) {
 				return "", nil, nil, errors.New("bad resource query")
 			}
 		}
+	}
+	if path == "d/dbg/m" {
+		return "", nil, nil, errors.New("read d/dbg/m through /api/nodes/{id}/dbg/mem")
 	}
 	if path == "z/extui" && (len(query) != 1 || (query[0] != "lid=pzh" && query[0] != "lid=pzw")) {
 		return "", nil, nil, errors.New("z/extui requires query lid=pzh or lid=pzw")
