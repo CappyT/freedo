@@ -690,8 +690,66 @@ entries of the u32 array at 0x2000934c under the tags of the table at 0x3775c:
 `022e`, `0230`, `022d`, `022f`, `0233`, `0234`, `0235`, `0236`, `0237`, `0238`,
 `0239`, `023a`, `023b`, `0249`, `023c`, `023d`, `023e`, `0241`, `023f`, `024c`,
 `024d`, `024e`, `024f`, `0250`, `0252`, `0253`. `024c` and `024d` carry 4 bytes,
-the others the low 2 bytes. Function 9 resets these values. The meaning of each
-tag and the state behind each accumulator are not traced.
+the others the low 2 bytes. Function 9 resets these values.
+
+A state-time tick is one count of RTC2 (`nrf_rtc_now16`@0x12448 reads COUNTER at
+0x40024504) with prescaler 0 (u16 at 0x37b1e): 32768 Hz, about 30.5 us. Each
+state sets its flag at 0x20009334 and a 16-bit start stamp at 0x200093b4 on
+entry, and folds the elapsed ticks into its accumulator on exit. A state must
+fold at least every 2 s, or the 16-bit stamp wraps. These meanings come from a
+static reading of the code that sets each flag:
+
+| Tag | State | Evidence |
+|---|---|---|
+| `0223` | CPU awake, ISRs and busy-waits included | initial state 0x124a2; leaves before `WFI`@0x2f90c |
+| `0224` | sleep in `WFI` | 0x17c9c(0,7) before `WFI`, (7,0) after; wake ISRs leave it first |
+| `0226` | CC110L transmitting | from `SIDLE` to MARCSTATE leaving 0x13 (0x14528, 0x1445c) |
+| `0227` | CC110L receiving | from `SRX` or the end of a TX to `SIDLE`, `SPWD` or a TX (0x146ee, 0x13f08) |
+| `0228` | external flash read | 0x248ee, opcode 0x03 |
+| `0229` | external flash program and erase | 0x24a42, 0x24b76 |
+| `0232` | inside `coap_report_enqueue` | 0xd8b4 |
+| `0245` | frame encryption and decryption | 0xb8ae, 0xb9b4 |
+| `022a` | SAADC measurement window | 0x12c0e to 0x12bcc |
+| `022b` | power on P0.31 for a device on a second I2C bus | 0x28050, 0x2fd5c; the device is not identified |
+
+No code sets the flags of `0225`, `0231`, `022c`, `0244` and `0243`, so their
+accumulators stay 0 and function 10 does not emit them. The profiling `0231`
+therefore always gets in. It counts the ticks in the GPIOTE handler of pins 6
+and 7 (0x2f928, 0x17db8). The profiling `0251` counts the ticks in the handler
+of one dispatch node (0x17d54). The setter of that node (0x17d9c) has no caller
+found, so `0251` probably stays 0.
+
+The function 11 values are counters, except `023d` and `023e`:
+
+| Tag | Counts | Evidence |
+|---|---|---|
+| `0230` | CC110L frames read with the CRC bit set | 0x140a2 |
+| `023b` | CC110L frames with the CRC bit clear | 0x140a2, 0x14260 |
+| `0249` | RX frames that time out after the length byte | 0x13fe6 |
+| `022f` | CC110L transmissions, after `SIDLE` | 0x14528 |
+| `0233` | unicast transmissions without a valid MAC ACK | 0x16628 |
+| `0234` | transmissions with a valid ACK, or that need none | 0x16304 |
+| `0235` | MAC FCS or header errors (software check) | `mac_rx_header_parse`@0x171f8, 0x15dc0 |
+| `0236` | duplicate frames dropped (same sequence number and source) | 0x15b88 |
+| `0237` | frames handed to a type handler after the duplicate filter | 0x15b88 |
+| `023c` | CCM* MIC failures on received frames | 0xba50 |
+| `0238` | CSL wake-up frames seen | 0x15a8c |
+| `0239` | CSL wake-up frames accepted (PAN, broadcast or own address) | 0x15a8c |
+| `023a` | CSL sample ticks that found activity | 0x159ee |
+| `0252` | activity timeouts with no valid frame | 0x15706 |
+| `022e` | frames handed to the 6LoWPAN input | 0x19664 |
+| `022d` | 6LoWPAN fragments sent | 0x18f62 |
+| `024f` | long waits (64 to 1280 ticks) before a CSL payload | 0x15784 |
+| `0250` | short busy-waits (32 to 64 ticks) before a CSL payload | 0x15784 |
+| `024c` | timer service runs with the next timer 1 tick away | 0x12608 |
+| `024d` | timer service runs that arm RTC1 and allow sleep | 0x12608 |
+| `024e` | timer service runs with a timer overdue | 0x12608 |
+| `0253` | phase adjustments of periodic timers | 0x18074 |
+| `023d` | last value: RSSI in dBm of the last frame to this device | 0x15a8c |
+| `023e` | last value: LQI (7 bits) of the last frame to this device | 0x15a8c |
+
+No code writes `0241` and `023f`, so they stay 0. No capture covers functions 10
+and 11, and no device answer confirms these meanings.
 
 `d/dbg2/tlvs` registers only PUT handler `coap_res_tlv_write_handler`@0x20118.
 The per-record callback at 0x20088 byteswaps the tag and values of 2 or 4 bytes,
