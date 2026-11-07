@@ -675,6 +675,24 @@ The response buffer holds 196 bytes. A missing `f` gets 4.00, an unknown one get
 The resource is not read-only. Functions 3, 4, 7, 8, 9 and 12 change device state
 or radio behaviour. freedo sends none of these functions.
 
+Functions 10 and 11 first fold the elapsed RTC16 ticks of each active state into
+15 u32 accumulators at 0x200092f8 (0x17c50). The answer is a TLV stream in the
+`d/config` record form. Function 10 (body 0xb330) needs a buffer above 104 bytes.
+It emits each nonzero accumulator as a 4-byte value under the tag of the same
+index in the table at 0x37790: `0223`, `0229`, `0228`, `0232`, `0226`, `0227`,
+`0245`, `0224`, `0225`, `0231`, `022a`, `022b`, `022c`, `0244`, `0243`. Then it
+emits two u16 profiling values as 4-byte values, `0251` (0x17d90) and `0231`
+(0x17de0). The store refuses a duplicate tag (`coap_tlv_store_insert`@0x104f4),
+so when accumulator `0231` is nonzero the profiling `0231` is missing.
+
+Function 11 (body 0xb3f0) needs a buffer above 133 bytes. It emits all 26
+entries of the u32 array at 0x2000934c under the tags of the table at 0x3775c:
+`022e`, `0230`, `022d`, `022f`, `0233`, `0234`, `0235`, `0236`, `0237`, `0238`,
+`0239`, `023a`, `023b`, `0249`, `023c`, `023d`, `023e`, `0241`, `023f`, `024c`,
+`024d`, `024e`, `024f`, `0250`, `0252`, `0253`. `024c` and `024d` carry 4 bytes,
+the others the low 2 bytes. Function 9 resets these values. The meaning of each
+tag and the state behind each accumulator are not traced.
+
 `d/dbg2/tlvs` registers only PUT handler `coap_res_tlv_write_handler`@0x20118.
 The per-record callback at 0x20088 byteswaps the tag and values of 2 or 4 bytes,
 then calls `cfg_store_set`. Other value lengths pass unchanged. An empty body gets
