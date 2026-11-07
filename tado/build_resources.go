@@ -530,10 +530,9 @@ func boostHeatingBody(c BoostCoAP) []byte {
 }
 
 // CH flow (heating-circuit) setpoint bounds. The wall thermostat applies the
-// value as the boiler OpenTherm CH setpoint (MaxTSet, data-id 57) and the boiler
-// reports its own hard upper bound back as tag 0471 (60.00 C in the reference
-// install). The window below stays inside a condensing boiler's usable range; the
-// firmware re-clamps regardless.
+// value as the boiler OpenTherm CH setpoint (MaxTSet, data-id 57) without a clamp.
+// The window below stays inside a condensing boiler's usable range; the boiler
+// enforces its own maximum.
 const (
 	FlowMinC = 30.0
 	FlowMaxC = 75.0

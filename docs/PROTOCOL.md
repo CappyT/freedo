@@ -951,15 +951,15 @@ Tag `2040` is the heating flow limit of a circuit: a big-endian uint16 in centi-
 (`12c0` = 48.00 C in every capture). The wall thermostat GETs it from
 `h/<home>/c/<N>/config`. At HVAC init it writes the value as the OpenTherm MaxTSet (id 57), for
 the circuit that its `015e` role selects. The read-back of the applied value arrives as tag
-`046f` in `hvac/config`. The boiler reports the highest CH setpoint it accepts as tag `0471` in
-`hvac/config` (OpenTherm id 49, centi-degrees, 60.00 C in the reference installation). Tag
-`046f` is not that bound.
+`046f` in `hvac/config`. Tag `0471` in `hvac/config` is the DHW setpoint upper bound (OpenTherm
+id 48, centi-degrees, 60.00 C in the reference installation), not a CH bound. No tag carries the
+CH bound (OpenTherm id 49). The thermostat does not clamp the limit against it: the boiler
+enforces its own maximum.
 
 freedo serves no `2040` to a circuit while `flow_limit_c` is unset and nothing manages the
 circuit. The code notes that the thermostat then applies a MaxTSet of 70 C when its boiler
 interface starts. No capture or measurement on a boiler confirms this value. freedo serves the
-lower of the limit and the `0471` bound, when the bound is from 30 C up to below 75 C, the
-window of the daemon.
+limit as set, inside the window of the daemon (30 to 75 C).
 
 ### Boiler energy
 

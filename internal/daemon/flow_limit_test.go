@@ -204,21 +204,23 @@ func TestFlowLimitUnset(t *testing.T) {
 }
 
 // TestFlowLimitBounds: each circuit reports the window it accepts, minC and
-// maxC. The window is the daemon's until the heat source reports a CH setpoint
-// bound, and then its top follows the boiler: a limit above it is served cut.
+// maxC. The window is the daemon's: a 0471 report, the DHW setpoint upper
+// bound, does not change it.
 func TestFlowLimitBounds(t *testing.T) {
 	in := windowInstall(t, func(in *tado.Install) { in.Options.FlowLimitC = new(70) })
 	d, url := newWindowDaemon(t, in, newTestClock(windowStart), nil)
-	if c := boilerFlow(t, url).FlowLimit.Circuits[0]; c.MinC != 30 || c.MaxC != 75 || c.ServedC != 70 {
-		t.Fatalf("before a report: %+v, want 30..75 and 70 served", c)
+	check := func(step string) {
+		t.Helper()
+		if c := boilerFlow(t, url).FlowLimit.Circuits[0]; c.MinC != 30 || c.MaxC != 75 || c.ServedC != 70 {
+			t.Errorf("%s: %+v, want 30..75 and 70 served", step, c)
+		}
 	}
+	check("before a report")
 	feed(t, d, in, "RU1000000001", false, tado.CoAPReq{
 		Type: "CON", Code: "0.03", MID: 0x7001, Path: []string{"h", "7654321", "hvac", "config"},
 		Payload: tado.TLV{Tag: "0471", Val: []byte{0x17, 0x70}}.Encode(),
 	})
-	if c := boilerFlow(t, url).FlowLimit.Circuits[0]; c.MinC != 30 || c.MaxC != 60 || c.ServedC != 60 {
-		t.Errorf("after a bound of 60: %+v, want 30..60 and 60 served", c)
-	}
+	check("after a 0471 of 60")
 }
 
 // TestInstallAPIPatchesFlowOptions: the flow limit options round-trip through

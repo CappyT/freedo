@@ -138,13 +138,10 @@ func (d *daemon) tickFlowLimits(e *tado.EmuState) bool {
 		if !ok {
 			continue
 		}
-		_, maxC := e.FlowBounds(c.ID)
-		exact = min(exact, float64(maxC))
 		served, isServed, _ := e.ServedFlow(c.ID)
 		// The whole-degree value comes from flowWanted, not from rounding exact:
 		// the default curve rounds its reduction, which differs on a tie.
 		target, _ := d.flowWanted(inst.Options, c.ID, now)
-		target = min(target, maxC)
 		wasTrimmed, known := d.flowTrimmed[c.ID]
 		if !known {
 			// After a start the served value may be a cut the adaptation made
@@ -272,9 +269,8 @@ func (d *daemon) flowLimitView(e *tado.EmuState) map[string]any {
 	for i := range inst.Circuits {
 		id := inst.Circuits[i].ID
 		served, isServed, fetched := e.ServedFlow(id)
-		minC, maxC := e.FlowBounds(id)
 		view := map[string]any{
-			"id": id, "curve": false, "computedC": nil, "servedC": nil, "minC": minC, "maxC": maxC,
+			"id": id, "curve": false, "computedC": nil, "servedC": nil, "minC": int(tado.FlowMinC), "maxC": int(tado.FlowMaxC),
 			"changedAt": nil, "fetched": fetched,
 			"adapt": inst.Options.FlowAutoAdaptEnabled(), "adaptedC": nil, "adaptedAt": nil, "adaptReason": nil,
 			"defaultCurve": flowDefaultCurve(inst.Options, id), "reductionC": nil,

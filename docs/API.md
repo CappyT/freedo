@@ -990,10 +990,10 @@ session again. Each application closes and opens the session.
 - A circuit with an enabled curve, or with the adaptation on, falls back to 48 C while
   `flow_limit_c` is unset. The fallback applies to a stale outdoor reading and to the start of
   the adaptation.
-- The window is 30 to 75 C, and `POST /api/boiler/flow` accepts the whole window. The daemon
-  serves the lower of the requested limit and the highest CH setpoint that the boiler
-  reports (tag `0471`, OpenTherm id 49). It applies the bound only when the bound is from
-  30 C up to below 75 C. A new bound that changes the served limit also moves the ETag.
+- The window is 30 to 75 C, and `POST /api/boiler/flow` accepts the whole window. freedo serves
+  the requested limit without a cut to a boiler bound. The thermostat writes it to the boiler
+  as MaxTSet (OpenTherm id 57) with no clamp, and the boiler enforces its own maximum. Tag
+  `0471` is the DHW setpoint upper bound, not a CH bound.
 - The thermostat rereads `c/<N>/config` only after a `2.05` of `d/config`. For this the
   ETag of its `d/config` hashes the document and the served flow limits. A new limit
   changes the ETag and queues one empty `PUT d/config`. The thermostat rereads within a few

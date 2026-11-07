@@ -623,7 +623,7 @@ var hvacTags = []hvacTag{
 	// reads 48.01 and a boiler that answers 0 reads 0.01.
 	hvacC("046f", resHVACConfig, "max_ch_setpoint_C"),
 	hvacRaw("0470", resHVACConfig, "boiler", 2),
-	hvacC("0471", resHVACConfig, "max_ch_bounds_C"),
+	hvacC("0471", resHVACConfig, "dhw_setpoint_max_C"),
 }
 
 var hvacTagByTag = func() map[string]hvacTag {

@@ -1963,15 +1963,6 @@ func (e *EmuState) cacheBody(ns *NodeState, srcEUI []byte, m *CoAPMessage, fallb
 
 func (e *EmuState) cacheTLVs(ns *NodeState, tlvs []TLV, uri string, class FrameClass, srcLbl, dstLbl, hexFrame string) {
 	res := ResourceOf(uri, tlvs)
-	if slices.ContainsFunc(tlvs, func(t TLV) bool { return t.Tag == maxChBoundsTag }) {
-		before := map[int]float64{}
-		for _, id := range e.flowCircuits() {
-			if v, ok := e.servedFlowC(id); ok {
-				before[id] = v
-			}
-		}
-		defer e.flowBoundsMoved(before)
-	}
 	for _, t := range tlvs {
 		ns.raw[t.Tag] = append([]byte{}, t.Val...)
 		switch t.Tag {
@@ -3312,8 +3303,11 @@ func (e *EmuState) servedFlowC(id int) (float64, bool) {
 		def, set := e.defaultFlowC()
 		v, ok = float64(def), set
 	}
-	_, maxC := e.FlowBounds(id)
-	return min(v, float64(maxC)), ok
+	// No cut to a boiler bound. Tag 0471 in hvac/config is the DHW setpoint upper
+	// bound (OpenTherm id 48), and no tag carries the CH bound (id 49): the
+	// thermostat writes the limit to the boiler as MaxTSet (id 57) with no clamp,
+	// and the boiler enforces its own maximum.
+	return v, ok
 }
 
 func (e *EmuState) defaultFlowC() (int, bool) {
