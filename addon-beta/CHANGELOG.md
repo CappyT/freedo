@@ -296,3 +296,21 @@ pre-release has its notes here.
   receive time, the CRC errors, the missing ACKs, the MIC failures, the last RSSI and LQI, and every
   value under Show all. It reads the valve only on request.
 - Not run on a real plant yet: the debug statistics. No capture holds functions 10 and 11.
+
+## 0.12.0-beta.5
+
+- Daemon: `GET /api/nodes/{id}/dbg/stats?f=11` adds `delta`, the change of each radio counter
+  between the last two reads. Most counters carry their low 16 bits and wrap at 65536, so one
+  read counts from an unknown start.
+- Dashboard: Radio diagnostics shows the CRC errors, the missing ACKs and the MIC failures between
+  the last two reads, with the time between them. Show all keeps the raw values, with a note.
+- Daemon: the statistics record the outdoor temperature that Home Assistant pushes, the mean
+  indoor temperature of the heating zones and the burner starts. `GET /api/history/energy` adds
+  `outdoorC`, `indoorC`, `coverage` and `burnerStarts` to each day, and each zone sample adds
+  `outdoorC`. The consumption advisor of a later release compares days with them.
+- Daemon: the statistics file moves to schema 2 at start. A daemon before this release refuses
+  it and keeps the statistics off: see Schema upgrade and rollback in `docs/OPERATION.md`.
+- Daemon: a restart in the slot of the last sample no longer adds that slot to the day a second
+  time.
+- Run on a real plant with 0.12.0-beta.4: a valve answered functions 10 and 11 of the debug
+  statistics, each in one message, with the tags of the static analysis.
