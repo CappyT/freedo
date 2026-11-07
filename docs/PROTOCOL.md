@@ -751,6 +751,13 @@ The function 11 values are counters, except `023d` and `023e`:
 No code writes `0241` and `023f`, so they stay 0. No capture covers functions 10
 and 11, and no device answer confirms these meanings.
 
+freedo reads functions 10 and 11 from valves only (`EnqueueDebugStats`) and names
+the tags as these tables do (`debugStatNames`). A state-time accumulator wraps
+after 2^32 ticks, about 36 h, so freedo computes the time shares only from two
+readings less than 36 h apart (`DebugStatsShareBetween`). The CPU is either
+awake or in `WFI`, so the `0223` and `0224` deltas together must match the time
+between the readings. freedo refuses readings that do not, as after a restart.
+
 `d/dbg2/tlvs` registers only PUT handler `coap_res_tlv_write_handler`@0x20118.
 The per-record callback at 0x20088 byteswaps the tag and values of 2 or 4 bytes,
 then calls `cfg_store_set`. Other value lengths pass unchanged. An empty body gets

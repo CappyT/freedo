@@ -1982,6 +1982,8 @@ func (d *daemon) mux() *http.ServeMux {
 	m.HandleFunc("DELETE /api/nodes/{id}/fw", d.deleteNodeFw)
 	m.HandleFunc("GET /api/nodes/{id}/currentlog", d.getNodeCurrentlog)
 	m.HandleFunc("GET /api/nodes/{id}/dbg/mem", d.getNodeMem)
+	m.HandleFunc("GET /api/nodes/{id}/dbg/stats", d.getNodeDbgStats)
+	m.HandleFunc("POST /api/nodes/{id}/dbg/stats", d.postNodeDbgStats)
 	m.HandleFunc("GET /api/nodes/{id}/resource", d.getNodeResource)
 	m.HandleFunc("GET /api/heatsource/capabilities", d.getHeatsourceCaps)
 	m.HandleFunc("GET /api/state/export", d.getStateExport)
@@ -3926,6 +3928,94 @@ func (d *daemon) getNodeMem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d.activeNodeGet(w, r, "d/dbg/m", []string{"d", "dbg", "m"}, false, refresh, query)
+}
+
+// debugStatsFn reads f, the read-only d/dbg/m statistics function: 10 or 11.
+func debugStatsFn(r *http.Request) (int, error) {
+	q := r.URL.Query()
+	if len(q) != 1 || len(q["f"]) != 1 {
+		return 0, errors.New("want one query parameter f=10 or f=11")
+	}
+	switch q.Get("f") {
+	case "10":
+		return tado.DebugStatsStateTime, nil
+	case "11":
+		return tado.DebugStatsCounters, nil
+	}
+	return 0, errors.New("f must be 10 or 11")
+}
+
+// debugStatsNode resolves {id} and f for the statistics routes, which serve
+// valves only.
+func (d *daemon) debugStatsNode(w http.ResponseWriter, r *http.Request) (string, int, bool) {
+	fn, err := debugStatsFn(r)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return "", 0, false
+	}
+	dev, target, ok := d.pathNode(w, r)
+	if !ok {
+		return "", 0, false
+	}
+	if dev.Kind != tado.KindValve {
+		writeErr(w, http.StatusBadRequest, "debug statistics are read from valves only")
+		return "", 0, false
+	}
+	return target, fn, true
+}
+
+// getNodeDbgStats answers the last statistics of function f that the valve
+// returned, decoded, and never sends. "code" is the code of the last answer,
+// "stats" and "received_at" come from the last 2.05. For f=10, "share" gives
+// the state shares between the last two 2.05 answers.
+func (d *daemon) getNodeDbgStats(w http.ResponseWriter, r *http.Request) {
+	target, fn, ok := d.debugStatsNode(w, r)
+	if !ok {
+		return
+	}
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
+		samples, pending, err := e.DebugStats(target, fn)
+		if err != nil {
+			return nil, err
+		}
+		out := map[string]any{"f": fn, "pending": pending}
+		if code, _, ok := e.ActiveGetResponseFor(target, "d/dbg/m?f="+strconv.Itoa(fn), nil); ok {
+			out["code"] = code
+		}
+		if len(samples) == 0 {
+			return out, nil
+		}
+		last := samples[len(samples)-1]
+		out["received_at"] = last.At
+		if stats, err := tado.DecodeDebugStats(last.Body); err != nil {
+			out["decode_error"] = err.Error()
+		} else {
+			out["stats"] = stats
+		}
+		if fn == tado.DebugStatsStateTime && len(samples) == 2 {
+			if share, ok := tado.DebugStatsShareBetween(samples[0], last); ok {
+				out["share"] = share
+			}
+		}
+		return out, nil
+	})
+	write(w, v, err)
+}
+
+// postNodeDbgStats queues POST d/dbg/m?f=10|11 to a valve. GET reads the answer.
+func (d *daemon) postNodeDbgStats(w http.ResponseWriter, r *http.Request) {
+	target, fn, ok := d.debugStatsNode(w, r)
+	if !ok {
+		return
+	}
+	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
+		if err := e.EnqueueDebugStats(target, fn); err != nil {
+			return nil, err
+		}
+		d.dispatchQueued(e, target)
+		return e.Pending(target), nil
+	})
+	queued(w, v, err, nil)
 }
 
 func debugMemoryQuery(r *http.Request) ([]string, bool, error) {

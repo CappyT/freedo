@@ -183,6 +183,7 @@ banner.
 | `GET`, `POST`, `DELETE /api/nodes/{id}/fw` | Read the firmware state, start or cancel a transfer. |
 | `GET /api/nodes/{id}/currentlog` | Read the device log. |
 | `GET /api/nodes/{id}/dbg/mem?adr=&len=` | Read device memory (`refresh=1` forces a new read). The read stays inside flash `0-7ffff`, FICR and UICR `10000000-10001fff`, SRAM `20000000-2000ffff` or external flash `80000000-ffffffff`. |
+| `GET`, `POST /api/nodes/{id}/dbg/stats?f=` | Valve debug statistics, `f=10` for the state times or `f=11` for the radio counters. `POST` queues `POST d/dbg/m?f=N`. `GET` sends nothing: it answers `pending`, the code of the last answer, and the last 2.05 decoded under `stats` with its `received_at`. The code `2.05+more` marks an answer that announces more Block2 blocks: freedo does not follow it, because a new POST would run the function again. For `f=10`, `share` gives the awake, TX and RX time in percent between the last two 2.05 answers. It is absent when they are 36 h apart or more, or when their awake and sleep ticks disagree with the clock of the daemon by more than 10 s plus 10 %, as after a restart of the valve. The wall thermostat is refused. |
 | `GET /api/nodes/{id}/resource?path=&query=` | Read any resource of a device, except `d/dbg/m`. |
 
 ### Boiler, environment and pairing
