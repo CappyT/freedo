@@ -759,6 +759,12 @@ carried the 26 tags. Its 16-bit values had wrapped: `0239` (accepted) read above
 from an unknown start, and only the change between two readings is usable
 (`DebugStatsDeltaBetween`).
 
+Two readings of the same valve 1420 s apart agree with the meanings above. The
+`0223` and `0224` deltas add up to 1420 s at 32768 Hz, so the tick rate holds
+and the two states cover all the time. The `022f` delta equals the `0233` plus
+`0234` deltas (47 = 7 + 40), the `022e` delta equals the `0237` delta (43), and
+the `0239` delta stays below the `0238` delta (70 and 112).
+
 freedo reads functions 10 and 11 from valves only (`EnqueueDebugStats`) and names
 the tags as these tables do (`debugStatNames`). A state-time accumulator wraps
 after 2^32 ticks, about 36 h, so freedo computes the time shares only from two
