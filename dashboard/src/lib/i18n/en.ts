@@ -693,7 +693,7 @@ export const en = {
 	'opt.mode.config': 'Valve configuration (full motor stroke)',
 	'opt.mode.dbg2': 'Valve debug record',
 	'opt.mode.config.hint': 'freedo writes the offset in the configuration of the valve, as the commercial bridge does. Each change of the offset makes the valve do one full motor stroke.',
-	'opt.mode.dbg2.hint': 'freedo writes the offset to the valve as one record, with no motor stroke. This mode is not verified on air. A room with the wall thermostat as measuring device refuses the offset in this mode.',
+	'opt.mode.dbg2.hint': 'freedo writes the offset to the valve as one record, with no motor stroke. A room with the wall thermostat as measuring device refuses the offset in this mode.',
 	'opt.offset': 'Offset (°C)',
 	'opt.offset.hint': 'From -10 to 10 °C. The valve holds the offset and does not report it, so the field starts empty. An empty field changes nothing.',
 	'gains.title': 'Controller gains',

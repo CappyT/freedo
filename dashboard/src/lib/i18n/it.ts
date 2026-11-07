@@ -693,7 +693,7 @@ export const it: Record<Key, string> = {
 	'opt.mode.config': 'Configurazione della valvola (corsa completa del motore)',
 	'opt.mode.dbg2': 'Record di debug della valvola',
 	'opt.mode.config.hint': 'freedo scrive l’offset nella configurazione della valvola, come fa il bridge commerciale. Ogni modifica dell’offset fa fare alla valvola una corsa completa del motore.',
-	'opt.mode.dbg2.hint': 'freedo scrive l’offset sulla valvola come un solo record, senza corsa del motore. Questa modalità non è verificata via radio. Una stanza con il termostato a parete come dispositivo di misura rifiuta l’offset in questa modalità.',
+	'opt.mode.dbg2.hint': 'freedo scrive l’offset sulla valvola come un solo record, senza corsa del motore. Una stanza con il termostato a parete come dispositivo di misura rifiuta l’offset in questa modalità.',
 	'opt.offset': 'Offset (°C)',
 	'opt.offset.hint': 'Da -10 a 10 °C. La valvola conserva l’offset e non lo riporta, quindi il campo parte vuoto. Un campo vuoto non cambia nulla.',
 	'gains.title': 'Guadagni del regolatore',

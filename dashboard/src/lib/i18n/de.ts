@@ -693,7 +693,7 @@ export const de: Record<Key, string> = {
 	'opt.mode.config': 'Ventilkonfiguration (voller Motorhub)',
 	'opt.mode.dbg2': 'Debug-Datensatz des Ventils',
 	'opt.mode.config.hint': 'freedo schreibt den Offset in die Konfiguration des Ventils, wie die kommerzielle Bridge. Jede Änderung des Offsets lässt das Ventil einen vollen Motorhub machen.',
-	'opt.mode.dbg2.hint': 'freedo schreibt den Offset als einen Datensatz an das Ventil, ohne Motorhub. Dieser Modus ist nicht per Funk geprüft. Ein Raum mit dem Wandthermostat als Messgerät lehnt den Offset in diesem Modus ab.',
+	'opt.mode.dbg2.hint': 'freedo schreibt den Offset als einen Datensatz an das Ventil, ohne Motorhub. Ein Raum mit dem Wandthermostat als Messgerät lehnt den Offset in diesem Modus ab.',
 	'opt.offset': 'Offset (°C)',
 	'opt.offset.hint': 'Von -10 bis 10 °C. Das Ventil hält den Offset und meldet ihn nicht, also beginnt das Feld leer. Ein leeres Feld ändert nichts.',
 	'gains.title': 'Reglerverstärkungen',

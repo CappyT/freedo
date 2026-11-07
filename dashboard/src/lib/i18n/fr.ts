@@ -693,7 +693,7 @@ export const fr: Record<Key, string> = {
 	'opt.mode.config': 'Configuration de la vanne (course complète du moteur)',
 	'opt.mode.dbg2': 'Enregistrement de débogage de la vanne',
 	'opt.mode.config.hint': 'freedo écrit le décalage dans la configuration de la vanne, comme le pont commercial. Chaque modification du décalage fait faire à la vanne une course complète du moteur.',
-	'opt.mode.dbg2.hint': 'freedo écrit le décalage sur la vanne en un seul enregistrement, sans course du moteur. Ce mode n’est pas vérifié par radio. Une pièce avec le thermostat mural comme appareil de mesure refuse le décalage dans ce mode.',
+	'opt.mode.dbg2.hint': 'freedo écrit le décalage sur la vanne en un seul enregistrement, sans course du moteur. Une pièce avec le thermostat mural comme appareil de mesure refuse le décalage dans ce mode.',
 	'opt.offset': 'Décalage (°C)',
 	'opt.offset.hint': 'De -10 à 10 °C. La vanne garde le décalage et ne le rapporte pas, donc le champ commence vide. Un champ vide ne change rien.',
 	'gains.title': 'Gains du régulateur',
