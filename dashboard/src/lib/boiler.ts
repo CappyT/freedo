@@ -21,7 +21,7 @@ export function canSetFlow(c: FlowCircuit): boolean {
 
 /** A whole degree inside the bounds the circuit accepts. */
 export function flowInRange(c: FlowCircuit, value: number): boolean {
-	return Number.isFinite(value) && value >= c.minC && value <= c.maxC;
+	return Number.isInteger(value) && value >= c.minC && value <= c.maxC;
 }
 
 export function burnerHours(minutes: number | null): number | null {

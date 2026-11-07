@@ -42,6 +42,7 @@ describe('flow limit drivers', () => {
 		expect(flowInRange(c, 29)).toBe(false);
 		expect(flowInRange(c, 71)).toBe(false);
 		expect(flowInRange(c, Number.NaN)).toBe(false);
+		expect(flowInRange(c, 45.5)).toBe(false);
 	});
 
 	it('shows burner minutes as hours', () => {
