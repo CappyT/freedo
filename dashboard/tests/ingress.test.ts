@@ -42,6 +42,8 @@ const calls: Record<string, Call> = {
 	childLock: (c) => c.childLock('0201', true),
 	identify: (c) => c.identify('0201'),
 	reboot: (c) => c.reboot('0201'),
+	debugStats: (c) => c.debugStats('0201', 10),
+	readDebugStats: (c) => c.readDebugStats('0201', 11),
 	installInfo: (c) => c.installInfo(),
 	setTimezone: (c) => c.setTimezone('Europe/Rome'),
 	setBoiler: (c) => c.setBoiler({ flow_limit_c: 56 }),
@@ -109,6 +111,8 @@ const ALLOWED = [
 	'POST /api/nodes/{id}/childlock',
 	'POST /api/nodes/{id}/identify',
 	'POST /api/nodes/{id}/reboot',
+	'GET /api/nodes/{id}/dbg/stats',
+	'POST /api/nodes/{id}/dbg/stats',
 	'PUT /api/install/devices/{ref}/label',
 	'GET /api/install',
 	'PUT /api/install/timezone',
@@ -138,10 +142,10 @@ const ALLOWED = [
 ];
 
 // What stays behind the token under ingress, whatever the client does: the identity of the network,
-// the network key, a pairing with a key of the caller, calibration, firmware, the debug routes, and
-// the export and the import of the state, and the receiver calibration. The daemon serves those three
-// to a Home Assistant administrator through ingress (internal/daemon/ingress_admin_routes.json), and
-// never as plain ingress pairs.
+// the network key, a pairing with a key of the caller, calibration, firmware, the debug routes that
+// read raw memory or raw answers, the export and the import of the state, and the receiver
+// calibration. The daemon serves those last three to a Home Assistant administrator through ingress
+// (internal/daemon/ingress_admin_routes.json), and never as plain ingress pairs.
 const TOKEN_ONLY = [
 	'PATCH /api/install',
 	'PUT /api/install/network_key',
@@ -151,6 +155,8 @@ const TOKEN_ONLY = [
 	'POST /api/nodes/0201/calibrate',
 	'POST /api/nodes/0201/fw',
 	'POST /api/nodes/0201/config',
+	'GET /api/nodes/0201/dbg/mem',
+	'GET /api/nodes/0201/resource',
 	'GET /api/debug/rx',
 	'POST /api/debug/decrypt',
 	'GET /api/state/export',

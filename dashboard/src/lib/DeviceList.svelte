@@ -16,6 +16,7 @@
 	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
 	import { act } from './actions.ts';
+	import DebugStats from './DebugStats.svelte';
 	import { alertKeys, conditionText } from './describe.ts';
 	import type { DeviceRow } from './devices.ts';
 	import { fmt, t } from './i18n.svelte.ts';
@@ -170,6 +171,10 @@
 							<div><dt>{t('devices.lastSeen')}</dt><dd>{fmt.ago(device.lastSeenUnix)}</dd></div>
 							<div><dt>{t('devices.battery')}</dt><dd class="num">{battery(device)}</dd></div>
 						</dl>
+
+						{#if device.kind === 'valve'}
+							<DebugStats short={device.short} />
+						{/if}
 
 						{#if device.childLock !== null}
 							<label class="switch">

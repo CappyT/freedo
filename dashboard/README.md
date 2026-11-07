@@ -17,7 +17,7 @@ SvelteKit 3 needs Node 22.17 or later. Run the commands in this directory.
 | `npm run embed` | Copy `build/` to `../internal/web/dist`, the directory that the daemon embeds. |
 | `npm run dev` | Start the development server. `FREEDO_DEV_API` names the daemon (default `http://127.0.0.1:8080`). |
 | `npm run prefix-check` | Check the build under a path prefix. See below. |
-| `npm run ui-check` | Drive the controls in headless Chrome against the daemon: typing in the schedule editor, a refused command, the first end rule, Turn off, the profiles on the Programs screen, the rooms and devices, the first setup on an empty database, the download and the restore of a backup, the banner and the return to normal of a daemon that waits after an import, and the statistics: the switch, the report of a room, the consumption page, the price and the reason of a stopped fuel counter. `FREEDO_BIN` names a daemon binary that embeds the build. |
+| `npm run ui-check` | Drive the controls in headless Chrome against the daemon: typing in the schedule editor, a refused command, the first end rule, Turn off, the profiles on the Programs screen, the rooms and devices, the radio diagnostics of a valve, the first setup on an empty database, the download and the restore of a backup, the banner and the return to normal of a daemon that waits after an import, and the statistics: the switch, the report of a room, the consumption page, the price and the reason of a stopped fuel counter. `FREEDO_BIN` names a daemon binary that embeds the build. |
 
 To run the daemon with the dashboard:
 
@@ -105,7 +105,7 @@ the gateway for the calls that `src/lib/api.ts` makes, so the page asks for noth
 `../internal/daemon/ingress_routes.json`, and `tests/ingress.test.ts` fails when the client calls a
 pair that is not in the list. The test also holds the exact allowed set, and a list of pairs that must
 stay behind the token: the identity of the network, the network key, `POST /api/pair` with its key field,
-calibration, firmware and debug. A new client call needs a line in the JSON file and in the test, and every
+calibration, firmware, and the debug routes that read raw memory or raw answers. A new client call needs a line in the JSON file and in the test, and every
 line widens what a Home Assistant user can do without the token. The list holds the installation and
 pairing calls, so the pages Rooms and devices and First setup work under the add-on. Where the wider route also
 writes a field that ingress must not reach, the client calls a route that carries one field:

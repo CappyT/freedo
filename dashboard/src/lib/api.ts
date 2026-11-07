@@ -3,6 +3,8 @@ import type {
 	Calibration,
 	BoilerPatch,
 	Circuit,
+	DebugStats,
+	DebugStatsFn,
 	EndRule,
 	EnergyHistory,
 	GasMeter,
@@ -206,6 +208,12 @@ export function createClient(options: ClientOptions = {}) {
 		identify: (device: string) => request<Command>('POST', 'nodes/' + encodeURIComponent(device) + '/identify', {}),
 		/** Queues the restart of a valve or of the wall thermostat. The device keeps its key and joins again. */
 		reboot: (device: string) => request<Command>('POST', 'nodes/' + encodeURIComponent(device) + '/reboot', {}),
+		/** The last debug statistics of a valve that the daemon holds. It sends nothing to the valve. */
+		debugStats: (device: string, f: DebugStatsFn) =>
+			request<DebugStats>('GET', 'nodes/' + encodeURIComponent(device) + '/dbg/stats?f=' + f),
+		/** Queues the read of the debug statistics: one message to the valve. */
+		readDebugStats: (device: string, f: DebugStatsFn) =>
+			request<Queued>('POST', 'nodes/' + encodeURIComponent(device) + '/dbg/stats?f=' + f, {}),
 
 		// The installation and the pairing.
 		installInfo: () => request<InstallInfo>('GET', 'install'),

@@ -349,6 +349,30 @@ export interface Queued {
 	pending: number;
 }
 
+/** One decoded value of a valve debug statistics answer. name is absent for a tag freedo does not name. */
+export interface DebugStat {
+	tag: string;
+	name?: string;
+	value: number;
+}
+
+/** The function of the valve debug statistics: 10 gives the RTC ticks spent in each state, 11 the radio counters. */
+export type DebugStatsFn = 10 | 11;
+
+/**
+ * GET /api/nodes/{id}/dbg/stats. code is the code of the last answer. stats and received_at come from the
+ * last 2.05. share, function 10 only, compares the last two 2.05 answers.
+ */
+export interface DebugStats {
+	f: DebugStatsFn;
+	pending: boolean;
+	code?: string;
+	received_at?: string;
+	stats?: DebugStat[];
+	decode_error?: string;
+	share?: { interval_s: number; awake_pct: number; tx_pct: number; rx_pct: number };
+}
+
 /** GET /api/install: the fields the dashboard reads. */
 export type FuelUnit = 'm3' | 'l' | 'kg';
 

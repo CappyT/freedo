@@ -7,6 +7,10 @@
 // - Typing "21.5" into a temperature field of the schedule editor keeps every digit, and the
 //   daemon stores the schedule.
 // - A failed command leaves the presence tile and the child lock at what the daemon says.
+// - The open row of a valve, and of no other device, folds a radio diagnostics section. Opening it reads
+//   what the daemon holds and sends nothing. A read sends one POST for each function and waits for the
+//   valve; the answers that the check puts in then show as a summary and as a full table. A refusal names
+//   its function.
 // - A zone with no program starts on "until I end it" and shows a hint. Turn off asks first.
 // - The schedule panel keeps the away program and an open editor across a data poll.
 // - A device renamed in the settings of its room shows its new name right after the save, also when
@@ -100,6 +104,8 @@ try {
 	let boilerPatch = null;
 	// The samples put into the answer of GET /api/history/zones/{n}, built from the bounds of the day. Null changes nothing.
 	let zoneDayPatch = null;
+	// The answers of GET /api/nodes/{id}/dbg/stats by function, as if the valve had answered. Null changes nothing.
+	let dbgStats = null;
 	// Until waitUntil every answer is the one of a daemon that waits after an import. An import that
 	// passes starts such a wait of waitAfterImport milliseconds.
 	let waitUntil = 0;
@@ -151,6 +157,16 @@ try {
 						responseCode: 403,
 						responseHeaders: [{ name: 'Content-Type', value: 'application/json' }],
 						body: Buffer.from('{"error":"only a Home Assistant administrator can export or import the state"}').toString('base64')
+					});
+					return;
+				}
+				const stats = dbgStats && method === 'GET' && path.endsWith('/dbg/stats') ? dbgStats[new URL(url).searchParams.get('f')] : undefined;
+				if (stats) {
+					await tab.call('Fetch.fulfillRequest', {
+						requestId: p.requestId,
+						responseCode: 200,
+						responseHeaders: [{ name: 'Content-Type', value: 'application/json' }],
+						body: Buffer.from(JSON.stringify(stats)).toString('base64')
 					});
 					return;
 				}
@@ -276,6 +292,78 @@ try {
 	await sleep(300);
 	check(!(await tab.evaluate(`document.querySelector('.switch input').checked`)), 'the child lock returns to off after a refused command');
 	failing.clear();
+
+	// 3b. The radio diagnostics of the bedroom valve (a602). The hall thermostat (a205) has none.
+	const section = `document.querySelector('#device-a602 details.stats')`;
+	const statsButton = `[...${section}.querySelectorAll('button')].find((b) => /Read from the valve|Waiting for the valve/.test(b.textContent))`;
+	check(
+		await tab.evaluate(`!!${section} && !document.querySelector('#device-a205 details.stats')`),
+		'the open row of a valve folds the radio diagnostics, the row of the thermostat does not'
+	);
+	const beforeStats = requests.length;
+	await tab.evaluate(`${section}.querySelector('summary').click()`);
+	check(
+		await tab.waitFor(`/Not read yet/.test(${section}.innerText)`, 6000).then(() => true, () => false),
+		'a valve never read says so'
+	);
+	let statsCalls = requests.slice(beforeStats).filter((r) => r.includes('/dbg/'));
+	check(
+		statsCalls.length === 2 && statsCalls.every((r) => r === 'GET /api/nodes/a602/dbg/stats'),
+		`opening the section reads both functions from the daemon and sends nothing (${statsCalls.join(' | ')})`
+	);
+	await tab.evaluate(`${statsButton}.click()`);
+	check(
+		await tab.waitFor(`${statsButton}.disabled && /Waiting for the valve/.test(${statsButton}.textContent)`, 6000).then(() => true, () => false),
+		'a read waits for the valve'
+	);
+	statsCalls = requests.slice(beforeStats).filter((r) => r.startsWith('POST'));
+	check(
+		statsCalls.length === 2 && statsCalls.every((r) => r === 'POST /api/nodes/a602/dbg/stats'),
+		`a read sends one POST for each function (${statsCalls.join(' | ')})`
+	);
+	const answeredAt = new Date().toISOString();
+	dbgStats = {
+		10: {
+			f: 10, pending: false, code: '2.05', received_at: answeredAt,
+			stats: [{ tag: '0223', name: 'awake_ticks', value: 30 * 32768 }, { tag: '0224', name: 'sleep_ticks', value: 2970 * 32768 }],
+			share: { interval_s: 3000, awake_pct: 1, tx_pct: 0.05, rx_pct: 0.2 }
+		},
+		11: {
+			f: 11, pending: false, code: '2.05', received_at: answeredAt,
+			stats: [
+				{ tag: '023b', name: 'rx_crc_fail', value: 4 },
+				{ tag: '0233', name: 'tx_no_ack', value: 2 },
+				{ tag: '023c', name: 'mic_fail', value: 0 },
+				{ tag: '023d', name: 'rssi_dBm', value: -75 },
+				{ tag: '023e', name: 'lqi', value: 48 }
+			]
+		}
+	};
+	check(
+		await tab.waitFor(`/Awake\\s+1 %/.test(${section}.innerText) && !${statsButton}.disabled`, 8000).then(() => true, () => false),
+		'the answers of the valve replace the wait, and the button reads again'
+	);
+	const summary = await tab.evaluate(`${section}.querySelector('dl').innerText`);
+	check(
+		/Transmitting\s+0\.05 %/.test(summary) && /CRC errors\s+4/.test(summary) && /Missing ACKs\s+2/.test(summary) && /Last RSSI\s+-75 dBm/.test(summary),
+		`the summary shows the time shares and the radio counters (${summary.replace(/\s+/g, ' ')})`
+	);
+	await tab.evaluate(`${section}.querySelector(':scope details summary').click()`);
+	const rows = await tab.evaluate(`[...${section}.querySelectorAll('details tbody tr')].map((r) => r.innerText.replace(/\\s+/g, ' '))`);
+	check(
+		rows.length === 7 && rows[0] === 'awake_ticks 30 s' && rows.includes('rssi_dBm -75 dBm'),
+		`Show all lists every value with its name (${rows.join(' | ')})`
+	);
+	// A firmware without these functions refuses both with the same code.
+	dbgStats = { 10: { f: 10, pending: false, code: '4.04' }, 11: { f: 11, pending: false, code: '4.04' } };
+	await tab.evaluate(`${statsButton}.click()`);
+	check(
+		await tab
+			.waitFor(`/Function 10: the valve answered 4\\.04/.test(${section}.innerText) && /Function 11: the valve answered 4\\.04/.test(${section}.innerText)`, 6000)
+			.then(() => true, () => false),
+		'the same refusal of both functions shows once for each function'
+	);
+	dbgStats = null;
 
 	// 4. The rule offered first, from target.hasProgram.
 	const rules = () => tab.evaluate(`document.querySelector('.ends input:checked')?.value`);
