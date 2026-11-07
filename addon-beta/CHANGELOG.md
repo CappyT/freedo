@@ -314,3 +314,17 @@ pre-release has its notes here.
   time.
 - Run on a real plant with 0.12.0-beta.4: a valve answered functions 10 and 11 of the debug
   statistics, each in one message, with the tags of the static analysis.
+
+## 0.12.0-beta.6
+
+- Dashboard and daemon: a heating room takes its radiator power, `radiator_w`, in watts: the sum
+  of the data-sheet values of its radiators, all at the same temperature difference, usually 50 C.
+  It is optional. With a power on every heating room, the consumption split weighs each room by it.
+- Daemon: `GET /api/history/advice?days=7|28|90` tells where the fuel went: each room, hot water and
+  an unattributed part, from the heating demand of each 5-minute sample. It also fits the heat loss
+  of the house on the last 90 days: the fuel per degree-hour of indoor to outdoor difference, house
+  and room. The model needs 14 days with the outdoor temperature of beta.5, so it answers with a
+  reason until about 3 weeks after that upgrade. The route needs the API token: the dashboard
+  section comes with the suggestions.
+- Daemon: `PUT /api/history` takes `comfortMaxC`, 21 C by default: the comfort target from which the
+  coming suggestions propose a degree less.
