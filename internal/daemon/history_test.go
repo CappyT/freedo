@@ -7,6 +7,7 @@ package daemon
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"io/fs"
 	"math"
@@ -281,7 +282,7 @@ func TestHistoryPrune(t *testing.T) {
 	if len(eps) != 1 || eps[0].StartedMs != recent.UnixMilli() {
 		t.Errorf("episodes after prune = %+v, want the one of 89 days ago", eps)
 	}
-	days, _ := h.days(ctx, "2025-01-01", "2026-12-31")
+	days, _ := h.days(ctx, "2025-01-01", "2026-12-31", time.UTC)
 	if len(days) != 3 || days[0].Day != "2025-10-01" {
 		t.Errorf("days after prune = %+v, want 2025-10-01 and the two days of the samples", days)
 	}
@@ -403,5 +404,165 @@ func TestHistoryKeepsTheHeatUp(t *testing.T) {
 		*ep.TargetC != 21 || ep.CrossedMs == nil || *ep.CrossedMs != ms("08:45") || ep.EndReason != "settled" ||
 		ep.OvershootC == nil || ep.DeadTimeSec == nil {
 		t.Errorf("episode = %+v, want 07:00 -> 09:40 from 16.8 to 21 C, crossed at 08:45, settled", ep)
+	}
+}
+
+// TestHistoryRecordsOutdoorAndIndoor: a fresh outdoor reading goes into the
+// boiler sample and the zone samples of the same time, a stale one does not;
+// the day keeps the means of what it saw and how much of the day it sampled.
+func TestHistoryRecordsOutdoorAndIndoor(t *testing.T) {
+	d, url, clock, in, _ := historyDaemon(t, nil)
+	setOutdoor := func(c float64, at time.Time) {
+		t.Helper()
+		if _, err := d.do(func(*tado.EmuState) (any, error) {
+			d.outdoor = &outdoorReading{tempC: c, at: at}
+			return nil, nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	zoneAct(t, d, in, 17.0, 0)
+	setOutdoor(4, clock.now())
+	enableHistory(t, url)
+	sampleHistory(t, d)
+	zoneAct(t, d, in, 18.0, 40)
+	setOutdoor(6, clock.now())
+	historyStep(t, d, clock, 5*time.Minute)
+	// The reading of the step before is now older than outdoor_max_age.
+	historyStep(t, d, clock, in.Options.OutdoorMaxAge()+time.Minute)
+
+	_, day := zoneDay(t, url, "3", "?date=2026-01-05")
+	if len(day.Samples) != 3 {
+		t.Fatalf("samples = %+v, want three", day.Samples)
+	}
+	for i, want := range []*float64{new(4.0), new(6.0), nil} {
+		got := day.Samples[i].OutdoorC
+		if (got == nil) != (want == nil) || (got != nil && *got != *want) {
+			t.Errorf("sample %d outdoorC = %v, want %v", i, got, want)
+		}
+	}
+	code, e := energyDays(t, url, "?from=2026-01-05&to=2026-01-05")
+	if code != http.StatusOK || len(e.Days) != 1 {
+		t.Fatalf("energy history: code=%d %+v", code, e)
+	}
+	got := e.Days[0]
+	if got.OutdoorC == nil || *got.OutdoorC != 5 {
+		t.Errorf("outdoorC = %v, want 5, the mean of the two fresh readings", got.OutdoorC)
+	}
+	if got.IndoorC == nil || *got.IndoorC < 17 || *got.IndoorC > 18 {
+		t.Errorf("indoorC = %v, want the mean of the heating zones", got.IndoorC)
+	}
+	if got.Coverage == nil || *got.Coverage != round3(3.0/288) {
+		t.Errorf("coverage = %v, want 3 of 288 slots", got.Coverage)
+	}
+	if got.BurnerStarts != nil {
+		t.Errorf("burnerStarts = %v, want none from a boiler without the counter", *got.BurnerStarts)
+	}
+}
+
+func TestBurnerStartsStep(t *testing.T) {
+	for _, c := range []struct {
+		prev, cur *int64
+		want      *int64
+	}{
+		{new(int64(100)), new(int64(104)), new(int64(4))},
+		{new(int64(100)), new(int64(100)), new(int64(0))},
+		{new(int64(100)), new(int64(3)), nil},
+		{nil, new(int64(3)), nil},
+		{new(int64(3)), nil, nil},
+	} {
+		got := burnerStartsStep(c.prev, c.cur)
+		if (got == nil) != (c.want == nil) || (got != nil && *got != *c.want) {
+			t.Errorf("burnerStartsStep(%v, %v) = %v, want %v", c.prev, c.cur, got, c.want)
+		}
+	}
+}
+
+// TestHistoryMigratesSchema1: a file of schema 1 opens as schema 2. Its rows
+// keep their values, and the new fields of an old day read as unknown.
+func TestHistoryMigratesSchema1(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "freedo-state-history.db")
+	old, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		historyDDL,
+		`INSERT INTO meta (key, value) VALUES ('schema', '1')`,
+		`INSERT INTO day_total (day, fuel, fuel_estimate, heat_kwh, burner_min) VALUES ('2026-01-04', 2.5, 2.4, 25, 60)`,
+		`INSERT INTO boiler_sample (at, flow_c, modulation_pct, burner, fuel, heat_kwh) VALUES (1767500000, 45, 30, 1, 7.5, 70)`,
+	} {
+		if _, err := old.Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old.Close()
+
+	for range 2 {
+		h, err := openHistory(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var v string
+		if err := h.db.QueryRow(`SELECT value FROM meta WHERE key = 'schema'`).Scan(&v); err != nil || v != "2" {
+			t.Fatalf("schema = %q, %v, want 2", v, err)
+		}
+		days, err := h.days(context.Background(), "2026-01-01", "2026-01-31", time.UTC)
+		if err != nil || len(days) != 1 {
+			t.Fatalf("days = %+v, %v", days, err)
+		}
+		if d := days[0]; d.Fuel != 2.5 || d.BurnerMin != 60 || d.OutdoorC != nil || d.IndoorC != nil ||
+			d.Coverage != nil || d.BurnerStarts != nil {
+			t.Errorf("old day = %+v, want its values and no outdoor, indoor, coverage or starts", d)
+		}
+		if c, err := h.lastBoiler(context.Background()); err != nil || !c.ok || c.fuel != 7.5 || c.burnerStarts != nil {
+			t.Errorf("last boiler sample = %+v, %v", c, err)
+		}
+		h.Close()
+	}
+
+	// The day of the upgrade began under schema 1: what it adds later covers part of it only.
+	h, err := openHistory(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer h.Close()
+	ctx := context.Background()
+	for i, day := range []string{"2026-01-04", "2026-01-05"} {
+		at := time.Date(2026, 1, 4+i, 12, 0, 0, 0, time.UTC)
+		if err := h.add(ctx, at, nil, boilerSample{Fuel: 8}, dayTotal{Day: day, Fuel: 0.5, samples: 1, outdoorSum: 3, outdoorN: 1}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	days, err := h.days(ctx, "2026-01-01", "2026-01-31", time.UTC)
+	if err != nil || len(days) != 2 {
+		t.Fatalf("days after the upgrade = %+v, %v", days, err)
+	}
+	if d := days[0]; d.Fuel != 3 || d.OutdoorC != nil || d.Coverage != nil {
+		t.Errorf("upgrade day = %+v, want its fuel and no outdoor or coverage", d)
+	}
+	if d := days[1]; d.OutdoorC == nil || *d.OutdoorC != 3 || d.Coverage == nil || *d.Coverage != round3(1.0/288) {
+		t.Errorf("day after the upgrade = %+v, want outdoor 3 and 1 of 288 slots", d)
+	}
+}
+
+// TestHistoryRestartKeepsTheSlot: a daemon that starts again in the slot its
+// last sample took does not add that slot to the day a second time.
+func TestHistoryRestartKeepsTheSlot(t *testing.T) {
+	d, url, _, _, _ := historyDaemon(t, nil)
+	enableHistory(t, url)
+	sampleHistory(t, d)
+	if _, err := d.do(func(e *tado.EmuState) (any, error) {
+		d.closeHistory()
+		d.historySlot = time.Time{}
+		d.openHistory()
+		d.tickHistory(e)
+		return nil, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_, e := energyDays(t, url, "?from=2026-01-05&to=2026-01-05")
+	if len(e.Days) != 1 || e.Days[0].Coverage == nil || *e.Days[0].Coverage != round3(1.0/288) {
+		t.Fatalf("days = %+v, want one sample counted once", e.Days)
 	}
 }

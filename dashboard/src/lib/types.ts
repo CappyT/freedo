@@ -574,6 +574,8 @@ export interface HistorySample {
 	demandPct: number | null;
 	window: boolean;
 	away: boolean;
+	/** The outdoor temperature at the same time. Absent from a daemon before statistics schema 2. */
+	outdoorC?: number | null;
 }
 
 /** A finished heat-up: a rise of the program target, from the start to the settling. */
@@ -610,6 +612,12 @@ export interface DayTotal {
 	fuelEstimate: number;
 	heatKWh: number;
 	burnerMin: number;
+	/** The means of the day and the share of its 5-minute slots with a sample. Null for a day counted before they existed. */
+	outdoorC?: number | null;
+	indoorC?: number | null;
+	coverage?: number | null;
+	/** Null when the boiler reports no start counter. */
+	burnerStarts?: number | null;
 }
 
 /** GET /api/history/energy. */

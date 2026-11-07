@@ -40,7 +40,7 @@ const (
 	// longer gap holds fuel that belongs to no day the history saw.
 	historyGapMax      = time.Hour
 	historyWriteBudget = 2 * time.Second
-	historySchema      = "1"
+	historySchema      = "2"
 	historyMaxPrice    = 1000.0
 
 	historyEnabledKey      = "history_enabled"
@@ -100,6 +100,25 @@ CREATE TABLE IF NOT EXISTS heat_episode (
 );
 `
 
+// historyMigrate2 adds what the consumption advisor needs: the outdoor
+// temperature and the burner start counter of each boiler sample, and per day
+// the sample count, the sums for the outdoor and indoor means, and the burner
+// starts. A new file runs it too, so the columns have one definition.
+var historyMigrate2 = []string{
+	`ALTER TABLE boiler_sample ADD COLUMN outdoor_c REAL`,
+	`ALTER TABLE boiler_sample ADD COLUMN burner_starts INTEGER`,
+	`ALTER TABLE day_total ADD COLUMN samples INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE day_total ADD COLUMN outdoor_sum REAL NOT NULL DEFAULT 0`,
+	`ALTER TABLE day_total ADD COLUMN outdoor_n INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE day_total ADD COLUMN indoor_sum REAL NOT NULL DEFAULT 0`,
+	`ALTER TABLE day_total ADD COLUMN indoor_n INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE day_total ADD COLUMN burner_starts INTEGER`,
+	// A day row that exists at the upgrade holds fuel counted before the new
+	// fields: its means, coverage and starts would cover part of it only.
+	`ALTER TABLE day_total ADD COLUMN legacy INTEGER NOT NULL DEFAULT 1`,
+	`UPDATE meta SET value = '2' WHERE key = 'schema'`,
+}
+
 // historySettings are the switch and the fuel price. They live in the state
 // database, so they outlive a deleted history file and travel with a backup.
 type historySettings struct {
@@ -109,7 +128,8 @@ type historySettings struct {
 }
 
 // zoneSample is one zone at one sample time. A nil field had no value: no
-// fresh zone report, no humidity sensor, no number target.
+// fresh zone report, no humidity sensor, no number target. OutdoorC comes from
+// the boiler sample of the same time on a read.
 type zoneSample struct {
 	zone        int
 	AtMs        int64    `json:"atMs"`
@@ -120,15 +140,20 @@ type zoneSample struct {
 	DemandPct   *int     `json:"demandPct"`
 	Window      bool     `json:"window"`
 	Away        bool     `json:"away"`
+	OutdoorC    *float64 `json:"outdoorC"`
 }
 
 // boilerSample is the boiler at one sample time, with the running counters of
-// boiler_energy.go. Burner is nil for a boiler that reports no burner flag.
+// boiler_energy.go. Burner is nil for a boiler that reports no burner flag,
+// BurnerStarts for one that reports no start counter, OutdoorC while the
+// outdoor reading is missing or stale.
 type boilerSample struct {
 	FlowC         *float64
 	ModulationPct *int
 	Burner        *bool
 	Fuel, HeatKWh float64
+	OutdoorC      *float64
+	BurnerStarts  *int64
 }
 
 // heatSummary is a finished heat-up episode of plant_episode.go without its
@@ -146,20 +171,34 @@ type heatSummary struct {
 }
 
 // dayTotal is what one local day counted. Fuel is the estimate times the
-// meter factor in force when the step was counted.
+// meter factor in force when the step was counted. The unexported fields are
+// what one sample adds; a read turns them into the means and the coverage. A
+// day that began under schema 1 has nil means, coverage and starts.
 type dayTotal struct {
-	Day          string  `json:"day"`
-	Fuel         float64 `json:"fuel"`
-	FuelEstimate float64 `json:"fuelEstimate"`
-	HeatKWh      float64 `json:"heatKWh"`
-	BurnerMin    int     `json:"burnerMin"`
+	Day          string   `json:"day"`
+	Fuel         float64  `json:"fuel"`
+	FuelEstimate float64  `json:"fuelEstimate"`
+	HeatKWh      float64  `json:"heatKWh"`
+	BurnerMin    int      `json:"burnerMin"`
+	OutdoorC     *float64 `json:"outdoorC"`
+	IndoorC      *float64 `json:"indoorC"`
+	Coverage     *float64 `json:"coverage"`
+	BurnerStarts *int64   `json:"burnerStarts"`
+
+	samples               int
+	outdoorSum, indoorSum float64
+	outdoorN, indoorN     int
 }
 
 // historyCounters are the counters of the last boiler sample written.
 type historyCounters struct {
 	at         time.Time
 	fuel, heat float64
-	ok         bool
+	// burnerStarts is the last start counter known and startsAt its sample: a
+	// sample without the counter keeps the one before.
+	burnerStarts *int64
+	startsAt     time.Time
+	ok           bool
 }
 
 type historyStore struct {
@@ -197,14 +236,39 @@ func initHistory(db *sql.DB) error {
 	var v string
 	switch err := db.QueryRow(`SELECT value FROM meta WHERE key = 'schema'`).Scan(&v); {
 	case errors.Is(err, sql.ErrNoRows):
-		_, err = db.Exec(`INSERT INTO meta (key, value) VALUES ('schema', ?)`, historySchema)
-		return err
+		if _, err := db.Exec(`INSERT INTO meta (key, value) VALUES ('schema', '1')`); err != nil {
+			return err
+		}
+		v = "1"
 	case err != nil:
 		return err
-	case v != historySchema:
+	}
+	if v == "1" {
+		if err := migrateHistory(db, historyMigrate2); err != nil {
+			return fmt.Errorf("migrate schema 1 to 2: %w", err)
+		}
+		v = "2"
+	}
+	if v != historySchema {
 		return fmt.Errorf("schema %q, this daemon reads %q", v, historySchema)
 	}
 	return nil
+}
+
+// migrateHistory runs the statements of one schema step in one transaction:
+// SQLite rolls back an ALTER TABLE with the rest.
+func migrateHistory(db *sql.DB, steps []string) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, q := range steps {
+		if _, err := tx.Exec(q); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func (h *historyStore) Close() error { return h.db.Close() }
@@ -247,16 +311,23 @@ func (h *historyStore) add(ctx context.Context, at time.Time, zones []zoneSample
 		}
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT OR REPLACE INTO boiler_sample
-		(at, flow_c, modulation_pct, burner, fuel, heat_kwh) VALUES (?, ?, ?, ?, ?, ?)`,
-		sec, b.FlowC, b.ModulationPct, b.Burner, b.Fuel, b.HeatKWh); err != nil {
+		(at, flow_c, modulation_pct, burner, fuel, heat_kwh, outdoor_c, burner_starts) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		sec, b.FlowC, b.ModulationPct, b.Burner, b.Fuel, b.HeatKWh, b.OutdoorC, b.BurnerStarts); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO day_total (day, fuel, fuel_estimate, heat_kwh, burner_min)
-		VALUES (?, ?, ?, ?, ?)
+	if _, err := tx.ExecContext(ctx, `INSERT INTO day_total (day, fuel, fuel_estimate, heat_kwh, burner_min,
+			samples, outdoor_sum, outdoor_n, indoor_sum, indoor_n, burner_starts, legacy)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
 		ON CONFLICT (day) DO UPDATE SET fuel = fuel + excluded.fuel,
 			fuel_estimate = fuel_estimate + excluded.fuel_estimate,
-			heat_kwh = heat_kwh + excluded.heat_kwh, burner_min = burner_min + excluded.burner_min`,
-		day.Day, day.Fuel, day.FuelEstimate, day.HeatKWh, day.BurnerMin); err != nil {
+			heat_kwh = heat_kwh + excluded.heat_kwh, burner_min = burner_min + excluded.burner_min,
+			samples = samples + excluded.samples,
+			outdoor_sum = outdoor_sum + excluded.outdoor_sum, outdoor_n = outdoor_n + excluded.outdoor_n,
+			indoor_sum = indoor_sum + excluded.indoor_sum, indoor_n = indoor_n + excluded.indoor_n,
+			burner_starts = CASE WHEN excluded.burner_starts IS NULL THEN burner_starts
+				ELSE COALESCE(burner_starts, 0) + excluded.burner_starts END`,
+		day.Day, day.Fuel, day.FuelEstimate, day.HeatKWh, day.BurnerMin,
+		day.samples, day.outdoorSum, day.outdoorN, day.indoorSum, day.indoorN, day.BurnerStarts); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -296,8 +367,9 @@ func (h *historyStore) prune(ctx context.Context, now time.Time, loc *time.Locat
 func (h *historyStore) lastBoiler(ctx context.Context) (historyCounters, error) {
 	var sec int64
 	var c historyCounters
-	err := h.db.QueryRowContext(ctx, `SELECT at, fuel, heat_kwh FROM boiler_sample ORDER BY at DESC LIMIT 1`).
-		Scan(&sec, &c.fuel, &c.heat)
+	var starts sql.NullInt64
+	err := h.db.QueryRowContext(ctx, `SELECT at, fuel, heat_kwh, burner_starts FROM boiler_sample ORDER BY at DESC LIMIT 1`).
+		Scan(&sec, &c.fuel, &c.heat, &starts)
 	if errors.Is(err, sql.ErrNoRows) {
 		return historyCounters{}, nil
 	}
@@ -305,6 +377,9 @@ func (h *historyStore) lastBoiler(ctx context.Context) (historyCounters, error) 
 		return historyCounters{}, err
 	}
 	c.at, c.ok = time.Unix(sec, 0), true
+	if starts.Valid {
+		c.burnerStarts, c.startsAt = &starts.Int64, c.at
+	}
 	return c, nil
 }
 
@@ -324,8 +399,10 @@ func (h *historyStore) first(ctx context.Context, zone int) (time.Time, bool, er
 }
 
 func (h *historyStore) zoneSamples(ctx context.Context, zone int, from, to time.Time) ([]zoneSample, error) {
-	rows, err := h.db.QueryContext(ctx, `SELECT at, temp_c, target_c, is_on, humidity_pct, demand_pct, window_open, away
-		FROM zone_sample WHERE zone = ? AND at >= ? AND at < ? ORDER BY at`, zone, from.Unix(), to.Unix())
+	rows, err := h.db.QueryContext(ctx, `SELECT z.at, z.temp_c, z.target_c, z.is_on, z.humidity_pct, z.demand_pct,
+			z.window_open, z.away, b.outdoor_c
+		FROM zone_sample z LEFT JOIN boiler_sample b ON b.at = z.at
+		WHERE z.zone = ? AND z.at >= ? AND z.at < ? ORDER BY z.at`, zone, from.Unix(), to.Unix())
 	if err != nil {
 		return nil, err
 	}
@@ -333,14 +410,14 @@ func (h *historyStore) zoneSamples(ctx context.Context, zone int, from, to time.
 	out := []zoneSample{}
 	for rows.Next() {
 		var sec int64
-		var temp, target, humidity sql.NullFloat64
+		var temp, target, humidity, outdoor sql.NullFloat64
 		var demand sql.NullInt64
 		s := zoneSample{zone: zone}
-		if err := rows.Scan(&sec, &temp, &target, &s.On, &humidity, &demand, &s.Window, &s.Away); err != nil {
+		if err := rows.Scan(&sec, &temp, &target, &s.On, &humidity, &demand, &s.Window, &s.Away, &outdoor); err != nil {
 			return nil, err
 		}
 		s.AtMs = sec * 1000
-		s.TempC, s.TargetC, s.HumidityPct = nullFloat(temp), nullFloat(target), nullFloat(humidity)
+		s.TempC, s.TargetC, s.HumidityPct, s.OutdoorC = nullFloat(temp), nullFloat(target), nullFloat(humidity), nullFloat(outdoor)
 		if demand.Valid {
 			v := int(demand.Int64)
 			s.DemandPct = &v
@@ -377,9 +454,13 @@ func (h *historyStore) episodes(ctx context.Context, zone int, from, to time.Tim
 	return out, rows.Err()
 }
 
-func (h *historyStore) days(ctx context.Context, from, to string) ([]dayTotal, error) {
-	rows, err := h.db.QueryContext(ctx, `SELECT day, fuel, fuel_estimate, heat_kwh, burner_min FROM day_total
-		WHERE day >= ? AND day <= ? ORDER BY day`, from, to)
+// days reads the daily totals from from to to, both included. loc gives the
+// length of each local day, so a day with a clock change has its own count of
+// expected samples.
+func (h *historyStore) days(ctx context.Context, from, to string, loc *time.Location) ([]dayTotal, error) {
+	rows, err := h.db.QueryContext(ctx, `SELECT day, fuel, fuel_estimate, heat_kwh, burner_min,
+			samples, outdoor_sum, outdoor_n, indoor_sum, indoor_n, burner_starts, legacy
+		FROM day_total WHERE day >= ? AND day <= ? ORDER BY day`, from, to)
 	if err != nil {
 		return nil, err
 	}
@@ -387,10 +468,33 @@ func (h *historyStore) days(ctx context.Context, from, to string) ([]dayTotal, e
 	out := []dayTotal{}
 	for rows.Next() {
 		var t dayTotal
-		if err := rows.Scan(&t.Day, &t.Fuel, &t.FuelEstimate, &t.HeatKWh, &t.BurnerMin); err != nil {
+		var starts sql.NullInt64
+		var legacy bool
+		if err := rows.Scan(&t.Day, &t.Fuel, &t.FuelEstimate, &t.HeatKWh, &t.BurnerMin,
+			&t.samples, &t.outdoorSum, &t.outdoorN, &t.indoorSum, &t.indoorN, &starts, &legacy); err != nil {
 			return nil, err
 		}
 		t.Fuel, t.FuelEstimate, t.HeatKWh = round3(t.Fuel), round3(t.FuelEstimate), round3(t.HeatKWh)
+		if legacy {
+			out = append(out, t)
+			continue
+		}
+		if starts.Valid {
+			t.BurnerStarts = &starts.Int64
+		}
+		if t.outdoorN > 0 {
+			v := round3(t.outdoorSum / float64(t.outdoorN))
+			t.OutdoorC = &v
+		}
+		if t.indoorN > 0 {
+			v := round3(t.indoorSum / float64(t.indoorN))
+			t.IndoorC = &v
+		}
+		if day, err := time.ParseInLocation(time.DateOnly, t.Day, loc); err == nil && t.samples > 0 {
+			slots := float64(day.AddDate(0, 0, 1).Sub(day) / historyEvery)
+			v := round3(min(1, float64(t.samples)/slots))
+			t.Coverage = &v
+		}
 		out = append(out, t)
 	}
 	return out, rows.Err()
@@ -504,6 +608,11 @@ func (d *daemon) openHistory() {
 		log.Printf("statistics: read the last sample: %v", err)
 	}
 	d.history, d.historyErr, d.historyPrev, d.historyDay = h, "", prev, ""
+	// The process before wrote the slot of its last sample, often the current
+	// one: sampling it again would add it to the day total twice.
+	if prev.ok && prev.at.After(d.historySlot) {
+		d.historySlot = prev.at
+	}
 }
 
 func (d *daemon) closeHistory() {
@@ -541,12 +650,25 @@ func (d *daemon) tickHistory(e *tado.EmuState) {
 	snap := e.Snapshot()
 	zones := d.historyZones(e, inst, snap, now)
 	b := historyBoiler(snap.Boiler, d.energy.totalM3, d.energy.totalKWh)
+	if o := d.outdoor; o != nil && now.Sub(o.at) <= inst.Options.OutdoorMaxAge() {
+		c := o.tempC
+		b.OutdoorC = &c
+	}
 	loc := d.programClock(inst)
-	day := dayTotal{Day: slot.In(loc).Format(time.DateOnly)}
+	day := dayTotal{Day: slot.In(loc).Format(time.DateOnly), samples: 1}
+	if b.OutdoorC != nil {
+		day.outdoorSum, day.outdoorN = *b.OutdoorC, 1
+	}
+	if c, ok := historyIndoor(inst, zones); ok {
+		day.indoorSum, day.indoorN = c, 1
+	}
 	if p := d.historyPrev; p.ok && slot.Sub(p.at) <= historyGapMax {
 		factor, _ := gasFactor(d.energy.gasReadings)
 		fuel := max(0, b.Fuel-p.fuel)
 		day.FuelEstimate, day.Fuel, day.HeatKWh = fuel, fuel*factor, max(0, b.HeatKWh-p.heat)
+		if slot.Sub(p.startsAt) <= historyGapMax {
+			day.BurnerStarts = burnerStartsStep(p.burnerStarts, b.BurnerStarts)
+		}
 	}
 	if b.Burner != nil && *b.Burner {
 		day.BurnerMin = int(historyEvery / time.Minute)
@@ -557,7 +679,11 @@ func (d *daemon) tickHistory(e *tado.EmuState) {
 		log.Printf("statistics: write the sample: %v", err)
 		return
 	}
-	d.historyPrev = historyCounters{at: slot, fuel: b.Fuel, heat: b.HeatKWh, ok: true}
+	next := historyCounters{at: slot, fuel: b.Fuel, heat: b.HeatKWh, burnerStarts: b.BurnerStarts, startsAt: slot, ok: true}
+	if b.BurnerStarts == nil {
+		next.burnerStarts, next.startsAt = d.historyPrev.burnerStarts, d.historyPrev.startsAt
+	}
+	d.historyPrev = next
 	if day.Day != d.historyDay {
 		if err := h.prune(ctx, now, loc); err != nil {
 			log.Printf("statistics: drop the old rows: %v", err)
@@ -643,7 +769,43 @@ func historyBoiler(b tado.BoilerView, fuel, heat float64) boilerSample {
 		on := b.Active
 		s.Burner = &on
 	}
+	if b.BurnerStarts != nil {
+		n := int64(*b.BurnerStarts)
+		s.BurnerStarts = &n
+	}
 	return s
+}
+
+// burnerStartsStep is the burner starts between two samples, or nil when either
+// lacks the counter. A counter that went back is a boiler reset: that step
+// counts no start.
+func burnerStartsStep(prev, cur *int64) *int64 {
+	if prev == nil || cur == nil || *cur < *prev {
+		return nil
+	}
+	n := *cur - *prev
+	return &n
+}
+
+// historyIndoor is the mean temperature of the heating zones in one sample,
+// each zone counted once, or false when none has a temperature.
+func historyIndoor(inst *tado.Install, zones []zoneSample) (float64, bool) {
+	var sum float64
+	var n int
+	for _, s := range zones {
+		if s.TempC == nil {
+			continue
+		}
+		if z, err := inst.ZoneByNumber(s.zone); err != nil || z.Kind != tado.ZoneHeating {
+			continue
+		}
+		sum += *s.TempC
+		n++
+	}
+	if n == 0 {
+		return 0, false
+	}
+	return sum / float64(n), true
 }
 
 // historyEpisode copies a finished heat-up episode into the history.
@@ -884,7 +1046,7 @@ func (d *daemon) getHistoryEnergy(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	days, err := hh.store.days(r.Context(), from, to)
+	days, err := hh.store.days(r.Context(), from, to, loc)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return

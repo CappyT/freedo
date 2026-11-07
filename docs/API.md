@@ -1208,12 +1208,19 @@ What the daemon records:
   device while the zone never reported), the target, on, the humidity of the measuring device or
   of the first member that reports one, the heating demand `40a0`, the open window and away. The hot
   water zone records the hot water temperature `DHWC`, the target and on. The boiler sample holds
-  the flow temperature, the modulation, the burner flag and the heat and fuel counters.
+  the flow temperature, the modulation, the burner flag, the heat and fuel counters, the burner
+  start counter `BurnerStarts`, and the outdoor temperature of `POST /api/outdoor` while it is
+  younger than `outdoor_max_age_sec`.
 - The total of each local day, in the time zone of the programs: the fuel (the counter step times
   the [meter factor](#gas-meter) in force at that step), the fuel estimate (the raw counter step),
-  the heat in kWh and the burner minutes (5 for each sample that found the burner on). A step
-  across more than one hour without a sample adds nothing: the counters run while the statistics
-  are off.
+  the heat in kWh, the burner minutes (5 for each sample that found the burner on) and the burner
+  starts (the counter step). A step across more than one hour without a sample adds nothing: the
+  counters run while the statistics are off. A start counter that goes back, as after a boiler
+  reset, adds nothing for that step.
+- Per day also the count of samples, the mean outdoor temperature of the samples that had one,
+  and the mean indoor temperature: per sample, the mean of the heating zones with a temperature.
+  The consumption advisor compares days with these, because a colder day burns more fuel with
+  the same program.
 - The summary of each finished heat-up episode (see
   [Plant episodes](#plant-episodes-and-controller-suggestion)): start, end, start temperature,
   target, crossing, dead time, overshoot, settling time and end reason.
@@ -1235,14 +1242,17 @@ database the route is `409`.
 `GET /api/history/zones/{number}?date=YYYY-MM-DD` returns one local day of a zone, today by default:
 `zone`, `date`, `from` and `to` (the bounds of the day, RFC3339), `intervalSec`, `first` (the local
 date of the oldest sample of the zone, or `null`), `samples` and `episodes`. A sample has `atMs`,
-`tempC`, `targetC`, `on`, `humidityPct`, `demandPct`, `window` and `away`; a field with no value is
-`null`. An episode has `startedMs`, `endedMs`, `startC`, `targetC`, `crossedMs`, `deadTimeSec`,
+`tempC`, `targetC`, `on`, `humidityPct`, `demandPct`, `window`, `away` and `outdoorC`, the
+outdoor temperature of the boiler sample of the same time; a field with no value is `null`. An
+episode has `startedMs`, `endedMs`, `startC`, `targetC`, `crossedMs`, `deadTimeSec`,
 `overshootC`, `settlingSec` and `endReason`.
 
 `GET /api/history/energy?from=YYYY-MM-DD&to=YYYY-MM-DD` returns the days from `from` to `to`, both
 included, by default the 13 months kept: `from`, `to`, `unit` (`fuel_unit`), `fuelPrice`,
-`currency` and `days`. A day has `day`, `fuel`, `fuelEstimate`, `heatKWh` and `burnerMin`. A day
-with no sample has no row.
+`currency` and `days`. A day has `day`, `fuel`, `fuelEstimate`, `heatKWh`, `burnerMin`,
+`burnerStarts` (`null` without the counter), `outdoorC` and `indoorC` (the means, `null` without a
+value), and `coverage`, the share of the 5-minute slots of the local day that have a sample. A
+sample without the start counter keeps the last one known for up to an hour. A day that began before these fields existed (statistics schema 1) has them all `null`. A day with no sample has no row.
 
 The three read routes answer `409` while the statistics are off, `400` for a date that is not
 `YYYY-MM-DD` or a `from` after `to`, and `404` for a zone that is not declared.

@@ -111,6 +111,11 @@ Do not change `schema_version` by hand. An older daemon then ignores the presets
 away programs, and it runs without the hot water program once schema 8 moved it into the
 presets.
 
+The [statistics](API.md#statistics) file `freedo-state-history.db` has a schema of its own, and
+the daemon migrates it forward too. A daemon before 0.12.0-beta.5 refuses a file of schema 2:
+the statistics stay off with `schema "2", this daemon reads "1"` in `GET /api/history`, and
+nothing else changes. Upgrade again, or delete the file to start the statistics over.
+
 ### Backup
 
 The daemon exports its whole state as one file and imports such a file: see
