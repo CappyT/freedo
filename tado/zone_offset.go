@@ -75,6 +75,11 @@ func (in *Install) checkZoneOffsets(c *issues) {
 	}
 }
 
+// dbg2Tags are the only tags a d/dbg2/tlvs write may carry. The handler has no
+// whitelist of its own: any tag a backend claims is written, the network key
+// (0003) and the NVM format (016c) included.
+var dbg2Tags = map[string]bool{"0140": true, "0149": true, "0158": true}
+
 // BuildDbg2TLVWriteCoAP builds PUT d/dbg2/tlvs, the valve's generic store
 // write. The body is the d/config record form, [tag:2][len:1][value], which
 // the handler parses with the same coap_tlv_stream_parse. No capture carries
@@ -82,6 +87,11 @@ func (in *Install) checkZoneOffsets(c *issues) {
 func BuildDbg2TLVWriteCoAP(tlvs []TLV, mid uint16, token, srcEUI, dstEUI []byte) ([]byte, error) {
 	if len(tlvs) == 0 {
 		return nil, errors.New("tado: d/dbg2/tlvs write carries no TLV")
+	}
+	for _, t := range tlvs {
+		if !dbg2Tags[t.Tag] {
+			return nil, errors.New("tado: d/dbg2/tlvs refuses tag " + strconv.Quote(t.Tag) + ": want 0140, 0149 or 0158")
+		}
 	}
 	return deviceWrite(deviceReq{
 		Path:    []string{"d", "dbg2", "tlvs"},
@@ -117,7 +127,7 @@ func (e *EmuState) enqueueDbg2(target, desc string, tlvs []TLV) error {
 		return err
 	}
 	if e.refusesConfigWrite(wire) {
-		return errors.New("tado: d/dbg2/tlvs is a valve resource, the wall thermostat does not serve it")
+		return errors.New("tado: d/dbg2/tlvs to the wall thermostat is refused: no evidence that it applies the records")
 	}
 	mid, token, err := downlinkIDs()
 	if err != nil {

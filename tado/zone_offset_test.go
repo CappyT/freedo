@@ -120,8 +120,9 @@ func TestCalibOffsetDbg2KeepsTheConfigETag(t *testing.T) {
 	}
 }
 
-// TestCalibOffsetDbg2Refuses: the wall thermostat serves no
-// d/dbg2/tlvs, and a value out of range is refused before anything queues.
+// TestCalibOffsetDbg2Refuses: a dbg2 write to the wall thermostat, which shows
+// no evidence of applying it, and a value out of range are refused before
+// anything queues.
 func TestCalibOffsetDbg2Refuses(t *testing.T) {
 	e, in := fixtureEmu(t)
 	var thermostat string
@@ -138,6 +139,24 @@ func TestCalibOffsetDbg2Refuses(t *testing.T) {
 	}
 	if n := queuedDownlinks(e); n != 0 {
 		t.Errorf("queued downlinks = %d, want none", n)
+	}
+}
+
+// TestDbg2RefusesUnlistedTags: the handler writes any tag a backend claims, so
+// the builder refuses every tag outside 0140, 0149 and 0158, the network key
+// 0003 and the NVM format 016c first.
+func TestDbg2RefusesUnlistedTags(t *testing.T) {
+	eui := mustHex(bedroomEUIHex)
+	for _, tag := range []string{"0003", "016c", "0141", "014A", ""} {
+		tlvs := []TLV{{Tag: "0140", Len: 2, Val: []byte{0xff, 0xba}}, {Tag: tag, Len: 1, Val: []byte{1}}}
+		if _, err := BuildDbg2TLVWriteCoAP(tlvs, 1, []byte{1}, eui, eui); err == nil {
+			t.Errorf("tag %q: the d/dbg2/tlvs write was built", tag)
+		}
+	}
+	for _, tag := range []string{"0140", "0149", "0158"} {
+		if _, err := BuildDbg2TLVWriteCoAP([]TLV{{Tag: tag, Len: 1, Val: []byte{1}}}, 1, []byte{1}, eui, eui); err != nil {
+			t.Errorf("tag %s: %v", tag, err)
+		}
 	}
 }
 

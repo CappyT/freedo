@@ -125,7 +125,7 @@ func TestZoneOffsetModes(t *testing.T) {
 // empty PUT d/config that makes the device GET it at once
 // (TestThermostatCalibOffsetServed follows the device's GET). The node
 // config API takes calibOffset the same way and refuses any other tag. Mode
-// dbg2 stays refused: d/dbg2/tlvs is a valve resource.
+// dbg2 stays refused: no evidence shows the thermostat apply a d/dbg2/tlvs record.
 func TestThermostatOffsetServed(t *testing.T) {
 	a := newInstallAPIOn(t, windowInstall(t, nil))
 	d := a.d
