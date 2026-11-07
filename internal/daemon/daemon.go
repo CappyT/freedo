@@ -3966,8 +3966,9 @@ func (d *daemon) debugStatsNode(w http.ResponseWriter, r *http.Request) (string,
 
 // getNodeDbgStats answers the last statistics of function f that the valve
 // returned, decoded, and never sends. "code" is the code of the last answer,
-// "stats" and "received_at" come from the last 2.05. For f=10, "share" gives
-// the state shares between the last two 2.05 answers.
+// "stats" and "received_at" come from the last 2.05. Between the last two 2.05
+// answers, "share" gives the state shares for f=10 and "delta" the counter
+// changes for f=11.
 func (d *daemon) getNodeDbgStats(w http.ResponseWriter, r *http.Request) {
 	target, fn, ok := d.debugStatsNode(w, r)
 	if !ok {
@@ -3995,6 +3996,11 @@ func (d *daemon) getNodeDbgStats(w http.ResponseWriter, r *http.Request) {
 		if fn == tado.DebugStatsStateTime && len(samples) == 2 {
 			if share, ok := tado.DebugStatsShareBetween(samples[0], last); ok {
 				out["share"] = share
+			}
+		}
+		if fn == tado.DebugStatsCounters && len(samples) == 2 {
+			if delta, ok := tado.DebugStatsDeltaBetween(samples[0], last); ok {
+				out["delta"] = delta
 			}
 		}
 		return out, nil

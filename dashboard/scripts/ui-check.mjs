@@ -9,8 +9,8 @@
 // - A failed command leaves the presence tile and the child lock at what the daemon says.
 // - The open row of a valve, and of no other device, folds a radio diagnostics section. Opening it reads
 //   what the daemon holds and sends nothing. A read sends one POST for each function and waits for the
-//   valve; the answers that the check puts in then show as a summary and as a full table. A refusal names
-//   its function.
+//   valve; the answers that the check puts in then show as a summary and as a full table. The summary
+//   counts the radio counters between the last two reads, not their wrapped values. A refusal names its function.
 // - A zone with no program starts on "until I end it" and shows a hint. Turn off asks first.
 // - The schedule panel keeps the away program and an open editor across a data poll.
 // - A device renamed in the settings of its room shows its new name right after the save, also when
@@ -336,7 +336,15 @@ try {
 				{ tag: '023c', name: 'mic_fail', value: 0 },
 				{ tag: '023d', name: 'rssi_dBm', value: -75 },
 				{ tag: '023e', name: 'lqi', value: 48 }
-			]
+			],
+			delta: {
+				interval_s: 7200,
+				stats: [
+					{ tag: '023b', name: 'rx_crc_fail', value: 3 },
+					{ tag: '0233', name: 'tx_no_ack', value: 1 },
+					{ tag: '023c', name: 'mic_fail', value: 0 }
+				]
+			}
 		}
 	};
 	check(
@@ -345,8 +353,8 @@ try {
 	);
 	const summary = await tab.evaluate(`${section}.querySelector('dl').innerText`);
 	check(
-		/Transmitting\s+0\.05 %/.test(summary) && /CRC errors\s+4/.test(summary) && /Missing ACKs\s+2/.test(summary) && /Last RSSI\s+-75 dBm/.test(summary),
-		`the summary shows the time shares and the radio counters (${summary.replace(/\s+/g, ' ')})`
+		/Transmitting\s+0\.05 %/.test(summary) && /In the last 2 h\s+CRC errors\s+3/.test(summary) && /Missing ACKs\s+1/.test(summary) && /Last RSSI\s+-75 dBm/.test(summary),
+		`the summary shows the time shares, what the radio counters did between the last two reads, and the last frame (${summary.replace(/\s+/g, ' ')})`
 	);
 	await tab.evaluate(`${section}.querySelector(':scope details summary').click()`);
 	const rows = await tab.evaluate(`[...${section}.querySelectorAll('details tbody tr')].map((r) => r.innerText.replace(/\\s+/g, ' '))`);

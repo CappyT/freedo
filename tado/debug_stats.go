@@ -150,6 +150,55 @@ func DebugStatsShareBetween(prev, cur DebugStatsSample) (DebugStatsShare, bool) 
 	}, true
 }
 
+// DebugStatsDelta is the change of the function 11 counters between two
+// readings.
+type DebugStatsDelta struct {
+	IntervalS float64     `json:"interval_s"`
+	Stats     []DebugStat `json:"stats"`
+}
+
+// debugStatsWide are the function 11 counters that the answer carries in 4
+// bytes. The others carry the low 2 bytes of a u32 counter, so they wrap at
+// 65536 (on air 2026-11-07: csl_wakeup_accepted above csl_wakeup_seen).
+var debugStatsWide = map[string]bool{"024c": true, "024d": true}
+
+// debugStatsLast are the function 11 values that hold the last frame, not a
+// count.
+var debugStatsLast = map[string]bool{"023d": true, "023e": true}
+
+// DebugStatsDeltaBetween gives the change of each function 11 counter between
+// two readings, modulo the width the answer carries, or false when cur is not
+// later than prev. A restart of the valve, or a counter that moves 65536 or more
+// between the readings, gives a wrong delta that no reading reveals.
+func DebugStatsDeltaBetween(prev, cur DebugStatsSample) (DebugStatsDelta, bool) {
+	wall := cur.At.Sub(prev.At)
+	if wall <= 0 {
+		return DebugStatsDelta{}, false
+	}
+	a, errA := DecodeDebugStats(prev.Body)
+	b, errB := DecodeDebugStats(cur.Body)
+	if errA != nil || errB != nil {
+		return DebugStatsDelta{}, false
+	}
+	before := make(map[string]int64, len(a))
+	for _, s := range a {
+		before[s.Tag] = s.Value
+	}
+	out := DebugStatsDelta{IntervalS: wall.Seconds(), Stats: []DebugStat{}}
+	for _, s := range b {
+		old, ok := before[s.Tag]
+		if !ok || debugStatsLast[s.Tag] {
+			continue
+		}
+		d := int64(uint16(s.Value - old))
+		if debugStatsWide[s.Tag] {
+			d = int64(uint32(s.Value - old))
+		}
+		out.Stats = append(out.Stats, DebugStat{Tag: s.Tag, Name: s.Name, Value: d})
+	}
+	return out, true
+}
+
 func debugStatsResource(fn int) string { return "d/dbg/m?f=" + strconv.Itoa(fn) }
 
 // EnqueueDebugStats queues POST d/dbg/m?f=fn to a valve, fn 10 or 11. Both

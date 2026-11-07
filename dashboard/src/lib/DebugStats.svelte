@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
 	import { actMany, errorText } from './actions.ts';
-	import { isTicks, lastRead, refusal, statValue, TICK_HZ } from './dbgstats.ts';
+	import { deltaValue, isTicks, lastRead, refusal, statValue, TICK_HZ } from './dbgstats.ts';
 	import { fmt, t } from './i18n.svelte.ts';
 	import Icon from './Icon.svelte';
 	import { api } from './session.ts';
@@ -88,7 +88,7 @@
 		watch();
 	}
 
-	const count = (name: string) => fmt.number(statValue(counters, name), 0);
+	const count = (name: string) => fmt.number(deltaValue(counters, name), 0);
 	const share = (pct: number) => `${fmt.number(pct, 2)} %`;
 
 	function value(stat: DebugStat): string {
@@ -115,23 +115,28 @@
 					<div><dt>{t('devices.stats.tx')}</dt><dd class="num">{share(states.share.tx_pct)}</dd></div>
 					<div><dt>{t('devices.stats.rx')}</dt><dd class="num">{share(states.share.rx_pct)}</dd></div>
 				{/if}
-				{#if counters?.stats}
+				{#if counters?.delta}
+					<div class="span"><dt>{t('devices.stats.since', { duration: fmt.duration(counters.delta.interval_s) })}</dt></div>
 					<div><dt>{t('devices.stats.crc')}</dt><dd class="num">{count('rx_crc_fail')}</dd></div>
 					<div><dt>{t('devices.stats.noAck')}</dt><dd class="num">{count('tx_no_ack')}</dd></div>
 					<div><dt>{t('devices.stats.mic')}</dt><dd class="num">{count('mic_fail')}</dd></div>
+				{/if}
+				{#if counters?.stats}
 					<div>
 						<dt>{t('devices.stats.rssi')}</dt>
 						<dd class="num">{statValue(counters, 'rssi_dBm') === null ? '-' : `${statValue(counters, 'rssi_dBm')} dBm`}</dd>
 					</div>
-					<div><dt>{t('devices.stats.lqi')}</dt><dd class="num">{count('lqi')}</dd></div>
+					<div><dt>{t('devices.stats.lqi')}</dt><dd class="num">{fmt.number(statValue(counters, 'lqi'), 0)}</dd></div>
 				{/if}
 			</dl>
 		{/if}
 		{#if states?.stats && !states.share}<p class="note">{t('devices.stats.shareNote')}</p>{/if}
+		{#if counters?.stats && !counters.delta}<p class="note">{t('devices.stats.countersNote')}</p>{/if}
 
 		{#if all.length > 0}
 			<details class="table-twin">
 				<summary>{t('devices.stats.all')}</summary>
+				<p class="note">{t('devices.stats.rawNote')}</p>
 				<div class="scroll">
 					<table>
 						<thead><tr><th scope="col">{t('devices.stats.name')}</th><th scope="col">{t('devices.stats.value')}</th></tr></thead>
@@ -190,5 +195,10 @@
 	.data dd {
 		margin: 0;
 		text-align: right;
+	}
+
+	.data .span dt {
+		color: var(--text);
+		font-weight: var(--weight-semibold);
 	}
 </style>

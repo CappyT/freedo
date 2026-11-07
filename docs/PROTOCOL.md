@@ -751,6 +751,14 @@ The function 11 values are counters, except `023d` and `023e`:
 No code writes `0241` and `023f`, so they stay 0. No capture covers functions 10
 and 11, and no device answer confirms these meanings.
 
+One valve answered both functions on air (freedo 0.12.0-beta.4, 2026-11-07), each in
+one 2.05 message without Block2. Function 10 carried the 12 tags this section
+predicts, in table order and then `0251` and `0231`, each in 4 bytes. Function 11
+carried the 26 tags. Its 16-bit values had wrapped: `0239` (accepted) read above
+`0238` (seen), and `022f` below `0233` plus `0234`. So a function 11 value counts
+from an unknown start, and only the change between two readings is usable
+(`DebugStatsDeltaBetween`).
+
 freedo reads functions 10 and 11 from valves only (`EnqueueDebugStats`) and names
 the tags as these tables do (`debugStatNames`). A state-time accumulator wraps
 after 2^32 ticks, about 36 h, so freedo computes the time shares only from two

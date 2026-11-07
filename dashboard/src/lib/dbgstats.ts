@@ -8,6 +8,14 @@ export function statValue(view: DebugStats | null, name: string): number | null 
 	return view?.stats?.find((s) => s.name === name)?.value ?? null;
 }
 
+/**
+ * How much the named function 11 counter moved between the last two answers, or null. The answer carries the
+ * low 16 bits of most counters, so a single value counts from an unknown start and wraps at 65536.
+ */
+export function deltaValue(view: DebugStats | null, name: string): number | null {
+	return view?.delta?.stats.find((s) => s.name === name)?.value ?? null;
+}
+
 /** A function 10 value counts RTC ticks. */
 export const isTicks = (stat: DebugStat): boolean => stat.name?.endsWith('_ticks') ?? false;
 

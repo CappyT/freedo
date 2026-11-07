@@ -225,3 +225,43 @@ func TestDebugStatsRefusesMoreBlocks(t *testing.T) {
 		t.Fatalf("single-block answer: %+v pending=%t", s, pending)
 	}
 }
+
+func TestDebugStatsDeltaBetween(t *testing.T) {
+	at := time.Date(2026, 11, 7, 10, 0, 0, 0, time.UTC)
+	prev := DebugStatsSample{At: at, Body: debugStatsBody(
+		TLV{Tag: "0230", Val: []byte{0xff, 0xf0}},
+		TLV{Tag: "023b", Val: []byte{0x00, 0x05}},
+		TLV{Tag: "024c", Val: u32(0xfffffff0)},
+		TLV{Tag: "023d", Val: []byte{0xff, 0xb5}},
+	)}
+	cur := DebugStatsSample{At: at.Add(2 * time.Hour), Body: debugStatsBody(
+		TLV{Tag: "0230", Val: []byte{0x00, 0x10}},
+		TLV{Tag: "023b", Val: []byte{0x00, 0x07}},
+		TLV{Tag: "024c", Val: u32(0x10)},
+		TLV{Tag: "023d", Val: []byte{0xff, 0xa0}},
+		TLV{Tag: "0252", Val: []byte{0x00, 0x09}},
+	)}
+	d, ok := DebugStatsDeltaBetween(prev, cur)
+	if !ok || d.IntervalS != 7200 {
+		t.Fatalf("delta = %+v, %t", d, ok)
+	}
+	want := []DebugStat{
+		{Tag: "0230", Name: "rx_ok", Value: 0x20},
+		{Tag: "023b", Name: "rx_crc_fail", Value: 2},
+		{Tag: "024c", Name: "timer_due_next_tick", Value: 0x20},
+	}
+	if len(d.Stats) != len(want) {
+		t.Fatalf("stats = %+v, want %+v (the RSSI is no count, 0252 has no earlier value)", d.Stats, want)
+	}
+	for i := range want {
+		if d.Stats[i] != want[i] {
+			t.Errorf("stat %d = %+v, want %+v", i, d.Stats[i], want[i])
+		}
+	}
+	if _, ok := DebugStatsDeltaBetween(cur, prev); ok {
+		t.Error("a delta backwards in time was given")
+	}
+	if _, ok := DebugStatsDeltaBetween(prev, DebugStatsSample{At: cur.At, Body: []byte{0x02}}); ok {
+		t.Error("a delta from a bad body was given")
+	}
+}

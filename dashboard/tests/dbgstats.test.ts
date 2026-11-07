@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isTicks, lastRead, refusal, statValue } from '../src/lib/dbgstats.ts';
+import { deltaValue, isTicks, lastRead, refusal, statValue } from '../src/lib/dbgstats.ts';
 import type { DebugStats } from '../src/lib/types.ts';
 
 const counters: DebugStats = {
@@ -21,6 +21,14 @@ describe('valve debug statistics', () => {
 		expect(statValue(counters, 'mic_fail')).toBeNull();
 		expect(statValue(null, 'rx_crc_fail')).toBeNull();
 		expect(statValue({ f: 11, pending: true }, 'rx_crc_fail')).toBeNull();
+	});
+
+	it('read how much a counter moved between the last two answers', () => {
+		const moved: DebugStats = { ...counters, delta: { interval_s: 3600, stats: [{ tag: '023b', name: 'rx_crc_fail', value: 2 }] } };
+		expect(deltaValue(moved, 'rx_crc_fail')).toBe(2);
+		expect(deltaValue(moved, 'mic_fail')).toBeNull();
+		expect(deltaValue(counters, 'rx_crc_fail')).toBeNull();
+		expect(deltaValue(null, 'rx_crc_fail')).toBeNull();
 	});
 
 	it('tell the RTC tick values apart', () => {

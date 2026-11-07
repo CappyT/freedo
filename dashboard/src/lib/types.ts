@@ -361,7 +361,7 @@ export type DebugStatsFn = 10 | 11;
 
 /**
  * GET /api/nodes/{id}/dbg/stats. code is the code of the last answer. stats and received_at come from the
- * last 2.05. share, function 10 only, compares the last two 2.05 answers.
+ * last 2.05. share (function 10) and delta (function 11) compare the last two 2.05 answers.
  */
 export interface DebugStats {
 	f: DebugStatsFn;
@@ -371,6 +371,8 @@ export interface DebugStats {
 	stats?: DebugStat[];
 	decode_error?: string;
 	share?: { interval_s: number; awake_pct: number; tx_pct: number; rx_pct: number };
+	/** Function 11 only: the change of each counter between the last two 2.05 answers. */
+	delta?: { interval_s: number; stats: DebugStat[] };
 }
 
 /** GET /api/install: the fields the dashboard reads. */
