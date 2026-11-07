@@ -32,7 +32,8 @@ Tag `6060` is the zone to circuit binding. It lives in `h/<home>/z/N/config`,
 not in `z/s`.
 
 The wall thermostat reads each role bit of `015e` as follows (thermostat nRF52). No role bit
-makes it a sensor only.
+makes it a sensor only. It sends its own temperature as `4060|<zone>` only for the zone it
+controls (0x31d78).
 
 - Bit 3 with zone type 1: it acts on the zone. It observes `/z/N/s` (0x11688), PUTs or DELETEs
   `/z/N/overlay` (0x11a94) and `/z/N/ow` (0x11930), and reads `/sched` (0x291f8).
