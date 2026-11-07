@@ -14,7 +14,8 @@ import (
 // DefaultFlowLimitC is the flow limit a circuit follows when a curve has no
 // fresh outdoor reading or the adaptation starts, and options.flow_limit_c is
 // unset. A circuit that nothing manages is served no 2040 then: the thermostat
-// applies MaxTSet 70 C when its boiler interface starts.
+// writes no MaxTSet and caps its control setpoint at the boiler OT49 maximum,
+// or at 70 C without a valid OT49.
 const DefaultFlowLimitC = 48
 
 const (

@@ -984,9 +984,9 @@ session again. Each application closes and opens the session.
 - `flow_limit_c` has no default. A circuit gets `flow_limit_c` when it is set, unless
   `POST /api/boiler/flow` set a value, or a curve, the default curve or the adaptation manages
   the circuit. While `flow_limit_c` is unset, a circuit that nothing manages is served no
-  `2040`. The code notes that the thermostat then applies a MaxTSet of 70 C when its boiler
-  interface starts. No measurement on a boiler confirms this value. Set `flow_limit_c` to a
-  value that suits the boiler.
+  `2040`. The thermostat then writes no MaxTSet. It caps its control setpoint at the upper
+  bound of OpenTherm id 49 that the boiler reports, or at 70 C when that bound is not valid.
+  Set `flow_limit_c` to a value that suits the boiler.
 - A circuit with an enabled curve, or with the adaptation on, falls back to 48 C while
   `flow_limit_c` is unset. The fallback applies to a stale outdoor reading and to the start of
   the adaptation.
