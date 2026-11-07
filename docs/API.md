@@ -330,6 +330,7 @@ allows it.
 | `owner` | `device` | Who owns the zone: `device` (the elected demand reporter) or `coordinator`, which runs the zone controller on the external room temperature. Only a heating zone takes it. Unverified on air. |
 | `pid` | 1000, 500, 1500 | Controller gains `kp`, `ki`, `kd` of the valve, each 0 to 65535. `kp` and `ki` cannot both be 0. `null` restores the defaults. |
 | `away_temperature_c` | `null` | Temperature in away, 5 to 25 C with at most two decimals. `null` and 5 mean off in away. The hot water zone refuses it. An away program of the zone replaces the fixed temperature while the home is away. |
+| `radiator_w` | `null` | Total nominal radiator power of the room in watts, the sum of the data-sheet values, 100 to 20000. `null` clears it. Optional. A consumption advisor uses it to split the consumption between rooms. The hot water zone refuses it. |
 | `ha_area` | `null` | Home Assistant area of the zone, `{"id": "...", "name": "..."}`, each 1 to 255 bytes with no control character. `null` clears it. The integration writes it and the dashboard shows it. The daemon never acts on it. `GET /api/zones` shows it in `declared[].haArea`. |
 
 A `pid` change gives the zone document a new ETag and writes nothing to the valve. The

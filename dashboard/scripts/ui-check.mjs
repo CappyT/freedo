@@ -775,6 +775,7 @@ try {
 		'the offset and its mode sit in the closed section Advanced'
 	);
 	await typeInto(opt(5, '.pair .input.num'), '-0.7');
+	await typeInto(opt(6, 'input'), '1500');
 	await sleep(6500);
 	check(
 		(await valueOf(opt(1, 'input[type=number]'))) === '20' && (await valueOf(opt(2, 'input'))) === '16.5' && (await valueOf(opt(5, '.pair .input.num'))) === '-0.7',
@@ -792,8 +793,8 @@ try {
 	const bathOptions = (await api(daemon.base, 'install/zones/2')).zone;
 	check(
 		bathOptions.open_window_duration_sec === 1200 && bathOptions.away_temperature_c === 16.5 && bathOptions.device_overlay_end === 'timer' &&
-			bathOptions.device_overlay_end_sec === 5400 && bathOptions.early_start === true,
-		`the daemon stores the window time, the away temperature, the end rule and the early start (${JSON.stringify([bathOptions.open_window_duration_sec, bathOptions.away_temperature_c, bathOptions.device_overlay_end, bathOptions.device_overlay_end_sec, bathOptions.early_start])})`
+			bathOptions.device_overlay_end_sec === 5400 && bathOptions.early_start === true && bathOptions.radiator_w === 1500,
+		`the daemon stores the window time, the away temperature, the end rule, the early start and the radiator power (${JSON.stringify([bathOptions.open_window_duration_sec, bathOptions.away_temperature_c, bathOptions.device_overlay_end, bathOptions.device_overlay_end_sec, bathOptions.early_start, bathOptions.radiator_w])})`
 	);
 	check(
 		requests.filter((r) => r === 'PATCH /api/install/zones/2').length === 1 && requests.filter((r) => r === 'POST /api/zones/2/offset').length === 1,

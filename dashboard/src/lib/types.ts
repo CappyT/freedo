@@ -451,6 +451,8 @@ export interface InstallZone {
 	/** Null on the hot water zone. */
 	owner: ZoneOwner | null;
 	away_temperature_c: number | null;
+	/** The total nominal radiator power in watts. Null while unset and on the hot water zone. */
+	radiator_w: number | null;
 	/** The controller gains. Null on the hot water zone. */
 	pid: Pid | null;
 }
@@ -493,6 +495,8 @@ export interface ZoneOptionsPatch {
 	offset_mode?: 'config' | 'dbg2';
 	owner?: ZoneOwner;
 	away_temperature_c?: number;
+	/** Null clears it. */
+	radiator_w?: number | null;
 	/** Null restores the default gains. */
 	pid?: Pid | null;
 }

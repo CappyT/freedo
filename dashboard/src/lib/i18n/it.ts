@@ -694,6 +694,8 @@ export const it: Record<Key, string> = {
 	'opt.away': 'Temperatura fuori casa',
 	'opt.awayC': 'Temperatura fuori casa (°C)',
 	'opt.away.hint': 'La stanza mantiene questa temperatura mentre la casa è fuori casa. 5 °C significa spento. Un programma fuori casa della stanza sostituisce questo valore.',
+	'opt.radiatorW': 'Potenza dei radiatori (W)',
+	'opt.radiatorW.hint': 'Facoltativa. La potenza nominale totale dei radiatori della stanza, dalle schede tecniche. freedo la usa solo per ripartire il consumo tra le stanze.',
 	'opt.endRule': 'Regola di fine della modifica sul dispositivo',
 	'opt.endRule.hint': 'Vale per una modifica che una persona fa su una valvola o sul termostato a parete della stanza.',
 	'opt.endTimer': 'Timer modifica (minuti)',
@@ -736,6 +738,7 @@ export const it: Record<Key, string> = {
 	'gains.hint': 'I guadagni guidano il regolatore della valvola e quello del coordinatore quando freedo misura la stanza. Una modifica scrive il documento della zona; le valvole lo leggono al controllo successivo.',
 	'opt.issue.window': 'Durata finestra: da 1 a 1092 minuti.',
 	'opt.issue.away': 'Temperatura fuori casa: da 5 a 25 °C, con al massimo due decimali.',
+	'opt.issue.radiator': 'Potenza dei radiatori: da 100 a 20000 W, oppure vuota.',
 	'opt.issue.endTimer': 'Timer modifica: da 1 a 10080 minuti.',
 	'opt.issue.offset': 'Offset: da -10 a 10 °C, con al massimo due decimali.',
 

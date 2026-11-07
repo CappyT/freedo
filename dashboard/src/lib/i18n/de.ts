@@ -694,6 +694,8 @@ export const de: Record<Key, string> = {
 	'opt.away': 'Abwesenheitstemperatur',
 	'opt.awayC': 'Abwesenheitstemperatur (°C)',
 	'opt.away.hint': 'Der Raum hält diese Temperatur, solange das Zuhause abwesend ist. 5 °C bedeutet aus. Ein Abwesend-Zeitplan des Raums ersetzt diesen Wert.',
+	'opt.radiatorW': 'Heizkörperleistung (W)',
+	'opt.radiatorW.hint': 'Optional. Die gesamte Nennleistung der Heizkörper im Raum laut Datenblatt. freedo nutzt sie nur, um den Verbrauch auf die Räume zu verteilen.',
 	'opt.endRule': 'Endregel für Änderung am Gerät',
 	'opt.endRule.hint': 'Das gilt für eine Änderung, die eine Person an einem Ventil oder am Wandthermostat des Raums macht.',
 	'opt.endTimer': 'Änderungstimer (Minuten)',
@@ -736,6 +738,7 @@ export const de: Record<Key, string> = {
 	'gains.hint': 'Die Verstärkungen steuern den Regler des Ventils und den Regler des Koordinators, wenn freedo den Raum misst. Eine Änderung schreibt das Zonendokument; die Ventile lesen es bei der nächsten Prüfung.',
 	'opt.issue.window': 'Fensterdauer: 1 bis 1092 Minuten.',
 	'opt.issue.away': 'Abwesenheitstemperatur: 5 bis 25 °C, mit höchstens zwei Dezimalstellen.',
+	'opt.issue.radiator': 'Heizkörperleistung: 100 bis 20000 W oder leer.',
 	'opt.issue.endTimer': 'Änderungstimer: 1 bis 10080 Minuten.',
 	'opt.issue.offset': 'Offset: -10 bis 10 °C, mit höchstens zwei Dezimalstellen.',
 

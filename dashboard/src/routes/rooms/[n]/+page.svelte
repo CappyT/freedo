@@ -14,6 +14,7 @@
 	import {
 		AWAY_C,
 		END_MINUTES,
+		RADIATOR_W,
 		WINDOW_MINUTES,
 		optionIssues,
 		optionsOf,
@@ -670,6 +671,15 @@
 								<p class="note">{t('gains.hint')}</p>
 							</div>
 						</details>
+					</fieldset>
+
+					<fieldset>
+						<legend>{t('opt.radiatorW')}</legend>
+						<label class="field">
+							<span>{t('opt.radiatorW')}</span>
+							<input class="input num" type="number" inputmode="numeric" min={RADIATOR_W.min} max={RADIATOR_W.max} step="1" bind:value={options.radiatorW} aria-invalid={issues.includes('radiator')} />
+						</label>
+						<p class="note">{t('opt.radiatorW.hint')}</p>
 					</fieldset>
 
 					{#if issues.length > 0}

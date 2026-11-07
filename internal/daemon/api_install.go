@@ -178,6 +178,9 @@ type zonePatch struct {
 	// AwayTemperatureC is the temperature a heating zone keeps in away, in
 	// degrees C; null clears it. Unset and 5 C both read as off in away.
 	AwayTemperatureC optFloat `json:"away_temperature_c"`
+	// RadiatorW is the total nominal radiator power of a heating zone, in
+	// watts, 100 to 20000; null clears it.
+	RadiatorW optFloat `json:"radiator_w"`
 	// HAArea is the Home Assistant area of the zone, {"id", "name"}; null
 	// clears it. The dashboard shows it, and the coordinator never acts on it.
 	HAArea optHAArea `json:"ha_area"`
@@ -248,6 +251,7 @@ func zoneView(in *tado.Install, z *tado.Zone) map[string]any {
 		"owner":                    nil,
 		"pid":                      nil,
 		"away_temperature_c":       nil,
+		"radiator_w":               nil,
 		"ha_area":                  haAreaView(in, z.Number),
 	}
 	if z.Kind == tado.ZoneHeating {
@@ -261,6 +265,9 @@ func zoneView(in *tado.Install, z *tado.Zone) map[string]any {
 		out["owner"] = in.Options.ZoneOwner(z.Number)
 		if c, ok := in.Options.AwayTemperatures[z.Number]; ok {
 			out["away_temperature_c"] = c
+		}
+		if w, ok := in.Options.RadiatorW(z.Number); ok {
+			out["radiator_w"] = w
 		}
 	}
 	if z.Circuit != nil {

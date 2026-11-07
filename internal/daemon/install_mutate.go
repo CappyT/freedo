@@ -881,6 +881,9 @@ func (s *stateStore) PatchZone(ctx context.Context, number int, p zonePatch) (in
 		if err := patchZoneAway(ctx, tx, number, p.AwayTemperatureC); err != nil {
 			return err
 		}
+		if err := patchZoneRadiatorW(ctx, tx, number, p.RadiatorW); err != nil {
+			return err
+		}
 		if err := patchZoneHAArea(ctx, tx, number, p.HAArea); err != nil {
 			return err
 		}
@@ -996,6 +999,18 @@ func patchZoneAway(ctx context.Context, tx querier, number int, p optFloat) erro
 	return setInstallValue(ctx, tx, install.AwayTemperatureKey(number), strconv.FormatFloat(*p.value, 'g', -1, 64))
 }
 
+// patchZoneRadiatorW stores the total radiator power of a zone; null clears it.
+// The install check refuses a value out of range and a hot water zone.
+func patchZoneRadiatorW(ctx context.Context, tx querier, number int, p optFloat) error {
+	switch {
+	case !p.set:
+		return nil
+	case p.value == nil:
+		return clearInstallValue(ctx, tx, install.RadiatorWKey(number))
+	}
+	return setInstallValue(ctx, tx, install.RadiatorWKey(number), strconv.FormatFloat(*p.value, 'g', -1, 64))
+}
+
 // patchZoneHAArea stores the Home Assistant area of a zone; null clears it.
 func patchZoneHAArea(ctx context.Context, tx querier, number int, p optHAArea) error {
 	switch {
@@ -1052,6 +1067,9 @@ func (s *stateStore) DeleteZone(ctx context.Context, number int, expect *uint64)
 			return err
 		}
 		if err := clearInstallValue(ctx, tx, install.AwayTemperatureKey(number)); err != nil {
+			return err
+		}
+		if err := clearInstallValue(ctx, tx, install.RadiatorWKey(number)); err != nil {
 			return err
 		}
 		if err := clearInstallValue(ctx, tx, install.HAAreaKey(number)); err != nil {

@@ -211,6 +211,9 @@ func ReadInstall(ctx context.Context, q Querier) (*tado.Install, uint64, error) 
 	if err := loadAwayTemperatures(kv, &in.Options); err != nil {
 		return nil, 0, err
 	}
+	if err := loadRadiatorsW(kv, &in.Options); err != nil {
+		return nil, 0, err
+	}
 	if err := loadHAAreas(kv, &in.Options); err != nil {
 		return nil, 0, err
 	}
@@ -455,6 +458,34 @@ func loadAwayTemperatures(kv map[string]string, o *tado.Options) error {
 			o.AwayTemperatures = map[int]float64{}
 		}
 		o.AwayTemperatures[zone] = c
+	}
+	return nil
+}
+
+// radiatorWPrefix starts the install key of a zone's total radiator power, in
+// watts. The key exists only while the zone states one.
+const radiatorWPrefix = "radiator_w."
+
+func RadiatorWKey(zone int) string { return radiatorWPrefix + strconv.Itoa(zone) }
+
+func loadRadiatorsW(kv map[string]string, o *tado.Options) error {
+	for key, raw := range kv {
+		rest, ok := strings.CutPrefix(key, radiatorWPrefix)
+		if !ok {
+			continue
+		}
+		zone, err := strconv.Atoi(rest)
+		if err != nil {
+			return fmt.Errorf("install %s: %w", key, err)
+		}
+		w, err := strconv.ParseFloat(raw, 64)
+		if err != nil {
+			return fmt.Errorf("install %s %q: %w", key, raw, err)
+		}
+		if o.RadiatorsW == nil {
+			o.RadiatorsW = map[int]float64{}
+		}
+		o.RadiatorsW[zone] = w
 	}
 	return nil
 }
@@ -766,6 +797,9 @@ func (s *Store) ReplaceInstall(ctx context.Context, in *tado.Install) (uint64, e
 	}
 	for zone, c := range in.Options.AwayTemperatures {
 		values = append(values, [2]string{AwayTemperatureKey(zone), strconv.FormatFloat(c, 'g', -1, 64)})
+	}
+	for zone, w := range in.Options.RadiatorsW {
+		values = append(values, [2]string{RadiatorWKey(zone), strconv.FormatFloat(w, 'g', -1, 64)})
 	}
 	for zone, area := range in.Options.HAAreas {
 		raw, err := json.Marshal(area)

@@ -201,6 +201,31 @@ func TestInstallRoundTripKeepsAwayTemperatures(t *testing.T) {
 	}
 }
 
+// TestInstallRoundTripKeepsRadiatorsW: the radiator power of a zone survives the
+// database, and a zone that states none loads none.
+func TestInstallRoundTripKeepsRadiatorsW(t *testing.T) {
+	in, err := tado.Parse([]byte(fixtureInstallYAML + "  radiator_w: {1: 1250.5, 3: 2000}\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, _ := storeWithInstall(t, in)
+	got, _, err := store.LoadInstall(context.Background())
+	if err != nil {
+		t.Fatalf("LoadInstall: %v", err)
+	}
+	if want := (map[int]float64{1: 1250.5, 3: 2000}); !reflect.DeepEqual(got.Options.RadiatorsW, want) {
+		t.Errorf("loaded radiator power = %v, want %v", got.Options.RadiatorsW, want)
+	}
+	bare, _ := storeWithInstall(t, defaultInstall)
+	got, _, err = bare.LoadInstall(context.Background())
+	if err != nil {
+		t.Fatalf("LoadInstall: %v", err)
+	}
+	if len(got.Options.RadiatorsW) != 0 {
+		t.Errorf("an installation without radiator power loaded %v", got.Options.RadiatorsW)
+	}
+}
+
 // TestInstallRoundTripKeepsBoilerPower: the output and the gas flow of the
 // boiler survive the database, and an installation that states none loads none.
 func TestInstallRoundTripKeepsBoilerPower(t *testing.T) {

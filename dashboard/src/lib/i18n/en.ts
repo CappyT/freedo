@@ -694,6 +694,8 @@ export const en = {
 	'opt.away': 'Away temperature',
 	'opt.awayC': 'Away temperature (°C)',
 	'opt.away.hint': 'The room keeps this temperature while the home is away. 5 °C means off. An away schedule of the room replaces this value.',
+	'opt.radiatorW': 'Radiator power (W)',
+	'opt.radiatorW.hint': 'Optional. The total nominal power of the radiators in the room, from the data sheets. freedo uses it only to split the consumption between rooms.',
 	'opt.endRule': 'Device change end rule',
 	'opt.endRule.hint': 'This applies to a change that a person makes on a valve or on the wall thermostat of the room.',
 	'opt.endTimer': 'Change timer (minutes)',
@@ -736,6 +738,7 @@ export const en = {
 	'gains.hint': 'The gains drive the valve controller, and the coordinator controller when freedo measures the room. A change writes the zone document; the valves read it at their next check.',
 	'opt.issue.window': 'Window time: 1 to 1092 minutes.',
 	'opt.issue.away': 'Away temperature: 5 to 25 °C, with two decimals at most.',
+	'opt.issue.radiator': 'Radiator power: 100 to 20000 W, or empty.',
 	'opt.issue.endTimer': 'Change timer: 1 to 10080 minutes.',
 	'opt.issue.offset': 'Offset: -10 to 10 °C, with two decimals at most.',
 

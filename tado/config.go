@@ -246,6 +246,10 @@ type Options struct {
 	// AwayTemperatures holds the temperature a heating zone keeps in away, per
 	// zone. A zone outside the map, or at RoomMinC, is off in away.
 	AwayTemperatures map[int]float64 `yaml:"away_temperature_c"`
+	// RadiatorsW holds the total nominal radiator power of a heating zone, per
+	// zone, in watts: the sum of the data-sheet values. Optional; a consumption
+	// advisor weighs the heating demand of each room by it.
+	RadiatorsW map[int]float64 `yaml:"radiator_w"`
 	// HAAreas holds the Home Assistant area of each zone that the integration
 	// reports. The dashboard shows it; the coordinator never acts on it.
 	HAAreas map[int]HAArea `yaml:"ha_area"`
@@ -798,6 +802,7 @@ func (in *Install) checkOptions(c *issues) {
 	in.checkZonePIDs(c)
 	in.checkZoneOwners(c)
 	in.checkAwayTemperatures(c)
+	in.checkRadiatorsW(c)
 	in.checkHAAreas(c)
 }
 

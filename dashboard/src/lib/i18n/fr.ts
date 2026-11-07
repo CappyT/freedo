@@ -694,6 +694,8 @@ export const fr: Record<Key, string> = {
 	'opt.away': 'Température d’absence',
 	'opt.awayC': 'Température d’absence (°C)',
 	'opt.away.hint': 'La pièce garde cette température pendant l’absence. 5 °C signifie arrêt. Un programme d’absence de la pièce remplace cette valeur.',
+	'opt.radiatorW': 'Puissance des radiateurs (W)',
+	'opt.radiatorW.hint': 'Facultative. La puissance nominale totale des radiateurs de la pièce, selon les fiches techniques. freedo l’utilise seulement pour répartir la consommation entre les pièces.',
 	'opt.endRule': 'Règle de fin d’une modification sur l’appareil',
 	'opt.endRule.hint': 'Cela s’applique à une modification qu’une personne fait sur une vanne ou sur le thermostat mural de la pièce.',
 	'opt.endTimer': 'Minuteur (minutes)',
@@ -736,6 +738,7 @@ export const fr: Record<Key, string> = {
 	'gains.hint': 'Les gains pilotent le régulateur de la vanne, et celui du coordinateur quand freedo mesure la pièce. Une modification écrit le document de la zone ; les vannes le lisent à leur prochain contrôle.',
 	'opt.issue.window': 'Durée fenêtre : 1 à 1092 minutes.',
 	'opt.issue.away': 'Température d’absence : 5 à 25 °C, avec deux décimales au plus.',
+	'opt.issue.radiator': 'Puissance des radiateurs : 100 à 20000 W, ou vide.',
 	'opt.issue.endTimer': 'Minuteur : 1 à 10080 minutes.',
 	'opt.issue.offset': 'Décalage : -10 à 10 °C, avec deux décimales au plus.',
 

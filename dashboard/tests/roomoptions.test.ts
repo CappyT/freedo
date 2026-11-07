@@ -18,6 +18,7 @@ const zone = (over: Partial<InstallZone> = {}): InstallZone => ({
 	offset_mode: 'config',
 	owner: 'device',
 	away_temperature_c: null,
+	radiator_w: null,
 	pid: null,
 	...over
 });
@@ -28,6 +29,7 @@ describe('the options of a room in the form', () => {
 			windowDetection: true,
 			windowMinutes: 15,
 			awayC: 5,
+			radiatorW: null,
 			endRule: 'until_next',
 			endMinutes: 60,
 			earlyStart: false,
@@ -68,6 +70,20 @@ describe('the patch of the room options', () => {
 
 });
 
+describe('the radiator power of a room', () => {
+	it('reads a stored value and null when unset', () => {
+		expect(optionsOf(zone({ radiator_w: 1500 })).radiatorW).toBe(1500);
+		expect(optionsOf(zone()).radiatorW).toBeNull();
+	});
+
+	it('sends the value when it is set, null when it is cleared, nothing when it stays', () => {
+		expect(optionsPatch(zone(), { ...optionsOf(zone()), radiatorW: 1800 })).toEqual({ radiator_w: 1800 });
+		const set = zone({ radiator_w: 1800 });
+		expect(optionsPatch(set, { ...optionsOf(set), radiatorW: null })).toEqual({ radiator_w: null });
+		expect(optionsPatch(set, optionsOf(set))).toEqual({});
+	});
+});
+
 describe('the offset mode of a room', () => {
 	it('reads config when the daemon sends none', () => {
 		expect(optionsOf(zone({ offset_mode: null })).offsetMode).toBe('config');
@@ -101,6 +117,10 @@ describe('the checks of the room options', () => {
 		expect(optionIssues({ ...ok, awayC: 4.9 }, '')).toEqual(['away']);
 		expect(optionIssues({ ...ok, awayC: 25.5 }, '')).toEqual(['away']);
 		expect(optionIssues({ ...ok, awayC: 16.123 }, '')).toEqual(['away']);
+		expect(optionIssues({ ...ok, radiatorW: 99 }, '')).toEqual(['radiator']);
+		expect(optionIssues({ ...ok, radiatorW: 20001 }, '')).toEqual(['radiator']);
+		expect(optionIssues({ ...ok, radiatorW: 100 }, '')).toEqual([]);
+		expect(optionIssues({ ...ok, radiatorW: 20000 }, '')).toEqual([]);
 		expect(optionIssues({ ...ok, endRule: 'timer', endMinutes: 0 }, '')).toEqual(['endTimer']);
 		expect(optionIssues({ ...ok, endRule: 'timer', endMinutes: 10081 }, '')).toEqual(['endTimer']);
 		expect(optionIssues({ ...ok, endRule: 'manual', endMinutes: 0 }, '')).toEqual([]);
