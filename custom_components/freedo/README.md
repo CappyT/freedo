@@ -384,8 +384,9 @@ daemon answers. They exist only while the daemon holds an installation.
     rereads it.
   - Valve debug record (`dbg2`) writes the single record `0140` with
     `PUT d/dbg2/tlvs`. The valve does not home its motor. No capture shows this
-    write on air. The wall thermostat has no such resource: the daemon accepts
-    the mode for its zone and refuses the offset write with 400.
+    write on air. No evidence shows the wall thermostat apply such a record:
+    the daemon accepts the mode for its zone and refuses the offset write with
+    400.
   - A change of the mode writes no offset to the device. In both modes the
     number Offset shows the last value set from Home Assistant, and it is empty
     until the first write: the valve does not report its offset.

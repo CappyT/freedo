@@ -182,8 +182,8 @@ banner.
 | `PUT /api/nodes/{id}/schedule` | Write the home program of the heating zone of a device, or the document of a device in no heating zone. |
 | `GET`, `POST`, `DELETE /api/nodes/{id}/fw` | Read the firmware state, start or cancel a transfer. |
 | `GET /api/nodes/{id}/currentlog` | Read the device log. |
-| `GET /api/nodes/{id}/dbg/mem?adr=&len=` | Read device memory (`refresh=1` forces a new read). |
-| `GET /api/nodes/{id}/resource?path=&query=` | Read any resource of a device. |
+| `GET /api/nodes/{id}/dbg/mem?adr=&len=` | Read device memory (`refresh=1` forces a new read). The read stays inside flash `0-7ffff`, FICR and UICR `10000000-10001fff`, SRAM `20000000-2000ffff` or external flash `80000000-ffffffff`. |
+| `GET /api/nodes/{id}/resource?path=&query=` | Read any resource of a device, except `d/dbg/m`. |
 
 ### Boiler, environment and pairing
 
@@ -597,7 +597,8 @@ state from an outside source, for example a Home Assistant sensor.
 - `dbg2` writes the single record `0140` with `PUT d/dbg2/tlvs`. On the `2.04` of the valve
   the daemon puts it in the served `d/config` under the same ETag. A `4.xx` answer or a lost
   write leaves the document unchanged. The valve does not home. No capture shows this on
-  air. The wall thermostat has no `d/dbg2/tlvs`, so its zone refuses this mode.
+  air. No evidence shows the wall thermostat apply a `d/dbg2/tlvs` record, so its zone refuses
+  this mode.
 
 To correct a zone from a room thermometer, give the zone to the coordinator (see "Coordinator
 as zone owner"), or let a Home Assistant automation or Better Thermostat write the correction

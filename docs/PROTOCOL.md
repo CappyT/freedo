@@ -614,8 +614,8 @@ body through the per-tag callback at 0x1e2e8. The callback hands `0140` to
 `cfg_set_and_report` (0x1e346), then stores the ETag of the option in `015a`
 (`TestThermostatCalibOffsetServed`). A write that moves any other tag stays
 refused. The callback takes `02b2`, `02b3` and the rest too, but the installation
-owns them. `d/dbg2/tlvs` is a valve resource, so mode `dbg2` stays refused on the
-thermostat. No capture shows the thermostat apply a served `0140`.
+owns them. The thermostat registers `d/dbg2/tlvs` too, but no capture and no trace
+shows it apply a record there, so mode `dbg2` stays refused on the thermostat. No capture shows the thermostat apply a served `0140`.
 
 ### d/lock and d/identify write
 
@@ -635,6 +635,70 @@ A valve GETs `d/<serial>/lock` with Block2 0/0/128. The captured answer is a
 `2.05` with ETag, Block2 0/0/128 and `0290`=`00`. Every valve with the lock off
 reads the ETag `31cfbb11e5533758`. freedo serves the same options with the ETag
 that `configEtag` derives from the body.
+
+### Debug resources
+
+The valve firmware registers `d/dbg/m` and `d/dbg2/tlvs` as CoAP receivers. The
+addresses below come from a static reading of `valve_nrf52_flash.bin`. No capture
+covers these paths. The wall thermostat registers the same receivers, with
+`d/dbg/st` (thermostat 0x1ec16).
+
+`d/dbg/m` registers GET handler `coap_res_memread_handler`@0x2020c and POST
+handler `coap_res_stats_read_dispatch`@0x200a4. GET takes decimal `adr` and `len`
+query values. A nonnegative address selects a direct `memcpy`. Bit 31 selects the
+external SPI flash instead, at `adr & 0x7fffffff`. The length is truncated to 8
+bits. A missing or invalid query gets 4.00. An external-flash error gets 5.00.
+Success gets 2.05 with Content-Format 42. Below bit 31 no range check guards the
+copy, so freedo reads only inside the internal flash 0-0x7ffff, FICR and UICR
+0x10000000-0x10001fff and SRAM 0x20000000-0x2000ffff, or from the external flash
+(`debugMemoryReadable`).
+
+POST takes the decimal query `f` and dispatches to one of 12 readers at 0x38144.
+The response buffer holds 196 bytes. A missing `f` gets 4.00, an unknown one gets
+4.04, and a reader failure gets 5.00. Success gets 2.05 with Content-Format 42.
+
+| `f` | Handler | Effect in the firmware |
+|---|---|---|
+| 1 | 0x201f6 | copy the request payload to the response |
+| 2 | 0x14b54 | body `[start,count]`: read `count` consecutive CC110L registers |
+| 3 | 0x14b98 | body `[start,count,data...]`: write consecutive CC110L registers |
+| 4 | 0x14bdc | reset the CC110L, reload its 47-byte configuration and restore its channel |
+| 5 | 0x2019e | return the stack high-water mark as a big-endian u16 |
+| 6 | 0x2018c | return one byte: 64 minus the dispatch event-queue high-water mark |
+| 7 | 0x20180 | call `csl_tx_retry_arm(250)` |
+| 8 | 0x14c0c | sample CCA on 30 channels and return 30 count bytes; changes radio state |
+| 9 | 0x201b0 | reset the diagnostic counters, including the MAC state-time and device attributes |
+| 10 | 0x201d8 | return 15 MAC state-time counters and two profiling counters as TLV |
+| 11 | 0x201ba | return 26 device diagnostic attributes as TLV |
+| 12 | 0x14cec | derive and write AGCCTRL1 and AGCCTRL2 from a three-byte body |
+
+The resource is not read-only. Functions 3, 4, 7, 8, 9 and 12 change device state
+or radio behaviour. freedo sends none of these functions.
+
+`d/dbg2/tlvs` registers only PUT handler `coap_res_tlv_write_handler`@0x20118.
+The per-record callback at 0x20088 byteswaps the tag and values of 2 or 4 bytes,
+then calls `cfg_store_set`. Other value lengths pass unchanged. An empty body gets
+4.00, a TLV parse error gets 5.00, and every parsed body gets 2.04.
+
+The parser limits each value to 19 bytes. It does not limit the record count to
+19. A zero-length value does not reach the callback. The handler has no tag
+whitelist. The provisioning, NVM and shadow-RAM backends decide whether to claim
+a tag. An unclaimed tag is dropped silently. A backend error does not reach the
+CoAP response, so 2.04 does not prove that a write was applied.
+
+The callback reaches `cfg_store_set` through `coap_report_enqueue`@0xd8b0
+(0x20024, 0xdaee). `cfg_store_set`@0xfda0 walks the backend table at 0x379f0 and
+returns 0 when no backend claims the tag. `coap_report_enqueue` puts the record in
+the attribute report FIFO only when `cfg_store_set` returns 0. So a FIFO record,
+and any report built from it, proves only that no backend returned an error: an
+unclaimed tag gets one too. The NVM backend (match 0xcb40) claims `0140`, `0149`
+and `0158` from its id table at 0x37800. freedo takes the 2.04 as delivery of
+these three tags: a 2.04 without the write needs an NVM write error, which no
+answer and no report shows.
+
+Provisioning tag `0003` addresses the network key at page 1 offset 0x12. NVM tag
+`016c` formats the NVM store and reloads its defaults. freedo writes only `0140`,
+`0149` and `0158` through this resource (`dbg2Tags`).
 
 ### Pairing
 
