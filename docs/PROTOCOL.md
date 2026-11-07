@@ -33,7 +33,8 @@ not in `z/s`.
 
 The wall thermostat reads each role bit of `015e` as follows (thermostat nRF52). No role bit
 makes it a sensor only. It sends its own temperature as `4060|<zone>` only for the zone it
-controls (0x31d78).
+controls (0x31d78). It also sends `012d` and `012e` in `d/<serial>/sen` (0x202a0). That report
+and its call site (0xec96) read no role bit.
 
 - Bit 3 with zone type 1: it acts on the zone. It observes `/z/N/s` (0x11688), PUTs or DELETEs
   `/z/N/overlay` (0x11a94) and `/z/N/ow` (0x11930), and reads `/sched` (0x291f8).
