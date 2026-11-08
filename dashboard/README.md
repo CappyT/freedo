@@ -17,7 +17,7 @@ SvelteKit 3 needs Node 22.17 or later. Run the commands in this directory.
 | `npm run embed` | Copy `build/` to `../internal/web/dist`, the directory that the daemon embeds. |
 | `npm run dev` | Start the development server. `FREEDO_DEV_API` names the daemon (default `http://127.0.0.1:8080`). |
 | `npm run prefix-check` | Check the build under a path prefix. See below. |
-| `npm run ui-check` | Drive the controls in headless Chrome against the daemon: typing in the schedule editor, a refused command, the first end rule, Turn off, the profiles on the Programs screen, the rooms and devices, the radio diagnostics of a valve, the first setup on an empty database, the download and the restore of a backup, the banner and the return to normal of a daemon that waits after an import, and the statistics: the switch, the report of a room, the consumption page, the price and the reason of a stopped fuel counter. `FREEDO_BIN` names a daemon binary that embeds the build. |
+| `npm run ui-check` | Drive the controls in headless Chrome against the daemon: typing in the schedule editor, a refused command, the first end rule, Turn off, the profiles on the Programs screen, the rooms and devices, the radio diagnostics of a valve, the first setup on an empty database, the download and the restore of a backup, the banner and the return to normal of a daemon that waits after an import, and the statistics: the switch, the report of a room, the consumption page, the price, the reason of a stopped fuel counter, and the consumption advisor (the split of the fuel, a suggestion with its saving range and link, the 7-day window, a model that is not ready, the comfort limit). The settings of a room save the shared space. `FREEDO_BIN` names a daemon binary that embeds the build. |
 
 To run the daemon with the dashboard:
 
@@ -51,7 +51,8 @@ and every page request gets `404`. The API works as before.
   curves of the daemon for the preview in `CurveChart.svelte`. The room screen judges the air comfort from
   the temperature and the humidity (`AirComfort.svelte`, ranges in `comfort.ts`).
 - The statistics: Settings turns them on. `zones/[n]/report` shows one day of a room (`DayChart.svelte`), and
-  `boiler/energy` the fuel, heat and cost per day and per month (`BarChart.svelte`) and writes the fuel price.
+  `boiler/energy` the fuel, heat and cost per day and per month (`BarChart.svelte`), writes the fuel price and the comfort limit, and shows the
+  consumption advisor from `GET /api/history/advice`: where the fuel goes by room, and the suggestions. The advisor writes nothing. `src/lib/advice.ts` holds its ranges, links and texts.
   `history.ts` holds the spans, the runs, the totals and the axes. Each chart is a slider for the keyboard: the
   arrow keys move the readout, which is also its value text, and a table under it holds the same values.
 - `src/lib/api.ts`: the client of the HTTP API. `data.svelte.ts` polls the views every 5 seconds.

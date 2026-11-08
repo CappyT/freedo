@@ -5,6 +5,7 @@ export const WINDOW_MINUTES = { min: 1, max: 1092 };
 export const END_MINUTES = { min: 1, max: 7 * 24 * 60 };
 export const AWAY_C = { min: 5, max: 25 };
 export const RADIATOR_W = { min: 100, max: 20000 };
+export const SHARED_SPACE_MAX = 32;
 export const OFFSET_C = { min: -10, max: 10 };
 const DEFAULT_END_MINUTES = 60;
 
@@ -19,6 +20,8 @@ export interface RoomOptions {
 	awayC: number;
 	/** The total nominal radiator power of the room in watts. Null while unset. */
 	radiatorW: number | null;
+	/** The name of the shared air volume, an empty text while unset. */
+	sharedSpace: string;
 	endRule: EndRuleOption;
 	endMinutes: number;
 	earlyStart: boolean;
@@ -32,6 +35,7 @@ export function optionsOf(zone: InstallZone): RoomOptions {
 		windowMinutes: Math.round(zone.open_window_duration_sec / 60),
 		awayC: zone.away_temperature_c ?? AWAY_C.min,
 		radiatorW: zone.radiator_w ?? null,
+		sharedSpace: zone.shared_space ?? '',
 		endRule: zone.device_overlay_end ?? 'until_next',
 		endMinutes: zone.device_overlay_end_sec ? Math.round(zone.device_overlay_end_sec / 60) : DEFAULT_END_MINUTES,
 		earlyStart: zone.early_start,
@@ -39,9 +43,11 @@ export function optionsOf(zone: InstallZone): RoomOptions {
 	};
 }
 
-export type OptionIssue = 'window' | 'away' | 'radiator' | 'endTimer' | 'offset';
+export type OptionIssue = 'window' | 'away' | 'radiator' | 'sharedSpace' | 'endTimer' | 'offset';
 
 const whole = (v: number, range: { min: number; max: number }) => Number.isInteger(v) && v >= range.min && v <= range.max;
+/** Letters, digits, space, - and _, 1 to 32 characters: the rule of the daemon. */
+const SHARED_SPACE = /^[\p{L}\p{N} _-]+$/u;
 const twoDecimals = (v: number) => Math.abs(v * 100 - Math.round(v * 100)) < 1e-9;
 
 /**
@@ -62,6 +68,8 @@ export function optionIssues(o: RoomOptions, offset: string): OptionIssue[] {
 	if (!whole(o.windowMinutes, WINDOW_MINUTES)) issues.push('window');
 	if (!(o.awayC >= AWAY_C.min && o.awayC <= AWAY_C.max && twoDecimals(o.awayC))) issues.push('away');
 	if (o.radiatorW !== null && !(o.radiatorW >= RADIATOR_W.min && o.radiatorW <= RADIATOR_W.max)) issues.push('radiator');
+	const space = o.sharedSpace.trim();
+	if (space !== '' && !(space.length <= SHARED_SPACE_MAX && SHARED_SPACE.test(space))) issues.push('sharedSpace');
 	if (o.endRule === 'timer' && !whole(o.endMinutes, END_MINUTES)) issues.push('endTimer');
 	if (parseOffset(offset) === undefined) issues.push('offset');
 	return issues;
@@ -75,6 +83,8 @@ export function optionsPatch(zone: InstallZone, o: RoomOptions): ZoneOptionsPatc
 	if (o.windowMinutes !== now.windowMinutes) patch.open_window_duration_sec = o.windowMinutes * 60;
 	if (o.awayC !== now.awayC) patch.away_temperature_c = o.awayC;
 	if (o.radiatorW !== now.radiatorW) patch.radiator_w = o.radiatorW;
+	const space = o.sharedSpace.trim();
+	if (space !== now.sharedSpace) patch.shared_space = space === '' ? null : space;
 	if (o.endRule !== now.endRule || (o.endRule === 'timer' && o.endMinutes !== now.endMinutes)) {
 		patch.device_overlay_end = o.endRule;
 		if (o.endRule === 'timer') patch.device_overlay_end_sec = o.endMinutes * 60;

@@ -29,6 +29,7 @@
 	"PUT /api/history",
 	"GET /api/history/zones/{n}",
 	"GET /api/history/energy",
+	"GET /api/history/advice",
 	"POST /api/nodes/{id}/childlock",
 	"POST /api/nodes/{id}/identify",
 	"POST /api/nodes/{id}/reboot",

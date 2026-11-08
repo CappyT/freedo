@@ -15,6 +15,7 @@
 		AWAY_C,
 		END_MINUTES,
 		RADIATOR_W,
+		SHARED_SPACE_MAX,
 		WINDOW_MINUTES,
 		optionIssues,
 		optionsOf,
@@ -680,6 +681,15 @@
 							<input class="input num" type="number" inputmode="numeric" min={RADIATOR_W.min} max={RADIATOR_W.max} step="1" bind:value={options.radiatorW} aria-invalid={issues.includes('radiator')} />
 						</label>
 						<p class="note">{t('opt.radiatorW.hint')}</p>
+					</fieldset>
+
+					<fieldset>
+						<legend>{t('opt.sharedSpace')}</legend>
+						<label class="field">
+							<span>{t('opt.sharedSpace')}</span>
+							<input class="input" type="text" autocomplete="off" maxlength={SHARED_SPACE_MAX} bind:value={options.sharedSpace} aria-invalid={issues.includes('sharedSpace')} />
+						</label>
+						<p class="note">{t('opt.sharedSpace.hint')}</p>
 					</fieldset>
 
 					{#if issues.length > 0}

@@ -9,6 +9,7 @@ import type {
 	EnergyHistory,
 	GasMeter,
 	Health,
+	HistoryAdvice,
 	HistoryInfo,
 	HistoryPatch,
 	Home,
@@ -203,6 +204,8 @@ export function createClient(options: ClientOptions = {}) {
 			const qs = query.toString();
 			return request<EnergyHistory>('GET', 'history/energy' + (qs ? '?' + qs : ''));
 		},
+		/** The split of the fuel and the suggestions of the last 7, 28 or 90 days. It writes nothing. */
+		historyAdvice: (days: 7 | 28 | 90 = 28) => request<HistoryAdvice>('GET', 'history/advice?days=' + days),
 		childLock: (device: string, on: boolean) =>
 			request<Command>('POST', 'nodes/' + encodeURIComponent(device) + '/childlock', { on }),
 		identify: (device: string) => request<Command>('POST', 'nodes/' + encodeURIComponent(device) + '/identify', {}),

@@ -453,6 +453,8 @@ export interface InstallZone {
 	away_temperature_c: number | null;
 	/** The total nominal radiator power in watts. Null while unset and on the hot water zone. */
 	radiator_w: number | null;
+	/** The name of the air volume that the room shares with others, such as an open space. Null while unset and on the hot water zone. */
+	shared_space: string | null;
 	/** The controller gains. Null on the hot water zone. */
 	pid: Pid | null;
 }
@@ -497,6 +499,8 @@ export interface ZoneOptionsPatch {
 	away_temperature_c?: number;
 	/** Null clears it. */
 	radiator_w?: number | null;
+	/** 1 to 32 characters of letters, digits, space, - or _. Null clears it. */
+	shared_space?: string | null;
 	/** Null restores the default gains. */
 	pid?: Pid | null;
 }
@@ -570,6 +574,94 @@ export interface HistoryPatch {
 	currency?: string;
 	/** 16 to 25 C; null returns to the default. */
 	comfortMaxC?: number | null;
+}
+
+export type AdviceKind = 'window' | 'vent' | 'away' | 'setpoint' | 'setback' | 'unreachable' | 'short_cycle';
+export type AdviceConfidence = 'high' | 'medium' | 'low';
+
+/** An estimate in the fuel unit, or in money, with the range of its uncertainty. */
+export interface Estimate {
+	value: number;
+	low: number;
+	high: number;
+}
+
+export interface AdviceZoneSplit {
+	zone: number;
+	fuel: number;
+	/** The share of the heating fuel, 0 to 1. */
+	share: number;
+	fuelPerDegreeHour: number | null;
+}
+
+/** Where the fuel of a window went. weighted is false while the rooms count equally. */
+export interface AdviceSplit {
+	fuel: number;
+	heating: number;
+	hotWater: number;
+	unattributed: number;
+	weighted: boolean;
+	zones: AdviceZoneSplit[];
+}
+
+export interface AdviceModel {
+	validDays: number;
+	usable: boolean;
+	reason?: string;
+	fuelPerDegreeHour: number | null;
+	fuelPerDegreeHourErr: number | null;
+	fuelPerDayOffset: number | null;
+	r2: number | null;
+}
+
+export interface VentPeriod {
+	startMs: number;
+	endMs: number;
+	riseC: number;
+	humidityDropPct: number;
+}
+
+/** What backs an advice, by kind. window and away carry none. */
+export interface AdviceEvidence {
+	periods?: VentPeriod[];
+	targetC?: number;
+	thresholdC?: number;
+	/** Minutes of the day, for the typical block of the setpoint advice. */
+	fromMin?: number;
+	toMin?: number;
+	comfortC?: number;
+	setbackC?: number;
+	proposedC?: number;
+	hoursPerDay?: number;
+	gapC?: number;
+	days?: number;
+	startsPerBurnerHour?: number;
+}
+
+export interface Advice {
+	id: string;
+	kind: AdviceKind;
+	zones: number[];
+	hours: number;
+	/** Null for unreachable and short_cycle, and while the model is not usable. */
+	fuel: Estimate | null;
+	/** The fuel times the price. Null without a price. */
+	cost: Estimate | null;
+	confidence: AdviceConfidence;
+	evidence: AdviceEvidence;
+}
+
+/** GET /api/history/advice: the split of the fuel and the suggestions, highest saving first. */
+export interface HistoryAdvice {
+	days: number;
+	from: string;
+	to: string;
+	unit: string;
+	fuelPrice: number | null;
+	currency: string;
+	split: AdviceSplit;
+	model: AdviceModel;
+	advice: Advice[];
 }
 
 /** One zone at one sample time. A null field had no value then. */

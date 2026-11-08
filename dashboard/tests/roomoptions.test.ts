@@ -19,6 +19,7 @@ const zone = (over: Partial<InstallZone> = {}): InstallZone => ({
 	owner: 'device',
 	away_temperature_c: null,
 	radiator_w: null,
+	shared_space: null,
 	pid: null,
 	...over
 });
@@ -30,6 +31,7 @@ describe('the options of a room in the form', () => {
 			windowMinutes: 15,
 			awayC: 5,
 			radiatorW: null,
+			sharedSpace: '',
 			endRule: 'until_next',
 			endMinutes: 60,
 			earlyStart: false,
@@ -81,6 +83,29 @@ describe('the radiator power of a room', () => {
 		const set = zone({ radiator_w: 1800 });
 		expect(optionsPatch(set, { ...optionsOf(set), radiatorW: null })).toEqual({ radiator_w: null });
 		expect(optionsPatch(set, optionsOf(set))).toEqual({});
+	});
+});
+
+describe('the shared space of a room', () => {
+	it('reads a stored name and an empty text when unset', () => {
+		expect(optionsOf(zone({ shared_space: 'Living' })).sharedSpace).toBe('Living');
+		expect(optionsOf(zone()).sharedSpace).toBe('');
+	});
+
+	it('sends the trimmed name, null when it is cleared, nothing when it stays', () => {
+		expect(optionsPatch(zone(), { ...optionsOf(zone()), sharedSpace: ' Open space ' })).toEqual({ shared_space: 'Open space' });
+		const set = zone({ shared_space: 'Living' });
+		expect(optionsPatch(set, { ...optionsOf(set), sharedSpace: '  ' })).toEqual({ shared_space: null });
+		expect(optionsPatch(set, optionsOf(set))).toEqual({});
+	});
+
+	it('takes 1 to 32 letters, digits, spaces, - and _, or nothing', () => {
+		const ok = optionsOf(zone());
+		expect(optionIssues({ ...ok, sharedSpace: 'Open-space_1' }, '')).toEqual([]);
+		expect(optionIssues({ ...ok, sharedSpace: 'a'.repeat(32) }, '')).toEqual([]);
+		expect(optionIssues({ ...ok, sharedSpace: 'a'.repeat(33) }, '')).toEqual(['sharedSpace']);
+		expect(optionIssues({ ...ok, sharedSpace: 'Living/Kitchen' }, '')).toEqual(['sharedSpace']);
+		expect(optionIssues({ ...ok, sharedSpace: '' }, '')).toEqual([]);
 	});
 });
 

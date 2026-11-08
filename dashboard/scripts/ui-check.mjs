@@ -22,7 +22,7 @@
 //   room stops the run before the pair command, and the end follows the room that the daemon holds. The settings of a
 //   room restart a device after a confirm, move a device, show the effects of a removal before the delete, offer only free devices,
 //   and rename and delete the room. No room is the group of the devices in no room.
-// - The settings of a heated room save its options in one request and keep the ranges of the daemon.
+// - The settings of a heated room save its options in one request, the shared space included, and keep the ranges of the daemon.
 // - The room screen shows the room temperature that Home Assistant pushes: the source, the reading, its age and the
 //   owner. A push that a device-owned room refuses shows as a warning there and next to the select of the room temperature source.
 // - The burner badge of the boiler page follows the burner flag, also while no room asks for heat.
@@ -34,6 +34,9 @@
 //   a sample, the price takes a comma, and off asks first and keeps the data until a delete. The room report
 //   lists the heating periods of a room with a flat target and names the return home and the target rise.
 //   A stopped fuel counter names its reason.
+// - The consumption advisor, with the answers of the daemon put in: the split of the fuel lists the rooms, the hot
+//   water and the rest with their shares, a setpoint suggestion shows its block, its saving range and a link to the
+//   programs, the window selector asks for 7 days, a model that is not ready says so, and the comfort limit is saved.
 // - The first setup takes a daemon with an empty database to a room, a paired thermostat and a circuit.
 //   The device that the pair window hears and the frames of the joined device are put into the
 //   answers here: the daemon has no radio. As the daemon does, the answers keep the device in the
@@ -106,6 +109,10 @@ try {
 	let zoneDayPatch = null;
 	// The answers of GET /api/nodes/{id}/dbg/stats by function, as if the valve had answered. Null changes nothing.
 	let dbgStats = null;
+	// The answer of GET /api/history/advice for a window of days, as if the daemon had a model. Null changes nothing.
+	let adviceAnswer = null;
+	// The days parameter of each advice request.
+	const adviceCalls = [];
 	// Until waitUntil every answer is the one of a daemon that waits after an import. An import that
 	// passes starts such a wait of waitAfterImport milliseconds.
 	let waitUntil = 0;
@@ -167,6 +174,17 @@ try {
 						responseCode: 200,
 						responseHeaders: [{ name: 'Content-Type', value: 'application/json' }],
 						body: Buffer.from(JSON.stringify(stats)).toString('base64')
+					});
+					return;
+				}
+				if (adviceAnswer && method === 'GET' && path.endsWith('/api/history/advice')) {
+					const days = new URL(url).searchParams.get('days');
+					adviceCalls.push(days);
+					await tab.call('Fetch.fulfillRequest', {
+						requestId: p.requestId,
+						responseCode: 200,
+						responseHeaders: [{ name: 'Content-Type', value: 'application/json' }],
+						body: Buffer.from(JSON.stringify(adviceAnswer(Number(days)))).toString('base64')
 					});
 					return;
 				}
@@ -776,6 +794,7 @@ try {
 	);
 	await typeInto(opt(5, '.pair .input.num'), '-0.7');
 	await typeInto(opt(6, 'input'), '1500');
+	await typeInto(opt(7, 'input'), ' Open space ');
 	await sleep(6500);
 	check(
 		(await valueOf(opt(1, 'input[type=number]'))) === '20' && (await valueOf(opt(2, 'input'))) === '16.5' && (await valueOf(opt(5, '.pair .input.num'))) === '-0.7',
@@ -793,8 +812,8 @@ try {
 	const bathOptions = (await api(daemon.base, 'install/zones/2')).zone;
 	check(
 		bathOptions.open_window_duration_sec === 1200 && bathOptions.away_temperature_c === 16.5 && bathOptions.device_overlay_end === 'timer' &&
-			bathOptions.device_overlay_end_sec === 5400 && bathOptions.early_start === true && bathOptions.radiator_w === 1500,
-		`the daemon stores the window time, the away temperature, the end rule, the early start and the radiator power (${JSON.stringify([bathOptions.open_window_duration_sec, bathOptions.away_temperature_c, bathOptions.device_overlay_end, bathOptions.device_overlay_end_sec, bathOptions.early_start, bathOptions.radiator_w])})`
+			bathOptions.device_overlay_end_sec === 5400 && bathOptions.early_start === true && bathOptions.radiator_w === 1500 && bathOptions.shared_space === 'Open space',
+		`the daemon stores the window time, the away temperature, the end rule, the early start, the radiator power and the shared space (${JSON.stringify([bathOptions.open_window_duration_sec, bathOptions.away_temperature_c, bathOptions.device_overlay_end, bathOptions.device_overlay_end_sec, bathOptions.early_start, bathOptions.radiator_w, bathOptions.shared_space])})`
 	);
 	check(
 		requests.filter((r) => r === 'PATCH /api/install/zones/2').length === 1 && requests.filter((r) => r === 'POST /api/zones/2/offset').length === 1,
@@ -1174,6 +1193,89 @@ try {
 	check(await toast('Price saved'), 'the fuel price is saved');
 	const priced = await api(daemon.base, 'history');
 	check(priced.fuelPrice === 1.05 && priced.currency === 'EUR', `the daemon holds the price, with a comma read as the decimal separator (${priced.fuelPrice} ${priced.currency})`);
+
+	// The advisor: the answers are put in here. The 28-day window has a usable model, a split that no radiator power
+	// weights and two suggestions. The 7-day window has a model that is not ready and a suggestion with no saving.
+	const estimate = (value, low, high) => ({ value, low, high });
+	adviceAnswer = (days) => ({
+		days,
+		from: '2026-10-01',
+		to: '2026-10-28',
+		unit: 'm3',
+		fuelPrice: 1.05,
+		currency: 'EUR',
+		split: {
+			fuel: 10,
+			heating: 8,
+			hotWater: 1.5,
+			unattributed: 0.5,
+			weighted: false,
+			zones: [
+				{ zone: 2, fuel: 3, share: 0.375, fuelPerDegreeHour: null },
+				{ zone: 8, fuel: 5, share: 0.625, fuelPerDegreeHour: null }
+			]
+		},
+		model:
+			days === 7
+				? { validDays: 9, usable: false, reason: 'few_days', fuelPerDegreeHour: null, fuelPerDegreeHourErr: null, fuelPerDayOffset: null, r2: null }
+				: { validDays: 20, usable: true, fuelPerDegreeHour: 0.02, fuelPerDegreeHourErr: 0.004, fuelPerDayOffset: 0.1, r2: 0.8 },
+		advice:
+			days === 7
+				? [{ id: 'u1', kind: 'unreachable', zones: [2], hours: 12, fuel: null, cost: null, confidence: 'low', evidence: { gapC: 2.5 } }]
+				: [
+						{
+							id: 's1',
+							kind: 'setpoint',
+							zones: [8],
+							hours: 40,
+							fuel: estimate(0.6, 0.4, 0.9),
+							cost: estimate(0.63, 0.42, 0.95),
+							confidence: 'medium',
+							evidence: { targetC: 21.5, thresholdC: 21, fromMin: 390, toMin: 1320 }
+						},
+						{ id: 'w1', kind: 'window', zones: [2], hours: 3, fuel: estimate(0.2, 0.1, 0.3), cost: estimate(0.21, 0.11, 0.32), confidence: 'high', evidence: {} }
+					]
+	});
+	adviceCalls.length = 0;
+	await open('#/boiler/energy', `document.querySelector('[data-testid=advice-list] a')`);
+	check(adviceCalls[0] === '28', `the advice window starts at 28 days (${adviceCalls})`);
+	const shareNames = await tab.evaluate(`[...document.querySelectorAll('[data-testid=advice-split] .share-name')].map((n) => n.textContent).join()`);
+	check(shareNames === 'Living room,Bath,Hot water,Not attributed', `the split lists the rooms by fuel, then the hot water and the rest (${shareNames})`);
+	const shareText = await tab.evaluate(`document.querySelector('[data-testid=advice-split] [data-kind=zone]').innerText.replace(/\\s+/g, ' ')`);
+	check(/Living room 5\.00 m³ · €5\.25 · 50 %/.test(shareText), `a room row shows its fuel, its cost and its share (${shareText})`);
+	check(
+		await tab.evaluate(`document.querySelector('[data-testid=advice-unweighted] a')?.getAttribute('href') === '#/devices'`),
+		'a split that no radiator power weights says so and links to the room settings'
+	);
+	check(await tab.evaluate(`!document.querySelector('[data-testid=advice-not-ready]')`), 'a usable model shows no waiting note');
+	const setpoint = await tab.evaluate(`((a) => [a.innerText.replace(/\\s+/g, ' '), a.getAttribute('href')])(document.querySelector('[data-testid=advice-list] a[data-kind=setpoint]'))`);
+	check(
+		/1 degree less from 06:30 to 22:00/.test(setpoint[0]) && /Living room/.test(setpoint[0]) && /Saves 0\.40-0\.90 m³ · €0\.42-€0\.95/.test(setpoint[0]) && /Medium confidence/.test(setpoint[0]),
+		`a setpoint suggestion names the block, the saving range and the confidence (${setpoint[0]})`
+	);
+	check(setpoint[1] === '#/programs', `a setpoint suggestion links to the programs (${setpoint[1]})`);
+	check(
+		await tab.evaluate(`document.querySelector('[data-testid=advice-list] a[data-kind=window]').getAttribute('href') === '#/rooms/2'`),
+		'a window suggestion links to its room'
+	);
+	adviceCalls.length = 0;
+	await click('[data-testid=advice-window] input[value="7"]');
+	await tab.waitFor(`document.querySelector('[data-testid=advice-not-ready]')`, 6000);
+	check(adviceCalls.at(-1) === '7', `the 7-day window asks for 7 days (${adviceCalls})`);
+	const notReady = await tab.evaluate(`document.querySelector('[data-testid=advice-not-ready]').innerText.replace(/\\s+/g, ' ')`);
+	check(/14 days/.test(notReady) && /has 9/.test(notReady), `a model that is not ready says how many days it has (${notReady})`);
+	check(
+		await tab.evaluate(`document.querySelectorAll('[data-testid=advice-list] a').length === 1 && !document.querySelector('[data-testid=advice-range]')`),
+		'a suggestion with no saving shows no range'
+	);
+	adviceAnswer = null;
+	// The comfort limit sits beside the fuel price.
+	await typeAt('main input[name=comfortMaxC]', 0, '26');
+	check(await tab.evaluate(`document.querySelector('main input[name=comfortMaxC]').closest('form').querySelector('button[type=submit]').disabled`), 'a comfort limit above 25 cannot be saved');
+	await typeAt('main input[name=comfortMaxC]', 0, '22.5');
+	await click('main form:has(input[name=comfortMaxC]) button[type=submit]');
+	check(await toast('Comfort limit saved'), 'the comfort limit is saved');
+	check((await api(daemon.base, 'history')).comfortMaxC === 22.5, 'the daemon holds the comfort limit');
 
 	// On a phone the open table scrolls inside its block instead of widening the page.
 	await tab.viewport(390, 844, true);
