@@ -344,3 +344,9 @@ pre-release has its notes here.
 - Dashboard and daemon: a heating room takes `shared_space`, the name of the air volume it shares
   with other rooms, such as an open space. The advisor treats rooms with the same name as one.
 - Dashboard: the energy page sets the comfort limit of the advisor, 21 C by default.
+
+## 0.12.0-beta.8
+
+- Daemon: the suggestion of a degree less needs a comfort block on a quarter of the days of the
+  window or more, so a one-off boost no longer makes one. Heating with a window open or while away
+  makes a suggestion from 15 minutes on.
