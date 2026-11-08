@@ -328,3 +328,19 @@ pre-release has its notes here.
   section comes with the suggestions.
 - Daemon: `PUT /api/history` takes `comfortMaxC`, 21 C by default: the comfort target from which the
   coming suggestions propose a degree less.
+
+## 0.12.0-beta.7
+
+- Dashboard: the energy page shows where the fuel of the last 7, 28 or 90 days went, room by room,
+  with hot water and the part no room explains, and lists suggestions with the fuel and the money
+  at stake. The advisor only suggests: each suggestion links to the page where you change the
+  setting.
+- Daemon: `GET /api/history/advice` adds `advice`. The suggestions cover heating with a window
+  open, heating while away, an open window that no sensor reports (long heating while the air
+  dries and the room barely warms, as with a tilted sash and a side contact), comfort targets at or
+  above the comfort limit, shallow night setbacks, rooms that never reach their target, and short
+  burner cycles. A room heated only by its neighbours gets no suggestion. The savings of a lower
+  target need the heat-loss model: about 3 weeks of data with the outdoor temperature of beta.5.
+- Dashboard and daemon: a heating room takes `shared_space`, the name of the air volume it shares
+  with other rooms, such as an open space. The advisor treats rooms with the same name as one.
+- Dashboard: the energy page sets the comfort limit of the advisor, 21 C by default.
