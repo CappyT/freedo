@@ -75,6 +75,17 @@ func TestAdviceRuleWindowAndAway(t *testing.T) {
 	if a := ruleKinds(items, "away"); len(a) != 1 || a[0].Zones[0] != 10 || !nearly(a[0].Fuel.Value, 0.12) {
 		t.Errorf("away = %+v", a)
 	}
+
+	// Ten minutes with the window open make no suggestion.
+	short := []adviceZoneRow{}
+	for m := 0; m < 10; m += 5 {
+		r := ruleRow(2, 0, 8*60+m, 19, 20, 80)
+		r.window = true
+		short = append(short, r)
+	}
+	if w := ruleKinds(adviceRules(ruleInput(t, short, 0.01, nil, 1)), "window"); len(w) != 0 {
+		t.Errorf("window for 10 minutes = %+v", w)
+	}
 }
 
 // ventRun is n samples of zone 2 from minute m of day 0 with demand 80, the
@@ -164,6 +175,21 @@ func TestAdviceRuleSetpoint(t *testing.T) {
 	plain := ruleKinds(adviceRules(ruleInput(t, rows, 0.001, nil, 7)), "setpoint")
 	if len(plain) != 1 || plain[0].Fuel != nil || plain[0].Cost != nil || plain[0].Confidence != "low" {
 		t.Errorf("setpoint without a model = %+v", plain)
+	}
+
+	// A block on one day of the seven is a boost, not a habit.
+	var boost []adviceZoneRow
+	for d := range 7 {
+		for m := 0; m < 24*60; m += 5 {
+			target := 19.0
+			if d == 2 && m >= 10*60 && m < 14*60 {
+				target = 22.5
+			}
+			boost = append(boost, ruleRow(3, d, m, target, target, 30))
+		}
+	}
+	if items := ruleKinds(adviceRules(ruleInput(t, boost, 0.001, nil, 7)), "setpoint"); len(items) != 0 {
+		t.Errorf("setpoint for a single boost = %+v", items)
 	}
 
 	// A threshold above the block: nothing to suggest.

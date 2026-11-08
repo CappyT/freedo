@@ -44,6 +44,12 @@ const (
 	adviceUnreachDemand   = 90
 	adviceShortCycleRate  = 6.0
 	adviceShortCycleMinBn = 30
+	// adviceFlaggedMinSteps is the shortest heating with a flag set that
+	// makes a suggestion: 15 minutes.
+	adviceFlaggedMinSteps = 3
+	// adviceSetpointMinDays is the share of the days of the window on which a
+	// comfort block must recur: a boost on a single day is no habit.
+	adviceSetpointMinDays = 0.25
 )
 
 // adviceNightFrom and adviceNightTo bound the night of the setback rule, in
@@ -234,7 +240,7 @@ func adviceFlagged(in adviceInput, sp adviceSpace, kind string, flag func(advice
 				steps++
 			}
 		}
-		if steps == 0 {
+		if steps < adviceFlaggedMinSteps {
 			continue
 		}
 		out = append(out, in.item(kind, sp, []int{z}, float64(steps)*historyEvery.Hours(), in.spent(fuel), "high", nil))
@@ -351,8 +357,9 @@ func minuteOfDay(t time.Time, loc *time.Location) int {
 	return l.Hour()*60 + l.Minute()
 }
 
-// adviceSetpoint: a space held at comfortMaxC or above. A degree less over
-// the hours it held that target saves a_s degree-hours each hour.
+// adviceSetpoint: a space at comfortMaxC or above on a quarter of the days of
+// the window or more. A degree less over the hours it held that target saves
+// a_s degree-hours each hour.
 func adviceSetpoint(in adviceInput, sp adviceSpace) []adviceItem {
 	var hours, heldHours, maxTarget float64
 	slots := map[int]int{}
@@ -370,7 +377,7 @@ func adviceSetpoint(in adviceInput, sp adviceSpace) []adviceItem {
 		slots[minuteOfDay(at, in.loc)/int(historyEvery/time.Minute)]++
 		days[at.In(in.loc).Format(time.DateOnly)] = true
 	})
-	if hours < 1 {
+	if hours < 1 || float64(len(days)) < adviceSetpointMinDays*float64(max(1, len(in.days))) {
 		return nil
 	}
 	from, to := adviceTypicalBlock(slots, len(days))
