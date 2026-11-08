@@ -250,6 +250,10 @@ type Options struct {
 	// zone, in watts: the sum of the data-sheet values. Optional; a consumption
 	// advisor weighs the heating demand of each room by it.
 	RadiatorsW map[int]float64 `yaml:"radiator_w"`
+	// SharedSpaces names the shared space of a heating zone, per zone. Zones with
+	// the same name share one air volume (an open space). Optional; the
+	// consumption advisor groups them.
+	SharedSpaces map[int]string `yaml:"shared_space"`
 	// HAAreas holds the Home Assistant area of each zone that the integration
 	// reports. The dashboard shows it; the coordinator never acts on it.
 	HAAreas map[int]HAArea `yaml:"ha_area"`
@@ -803,6 +807,7 @@ func (in *Install) checkOptions(c *issues) {
 	in.checkZoneOwners(c)
 	in.checkAwayTemperatures(c)
 	in.checkRadiatorsW(c)
+	in.checkSharedSpaces(c)
 	in.checkHAAreas(c)
 }
 

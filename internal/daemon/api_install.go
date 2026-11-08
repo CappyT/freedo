@@ -181,6 +181,9 @@ type zonePatch struct {
 	// RadiatorW is the total nominal radiator power of a heating zone, in
 	// watts, 100 to 20000; null clears it.
 	RadiatorW optFloat `json:"radiator_w"`
+	// SharedSpace names the shared space of a heating zone, 1 to 32 characters;
+	// null clears it.
+	SharedSpace optString `json:"shared_space"`
 	// HAArea is the Home Assistant area of the zone, {"id", "name"}; null
 	// clears it. The dashboard shows it, and the coordinator never acts on it.
 	HAArea optHAArea `json:"ha_area"`
@@ -252,6 +255,7 @@ func zoneView(in *tado.Install, z *tado.Zone) map[string]any {
 		"pid":                      nil,
 		"away_temperature_c":       nil,
 		"radiator_w":               nil,
+		"shared_space":             nil,
 		"ha_area":                  haAreaView(in, z.Number),
 	}
 	if z.Kind == tado.ZoneHeating {
@@ -268,6 +272,9 @@ func zoneView(in *tado.Install, z *tado.Zone) map[string]any {
 		}
 		if w, ok := in.Options.RadiatorW(z.Number); ok {
 			out["radiator_w"] = w
+		}
+		if name, ok := in.Options.SharedSpace(z.Number); ok {
+			out["shared_space"] = name
 		}
 	}
 	if z.Circuit != nil {

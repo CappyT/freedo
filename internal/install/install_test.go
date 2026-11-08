@@ -226,6 +226,31 @@ func TestInstallRoundTripKeepsRadiatorsW(t *testing.T) {
 	}
 }
 
+// TestInstallRoundTripKeepsSharedSpaces: the shared space of a zone survives the
+// database, and a zone that states none loads none.
+func TestInstallRoundTripKeepsSharedSpaces(t *testing.T) {
+	in, err := tado.Parse([]byte(fixtureInstallYAML + "  shared_space: {1: Open space, 3: Open space}\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, _ := storeWithInstall(t, in)
+	got, _, err := store.LoadInstall(context.Background())
+	if err != nil {
+		t.Fatalf("LoadInstall: %v", err)
+	}
+	if want := (map[int]string{1: "Open space", 3: "Open space"}); !reflect.DeepEqual(got.Options.SharedSpaces, want) {
+		t.Errorf("loaded shared spaces = %v, want %v", got.Options.SharedSpaces, want)
+	}
+	bare, _ := storeWithInstall(t, defaultInstall)
+	got, _, err = bare.LoadInstall(context.Background())
+	if err != nil {
+		t.Fatalf("LoadInstall: %v", err)
+	}
+	if len(got.Options.SharedSpaces) != 0 {
+		t.Errorf("an installation without shared spaces loaded %v", got.Options.SharedSpaces)
+	}
+}
+
 // TestInstallRoundTripKeepsBoilerPower: the output and the gas flow of the
 // boiler survive the database, and an installation that states none loads none.
 func TestInstallRoundTripKeepsBoilerPower(t *testing.T) {

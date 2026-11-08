@@ -884,6 +884,9 @@ func (s *stateStore) PatchZone(ctx context.Context, number int, p zonePatch) (in
 		if err := patchZoneRadiatorW(ctx, tx, number, p.RadiatorW); err != nil {
 			return err
 		}
+		if err := patchZoneSharedSpace(ctx, tx, number, p.SharedSpace); err != nil {
+			return err
+		}
 		if err := patchZoneHAArea(ctx, tx, number, p.HAArea); err != nil {
 			return err
 		}
@@ -1011,6 +1014,21 @@ func patchZoneRadiatorW(ctx context.Context, tx querier, number int, p optFloat)
 	return setInstallValue(ctx, tx, install.RadiatorWKey(number), strconv.FormatFloat(*p.value, 'g', -1, 64))
 }
 
+// patchZoneSharedSpace stores the shared space name of a zone; null clears it.
+// The install check refuses the hot water zone.
+func patchZoneSharedSpace(ctx context.Context, tx querier, number int, p optString) error {
+	switch {
+	case !p.set:
+		return nil
+	case p.value == nil:
+		return clearInstallValue(ctx, tx, install.SharedSpaceKey(number))
+	}
+	if msg := tado.SharedSpaceNameErr(*p.value); msg != "" {
+		return badf("shared_space: the name %s", msg)
+	}
+	return setInstallValue(ctx, tx, install.SharedSpaceKey(number), strings.TrimSpace(*p.value))
+}
+
 // patchZoneHAArea stores the Home Assistant area of a zone; null clears it.
 func patchZoneHAArea(ctx context.Context, tx querier, number int, p optHAArea) error {
 	switch {
@@ -1070,6 +1088,9 @@ func (s *stateStore) DeleteZone(ctx context.Context, number int, expect *uint64)
 			return err
 		}
 		if err := clearInstallValue(ctx, tx, install.RadiatorWKey(number)); err != nil {
+			return err
+		}
+		if err := clearInstallValue(ctx, tx, install.SharedSpaceKey(number)); err != nil {
 			return err
 		}
 		if err := clearInstallValue(ctx, tx, install.HAAreaKey(number)); err != nil {

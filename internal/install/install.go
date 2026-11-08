@@ -214,6 +214,9 @@ func ReadInstall(ctx context.Context, q Querier) (*tado.Install, uint64, error) 
 	if err := loadRadiatorsW(kv, &in.Options); err != nil {
 		return nil, 0, err
 	}
+	if err := loadSharedSpaces(kv, &in.Options); err != nil {
+		return nil, 0, err
+	}
 	if err := loadHAAreas(kv, &in.Options); err != nil {
 		return nil, 0, err
 	}
@@ -486,6 +489,30 @@ func loadRadiatorsW(kv map[string]string, o *tado.Options) error {
 			o.RadiatorsW = map[int]float64{}
 		}
 		o.RadiatorsW[zone] = w
+	}
+	return nil
+}
+
+// sharedSpacePrefix starts the install key of a zone's shared space name. The
+// key exists only while the zone states one.
+const sharedSpacePrefix = "shared_space."
+
+func SharedSpaceKey(zone int) string { return sharedSpacePrefix + strconv.Itoa(zone) }
+
+func loadSharedSpaces(kv map[string]string, o *tado.Options) error {
+	for key, raw := range kv {
+		rest, ok := strings.CutPrefix(key, sharedSpacePrefix)
+		if !ok {
+			continue
+		}
+		zone, err := strconv.Atoi(rest)
+		if err != nil {
+			return fmt.Errorf("install %s: %w", key, err)
+		}
+		if o.SharedSpaces == nil {
+			o.SharedSpaces = map[int]string{}
+		}
+		o.SharedSpaces[zone] = raw
 	}
 	return nil
 }
@@ -800,6 +827,9 @@ func (s *Store) ReplaceInstall(ctx context.Context, in *tado.Install) (uint64, e
 	}
 	for zone, w := range in.Options.RadiatorsW {
 		values = append(values, [2]string{RadiatorWKey(zone), strconv.FormatFloat(w, 'g', -1, 64)})
+	}
+	for zone, name := range in.Options.SharedSpaces {
+		values = append(values, [2]string{SharedSpaceKey(zone), name})
 	}
 	for zone, area := range in.Options.HAAreas {
 		raw, err := json.Marshal(area)
