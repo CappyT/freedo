@@ -1259,7 +1259,7 @@ value), and `coverage`, the share of the 5-minute slots of the local day that ha
 sample without the start counter keeps the last one known for up to an hour. A day that began before these fields existed (statistics schema 1) has them all `null`. A day with no sample has no row.
 
 `GET /api/history/advice?days=7|28|90` (28 by default) answers `days`, `from`, `to`, `unit`,
-`fuelPrice`, `currency`, `split` and `model`. `split` covers the local days from `days` - 1 days
+`fuelPrice`, `currency`, `split`, `model` and `advice`. `split` covers the local days from `days` - 1 days
 ago to today. `model` always covers the last 90 days, so a short window still gets it. The route
 writes nothing, and it keeps the model 15 minutes.
 
@@ -1282,6 +1282,31 @@ writes nothing, and it keeps the model 15 minutes.
   its share of the heating fuel over its share of the degree-hours, both over the 90 days and over
   the steps where the zone had a temperature. It is `null` while the model is not usable or the
   zone has no temperature.
+
+- `advice` lists the suggestions of the window, highest fuel first, then those without a figure.
+  Each has `id`, `kind`, `zones`, `hours` (how long the rule matched; for `window` and `away`, the
+  hours the zone heated with the flag set), `fuel` and `cost` (each
+  `{value, low, high}` or `null`), `confidence` (`high`, `medium` or `low`) and `evidence`. `fuel`
+  is the fuel spent for `window`, `vent` and `away`, with the +-25 % error of the split, and the
+  fuel the change would have saved over the window for `setpoint` and `setback`, with two standard
+  errors of the slope and the error of the split. `cost` is `fuel` times `fuelPrice`, `null`
+  without a price. A space that got no heating fuel in the window gets no suggestion: a room
+  heated by its neighbours never asks. Zones with the same `shared_space` form one space, so one
+  `setpoint` or `setback` covers all of them.
+
+  | `kind` | Matches | `evidence` |
+  |---|---|---|
+  | `window` | a zone heated while its window flag was set | none |
+  | `away` | a zone heated while away | none |
+  | `vent` | 2 h or more of demand of 60 % or more, without the window flag, in which the room rises less than 1 C while the humidity falls 3 points or more, at 0.75 points an hour or faster, with fuel attributed to the zone: an open window that no sensor reports, such as a tilted sash. Confidence `medium` | `periods`, the last 5, each `startMs`, `endMs`, `riseC`, `humidityDropPct` |
+  | `setpoint` | a space at `comfortMaxC` or above for 1 h or more. The saving is one degree less over the hours the space held its target within 0.5 C | `targetC`, `thresholdC`, `fromMin` and `toMin`, the minutes of the day of the longest block found on half of the days or more, else of the most frequent 5 minutes. `toMin` is exclusive, up to 1440, and less than `fromMin` for a block across midnight |
+  | `setback` | nights, 23:00 to 06:00, at least 6 h within 2 C of the comfort target of the space: the median of its daily highest targets, so one boost does not move it. The saving assumes the room reaches half of the extra depth on average, 30 to 70 % for the range | `comfortC`, `setbackC` (the median night target), `proposedC` (comfort - 2), `hoursPerDay` |
+  | `unreachable` | a zone that stays more than 0.5 C under its target with demand of 90 % or more, for an hour a day or more. No figure: the radiator, the valve or the flow temperature falls short | `gapC`, the mean shortfall |
+  | `short_cycle` | days with more than 6 burner starts per hour of burning, over 30 burner minutes or more. No figure | `days`, `startsPerBurnerHour`, the worst day |
+
+  `setpoint` and `setback` have no `fuel`, and confidence `low`, while the model is not usable, when
+  the space has no fuel per degree-hour (no temperature, or no heating fuel in the 90 days), or
+  when it never held its target within 0.5 C over the matched hours.
 
 The four read routes answer `409` while the statistics are off, `400` for a date that is not
 `YYYY-MM-DD`, a `from` after `to` or `days` other than 7, 28 and 90, and `404` for a zone that is

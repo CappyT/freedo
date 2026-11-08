@@ -89,8 +89,8 @@ func TestAdviceDegreeHoursSameSteps(t *testing.T) {
 			zones = append(zones, adviceZoneRow{zone: 5, at: at, tempC: new(20.0)})
 		}
 	}
-	own, house := adviceDegreeHours(boiler, adviceByTime(zones), map[int]float64{3: 1, 5: 1})
-	if !nearly(own[3]/house[3], 1) || !nearly(own[5]/house[5], 1) {
+	own, house := adviceDegreeHours(boiler, adviceByTime(zones), map[int]string{3: "zone:3", 5: "zone:5"})
+	if !nearly(own["zone:3"]/house["zone:3"], 1) || !nearly(own["zone:5"]/house["zone:5"], 1) {
 		t.Errorf("own/house = %v / %v, want 1 for both rooms at the house temperature", own, house)
 	}
 }
@@ -176,16 +176,20 @@ func TestHistoryAdviceRoute(t *testing.T) {
 	setCounters(t, d, 10.5, 105)
 	historyStep(t, d, clock, 5*time.Minute)
 	var got struct {
-		Days  int         `json:"days"`
-		From  string      `json:"from"`
-		Split adviceSplit `json:"split"`
-		Model adviceModel `json:"model"`
+		Days   int          `json:"days"`
+		From   string       `json:"from"`
+		Split  adviceSplit  `json:"split"`
+		Model  adviceModel  `json:"model"`
+		Advice []adviceItem `json:"advice"`
 	}
 	if code := getJSON(t, url+"/api/history/advice?days=7", &got); code != http.StatusOK {
 		t.Fatalf("advice: code=%d", code)
 	}
 	if got.Days != 7 || got.From != "2025-12-30" || !nearly(got.Split.Fuel, 0.5) || got.Model.Usable || got.Model.Reason == "" {
 		t.Errorf("advice = %+v, want 7 days from 2025-12-30, 0.5 of fuel and no usable model", got)
+	}
+	if got.Advice == nil {
+		t.Error("advice is absent, want a list")
 	}
 	if !nearly(got.Split.Heating+got.Split.HotWater+got.Split.Unattributed, got.Split.Fuel) {
 		t.Errorf("split parts do not add up: %+v", got.Split)

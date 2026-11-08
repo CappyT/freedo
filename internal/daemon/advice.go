@@ -47,10 +47,15 @@ type adviceBoilerRow struct {
 }
 
 type adviceZoneRow struct {
-	zone      int
-	at        time.Time
-	tempC     *float64
-	demandPct *int
+	zone        int
+	at          time.Time
+	tempC       *float64
+	targetC     *float64
+	humidityPct *float64
+	demandPct   *int
+	on          bool
+	window      bool
+	away        bool
 }
 
 // adviceZoneShare is the part of the heating fuel of one heating zone.
@@ -130,13 +135,14 @@ func adviceByTime(zones []adviceZoneRow) map[int64][]adviceZoneRow {
 }
 
 // adviceFuel is the raw fuel of the steps that ended from since on, split as
-// adviceSplitFuel tells, with the heating fuel of each zone and of each local
-// day.
+// adviceSplitFuel tells, with the heating fuel of each zone, of each local
+// day, and of each zone in each step, keyed by the step's first sample.
 type adviceFuel struct {
 	split    adviceSplit
 	zone     map[int]float64
 	heatDay  map[string]float64
 	totalDay map[string]float64
+	step     map[int64]map[int]float64
 }
 
 // adviceSplitFuel splits the fuel of each step, with the zone state of the
@@ -146,7 +152,7 @@ type adviceFuel struct {
 // is unattributed: a zone without a fresh report may have been heating. A
 // step ends on the local day of its end sample, as in the daily totals.
 func adviceSplitFuel(boiler []adviceBoilerRow, byAt map[int64][]adviceZoneRow, weights map[int]float64, loc *time.Location, since time.Time) adviceFuel {
-	out := adviceFuel{zone: map[int]float64{}, heatDay: map[string]float64{}, totalDay: map[string]float64{}}
+	out := adviceFuel{zone: map[int]float64{}, heatDay: map[string]float64{}, totalDay: map[string]float64{}, step: map[int64]map[int]float64{}}
 	for i := 1; i < len(boiler); i++ {
 		if boiler[i].at.Before(since) {
 			continue
@@ -176,8 +182,11 @@ func adviceSplitFuel(boiler []adviceBoilerRow, byAt map[int64][]adviceZoneRow, w
 		case total > 0:
 			out.split.Heating += df
 			out.heatDay[day] += df
+			at := boiler[i-1].at.Unix()
+			out.step[at] = map[int]float64{}
 			for zone, p := range parts {
 				out.zone[zone] += df * p / total
+				out.step[at][zone] = df * p / total
 			}
 		case !unknown && boiler[i-1].burner != nil && *boiler[i-1].burner:
 			out.split.HotWater += df
@@ -188,13 +197,31 @@ func adviceSplitFuel(boiler []adviceBoilerRow, byAt map[int64][]adviceZoneRow, w
 	return out
 }
 
-// adviceDegreeHours sums, per heating zone, (zone temperature - outdoor) x
-// step hours, and the same sum for the mean of the heating zones over the very
-// steps where that zone had a temperature. Comparing the two over the same
-// steps keeps a zone that often lacks a temperature from looking cheap or
-// costly.
-func adviceDegreeHours(boiler []adviceBoilerRow, byAt map[int64][]adviceZoneRow, weights map[int]float64) (own, house map[int]float64) {
-	own, house = map[int]float64{}, map[int]float64{}
+// adviceSpaces maps each heating zone to its space: the shared_space name for
+// zones that share one air volume, else the zone alone. Heat moves freely
+// within a space, so the advisor reads its heat loss and its savings per space.
+func adviceSpaces(inst *tado.Install) map[int]string {
+	out := map[int]string{}
+	for _, z := range inst.Zones {
+		if z.Kind != tado.ZoneHeating {
+			continue
+		}
+		if name, ok := inst.Options.SharedSpace(z.Number); ok {
+			out[z.Number] = "space:" + name
+		} else {
+			out[z.Number] = "zone:" + strconv.Itoa(z.Number)
+		}
+	}
+	return out
+}
+
+// adviceDegreeHours sums, per space, (space temperature - outdoor) x step
+// hours, the space temperature being the mean of its zones that have one, and
+// the same sum for the mean of all heating zones over the very steps where the
+// space had a temperature. Comparing the two over the same steps keeps a space
+// that often lacks a temperature from looking cheap or costly.
+func adviceDegreeHours(boiler []adviceBoilerRow, byAt map[int64][]adviceZoneRow, spaces map[int]string) (own, house map[string]float64) {
+	own, house = map[string]float64{}, map[string]float64{}
 	for i := 1; i < len(boiler); i++ {
 		prev := boiler[i-1]
 		gap := boiler[i].at.Sub(prev.at)
@@ -203,20 +230,25 @@ func adviceDegreeHours(boiler []adviceBoilerRow, byAt map[int64][]adviceZoneRow,
 		}
 		hours := gap.Hours()
 		var sum float64
-		var with []adviceZoneRow
+		var n int
+		spaceSum, spaceN := map[string]float64{}, map[string]int{}
 		for _, z := range byAt[prev.at.Unix()] {
-			if _, heating := weights[z.zone]; heating && z.tempC != nil {
-				sum += *z.tempC
-				with = append(with, z)
+			space, heating := spaces[z.zone]
+			if !heating || z.tempC == nil {
+				continue
 			}
+			sum += *z.tempC
+			n++
+			spaceSum[space] += *z.tempC
+			spaceN[space]++
 		}
-		if len(with) == 0 {
+		if n == 0 {
 			continue
 		}
-		mean := sum/float64(len(with)) - *prev.outdoorC
-		for _, z := range with {
-			own[z.zone] += (*z.tempC - *prev.outdoorC) * hours
-			house[z.zone] += mean * hours
+		mean := sum/float64(n) - *prev.outdoorC
+		for space, t := range spaceSum {
+			own[space] += (t/float64(spaceN[space]) - *prev.outdoorC) * hours
+			house[space] += mean * hours
 		}
 	}
 	return own, house
@@ -284,16 +316,16 @@ func adviceFit(days []dayTotal, heatShare map[string]float64) adviceModel {
 	return m
 }
 
-// adviceHouse is the house model with the fuel per degree-hour of each heating
-// zone, both from the longest window.
+// adviceHouse is the house model with the fuel per degree-hour of each space,
+// both from the longest window.
 type adviceHouse struct {
-	model adviceModel
-	zoneA map[int]float64
+	model  adviceModel
+	spaceA map[string]float64
 }
 
 // adviceFitHouse fits the house model on days and the samples of the same
-// span. A zone burns a_z = a x (F_z / F) x (DH_house / DH_z): its share of the
-// heating fuel, over its share of the degree-hours.
+// span. A space burns a_s = a x (F_s / F) x (DH_house / DH_s): its share of
+// the heating fuel, over its share of the degree-hours.
 func adviceFitHouse(inst *tado.Install, loc *time.Location, days []dayTotal, boiler []adviceBoilerRow, zones []adviceZoneRow) adviceHouse {
 	weights, _ := adviceWeights(inst)
 	byAt := adviceByTime(zones)
@@ -302,14 +334,19 @@ func adviceFitHouse(inst *tado.Install, loc *time.Location, days []dayTotal, boi
 	for day, all := range fuel.totalDay {
 		share[day] = fuel.heatDay[day] / all
 	}
-	h := adviceHouse{model: adviceFit(days, share), zoneA: map[int]float64{}}
+	h := adviceHouse{model: adviceFit(days, share), spaceA: map[string]float64{}}
 	if !h.model.Usable || fuel.split.Heating <= 0 {
 		return h
 	}
-	own, house := adviceDegreeHours(boiler, byAt, weights)
+	spaces := adviceSpaces(inst)
+	spaceFuel := map[string]float64{}
 	for zone, f := range fuel.zone {
-		if own[zone] > 0 && house[zone] > 0 {
-			h.zoneA[zone] = *h.model.A * f / fuel.split.Heating * house[zone] / own[zone]
+		spaceFuel[spaces[zone]] += f
+	}
+	own, house := adviceDegreeHours(boiler, byAt, spaces)
+	for space, f := range spaceFuel {
+		if own[space] > 0 && house[space] > 0 {
+			h.spaceA[space] = *h.model.A * f / fuel.split.Heating * house[space] / own[space]
 		}
 	}
 	return h
@@ -317,10 +354,12 @@ func adviceFitHouse(inst *tado.Install, loc *time.Location, days []dayTotal, boi
 
 // adviceWindowSplit splits the fuel of the window. The parts follow the raw
 // samples and are scaled to the fuel of the days, which carries the meter
-// factor of each day: a zone's fuel carries the mean factor of the window.
-func adviceWindowSplit(inst *tado.Install, loc *time.Location, days []dayTotal, boiler []adviceBoilerRow, zones []adviceZoneRow, since time.Time, house adviceHouse) adviceSplit {
-	weights, weighted := adviceWeights(inst)
-	fuel := adviceSplitFuel(boiler, adviceByTime(zones), weights, loc, since)
+// factor of each day: a zone's fuel carries the mean factor of the window. It
+// also returns that scale, from raw counter fuel to the fuel of the days. The
+// zones of a shared space carry the fuel per degree-hour of the space.
+func adviceWindowSplit(inst *tado.Install, days []dayTotal, fuel adviceFuel, house adviceHouse) (adviceSplit, float64) {
+	_, weighted := adviceWeights(inst)
+	spaces := adviceSpaces(inst)
 	var dayFuel float64
 	for _, d := range days {
 		dayFuel += d.Fuel
@@ -346,12 +385,12 @@ func adviceWindowSplit(inst *tado.Install, loc *time.Location, days []dayTotal, 
 		if raw.Heating > 0 {
 			s.Share = round3(fuel.zone[z.Number] / raw.Heating)
 		}
-		if a, ok := house.zoneA[z.Number]; ok {
+		if a, ok := house.spaceA[spaces[z.Number]]; ok {
 			s.FuelPerDegreeHour = &a
 		}
 		split.Zones = append(split.Zones, s)
 	}
-	return split
+	return split, scale
 }
 
 // adviceCacheTTL is how long the house model of the longest window serves
@@ -423,25 +462,33 @@ func (d *daemon) getHistoryAdvice(w http.ResponseWriter, r *http.Request) {
 
 	c := &d.adviceCache
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	if c.inst != inst || c.day != today || d.retryNow().Sub(c.at) > adviceCacheTTL {
 		days, boiler, zones, err := adviceRead(ctx, hh.store, loc, weights, dayStart(longest-1), now)
 		if err != nil {
+			c.mu.Unlock()
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 		c.house = adviceFitHouse(inst, loc, days, boiler, zones)
 		c.inst, c.day, c.at = inst, today, d.retryNow()
 	}
+	house := c.house
+	c.mu.Unlock()
 	days, boiler, zones, err := adviceRead(ctx, hh.store, loc, weights, from, now)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	fuel := adviceSplitFuel(boiler, adviceByTime(zones), weights, loc, from)
+	split, scale := adviceWindowSplit(inst, days, fuel, house)
+	in := adviceInput{
+		inst: inst, loc: loc, days: days, zones: zones, fuel: fuel, scale: scale,
+		house: house, comfortMaxC: hh.cfg.comfortMax(), price: hh.cfg.FuelPrice, since: from,
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"days": window, "from": from.Format(time.DateOnly), "to": today,
 		"unit": inst.Options.Fuel(), "fuelPrice": hh.cfg.FuelPrice, "currency": hh.cfg.Currency,
-		"split": adviceWindowSplit(inst, loc, days, boiler, zones, from, c.house), "model": c.house.model,
+		"split": split, "model": house.model, "advice": adviceRules(in),
 	})
 }
 
@@ -471,11 +518,12 @@ func (h *historyStore) adviceBoiler(ctx context.Context, from, to time.Time) ([]
 	return out, rows.Err()
 }
 
-// adviceZones reads the temperature and the demand of one zone from from to
-// to. One query per zone reads a range of the primary key.
+// adviceZones reads the samples of one zone from from to to, oldest first. One
+// query per zone reads a range of the primary key.
 func (h *historyStore) adviceZones(ctx context.Context, zone int, from, to time.Time) ([]adviceZoneRow, error) {
-	rows, err := h.db.QueryContext(ctx, `SELECT zone, at, temp_c, demand_pct FROM zone_sample
-		WHERE zone = ? AND at >= ? AND at <= ?`, zone, from.Unix(), to.Unix())
+	rows, err := h.db.QueryContext(ctx, `SELECT zone, at, temp_c, target_c, humidity_pct, demand_pct,
+			is_on, window_open, away
+		FROM zone_sample WHERE zone = ? AND at >= ? AND at <= ? ORDER BY at`, zone, from.Unix(), to.Unix())
 	if err != nil {
 		return nil, err
 	}
@@ -484,12 +532,12 @@ func (h *historyStore) adviceZones(ctx context.Context, zone int, from, to time.
 	for rows.Next() {
 		var sec int64
 		var r adviceZoneRow
-		var temp sql.NullFloat64
+		var temp, target, humidity sql.NullFloat64
 		var demand sql.NullInt64
-		if err := rows.Scan(&r.zone, &sec, &temp, &demand); err != nil {
+		if err := rows.Scan(&r.zone, &sec, &temp, &target, &humidity, &demand, &r.on, &r.window, &r.away); err != nil {
 			return nil, err
 		}
-		r.at, r.tempC = time.Unix(sec, 0), nullFloat(temp)
+		r.at, r.tempC, r.targetC, r.humidityPct = time.Unix(sec, 0), nullFloat(temp), nullFloat(target), nullFloat(humidity)
 		if demand.Valid {
 			v := int(demand.Int64)
 			r.demandPct = &v
