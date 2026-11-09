@@ -360,3 +360,9 @@ pre-release has its notes here.
   has 14 valid days, the advisor shows none.
 - Dashboard: a setback suggestion for a room that keeps its comfort target at night says so,
   instead of "cools from 19 to 19".
+
+## 0.12.0-beta.10
+
+- Daemon: a restart within 10 minutes, such as the stop of a Home Assistant backup, keeps the
+  controller of each zone the coordinator owns and the last boiler values. The boiler values no
+  longer stay unknown until they change, and the demand no longer drops after the backup.
