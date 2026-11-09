@@ -26,6 +26,9 @@ const (
 	// asks for, and adviceSetbackMinHours the night hours it must cover.
 	adviceSetbackMinC     = 2.0
 	adviceSetbackMinHours = 6.0
+	// adviceSetbackFloorC is the lowest night target the rule proposes: colder
+	// is no comfort for a room people sleep in.
+	adviceSetbackFloorC = 18.0
 	// adviceSetbackDecay is the share of a setback the room reaches on
 	// average over a night, with its range: a room cools toward the new
 	// target, it does not drop at once.
@@ -357,16 +360,16 @@ func minuteOfDay(t time.Time, loc *time.Location) int {
 	return l.Hour()*60 + l.Minute()
 }
 
-// adviceSetpoint: a space at comfortMaxC or above on a quarter of the days of
-// the window or more. A degree less over the hours it held that target saves
-// a_s degree-hours each hour.
+// adviceSetpoint: a space above comfortMaxC on a quarter of the days of the
+// window or more. A degree less over the hours it held that target saves a_s
+// degree-hours each hour. Without a saving to show there is no suggestion.
 func adviceSetpoint(in adviceInput, sp adviceSpace) []adviceItem {
 	var hours, heldHours, maxTarget float64
 	slots := map[int]int{}
 	days := map[string]bool{}
 	adviceSteps(sp, func(at time.Time, rows []adviceZoneRow) {
 		target, ok, held := adviceTarget(rows)
-		if !ok || target < in.comfortMaxC {
+		if !ok || target <= in.comfortMaxC {
 			return
 		}
 		hours += historyEvery.Hours()
@@ -380,13 +383,12 @@ func adviceSetpoint(in adviceInput, sp adviceSpace) []adviceItem {
 	if hours < 1 || float64(len(days)) < adviceSetpointMinDays*float64(max(1, len(in.days))) {
 		return nil
 	}
-	from, to := adviceTypicalBlock(slots, len(days))
-	conf := "medium"
 	fuel := in.saved(sp.key, heldHours, 1, 1)
 	if fuel == nil {
-		conf = "low"
+		return nil
 	}
-	return []adviceItem{in.item("setpoint", sp, sp.zones, hours, fuel, conf, map[string]any{
+	from, to := adviceTypicalBlock(slots, len(days))
+	return []adviceItem{in.item("setpoint", sp, sp.zones, hours, fuel, "medium", map[string]any{
 		"targetC": round3(maxTarget), "thresholdC": in.comfortMaxC, "fromMin": from, "toMin": to,
 	})}
 }
@@ -431,10 +433,11 @@ func adviceTypicalBlock(slots map[int]int, days int) (from, to int) {
 	return bestStart * step, ((bestStart+bestLen-1)%n + 1) * step
 }
 
-// adviceSetback: nights in which a space stays within adviceSetbackMinC of
-// its comfort target for adviceSetbackMinHours or more. A setback to comfort
-// minus adviceSetbackMinC lowers the room by part of the extra depth, as it
-// cools slowly toward the new target.
+// adviceSetback: nights in which a space stays above the proposed target, comfort
+// minus adviceSetbackMinC but not under adviceSetbackFloorC, for
+// adviceSetbackMinHours or more. The setback lowers the room by part of the
+// extra depth, as it cools slowly toward the new target. Without a saving to
+// show there is no suggestion.
 func adviceSetback(in adviceInput, sp adviceSpace) []adviceItem {
 	// The comfort target is the median of the daily highest targets, so one
 	// boost does not move it.
@@ -450,6 +453,7 @@ func adviceSetback(in adviceInput, sp adviceSpace) []adviceItem {
 	}
 	maxima := slices.Sorted(maps.Values(dayMax))
 	comfort := maxima[len(maxima)/2]
+	proposed := max(comfort-adviceSetbackMinC, adviceSetbackFloorC)
 	night := func(m int) bool { return m >= adviceNightFrom || m < adviceNightTo }
 	type nightSum struct {
 		shallow, held int
@@ -462,7 +466,7 @@ func adviceSetback(in adviceInput, sp adviceSpace) []adviceItem {
 			return
 		}
 		target, ok, held := adviceTarget(rows)
-		if !ok || comfort-target >= adviceSetbackMinC {
+		if !ok || target <= proposed {
 			return
 		}
 		// A night belongs to the day it ends on.
@@ -496,14 +500,12 @@ func adviceSetback(in adviceInput, sp adviceSpace) []adviceItem {
 	}
 	slices.Sort(targets)
 	setback := targets[len(targets)/2]
-	proposed := comfort - adviceSetbackMinC
 	extra := setback - proposed
-	conf := "medium"
 	fuel := in.saved(sp.key, held*extra*adviceSetbackDecay, adviceSetbackDecayLow/adviceSetbackDecay, adviceSetbackDecayHigh/adviceSetbackDecay)
 	if fuel == nil {
-		conf = "low"
+		return nil
 	}
-	return []adviceItem{in.item("setback", sp, sp.zones, hours, fuel, conf, map[string]any{
+	return []adviceItem{in.item("setback", sp, sp.zones, hours, fuel, "medium", map[string]any{
 		"comfortC": round3(comfort), "setbackC": round3(setback), "proposedC": round3(proposed),
 		"hoursPerDay": round3(hours / float64(count)),
 	})}

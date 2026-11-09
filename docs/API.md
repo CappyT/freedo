@@ -1234,7 +1234,7 @@ Samples and episodes stay 90 days. Daily totals stay 13 calendar months: the cur
 `GET /api/history` answers `available` (false without a state database), `enabled`, `error` (why
 an enabled history has no file, else `null`), `since` (the oldest sample, RFC3339, or `null`),
 `sizeBytes`, `intervalSec` (300), `sampleDays` (90), `dayMonths` (13), `fuelPrice` (`null` while
-unset), `currency` (`EUR` by default) and `comfortMaxC`, the comfort target from which the
+unset), `currency` (`EUR` by default) and `comfortMaxC`, the comfort target above which the
 consumption advisor suggests a degree less (21 by default).
 
 `PUT /api/history` takes any of `enabled`, `delete`, `fuelPrice`, `currency` and `comfortMaxC`, and
@@ -1299,14 +1299,15 @@ writes nothing, and it keeps the model 15 minutes.
   | `window` | a zone heated for 15 minutes or more while its window flag was set | none |
   | `away` | a zone heated for 15 minutes or more while away | none |
   | `vent` | 2 h or more of demand of 60 % or more, without the window flag, in which the room rises less than 1 C while the humidity falls 3 points or more, at 0.75 points an hour or faster, with fuel attributed to the zone: an open window that no sensor reports, such as a tilted sash. Confidence `medium` | `periods`, the last 5, each `startMs`, `endMs`, `riseC`, `humidityDropPct` |
-  | `setpoint` | a space at `comfortMaxC` or above for 1 h or more, on a quarter of the days of the window or more: a boost on a single day is no habit. The saving is one degree less over the hours the space held its target within 0.5 C | `targetC`, `thresholdC`, `fromMin` and `toMin`, the minutes of the day of the longest block found on half of the days or more, else of the most frequent 5 minutes. `toMin` is exclusive, up to 1440, and less than `fromMin` for a block across midnight |
-  | `setback` | nights, 23:00 to 06:00, at least 6 h within 2 C of the comfort target of the space: the median of its daily highest targets, so one boost does not move it. The saving assumes the room reaches half of the extra depth on average, 30 to 70 % for the range | `comfortC`, `setbackC` (the median night target), `proposedC` (comfort - 2), `hoursPerDay` |
+  | `setpoint` | a space above `comfortMaxC` for 1 h or more, on a quarter of the days of the window or more: a boost on a single day is no habit. The saving is one degree less over the hours the space held its target within 0.5 C | `targetC`, `thresholdC`, `fromMin` and `toMin`, the minutes of the day of the longest block found on half of the days or more, else of the most frequent 5 minutes. `toMin` is exclusive, up to 1440, and less than `fromMin` for a block across midnight |
+  | `setback` | nights, 23:00 to 06:00, at least 6 h above the proposed target: comfort - 2, but never under 18 C, because a colder bedroom is no comfort. The comfort target of the space is the median of its daily highest targets, so one boost does not move it. The saving assumes the room reaches half of the extra depth on average, 30 to 70 % for the range | `comfortC`, `setbackC` (the median night target, equal to `comfortC` when the nights do not drop), `proposedC`, `hoursPerDay` |
   | `unreachable` | a zone that stays more than 0.5 C under its target with demand of 90 % or more, for an hour a day or more. No figure: the radiator, the valve or the flow temperature falls short | `gapC`, the mean shortfall |
   | `short_cycle` | days with more than 6 burner starts per hour of burning, over 30 burner minutes or more. No figure | `days`, `startsPerBurnerHour`, the worst day |
 
-  `setpoint` and `setback` have no `fuel`, and confidence `low`, while the model is not usable, when
-  the space has no fuel per degree-hour (no temperature, or no heating fuel in the 90 days), or
-  when it never held its target within 0.5 C over the matched hours.
+  `setpoint` and `setback` come only with a `fuel` figure, with confidence `medium`. There is none
+  while the model is not usable, when the space has no fuel per degree-hour (no temperature, or no
+  heating fuel in the 90 days), or when it never held its target within 0.5 C over the matched
+  hours: a change without a saving to show is no suggestion.
 
 The four read routes answer `409` while the statistics are off, `400` for a date that is not
 `YYYY-MM-DD`, a `from` after `to` or `days` other than 7, 28 and 90, and `404` for a zone that is

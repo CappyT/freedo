@@ -171,10 +171,16 @@ func TestAdviceRuleSetpoint(t *testing.T) {
 		t.Errorf("setpoint fuel = %+v, confidence %s", s.Fuel, s.Confidence)
 	}
 
-	// Without a usable model the rule still names the block, without a saving.
-	plain := ruleKinds(adviceRules(ruleInput(t, rows, 0.001, nil, 7)), "setpoint")
-	if len(plain) != 1 || plain[0].Fuel != nil || plain[0].Cost != nil || plain[0].Confidence != "low" {
+	// Without a usable model there is no saving to show, so no suggestion.
+	if plain := ruleKinds(adviceRules(ruleInput(t, rows, 0.001, nil, 7)), "setpoint"); len(plain) != 0 {
 		t.Errorf("setpoint without a model = %+v", plain)
+	}
+
+	// A block at the threshold is not above it.
+	in := ruleInput(t, rows, 0.001, map[string]float64{"zone:3": 0.002}, 7)
+	in.comfortMaxC = 21.5
+	if items := ruleKinds(adviceRules(in), "setpoint"); len(items) != 0 {
+		t.Errorf("setpoint at the threshold = %+v", items)
 	}
 
 	// A block on one day of the seven is a boost, not a habit.
@@ -188,12 +194,12 @@ func TestAdviceRuleSetpoint(t *testing.T) {
 			boost = append(boost, ruleRow(3, d, m, target, target, 30))
 		}
 	}
-	if items := ruleKinds(adviceRules(ruleInput(t, boost, 0.001, nil, 7)), "setpoint"); len(items) != 0 {
+	if items := ruleKinds(adviceRules(ruleInput(t, boost, 0.001, map[string]float64{"zone:3": 0.002}, 7)), "setpoint"); len(items) != 0 {
 		t.Errorf("setpoint for a single boost = %+v", items)
 	}
 
 	// A threshold above the block: nothing to suggest.
-	in := ruleInput(t, rows, 0.001, nil, 7)
+	in = ruleInput(t, rows, 0.001, map[string]float64{"zone:3": 0.002}, 7)
 	in.comfortMaxC = 22
 	if items := ruleKinds(adviceRules(in), "setpoint"); len(items) != 0 {
 		t.Errorf("setpoint above the block = %+v", items)
@@ -237,8 +243,56 @@ func TestAdviceRuleSetback(t *testing.T) {
 	}
 
 	// A deep setback already: nothing to suggest.
-	if items := ruleKinds(adviceRules(ruleInput(t, comfortDays(3, 7, 18), 0.001, nil, 7)), "setback"); len(items) != 0 {
+	if items := ruleKinds(adviceRules(ruleInput(t, comfortDays(3, 7, 18), 0.001, map[string]float64{"zone:3": 0.002}, 7)), "setback"); len(items) != 0 {
 		t.Errorf("setback with a deep night = %+v", items)
+	}
+
+	// Without a usable model there is no saving to show, so no suggestion.
+	if items := ruleKinds(adviceRules(ruleInput(t, rows, 0.001, nil, 7)), "setback"); len(items) != 0 {
+		t.Errorf("setback without a model = %+v", items)
+	}
+}
+
+// flatDays is zone at target all day and night, held, for days days.
+func flatDays(zone, days int, target float64) []adviceZoneRow {
+	var rows []adviceZoneRow
+	for d := range days {
+		for m := 0; m < 24*60; m += 5 {
+			rows = append(rows, ruleRow(zone, d, m, target, target, 30))
+		}
+	}
+	return rows
+}
+
+func TestAdviceRuleSetbackFloor(t *testing.T) {
+	model := map[string]float64{"zone:10": 0.002}
+	// A bedroom at 19 C day and night: comfort - 2 is 17, the floor makes it 18.
+	items := ruleKinds(adviceRules(ruleInput(t, flatDays(10, 7, 19), 0.001, model, 7)), "setback")
+	if len(items) != 1 {
+		t.Fatalf("setback of a flat 19 C room = %+v", items)
+	}
+	if ev := items[0].Evidence; ev["comfortC"] != 19.0 || ev["setbackC"] != 19.0 || ev["proposedC"] != 18.0 {
+		t.Errorf("setback evidence = %v", ev)
+	}
+	// One degree of extra depth, half reached on average.
+	if f := items[0].Fuel; f == nil || !nearly(f.Value, round3(0.002*items[0].Hours*1*0.5)) {
+		t.Errorf("setback fuel = %+v over %v h", items[0].Fuel, items[0].Hours)
+	}
+
+	// A night at the floor already: nothing deeper to propose.
+	rows := flatDays(10, 7, 18)
+	for i := range rows {
+		if m := minuteOfDay(rows[i].at, time.UTC); m >= 10*60 && m < 14*60 {
+			rows[i].targetC, rows[i].tempC = new(19.5), new(19.5)
+		}
+	}
+	if items := ruleKinds(adviceRules(ruleInput(t, rows, 0.001, model, 7)), "setback"); len(items) != 0 {
+		t.Errorf("setback with a night at the floor = %+v", items)
+	}
+
+	// A room colder than the floor all day gets no proposal.
+	if items := ruleKinds(adviceRules(ruleInput(t, flatDays(10, 7, 17), 0.001, model, 7)), "setback"); len(items) != 0 {
+		t.Errorf("setback of a room under the floor = %+v", items)
 	}
 }
 
