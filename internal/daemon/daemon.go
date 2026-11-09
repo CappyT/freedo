@@ -182,6 +182,9 @@ type daemon struct {
 	// the observe registrations last stored.
 	zoneOwners   map[int]*zoneOwner
 	zoneObsSaved []storedZoneObserver
+	// warmSaved is the time of the last save of the warm state, see
+	// warm_state.go. It belongs to the engine goroutine.
+	warmSaved time.Time
 	// outdoor is the last outdoor temperature pushed, flowChanged when a curve
 	// or the adaptation last changed each circuit's flow limit, flowEpoch the
 	// engine start, flowAdapt the adaptation of each circuit and flowTrimmed
@@ -469,6 +472,7 @@ func (d *daemon) run(ctx context.Context) {
 			d.tickCounters(d.emu)
 			d.tickHomeState(d.emu)
 			d.tickZoneOwners(d.emu)
+			d.tickWarmState(d.emu)
 			d.tickWindows(d.emu)
 			d.tickPairWindow(d.emu)
 			d.tickEnergy()
@@ -2799,6 +2803,9 @@ func (d *daemon) restoreHomeState(e *tado.EmuState) error {
 	if err := d.restoreZoneObservers(e); err != nil {
 		return err
 	}
+	if err := d.restoreWarmState(e); err != nil {
+		return err
+	}
 	blocks, stored, err := d.state.ProgramBlocks(ctx)
 	if err != nil {
 		return err
@@ -4723,8 +4730,14 @@ flags:
 	if err := d.saveDesiredStateBefore(time.Now().Add(stateSaveBudget)); err != nil {
 		fmt.Fprintf(os.Stderr, "WARNING: persist desired state on shutdown: %v\n", err)
 	}
-	if err := d.saveEnergyBefore(time.Now().Add(stateSaveBudget)); err != nil {
+	// The energy and the warm state share one budget, so the sum of the waits
+	// stays under shutdownBudget.
+	saveBy := time.Now().Add(stateSaveBudget)
+	if err := d.saveEnergyBefore(saveBy); err != nil {
 		fmt.Fprintf(os.Stderr, "WARNING: persist boiler energy on shutdown: %v\n", err)
+	}
+	if err := d.saveWarmStateBefore(saveBy); err != nil {
+		fmt.Fprintf(os.Stderr, "WARNING: persist the warm state on shutdown: %v\n", err)
 	}
 	if err := d.closeHistoryBefore(time.Now().Add(stateCloseBudget)); err != nil {
 		fmt.Fprintf(os.Stderr, "WARNING: close the statistics on shutdown: %v\n", err)

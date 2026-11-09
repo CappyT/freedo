@@ -21,8 +21,10 @@ package daemon
 // of the measuring device, so the zone keeps regulating on the valve sensor as
 // it does with the device as owner. Without a target (an open window, an off
 // block, away without a temperature) the demand is 0 and the integrator
-// restarts. The state is not stored: a restart starts the controller from
-// zero, as a valve does after each read of the zone document.
+// restarts. A restart of at most warmStateMaxAge restores the controller from
+// the state saved by warm_state.go, so the short stop of a backup does not
+// reset it; after a longer stop it starts from zero, as a valve does after
+// each read of the zone document.
 //
 // The observe registrations are stored (meta zone_observers): after a restart
 // the wall thermostat keeps its registration and ignores a notification under

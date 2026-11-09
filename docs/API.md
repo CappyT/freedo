@@ -624,8 +624,9 @@ With the daemon as owner:
   Kd*(T-Tref)/2000` in centi-degrees with the gains of `pid`, once a minute, on the external
   room temperature while it is fresh, else on the calibrated temperature of the measuring
   device. Without a target (an open window, an off block, away with no temperature) the demand
-  is 0 and the integrator restarts. The state is not stored: a restart starts the controller
-  from zero, as a valve does after each read of the zone document. A change of the source
+  is 0 and the integrator restarts. The daemon stores the controller state once a minute and at shutdown: a restart within 10
+  minutes restores it, so the stop of a backup does not reset it. After a longer stop the
+  controller starts from zero, as a valve does after each read of the zone document. A change of the source
   (external reading to device or back) restarts it too: the gap between the two sensors is no
   room change.
 - The zone elects no demand reporter: `DemandReporter` names none while the coordinator owns
@@ -957,6 +958,13 @@ thermostat or from a `d/config` document of the thermostat, and stores it.
 - The project does not distribute images. No transfer ran on air.
 
 ## Boiler
+
+The wall thermostat sends each boiler resource as delta reports: a value comes again only when
+it changes, or in a full report, which comes every 1.5 to 3.5 h on the captures. The daemon
+stores the last raw value of each boiler tag once a minute and at shutdown, and a restart within
+10 minutes restores the tags no report has set yet. A value that changed during the stop stays
+at its stored value until the next change or the next full report. The energy estimate does not
+count the stop.
 
 ### Hot water
 

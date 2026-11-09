@@ -806,6 +806,24 @@ func (s *stateStore) SetZoneObservers(ctx context.Context, stored []storedZoneOb
 	return err
 }
 
+// WarmState returns the state a short restart keeps, see warm_state.go. The
+// zero value means none is stored.
+func (s *stateStore) WarmState(ctx context.Context) (storedWarmState, error) {
+	var stored storedWarmState
+	err := s.metaJSON(ctx, "warm_state", &stored)
+	return stored, err
+}
+
+// SetWarmState replaces the stored warm state.
+func (s *stateStore) SetWarmState(ctx context.Context, stored storedWarmState) error {
+	raw, err := json.Marshal(stored)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `INSERT OR REPLACE INTO meta (key, value) VALUES ('warm_state', ?)`, string(raw))
+	return err
+}
+
 // DeleteThermalModel forgets the heat-up model of zone.
 func (s *stateStore) DeleteThermalModel(ctx context.Context, zone int) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM meta WHERE key = ?`, thermalModelPrefix+strconv.Itoa(zone))

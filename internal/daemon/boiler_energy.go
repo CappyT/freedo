@@ -65,6 +65,9 @@ type energyMeter struct {
 	// integrated, savedAt the time of the last write attempt.
 	prev           tado.BoilerSample
 	updated, saved time.Time
+	// floor is the start of the daemon when it restored a boiler sample from
+	// before the stop: the stretch before it is downtime and adds no energy.
+	floor time.Time
 	// gasReadings holds the meter readings the user took, oldest first. See
 	// boiler_gas_meter.go.
 	gasReadings []gasReading
@@ -114,7 +117,11 @@ func (m *energyMeter) observe(s tado.BoilerSample, o tado.Options) {
 	if s.At.IsZero() || s.At.Before(m.prev.At) {
 		return
 	}
-	if dt := s.At.Sub(m.prev.At); !m.prev.At.IsZero() && dt > 0 && dt <= energyHold {
+	from := m.prev.At
+	if from.Before(m.floor) {
+		from = m.floor
+	}
+	if dt := s.At.Sub(from); !m.prev.At.IsZero() && dt > 0 && dt <= energyHold {
 		if kw, why := boilerKW(o, m.prev); why == "" {
 			m.totalKWh += kw * dt.Hours()
 			m.updated = s.At
