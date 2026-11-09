@@ -58,8 +58,15 @@ const TEXT: Record<AdviceKind, { title: Key; body: Key }> = {
 	short_cycle: { title: 'advice.short_cycle.title', body: 'advice.short_cycle.body' }
 };
 
-/** The title key and the body key of a kind. */
-export const adviceKeys = (kind: AdviceKind) => TEXT[kind];
+/** The title key and the body key of an advice. A setback whose nights do not drop at all gets its own body. */
+export function adviceKeys(a: Pick<Advice, 'kind' | 'evidence'>): { title: Key; body: Key } {
+	const keys = TEXT[a.kind];
+	const { comfortC, setbackC } = a.evidence;
+	if (a.kind === 'setback' && comfortC !== undefined && setbackC !== undefined && setbackC >= comfortC) {
+		return { title: keys.title, body: 'advice.setback.flatBody' };
+	}
+	return keys;
+}
 
 /** What the texts need from the page: the language and the room names. */
 export interface TextContext {

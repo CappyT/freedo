@@ -67,8 +67,15 @@ describe('adviceLink', () => {
 describe('the texts of an advice', () => {
 	it('have a title and a body key for every kind', () => {
 		for (const kind of ['window', 'vent', 'away', 'setpoint', 'setback', 'unreachable', 'short_cycle'] as const) {
-			expect(adviceKeys(kind)).toEqual({ title: `advice.${kind}.title`, body: `advice.${kind}.body` });
+			expect(adviceKeys(advice({ kind }))).toEqual({ title: `advice.${kind}.title`, body: `advice.${kind}.body` });
 		}
+	});
+
+	it('say that a setback stays flat when its nights do not drop', () => {
+		const flat = advice({ kind: 'setback', evidence: { comfortC: 19, setbackC: 19, proposedC: 18, hoursPerDay: 7 } });
+		expect(adviceKeys(flat)).toEqual({ title: 'advice.setback.title', body: 'advice.setback.flatBody' });
+		const drops = advice({ kind: 'setback', evidence: { comfortC: 20, setbackC: 18.5, proposedC: 18, hoursPerDay: 7 } });
+		expect(adviceKeys(drops).body).toBe('advice.setback.body');
 	});
 
 	it('join the rooms by name', () => {

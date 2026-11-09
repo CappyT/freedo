@@ -320,7 +320,7 @@
 				{:else}
 					<ul class="list" class:stale={adviceLoading} data-testid="advice-list">
 						{#each advice.advice as a (a.id)}
-							{@const keys = adviceKeys(a.kind)}
+							{@const keys = adviceKeys(a)}
 							{@const fuelText = fuelRange(a)}
 							{@const costText = costRange(a)}
 							<li>
