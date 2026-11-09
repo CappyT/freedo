@@ -350,3 +350,13 @@ pre-release has its notes here.
 - Daemon: the suggestion of a degree less needs a comfort block on a quarter of the days of the
   window or more, so a one-off boost no longer makes one. Heating with a window open or while away
   makes a suggestion from 15 minutes on.
+
+## 0.12.0-beta.9
+
+- Daemon: the setback suggestion never proposes a night under 18 C. A night already at that target
+  or lower makes no suggestion.
+- Daemon: the suggestion of a degree less needs a comfort block above the comfort limit, not at it.
+- Daemon: a setpoint or setback suggestion comes only with the fuel it would save. Until the model
+  has 14 valid days, the advisor shows none.
+- Dashboard: a setback suggestion for a room that keeps its comfort target at night says so,
+  instead of "cools from 19 to 19".
