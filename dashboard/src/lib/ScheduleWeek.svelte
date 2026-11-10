@@ -66,7 +66,8 @@
 		<div class="day">
 			{#if only === undefined}<span class="name">{label}</span>{/if}
 			<div class="bar" role="img" aria-label={summary(day, compact ? label : fmt.day(day, 'long'))} title={summary(day, compact ? label : fmt.day(day, 'long'))}>
-				{#each week[day] as segment (segment.from)}
+				<!-- Two blocks of a draft can share a time, so the index is the key. -->
+				{#each week[day] as segment, i (i)}
 					<span
 						class="segment {side(segment, day) ?? ''}"
 						class:off={!segment.enabled}
