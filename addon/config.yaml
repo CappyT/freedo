@@ -2,8 +2,8 @@ name: freedo
 version: "0.11.0"
 slug: freedo
 description: Local coordinator for tado 868 MHz heating devices
-url: https://github.com/CappyT/freedo
-image: ghcr.io/cappyt/freedo-addon
+url: https://github.com/XrobproX/freedo
+image: ghcr.io/xrobprox/freedo-addon
 arch:
   - aarch64
   - amd64

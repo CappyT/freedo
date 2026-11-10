@@ -2,8 +2,8 @@ name: freedo beta
 version: "0.12.0-beta.3"
 slug: freedo_beta
 description: Pre-releases of the local coordinator for tado 868 MHz heating devices
-url: https://github.com/CappyT/freedo
-image: ghcr.io/cappyt/freedo-addon
+url: https://github.com/XrobproX/freedo
+image: ghcr.io/xrobprox/freedo-addon
 arch:
   - aarch64
   - amd64
