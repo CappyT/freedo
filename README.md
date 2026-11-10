@@ -157,7 +157,7 @@ models come from the tado article
 |---|---|---|---|---|
 | V1 | 2012-2014 | Box BX02, temperature sensor TS02 | Gateway GW01 | Not supported: a different system. |
 | V2 | 2014-2016 | Smart Thermostat RU01, extension kit BU01 | Bridge GW02 | Not tested. Probably the same radio protocol, see [#25](https://github.com/CappyT/freedo/issues/25). |
-| V3 | 2016-2018 | Smart Thermostat RU01, Smart Radiator Thermostat VA01 | Internet Bridge IB01 | Not tested. Probably works: it uses the same bridge as V3+. |
+| V3 | 2016-2018 | Smart Thermostat RU01, Smart Radiator Thermostat VA01 | Internet Bridge IB01 | VA01 tested with firmware 54.20: pairing and setpoints, including `2.05` responses. Other V3 devices not tested. |
 | V3+ | since 2018 | Wired Smart Thermostat RU02, Smart Radiator Thermostat VA02, Wireless Receiver BR02/BP02, Wireless Temperature Sensor SU02 | Internet Bridge IB01 | Valves and wired thermostat supported. Wireless receiver and sensor not supported. |
 | tado X | since 2024 | RU04, RU05, VA04, SU04, SU05 and others | Bridge X IB02 | Not supported: Thread and Matter use a different radio. |
 
