@@ -225,6 +225,10 @@ type daemon struct {
 	// installMu serialises the management mutations: one transaction and one
 	// engine reload at a time, so two HTTP writers cannot interleave them.
 	installMu sync.Mutex
+	// maintenanceMu serialises operations that restart the process or replace
+	// persistent state.
+	maintenanceMu sync.Mutex
+	bridgePort    string
 	// fw holds the firmware transfer of each device, running or last
 	// finished, keyed by wire EUI hex; see fw.go.
 	fwMu        sync.Mutex
@@ -1976,6 +1980,8 @@ func (d *daemon) mux() *http.ServeMux {
 	m.HandleFunc("GET /api/pair/window", d.getPairWindow)
 	m.HandleFunc("POST /api/pair/window", d.postPairWindow)
 	m.HandleFunc("POST /api/radio/calibrate", d.postRadioCalibrate)
+	m.HandleFunc("GET /api/bridge/firmware", d.getBridgeFirmware)
+	m.HandleFunc("POST /api/bridge/firmware/update", d.postBridgeFirmwareUpdate)
 	// Active-GET returns the correlated response, or {"queued":true}.
 	m.HandleFunc("GET /api/nodes/{id}/fw", d.getNodeFw)
 	m.HandleFunc("POST /api/nodes/{id}/fw", d.postNodeFw)
@@ -4378,6 +4384,9 @@ flags:
 	if *replay != "" && !given["port"] {
 		*port = ""
 	}
+	if *replay == "" {
+		applyPendingBridgeFirmware(dbPath, *port, runEsptool)
+	}
 
 	imported, err := applyStagedImport(dbPath, time.Now())
 	if err != nil {
@@ -4486,6 +4495,7 @@ flags:
 	}
 
 	d := newDaemon(in, emu, link, !*doTx, mode)
+	d.bridgePort = *port
 	d.debugAPI = *debugAPI
 	if err := d.attachState(store); err != nil {
 		closeStore(store)

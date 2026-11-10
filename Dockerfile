@@ -44,7 +44,10 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldfl
 # this image. No io.hass.arch: one manifest serves both
 # platforms and the Supervisor takes the platform from the image itself.
 FROM alpine:3.24 AS addon
-RUN apk add --no-cache jq curl
+RUN apk add --no-cache jq curl python3 py3-pip \
+    && python3 -m venv /opt/esptool \
+    && /opt/esptool/bin/pip install --no-cache-dir esptool==5.1.0
+ENV PATH="/opt/esptool/bin:${PATH}"
 COPY --from=build /out/freedo /usr/local/bin/freedo
 COPY --chmod=755 addon/run.sh /run.sh
 ARG VERSION=dev

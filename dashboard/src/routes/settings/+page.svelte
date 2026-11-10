@@ -2,6 +2,7 @@
 	import { resolve } from '$app/paths';
 	import icon from '../../../../assets/brand/svg/icon.svg?inline';
 	import { act } from '#lib/actions.ts';
+	import { ApiError } from '#lib/api.ts';
 	import { auth } from '#lib/auth.svelte.ts';
 	import { exportState, importState, refusal, uptimeOf, waitForRestart } from '#lib/backup.ts';
 	import ConfirmDialog from '#lib/ConfirmDialog.svelte';
@@ -13,7 +14,7 @@
 	import { api } from '#lib/session.ts';
 	import { LOCALES, prefs, type LocalePref, type Theme } from '#lib/prefs.svelte.ts';
 	import { toasts } from '#lib/toast.svelte.ts';
-	import type { HistoryInfo } from '#lib/types.ts';
+	import type { BridgeFirmware, HistoryInfo } from '#lib/types.ts';
 
 	const health = $derived(data.health);
 	const link = $derived(serialLink(health));
@@ -69,8 +70,75 @@
 		}
 	}
 
+	let bridgeFirmware = $state<BridgeFirmware | null>(null);
+	let bridgeFirmwareBusy = $state(false);
+	let bridgeFirmwareError = $state<string | null>(null);
+	let bridgeFirmwareAdminOnly = $state(false);
+	let bridgeFirmwareDialog: ConfirmDialog | undefined = $state();
+
+	async function loadBridgeFirmware() {
+		try {
+			bridgeFirmware = await api.bridgeFirmware();
+			bridgeFirmwareError = null;
+			bridgeFirmwareAdminOnly = false;
+		} catch (error) {
+			if (error instanceof ApiError && error.status === 403) {
+				bridgeFirmwareAdminOnly = true;
+				bridgeFirmware = null;
+				return;
+			}
+			bridgeFirmwareError = error instanceof Error ? error.message : String(error);
+		}
+	}
+
+	async function flashBridgeFirmware() {
+		bridgeFirmwareBusy = true;
+		bridgeFirmwareError = null;
+		const before = data.health?.uptimeSec ?? 0;
+		try {
+			const update = await api.updateBridgeFirmware();
+			bridgeFirmware = bridgeFirmware
+				? { ...bridgeFirmware, ...update }
+				: { supported: true, reason: '', ...update };
+			data.restarting = true;
+			const back = await waitForRestart(async () => uptimeOf(await api.health()), {
+				before,
+				limitMs: 6 * 60_000,
+				stepMs: 2000
+			});
+			if (!back) throw new Error(t('settings.firmware.timeout'));
+			await data.refresh();
+			await loadBridgeFirmware();
+			if (bridgeFirmware?.state === 'succeeded') {
+				toasts.push('ok', t('settings.firmware.done', { version: bridgeFirmware.version ?? update.version }));
+			} else {
+				bridgeFirmwareError = bridgeFirmware?.error ?? t('settings.firmware.failed');
+			}
+		} catch (error) {
+			bridgeFirmwareError = error instanceof Error ? error.message : String(error);
+		} finally {
+			data.restarting = false;
+			bridgeFirmwareBusy = false;
+			void data.refresh();
+		}
+	}
+
+	function bridgeFirmwareUnavailable(reason: string): string {
+		switch (reason) {
+			case 'no_live_bridge':
+				return t('settings.firmware.noLiveBridge');
+			case 'no_state_database':
+				return t('settings.firmware.noDatabase');
+			case 'esptool_missing':
+				return t('settings.firmware.noEsptool');
+			default:
+				return t('settings.firmware.unavailable');
+		}
+	}
+
 	$effect(() => {
 		void loadHistory();
+		void loadBridgeFirmware();
 	});
 
 	async function setHistory(patch: { enabled: boolean; delete?: boolean }, done: string) {
@@ -404,6 +472,49 @@
 			{/if}
 		</section>
 
+		<section class="section" aria-labelledby="bridge-firmware-title" data-testid="bridge-firmware">
+			<div class="section-head"><h2 id="bridge-firmware-title">{t('settings.firmware.title')}</h2></div>
+			{#if bridgeFirmwareAdminOnly}
+				<p class="notice tone-warning" role="status">{t('settings.firmware.adminOnly')}</p>
+			{:else if bridgeFirmwareError}
+				<p class="notice tone-fault" role="alert">{bridgeFirmwareError}</p>
+			{/if}
+			{#if bridgeFirmware}
+				{#if bridgeFirmware.supported}
+					<p class="note">{t('settings.firmware.description')}</p>
+					{#if bridgeFirmware.state === 'succeeded'}
+						<p class="notice tone-idle" role="status">{t('settings.firmware.installed', { version: bridgeFirmware.version ?? '' })}</p>
+					{:else if bridgeFirmware.state === 'pending' || bridgeFirmware.state === 'flashing'}
+						<p class="notice tone-warning" role="status">{t('settings.firmware.progress')}</p>
+					{:else if bridgeFirmware.state === 'failed'}
+						<p class="notice tone-fault" role="alert">{bridgeFirmware.error ?? t('settings.firmware.failed')}</p>
+					{/if}
+					<ul class="list">
+						<li>
+							<button
+								class="list-row"
+								type="button"
+								data-testid="bridge-firmware-update"
+								disabled={bridgeFirmwareBusy || bridgeFirmware.state === 'pending' || bridgeFirmware.state === 'flashing'}
+								onclick={() => bridgeFirmwareDialog?.show()}
+							>
+								<span class="disc"><Icon name="refresh" size={18} /></span>
+								<span class="list-main">
+									<span class="list-label">{t('settings.firmware.update')}</span>
+									<span class="list-sub">{t('settings.firmware.update.sub')}</span>
+								</span>
+								{@render chevron()}
+							</button>
+						</li>
+					</ul>
+				{:else}
+					<p class="notice tone-off" role="status">{bridgeFirmwareUnavailable(bridgeFirmware.reason)}</p>
+				{/if}
+			{:else if !bridgeFirmwareAdminOnly && !bridgeFirmwareError}
+				<p class="muted">{t('state.loading')}</p>
+			{/if}
+		</section>
+
 		<section class="section" aria-labelledby="backup-title" data-testid="backup">
 			<div class="section-head"><h2 id="backup-title">{t('settings.backup')}</h2></div>
 			{#if backupError}
@@ -526,6 +637,15 @@
 	]}
 	confirm={t('settings.backup.restore')}
 	onconfirm={() => void restoreBackup()}
+/>
+
+<ConfirmDialog
+	bind:this={bridgeFirmwareDialog}
+	title={t('settings.firmware.confirm.title')}
+	body={t('settings.firmware.confirm.body')}
+	items={[t('settings.firmware.confirm.stop'), t('settings.firmware.confirm.restart')]}
+	confirm={t('settings.firmware.update')}
+	onconfirm={() => void flashBridgeFirmware()}
 />
 
 <style>

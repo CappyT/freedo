@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ApiError, recalibrate } from '../src/lib/api.ts';
+import { ApiError, createClient, recalibrate } from '../src/lib/api.ts';
 import { exportState, fileName, importState, refusal, waitForRestart } from '../src/lib/backup.ts';
 import adminRoutes from '../../internal/daemon/ingress_admin_routes.json';
 import routes from '../../internal/daemon/ingress_routes.json';
@@ -82,8 +82,17 @@ describe('the backup calls', () => {
 		await exportState({ base: 'http://daemon/', fetch: fetchStub });
 		await importState(new Blob(['x']), { base: 'http://daemon/', fetch: fetchStub });
 		await recalibrate({ base: 'http://daemon/', fetch: fetchStub });
+		const client = createClient({ base: 'http://daemon/', fetch: fetchStub });
+		await client.bridgeFirmware();
+		await client.updateBridgeFirmware();
 		expect(seen.sort()).toEqual([...adminRoutes].sort());
-		expect(adminRoutes).toEqual(['GET /api/state/export', 'POST /api/state/import', 'POST /api/radio/calibrate']);
+		expect(adminRoutes).toEqual([
+			'GET /api/bridge/firmware',
+			'POST /api/bridge/firmware/update',
+			'GET /api/state/export',
+			'POST /api/state/import',
+			'POST /api/radio/calibrate'
+		]);
 		expect(routes.filter((r) => adminRoutes.includes(r) || r.includes('/api/state'))).toEqual([]);
 	});
 

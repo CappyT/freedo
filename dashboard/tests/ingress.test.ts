@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { createClient, type Client } from '../src/lib/api.ts';
 import routes from '../../internal/daemon/ingress_routes.json';
+import adminRoutes from '../../internal/daemon/ingress_admin_routes.json';
 
-// internal/daemon/ingress_routes.json lists the calls that the daemon accepts without a token
-// from the Home Assistant gateway. The client must call nothing else, and the list must hold
-// nothing that the client does not call.
+// The two ingress route files list the calls that the daemon accepts without an API token,
+// respectively for every Home Assistant user and for administrators. The client calls nothing
+// else, and the route lists hold nothing that the client does not call.
 
 type Call = (client: Client) => Promise<unknown>;
 
@@ -42,6 +43,8 @@ const calls: Record<string, Call> = {
 	childLock: (c) => c.childLock('0201', true),
 	identify: (c) => c.identify('0201'),
 	reboot: (c) => c.reboot('0201'),
+	bridgeFirmware: (c) => c.bridgeFirmware(),
+	updateBridgeFirmware: (c) => c.updateBridgeFirmware(),
 	installInfo: (c) => c.installInfo(),
 	setTimezone: (c) => c.setTimezone('Europe/Rome'),
 	setBoiler: (c) => c.setBoiler({ flow_limit_c: 56 }),
@@ -138,11 +141,12 @@ const ALLOWED = [
 ];
 
 // What stays behind the token under ingress, whatever the client does: the identity of the network,
-// the network key, a pairing with a key of the caller, calibration, firmware, the debug routes, and
-// the export and the import of the state, and the receiver calibration. The daemon serves those three
-// to a Home Assistant administrator through ingress (internal/daemon/ingress_admin_routes.json), and
-// never as plain ingress pairs.
-const TOKEN_ONLY = [
+// the network key, a pairing with a key of the caller, device firmware, the debug routes, and the
+// administrator-only routes in ingress_admin_routes.json. Those admin routes are not plain ingress
+// pairs.
+const RESTRICTED = [
+	'GET /api/bridge/firmware',
+	'POST /api/bridge/firmware/update',
 	'PATCH /api/install',
 	'PUT /api/install/network_key',
 	'PATCH /api/install/devices/0201',
@@ -189,8 +193,9 @@ describe('the routes that need no token under ingress', () => {
 			for (const pair of seen) {
 				const [method, path] = pair.split(' ') as [string, string];
 				expect(
-					routes.some((r) => matches(r, method, path)),
-					`${name} calls ${pair}, which is not in internal/daemon/ingress_routes.json`
+					routes.some((r) => matches(r, method, path)) ||
+						adminRoutes.some((r) => matches(r, method, path)),
+					`${name} calls ${pair}, which is not in the ingress route lists`
 				).toBe(true);
 			}
 		}
@@ -200,8 +205,8 @@ describe('the routes that need no token under ingress', () => {
 		expect([...routes].sort()).toEqual([...ALLOWED].sort());
 	});
 
-	it('leave the identity, the network key, calibration, firmware and debug behind the token', () => {
-		for (const pair of TOKEN_ONLY) {
+	it('keep sensitive routes out of plain ingress access', () => {
+		for (const pair of RESTRICTED) {
 			const [method, path] = pair.split(' ') as [string, string];
 			expect(routes.filter((r) => matches(r, method, path)), pair).toEqual([]);
 		}

@@ -97,8 +97,11 @@ One route returns the network key: `GET /api/state/export`, the whole database. 
 `POST /api/state/import` replaces the network key, the identity and the installation. Every Home
 Assistant user can reach ingress, so these two routes are a class of their own, listed in
 `internal/daemon/ingress_admin_routes.json`. The same class holds `POST /api/radio/calibrate`, which
-forgets the receiver calibration and moves the radio register. The daemon serves them without the token only when all of
-this holds:
+forgets the receiver calibration and moves the radio register, and the bridge firmware status/update
+routes. The update route downloads and flashes the latest stable ESP32 image, pausing the radio and
+restarting the daemon. It verifies the SHA-256 listed beside the image in the same GitHub release;
+this detects corruption but is not an independent signature. The daemon serves these routes without
+the token only when all of this holds:
 
 - the TCP connection comes from the gateway address `172.30.32.2`;
 - the request carries `X-Remote-User-Id`. The Supervisor sets this header to the user of the ingress
@@ -114,7 +117,8 @@ other address the header has no effect and the routes need the token. A request 
 as before.
 
 So under the add-on a Home Assistant administrator can read the network key through a backup and can
-replace the whole state, with no token. A user who is not an administrator cannot.
+replace the whole state or flash bridge firmware, with no token. A user who is not an administrator
+cannot.
 
 To ask the question, both add-ons declare `homeassistant_api: true`. The daemon opens the WebSocket
 proxy of the Supervisor, `ws://supervisor/core/websocket`, signs in with `SUPERVISOR_TOKEN` and sends

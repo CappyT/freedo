@@ -44,6 +44,16 @@ export interface Calibration {
 	want?: number;
 }
 
+export interface BridgeFirmware {
+	supported: boolean;
+	reason: string;
+	state: 'idle' | 'pending' | 'flashing' | 'succeeded' | 'failed';
+	version?: string;
+	sha256?: string;
+	error?: string;
+	updatedAt?: string;
+}
+
 export interface Health {
 	ok: boolean;
 	/** The version of the daemon, "dev" on a build with no release stamp. */

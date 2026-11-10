@@ -1,5 +1,6 @@
 import type {
 	Boiler,
+	BridgeFirmware,
 	Calibration,
 	BoilerPatch,
 	Circuit,
@@ -206,6 +207,9 @@ export function createClient(options: ClientOptions = {}) {
 		identify: (device: string) => request<Command>('POST', 'nodes/' + encodeURIComponent(device) + '/identify', {}),
 		/** Queues the restart of a valve or of the wall thermostat. The device keeps its key and joins again. */
 		reboot: (device: string) => request<Command>('POST', 'nodes/' + encodeURIComponent(device) + '/reboot', {}),
+		bridgeFirmware: () => request<BridgeFirmware>('GET', 'bridge/firmware'),
+		updateBridgeFirmware: () =>
+			request<{ state: 'pending'; version: string; sha256: string }>('POST', 'bridge/firmware/update', { confirm: true }),
 
 		// The installation and the pairing.
 		installInfo: () => request<InstallInfo>('GET', 'install'),

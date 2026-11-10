@@ -229,6 +229,12 @@ func (d *daemon) postStateImport(w http.ResponseWriter, r *http.Request) {
 			"the import replaces the installation, the network key, the counters and the programs: add ?confirm=true")
 		return
 	}
+	d.maintenanceMu.Lock()
+	defer d.maintenanceMu.Unlock()
+	if len(d.restart) > 0 {
+		writeErr(w, http.StatusConflict, "freedo is already restarting")
+		return
+	}
 	dir, err := os.MkdirTemp(filepath.Dir(d.state.path), ".import-")
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())

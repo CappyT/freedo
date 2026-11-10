@@ -23,9 +23,10 @@ the routes. For the radio facts behind a rule, see [PROTOCOL.md](PROTOCOL.md).
 - `--ingress` makes the daemon accept the calls of the dashboard from the connection address
   `172.30.32.2`, the Home Assistant ingress gateway, without a token. It covers 59 method and path
   pairs only. Only the add-on start script sets it, and it has no effect unless `SUPERVISOR_TOKEN` is
-  set. With the flag, the gateway also reaches the two routes of the
-  [state export and import](#state-export-and-import) for a Home Assistant administrator. Every other
-  request needs the token. See [Access](OPERATION.md#access).
+  set. With the flag, the gateway also reaches the administrator-only routes for state export and
+  import, receiver calibration and bridge firmware status/update. Every other request needs the
+  token. See [Access](OPERATION.md#access) and
+  [State export and import](#state-export-and-import).
 - With no token, the daemon accepts a loopback address only and warns at start. An address
   that is not loopback stops the start. `--insecure-no-auth` removes this limit. With it,
   every host that reaches the port controls the plant.
@@ -197,6 +198,8 @@ banner.
 | `POST /api/pair` | Send the `d/pair` command to a device. |
 | `POST /api/pair/devices/{ref}` | Send the `d/pair` command to the named device, under the network key of the installation. No body. |
 | `POST /api/radio/calibrate` | Forget the stored receiver calibration and measure it again. No body. |
+| `GET /api/bridge/firmware` | Read bridge firmware update support and the latest update result. |
+| `POST /api/bridge/firmware/update` | Download and stage the latest stable bridge firmware, then restart to flash it. Requires `{"confirm":true}`. |
 
 ### Statistics
 
@@ -862,6 +865,25 @@ receives, while the daemon runs. See [Radio calibration](OPERATION.md#radio-cali
   an administrator only, like the export and the import of the state: see
   [State export and import](#state-export-and-import).
 
+### Bridge firmware update
+
+The bridge firmware control in the dashboard settings is available in the Home Assistant add-on
+when the daemon has a live serial bridge and the `esptool` executable. It downloads the latest stable
+release's merged ESP32 image and `SHA256SUMS` from the freedo GitHub release, verifies the image
+checksum, then stages it beside the state database. The update request requires the JSON body
+`{"confirm":true}` and answers `202` with the staged version and `state: "pending"`. It returns
+`409` when flashing is unsupported or another restart/update is in progress.
+
+The daemon restarts to release the serial port, flashes the merged image at offset `0x0`, and records
+`state` as `succeeded` or `failed`. Read `GET /api/bridge/firmware` to inspect `supported`,
+`reason`, `state`, `version`, `sha256`, `error` and `updatedAt`. The support reasons are
+`no_live_bridge`, `no_state_database` and `esptool_missing`. Through Home Assistant ingress, both
+routes are administrator-only. Outside ingress they follow the daemon's normal authentication: a
+configured token, or loopback-only access when no token is configured. A failed flash is recorded;
+the daemon continues starting, but the bridge may need recovery with a manual flash. The checksum
+is published alongside the image in the same GitHub release; it detects corruption but is not an
+independent firmware signature.
+
 ### Child lock, identify and calibration
 
 - `POST /api/nodes/{id}/childlock` is for valves only. Another device kind gets `400`,
@@ -1277,7 +1299,8 @@ without the token:
 | Home Assistant does not answer in 5 seconds, or its answer is not usable. | `503` |
 | The request comes from another address, with or without the header. | `401` |
 
-The two pairs, with `POST /api/radio/calibrate`, are in `internal/daemon/ingress_admin_routes.json`. See
+The export and import routes, `POST /api/radio/calibrate`, and the bridge firmware status/update
+routes are in `internal/daemon/ingress_admin_routes.json`. See
 [SECURITY.md](../SECURITY.md#backup-home-assistant-administrators-only).
 
 `GET /api/state/export` answers with one SQLite file. The daemon first saves its state, then writes

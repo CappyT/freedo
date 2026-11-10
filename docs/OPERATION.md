@@ -443,6 +443,22 @@ For a bench without a running daemon, the developer tool `freedo-dev autotune` m
 the same value: see [CONTRIBUTING.md](../CONTRIBUTING.md#radio-calibration). The measurements are in
 [PROTOCOL.md](PROTOCOL.md#freqest-and-autotune).
 
+## Bridge firmware update
+
+In the Home Assistant add-on, the Settings page can update the ESP32 bridge to the latest stable
+firmware release. The add-on image includes the pinned `esptool` version. Only a Home Assistant
+administrator can use the firmware routes through ingress; outside ingress they require the API
+token when one is configured. Without a token, the daemon accepts loopback access only unless
+`--insecure-no-auth` is enabled.
+
+Before confirming, check that the radio board is the supported ESP32 DevKit configuration described
+in [the bridge firmware README](../firmware/cc1101_bridge/README.md). The firmware has only been
+tested on one ESP32 DevKit with one CC1101 module, and the project's radio board has a different pin
+map. While flashing, freedo restarts and the radio is unavailable. Do not remove power or unplug the
+bridge until the update finishes. If flashing fails, the page shows the recorded error; the board
+may need a manual recovery flash. The add-on needs internet access to fetch the release and its
+checksum from GitHub.
+
 ## Serial link faults
 
 Symptom: the log shows lines like these, and `serialErrors` in `GET /api/health` grows.
