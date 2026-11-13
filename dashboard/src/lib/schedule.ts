@@ -200,14 +200,20 @@ export function removeBlock(groups: Group[], key: number, index: number): Group[
 	return groups.map((g) => (g.key === key && index > 0 ? { ...g, blocks: g.blocks.filter((_, i) => i !== index) } : g));
 }
 
-/** Changes one block. A change of the time keeps the blocks in time order. */
+/**
+ * Changes one block in place. A change of the time does not reorder the blocks: the browser
+ * reports a time field after each digit, and a reorder would move the field under the cursor
+ * to another block. The editor calls sortBlocks when the field loses focus.
+ */
 export function setBlock(groups: Group[], key: number, index: number, patch: Partial<Block>): Group[] {
-	return groups.map((g) => {
-		if (g.key !== key) return g;
-		const blocks = g.blocks.map((b, i) => (i === index ? { ...b, ...patch } : b));
-		if (patch.minute !== undefined) blocks.sort((a, b) => a.minute - b.minute);
-		return { ...g, blocks };
-	});
+	return groups.map((g) => (g.key !== key ? g : { ...g, blocks: g.blocks.map((b, i) => (i === index ? { ...b, ...patch } : b)) }));
+}
+
+/** Puts the blocks of one group in time order. The same list comes back when it is in order. */
+export function sortBlocks(groups: Group[], key: number): Group[] {
+	const group = groups.find((g) => g.key === key);
+	if (!group || group.blocks.every((b, i) => i === 0 || group.blocks[i - 1]!.minute <= b.minute)) return groups;
+	return groups.map((g) => (g.key === key ? { ...g, blocks: [...g.blocks].sort((a, b) => a.minute - b.minute) } : g));
 }
 
 export function parseTime(text: string): number | null {
@@ -232,9 +238,11 @@ export interface Segment {
 export function weekSegments(groups: Group[]): Record<Day, Segment[]> {
 	const week = Object.fromEntries(DAYS.map((d) => [d, [] as Segment[]])) as Record<Day, Segment[]>;
 	for (const group of groups) {
-		const segments = group.blocks.map((b, i) => ({
+		// A draft holds its blocks out of order while a time is typed.
+		const blocks = [...group.blocks].sort((a, b) => a.minute - b.minute);
+		const segments = blocks.map((b, i) => ({
 			from: b.minute,
-			to: group.blocks[i + 1]?.minute ?? 1440,
+			to: blocks[i + 1]?.minute ?? 1440,
 			setpointC: b.setpointC,
 			enabled: b.enabled
 		}));

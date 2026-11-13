@@ -11,6 +11,7 @@
 		removeBlock,
 		removeGroup,
 		setBlock,
+		sortBlocks,
 		toggleDay,
 		type Group,
 		type Issue,
@@ -69,6 +70,7 @@
 								disabled={i === 0}
 								aria-invalid={bad(g, i)}
 								onchange={(e) => onTime(group.key, i, e)}
+								onblur={() => (groups = sortBlocks(groups, group.key))}
 							/>
 						</label>
 						<label class="field">

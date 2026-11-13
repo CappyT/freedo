@@ -18,6 +18,7 @@ import {
 	removeGroup,
 	sameSchedule,
 	setBlock,
+	sortBlocks,
 	toPrograms,
 	toggleDay,
 	validate,
@@ -190,9 +191,16 @@ describe('editing', () => {
 		expect(removeBlock(week(), 1, 2)[0]?.blocks).toHaveLength(2);
 	});
 
-	it('keeps the blocks in time order when one moves', () => {
-		const groups = setBlock(week(), 1, 1, { minute: 1400 });
-		expect(groups[0]?.blocks.map((b) => b.minute)).toEqual([0, 1320, 1400]);
+	it('keeps a block in its place while its time is typed, and sorts on request', () => {
+		// 22:00 typed over: the first digit reads 01:00, before the block at 06:30.
+		const typed = setBlock(week(), 1, 2, { minute: 60 });
+		expect(typed[0]?.blocks.map((b) => b.minute)).toEqual([0, 390, 60]);
+		expect(typed[0]?.blocks[2]).toMatchObject({ setpointC: 17, enabled: false });
+		expect(codes(typed)).toContain('notIncreasing');
+		const sorted = sortBlocks(typed, 1);
+		expect(sorted[0]?.blocks.map((b) => b.minute)).toEqual([0, 60, 390]);
+		expect(sorted[0]?.blocks[1]).toMatchObject({ setpointC: 17, enabled: false });
+		expect(sortBlocks(sorted, 1)).toBe(sorted);
 	});
 });
 
@@ -220,6 +228,16 @@ describe('the week view', () => {
 		}
 		expect(segments.mon[2]).toMatchObject({ from: 1320, to: 1440, enabled: false });
 		expect(segments.sat).toHaveLength(1);
+	});
+
+	it('draws a draft whose blocks are out of order or share a time', () => {
+		// 22:00 typed over with a 0 reads 00:00, the time of the first block.
+		const segments = weekSegments(setBlock(week(), 1, 2, { minute: 0 })).mon;
+		expect(segments.map((s) => [s.from, s.to])).toEqual([
+			[0, 0],
+			[0, 390],
+			[390, 1440]
+		]);
 	});
 });
 
