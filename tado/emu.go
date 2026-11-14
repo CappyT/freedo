@@ -5301,7 +5301,13 @@ func (e *EmuState) confirmByMID(srcEUI []byte, m *CoAPMessage) {
 		// A device that already holds the key answers d/pair 2.03
 		// (the pairing capture).
 		paired := d.kind == "pair" && m.Code == "2.03"
-		if m.Code != code && !calibrated && !paired {
+		// VA01 firmware 54.20 replies 2.05 Content to successful setpoint PUTs.
+		// Keep 2.04 Changed valid for all devices, and accept 2.05 only for
+		// this observed firmware and this command type.
+		va01SetpointOK := d.kind == "setpoint" &&
+			e.node(srcEUI).Telemetry["fw_run_version"] == "54.20" &&
+			m.Code == "2.05"
+		if m.Code != code && !calibrated && !paired && !va01SetpointOK {
 			switch {
 			case strings.HasPrefix(m.Code, "4."):
 				if d.heating != nil {
