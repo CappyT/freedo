@@ -21,6 +21,7 @@ const options = (over: Partial<BoilerOptions> = {}): BoilerOptions => ({
 	flow_limit_c: 56,
 	flow_default_curve: true,
 	flow_auto_adapt: false,
+	no_boiler: false,
 	flow_curves: {},
 	outdoor_max_age_sec: 3600,
 	flow_hysteresis_c: 1,

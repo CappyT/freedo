@@ -85,9 +85,14 @@ export interface SetupState {
 
 /**
  * The state of each step of the first setup, from what the daemon reports. A heating room with no
- * circuit keeps the circuit step open, because its valves then get no heat source.
+ * circuit keeps the circuit step open, because its valves then get no heat source. A plant declared
+ * without a boiler connection has no circuit to set.
  */
-export function setupState(health: Health | null, zones: { kind: ZoneKind; circuit?: number }[]): SetupState {
+export function setupState(
+	health: Health | null,
+	zones: { kind: ZoneKind; circuit?: number }[],
+	noBoiler: boolean = false
+): SetupState {
 	const heating = zones.filter((z) => z.kind === 'heating');
 	const radioProblem = health?.mode !== 'live' ? 'noRadio' : 'none';
 	const transmitProblem = health?.bridgePresent ? 'bridge' : health?.transmitAllowed ? 'none' : 'dryRun';
@@ -101,7 +106,7 @@ export function setupState(health: Health | null, zones: { kind: ZoneKind; circu
 		transmit: done(transmitProblem === 'none'),
 		transmitProblem,
 		devices: done((health?.devices.length ?? 0) > 0),
-		circuits: done(heating.length > 0 && heating.every((z) => z.circuit !== undefined))
+		circuits: done(noBoiler || (heating.length > 0 && heating.every((z) => z.circuit !== undefined)))
 	};
 }
 

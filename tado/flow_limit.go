@@ -162,6 +162,10 @@ func (o Options) FlowAutoAdaptEnabled() bool {
 	return o.FlowAutoAdapt != nil && *o.FlowAutoAdapt
 }
 
+func (o Options) NoBoilerSet() bool {
+	return o.NoBoiler != nil && *o.NoBoiler
+}
+
 func (o Options) FlowMinInterval() time.Duration {
 	return optSeconds(o.FlowMinIntervalSec, DefaultFlowMinIntervalSec)
 }

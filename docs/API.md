@@ -72,8 +72,8 @@ Four routes carry a part of a wider route: `PUT /api/install/timezone`, `PUT /ap
 of the wider route and refuse every other field. `PUT /api/install/boiler` carries the options of the
 boiler and of its flow limit: `boiler_max_power_kw`, `boiler_min_power_kw`, `boiler_max_gas_m3h`,
 `boiler_min_gas_m3h`, `fuel_unit`, `flow_limit_c`, `flow_default_curve`, `flow_auto_adapt`,
-`flow_curves`, `outdoor_max_age_sec`, `flow_hysteresis_c` and `flow_min_interval_sec`. A body with none
-of them is `400`. `POST /api/pair/devices/{ref}` is `POST /api/pair`
+`no_boiler`, `flow_curves`, `outdoor_max_age_sec`, `flow_hysteresis_c` and `flow_min_interval_sec`.
+A body with none of them is `400`. `POST /api/pair/devices/{ref}` is `POST /api/pair`
 with the target in the path and no `networkKeyHex`. The dashboard calls these, so
 [Home Assistant ingress](../SECURITY.md#home-assistant-ingress) reaches them without a token and
 does not reach the identity of the network or another network key.
@@ -311,6 +311,7 @@ allows it.
 | `outdoor_max_age_sec` | 3600 | Age at which the outdoor temperature expires. |
 | `flow_hysteresis_c`, `flow_min_interval_sec` | 1, 1800 | Smallest change and shortest interval of the served flow limit. |
 | `flow_curves`, `flow_auto_adapt` | none, `false` | Weather curve per circuit, and the automatic adaptation. |
+| `no_boiler` | `false` | The plant has no boiler connection: no zone needs a circuit or a demand reporter, so the install checks do not warn about either. |
 | `flow_default_curve` | `false` | Built-in weather curve for every circuit without a curve of its own. It needs `flow_limit_c`: see [Flow limit](#flow-limit). |
 | `early_start_min_episodes`, `early_start_max_lead_sec` | 3, 7200 | Early start thresholds. |
 | `boiler_max_power_kw`, `boiler_min_power_kw` | none, 0 | Boiler output at 100 % and 0 % modulation. |

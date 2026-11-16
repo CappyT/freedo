@@ -396,6 +396,8 @@ export interface BoilerOptions {
 	flow_limit_c: number | null;
 	flow_default_curve: boolean;
 	flow_auto_adapt: boolean;
+	/** The plant has no boiler connection: no room needs a circuit. */
+	no_boiler: boolean;
 	/** Keyed by circuit id. */
 	flow_curves: Record<string, FlowCurve>;
 	outdoor_max_age_sec: number;

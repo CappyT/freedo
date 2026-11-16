@@ -220,6 +220,9 @@ type Options struct {
 	// its own follow the default weather curve under FlowLimitC, which it
 	// needs. Unset is off.
 	FlowDefaultCurve *bool `yaml:"flow_default_curve"`
+	// NoBoiler declares that the plant has no boiler connection: no zone needs
+	// a circuit or a demand reporter. Unset is off.
+	NoBoiler *bool `yaml:"no_boiler"`
 	// EarlyStartZones holds the heating zones whose warmer program blocks the
 	// daemon starts early, from the heat-up rate it learns per zone. A zone
 	// outside the map starts each block on time.
@@ -702,7 +705,9 @@ func (in *Install) checkReporter(c *issues, p string, z *Zone, members []*Device
 	switch len(z.Reporter) {
 	case 1:
 	case 0:
-		c.warnf(p+".reporter", "heating zone %d elects no demand reporter: its d/config 015e records carry role 0x05 for every member, so the coordinator writes no primary bit", z.Number)
+		if !in.Options.NoBoilerSet() {
+			c.warnf(p+".reporter", "heating zone %d elects no demand reporter: its d/config 015e records carry role 0x05 for every member, so the coordinator writes no primary bit", z.Number)
+		}
 		return
 	default:
 		c.errf(p+".reporter", "heating zone %d elects %d demand reporters (%s): the 015e primary bit admits exactly one",
@@ -721,7 +726,7 @@ func (in *Install) checkReporter(c *issues, p string, z *Zone, members []*Device
 
 func (in *Install) checkZoneCircuit(c *issues, p string, z *Zone) {
 	if z.Circuit == nil {
-		if z.Kind == ZoneHeating {
+		if z.Kind == ZoneHeating && !in.Options.NoBoilerSet() {
 			c.warnf(p+".circuit", "heating zone %d binds to no circuit: it falls back to circuit 9, whose demand nobody publishes", z.Number)
 		}
 		return

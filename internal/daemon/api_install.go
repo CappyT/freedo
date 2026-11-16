@@ -56,6 +56,8 @@ type installPatch struct {
 	// FlowDefaultCurve switches the default weather curve on for every circuit
 	// without a curve of its own. It needs flow_limit_c.
 	FlowDefaultCurve *bool `json:"flow_default_curve"`
+	// NoBoiler declares a plant without a boiler connection.
+	NoBoiler *bool `json:"no_boiler"`
 	// FlowCurves sets the weather compensation curve per circuit id; null
 	// removes it.
 	FlowCurves map[int]*tado.FlowCurve `json:"flow_curves"`
@@ -137,6 +139,7 @@ type boilerPut struct {
 	FlowLimitC         optInt                  `json:"flow_limit_c"`
 	FlowDefaultCurve   *bool                   `json:"flow_default_curve"`
 	FlowAutoAdapt      *bool                   `json:"flow_auto_adapt"`
+	NoBoiler           *bool                   `json:"no_boiler"`
 	FlowCurves         map[int]*tado.FlowCurve `json:"flow_curves"`
 	OutdoorMaxAgeSec   *int                    `json:"outdoor_max_age_sec"`
 	FlowHysteresisC    *int                    `json:"flow_hysteresis_c"`
@@ -146,7 +149,7 @@ type boilerPut struct {
 func (p boilerPut) empty() bool {
 	return !p.BoilerMaxPowerKW.set && !p.BoilerMinPowerKW.set && !p.BoilerMaxGasM3H.set &&
 		!p.BoilerMinGasM3H.set && !p.FuelUnit.set && !p.FlowLimitC.set && p.FlowDefaultCurve == nil &&
-		p.FlowAutoAdapt == nil && p.FlowCurves == nil && p.OutdoorMaxAgeSec == nil &&
+		p.FlowAutoAdapt == nil && p.NoBoiler == nil && p.FlowCurves == nil && p.OutdoorMaxAgeSec == nil &&
 		p.FlowHysteresisC == nil && p.FlowMinIntervalSec == nil
 }
 
@@ -349,6 +352,7 @@ func installView(in *tado.Install, rev uint64) map[string]any {
 		"flow_min_interval_sec":    int(in.Options.FlowMinInterval() / time.Second),
 		"flow_auto_adapt":          in.Options.FlowAutoAdaptEnabled(),
 		"flow_default_curve":       in.Options.FlowDefaultCurveEnabled(),
+		"no_boiler":                in.Options.NoBoilerSet(),
 		"flow_curves":              flowCurvesView(in.Options.FlowCurves),
 		"early_start_max_lead_sec": int(in.Options.EarlyStartMaxLead() / time.Second),
 		"early_start_min_episodes": in.Options.EarlyStartMinEpisodeCount(),
@@ -771,7 +775,7 @@ func (d *daemon) putInstallBoiler(w http.ResponseWriter, r *http.Request) {
 		res, err := store.PatchInstall(r.Context(), installPatch{
 			BoilerMaxPowerKW: p.BoilerMaxPowerKW, BoilerMinPowerKW: p.BoilerMinPowerKW,
 			BoilerMaxGasM3H: p.BoilerMaxGasM3H, BoilerMinGasM3H: p.BoilerMinGasM3H, FuelUnit: p.FuelUnit,
-			FlowLimitC: p.FlowLimitC, FlowDefaultCurve: p.FlowDefaultCurve, FlowAutoAdapt: p.FlowAutoAdapt,
+			FlowLimitC: p.FlowLimitC, FlowDefaultCurve: p.FlowDefaultCurve, FlowAutoAdapt: p.FlowAutoAdapt, NoBoiler: p.NoBoiler,
 			FlowCurves: p.FlowCurves, OutdoorMaxAgeSec: p.OutdoorMaxAgeSec, FlowHysteresisC: p.FlowHysteresisC,
 			FlowMinIntervalSec: p.FlowMinIntervalSec,
 		})

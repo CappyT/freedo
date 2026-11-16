@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { actMany, act } from '#lib/actions.ts';
 	import { boilerFaults, burnerState } from '#lib/boiler.ts';
@@ -6,6 +7,7 @@
 	import { alertKeys } from '#lib/describe.ts';
 	import { fmt, t } from '#lib/i18n.svelte.ts';
 	import Icon, { type IconName } from '#lib/Icon.svelte';
+	import { install } from '#lib/install.svelte.ts';
 	import RadioChip from '#lib/RadioChip.svelte';
 	import { api } from '#lib/session.ts';
 	import Tile, { type TileChip, type TileFill } from '#lib/Tile.svelte';
@@ -110,9 +112,11 @@
 		};
 	});
 
+	onMount(() => void install.load());
+
 	const boiler = $derived.by(() => {
 		const b = data.boiler;
-		if (!b) return null;
+		if (!b || install.info?.no_boiler) return null;
 		const faults = boilerFaults(b);
 		const burner = burnerState(b);
 		const fault = faults.state === 'fault';

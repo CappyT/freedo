@@ -642,6 +642,27 @@ func TestValidateCommissionableIntermediateStates(t *testing.T) {
 	}
 }
 
+// TestNoBoilerSilencesThePlantWarnings: a plant without a boiler connection
+// needs no circuit and no demand reporter, so only the declared plant loses
+// the two warnings.
+func TestNoBoilerSilencesThePlantWarnings(t *testing.T) {
+	for _, noBoiler := range []bool{false, true} {
+		in := base()
+		in.Zones[1].Reporter = nil
+		in.Zones[1].Circuit = nil
+		in.Options.NoBoiler = &noBoiler
+		if err := in.ValidateCommissionable(true); err != nil {
+			t.Fatalf("no_boiler=%v: %v", noBoiler, err)
+		}
+		got := strings.Join(in.Warnings(), "\n")
+		for _, want := range []string{"elects no demand reporter", "binds to no circuit"} {
+			if has := strings.Contains(got, want); has == noBoiler {
+				t.Errorf("no_boiler=%v: warning %q present = %v, warnings = %v", noBoiler, want, has, in.Warnings())
+			}
+		}
+	}
+}
+
 func TestParseYAMLForms(t *testing.T) {
 	const good = `
 version: 1

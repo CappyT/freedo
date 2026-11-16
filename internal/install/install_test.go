@@ -175,6 +175,30 @@ func TestInstallRoundTrip(t *testing.T) {
 	}
 }
 
+// TestInstallRoundTripKeepsNoBoiler: the no_boiler option survives a store
+// round trip, and an unset option stays unset.
+func TestInstallRoundTripKeepsNoBoiler(t *testing.T) {
+	in := *defaultInstall
+	on := true
+	in.Options.NoBoiler = &on
+	store, _ := storeWithInstall(t, &in)
+	got, _, err := store.LoadInstall(context.Background())
+	if err != nil {
+		t.Fatalf("LoadInstall: %v", err)
+	}
+	if !got.Options.NoBoilerSet() {
+		t.Error("no_boiler = false after the round trip, want true")
+	}
+	bare, _ := storeWithInstall(t, defaultInstall)
+	got, _, err = bare.LoadInstall(context.Background())
+	if err != nil {
+		t.Fatalf("LoadInstall: %v", err)
+	}
+	if got.Options.NoBoiler != nil {
+		t.Errorf("an installation without no_boiler loaded %v", *got.Options.NoBoiler)
+	}
+}
+
 // TestInstallRoundTripKeepsAwayTemperatures: the away temperature of a zone
 // survives the database, as a number with its fraction, and a zone that states
 // none loads none.

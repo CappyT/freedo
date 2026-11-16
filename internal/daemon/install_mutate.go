@@ -549,6 +549,7 @@ func patchFlowOptions(ctx context.Context, tx querier, p installPatch) error {
 	for key, v := range map[string]*bool{
 		"flow_auto_adapt":    p.FlowAutoAdapt,
 		"flow_default_curve": p.FlowDefaultCurve,
+		"no_boiler":          p.NoBoiler,
 	} {
 		if v == nil {
 			continue

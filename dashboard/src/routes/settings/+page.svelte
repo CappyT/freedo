@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
 	import icon from '../../../../assets/brand/svg/icon.svg?inline';
 	import { act } from '#lib/actions.ts';
@@ -9,6 +10,7 @@
 	import { serialLink } from '#lib/health.ts';
 	import { fmt, t } from '#lib/i18n.svelte.ts';
 	import Icon from '#lib/Icon.svelte';
+	import { install } from '#lib/install.svelte.ts';
 	import { setupState } from '#lib/install.ts';
 	import { api } from '#lib/session.ts';
 	import { LOCALES, prefs, type LocalePref, type Theme } from '#lib/prefs.svelte.ts';
@@ -24,10 +26,12 @@
 	const languages: Record<string, string> = { en: 'English', it: 'Italiano', de: 'Deutsch', fr: 'Français' };
 
 	const declared = $derived(data.zones?.declared ?? []);
-	const steps = $derived(setupState(health, declared));
+	const steps = $derived(setupState(health, declared, install.info?.no_boiler ?? false));
 	const openSteps = $derived(
 		[steps.radio, steps.timezone, steps.rooms, steps.transmit, steps.devices, steps.circuits].filter((s) => s !== 'done').length
 	);
+
+	onMount(() => void install.load());
 
 	// The daemon names a set utc_offset_min "fixed offset", in English.
 	const zoneLabel = (name: string) => (name === 'fixed offset' ? t('settings.timezone.fixed') : name);

@@ -166,6 +166,13 @@ func ReadInstall(ctx context.Context, q Querier) (*tado.Install, uint64, error) 
 		}
 		in.Options.FlowDefaultCurve = &enabled
 	}
+	if raw, ok := kv["no_boiler"]; ok {
+		enabled, err := strconv.ParseBool(raw)
+		if err != nil {
+			return nil, 0, fmt.Errorf("install no_boiler %q: %w", raw, err)
+		}
+		in.Options.NoBoiler = &enabled
+	}
 	if raw, ok := kv["external_window_max_sec"]; ok {
 		sec, err := strconv.Atoi(raw)
 		if err != nil {
@@ -754,6 +761,9 @@ func (s *Store) ReplaceInstall(ctx context.Context, in *tado.Install) (uint64, e
 	}
 	if o := in.Options.FlowDefaultCurve; o != nil {
 		values = append(values, [2]string{"flow_default_curve", strconv.FormatInt(boolInt(*o), 10)})
+	}
+	if o := in.Options.NoBoiler; o != nil {
+		values = append(values, [2]string{"no_boiler", strconv.FormatInt(boolInt(*o), 10)})
 	}
 	if o := in.Options.ExternalWindowMaxSec; o != nil {
 		values = append(values, [2]string{"external_window_max_sec", strconv.Itoa(*o)})

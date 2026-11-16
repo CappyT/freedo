@@ -786,6 +786,49 @@ circuits:
   - {id: 1, name: house, heat_source: RU9000000001}
 `
 
+// TestInstallAPINoBoilerDropsThePlantWarnings: a plant declared without a
+// boiler connection loses the two warnings about circuits and demand
+// reporters, and gets them back when the declaration is lifted.
+func TestInstallAPINoBoilerDropsThePlantWarnings(t *testing.T) {
+	seed, err := tado.Parse([]byte(valvesOnlyYAML))
+	if err != nil {
+		t.Fatalf("parse the seed: %v", err)
+	}
+	a := newInstallAPIOn(t, seed)
+	plant := []string{"elects no demand reporter", "binds to no circuit"}
+	check := func(res map[string]any, want bool) {
+		t.Helper()
+		warns := warningsOf(t, res)
+		for _, w := range plant {
+			if containsSubstring(warns, w) != want {
+				t.Errorf("warning %q present = %t, want %t: %v", w, !want, want, warns)
+			}
+		}
+	}
+	check(a.get("/api/install"), true)
+	res := a.mutate(http.MethodPut, "/api/install/boiler", map[string]any{"no_boiler": true})
+	if res["install"].(map[string]any)["no_boiler"] != true {
+		t.Errorf("no_boiler = %v, want true", res["install"].(map[string]any)["no_boiler"])
+	}
+	check(a.get("/api/install"), false)
+	a.mutate(http.MethodPatch, "/api/install", map[string]any{"no_boiler": false})
+	check(a.get("/api/install"), true)
+	if code, res := a.call(http.MethodPut, "/api/install/boiler", map[string]any{"no_boiler": "yes"}); code != http.StatusBadRequest {
+		t.Errorf("no_boiler as a string: got %d %v, want 400", code, res)
+	}
+}
+
+const valvesOnlyYAML = `
+version: 1
+home_id: 7802
+network_key: "0102030405060708090a0b0c0d0e0f10"
+coordinator: {eui: "aa026a3107c51b00", serial: IB9000000002}
+devices:
+  - {kind: valve, eui: "01036a3107c51b00", serial: VA9000000002, label: hall}
+zones:
+  - {number: 1, name: hall, kind: heating, members: [VA9000000002]}
+`
+
 // TestInstallAPIMissingObjects: a path that names nothing answers 404.
 func TestInstallAPIMissingObjects(t *testing.T) {
 	a := newInstallAPI(t)

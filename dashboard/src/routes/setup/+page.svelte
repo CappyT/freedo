@@ -18,7 +18,8 @@
 
 	const health = $derived(data.health);
 	const zones = $derived(data.zones?.declared ?? []);
-	const steps = $derived(setupState(health, zones));
+	const steps = $derived(setupState(health, zones, install.info?.no_boiler ?? false));
+	const noBoiler = $derived(install.info?.no_boiler ?? false);
 	const allDone = $derived(
 		[steps.radio, steps.timezone, steps.rooms, steps.transmit, steps.devices, steps.circuits].every((s) => s === 'done')
 	);
@@ -29,6 +30,7 @@
 	// The daemon names a set utc_offset_min "fixed offset", in English.
 	const zoneLabel = $derived(health?.timezone?.name === 'fixed offset' ? t('settings.timezone.fixed') : (health?.timezone?.name ?? ''));
 	let busy = $state(false);
+	let boilerBusy = $state(false);
 	let calibrateBusy = $state(false);
 	let calibrateDialog: ConfirmDialog | undefined = $state();
 
@@ -148,13 +150,33 @@
 
 			<li class="panel" data-step="circuits" data-state={steps.circuits}>
 				<header><h2>{t('circuits.title')}</h2><div class="row">{@render badge(steps.circuits)}</div></header>
-				<p>{t('circuits.note')}</p>
-				{#if data.circuits.length > 0}
-					<ul class="tags">
-						{#each data.circuits as circuit (circuit.ID)}<li class="badge tone-off">{circuit.Name || t('boiler.circuit', { id: circuit.ID })}</li>{/each}
-					</ul>
+				{#if !noBoiler}<p>{t('circuits.note')}</p>{/if}
+				<label class="switch">
+					<span>{t('circuits.noBoiler')}</span>
+					<input
+						type="checkbox"
+						role="switch"
+						checked={noBoiler}
+						disabled={boilerBusy}
+						onchange={async (e) => {
+							const box = e.currentTarget;
+							boilerBusy = true;
+							const done = await manage(() => api.setBoiler({ no_boiler: box.checked }), t('circuits.noBoiler.saved'));
+							boilerBusy = false;
+							// A checkbox keeps the click when the request fails: show what the daemon reports.
+							if (!done) box.checked = noBoiler;
+						}}
+					/>
+				</label>
+				<p class="note">{t('circuits.noBoiler.hint')}</p>
+				{#if !noBoiler}
+					{#if data.circuits.length > 0}
+						<ul class="tags">
+							{#each data.circuits as circuit (circuit.ID)}<li class="badge tone-off">{circuit.Name || t('boiler.circuit', { id: circuit.ID })}</li>{/each}
+						</ul>
+					{/if}
+					<CircuitForm />
 				{/if}
-				<CircuitForm />
 			</li>
 		</ol>
 
@@ -225,6 +247,17 @@
 		display: grid;
 		gap: 0.35rem;
 		overflow-wrap: anywhere;
+	}
+
+	.switch {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+		min-height: 2.75rem;
+		font-size: var(--text-small-size);
+		font-weight: var(--weight-semibold);
+		cursor: pointer;
 	}
 
 	.grow {

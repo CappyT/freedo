@@ -230,6 +230,12 @@ describe('the steps of the first setup', () => {
 		expect(setupState(health(), [{ kind: 'heating', circuit: 1 }, { kind: 'heating' }]).circuits).toBe('todo');
 		expect(setupState(health(), [{ kind: 'hotwater' }])).toMatchObject({ rooms: 'todo', circuits: 'todo' });
 	});
+
+	it('close the circuits on a plant declared without a boiler', () => {
+		expect(setupState(health(), [{ kind: 'heating' }], true).circuits).toBe('done');
+		expect(setupState(health(), [], true)).toMatchObject({ rooms: 'todo', circuits: 'done' });
+		expect(setupState(health(), [{ kind: 'heating' }], false).circuits).toBe('todo');
+	});
 });
 
 describe('the device a view names', () => {
