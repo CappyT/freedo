@@ -196,3 +196,45 @@ func TestDeviceOverlayEndRestatesQueuedZoneWrites(t *testing.T) {
 		t.Errorf("the reporter got %d writes, want none", len(q))
 	}
 }
+
+// TestDeviceOverlaySurvivesAnotherMembersReport reproduces issue #38: the
+// wheel of the zone reporter sets an overlay, another member that has not
+// taken it yet reports its program block, and the reporter then reads the zone
+// state. The read must restate the overlay. The device writes each tag of the
+// answer and keeps the tags it leaves out, so a read in overlay auto with no
+// 6280 leaves the reporter in auto with the old 25 C, as reported.
+func TestDeviceOverlaySurvivesAnotherMembersReport(t *testing.T) {
+	in := fixtureInstall(t)
+	e := NewEmu(in.EmuConfig(), NewUnhandledLogger(io.Discard))
+	e.SetHomeState(true, map[int]float64{5: 16})
+	e.OnFrame(synthDeviceUplink(t, in, mustHex(kitchenBEUIHex), CoAPReq{
+		Type: "CON", Code: "0.03", MID: 0x7521, Token: []byte{0x25},
+		Path: homePath(in, "z", "5", "overlay"), Options: []CoAPOption{optOctets},
+		Payload: encodeTLVs([]TLV{
+			{Tag: "6280", Val: []byte{0x09, 0xc4}}, {Tag: "6240", Val: []byte{0x02}}, {Tag: "6260", Val: []byte{0x01}},
+		}),
+	}))
+	e.OnFrame(synthZoneUplink(t, in, mustHex(kitchenAEUIHex), CoAPReq{
+		Type: "CON", Code: "0.03", MID: 0x7522, Token: []byte{0x26},
+		Path: []string{"z", "s"}, Query: []string{"lid=5"},
+		Payload: encodeTLVs([]TLV{
+			{Tag: "6240", Val: []byte{0x00}}, {Tag: "6200", Val: []byte{0x06, 0x40}},
+			{Tag: "61e0", Val: []byte{0x01}}, {Tag: "62e0", Val: []byte{0x00}},
+		}),
+	}))
+	if block, ok := e.ZoneBlock(5); !ok || block.Overlay == overlayAuto {
+		t.Errorf("zone block = %+v (known=%t), want the 25 C overlay of the reporter", block, ok)
+	}
+	raw := synthDeviceUplink(t, in, mustHex(kitchenBEUIHex), CoAPReq{
+		Type: "CON", Code: "0.01", MID: 0x7523, Token: []byte{0x27},
+		Path: homePath(in, "z", "5", "s"),
+	})
+	m := synthAnswer(t, in, e.OnFrame(raw), 0x7523)
+	got := map[string]string{}
+	for _, tlv := range parseTLVList(m.Payload) {
+		got[tlv.Tag] = hex.EncodeToString(tlv.Val)
+	}
+	if m.Code != "2.05" || got["6240"] != "02" || got["6280"] != "09c4" {
+		t.Errorf("read of z/5/s = %s %v, want 2.05 with 6240 02 and 6280 09c4", m.Code, got)
+	}
+}
