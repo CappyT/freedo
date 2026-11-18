@@ -4972,7 +4972,7 @@
 				)
 			)
 		)
-		(property "Value" "5.1k"
+		(property "Value" "1k"
 			(at 0 1.43 90)
 			(layer "F.Fab")
 			(uuid "96d84a14-d710-4207-898b-d09cda788d9c")
@@ -5017,7 +5017,7 @@
 				)
 			)
 		)
-		(property "MPN" "0603WAF5101T5E"
+		(property "MPN" "0603WAF1001T5E"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)
@@ -5029,7 +5029,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C23186"
+		(property "LCSC" "C21190"
 			(at 0 0 90)
 			(layer "F.Fab")
 			(hide yes)

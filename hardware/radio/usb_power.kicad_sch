@@ -4919,7 +4919,7 @@
 				)
 			)
 		)
-		(property "Value" "5.1k"
+		(property "Value" "1k"
 			(at 87.63 69.85 90)
 			(effects
 				(font
@@ -4954,7 +4954,7 @@
 				)
 			)
 		)
-		(property "MPN" "0603WAF5101T5E"
+		(property "MPN" "0603WAF1001T5E"
 			(at 87.63 69.85 0)
 			(hide yes)
 			(effects
@@ -4963,7 +4963,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C23186"
+		(property "LCSC" "C21190"
 			(at 87.63 69.85 0)
 			(hide yes)
 			(effects
