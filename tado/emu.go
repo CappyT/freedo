@@ -5301,10 +5301,10 @@ func (e *EmuState) confirmByMID(srcEUI []byte, m *CoAPMessage) {
 		// A device that already holds the key answers d/pair 2.03
 		// (the pairing capture).
 		paired := d.kind == "pair" && m.Code == "2.03"
-		// Some valves answer successful setpoint PUTs with 2.05 Content.
-		// Accept this for setpoints regardless of model or firmware.
-		setpointContentOK := d.kind == "setpoint" && m.Code == "2.05"
-		if m.Code != code && !calibrated && !paired && !setpointContentOK {
+		// A VA01 on firmware 54.20 answers the setpoint and identify PUTs
+		// 2.05 Content with no body.
+		contentOK := (d.kind == "setpoint" || d.kind == "identify") && m.Code == "2.05"
+		if m.Code != code && !calibrated && !paired && !contentOK {
 			switch {
 			case strings.HasPrefix(m.Code, "4."):
 				if d.heating != nil {

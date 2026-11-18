@@ -89,3 +89,32 @@ func TestVA01SetpointResponseCompatibility(t *testing.T) {
 		})
 	}
 }
+
+func TestVA01IdentifyResponseCompatibility(t *testing.T) {
+	for _, tc := range []struct {
+		response string
+		pending  int
+	}{{"2.04", 0}, {"2.05", 0}, {"2.01", 1}} {
+		t.Run(tc.response, func(t *testing.T) {
+			e, _, _ := newTestEmu(t)
+			wire, label, err := e.resolve("bedroom")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := e.EnqueueIdentify("bedroom", 1); err != nil {
+				t.Fatal(err)
+			}
+			if actions, ok := e.nextDownlink(wire, label); !ok || len(actions) != 1 {
+				t.Fatalf("no downlink: ok=%v actions=%+v", ok, actions)
+			}
+			q := e.queue[hexEUI(wire)]
+			e.confirmByMID(wire, &CoAPMessage{
+				Type: "ACK", Code: tc.response, MID: q[0].mid,
+				Token: append([]byte(nil), q[0].responseToken...),
+			})
+			if got := e.Pending("bedroom"); got != tc.pending {
+				t.Fatalf("pending after %s = %d, want %d", tc.response, got, tc.pending)
+			}
+		})
+	}
+}
