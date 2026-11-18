@@ -6599,6 +6599,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "J301")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -6687,6 +6691,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "T301")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -6776,6 +6784,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "R317")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -6865,6 +6877,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "C318")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -6954,6 +6970,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "R318")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -7043,6 +7063,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "C319")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -7132,6 +7156,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "R319")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -7221,6 +7249,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "C320")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -7310,6 +7342,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "R320")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -7399,6 +7435,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "C321")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -7488,6 +7528,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "C322")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -7577,6 +7621,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "C323")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -7664,6 +7712,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "BR401")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -7751,6 +7803,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "BR402")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -7838,6 +7894,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "D401")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -7925,6 +7985,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "U401")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -8012,6 +8076,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "D402")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -8101,6 +8169,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "C401")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -8190,6 +8262,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "C402")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -8279,6 +8355,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "R401")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -8368,6 +8448,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "R304")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -8457,6 +8541,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "R305")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -8544,6 +8632,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "R309")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -8631,6 +8723,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "R310")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -8718,6 +8814,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "C315")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -8805,6 +8905,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "C316")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -8892,6 +8996,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "R311")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -8979,6 +9087,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "R312")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -9068,6 +9180,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "R307")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -9157,6 +9273,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "R308")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -9246,6 +9366,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "C317")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -9335,6 +9459,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "R306")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -9424,6 +9552,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "C314")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -9513,6 +9645,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "U301")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -9602,6 +9738,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "R303")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -9691,6 +9831,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "C303")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -9780,6 +9924,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "C304")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -9867,6 +10015,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "Y301")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -9954,6 +10106,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "R301")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -10043,6 +10199,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "R302")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -10132,6 +10292,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "C301")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -10221,6 +10385,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "C302")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -10310,6 +10478,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "R314")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -10399,6 +10571,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "R313")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -10486,6 +10662,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "R315")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -10573,6 +10753,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "D301")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -10660,6 +10844,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "R316")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -10747,6 +10935,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "D302")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -10836,6 +11028,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "C312")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -10925,6 +11121,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "C313")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -11012,6 +11212,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "FB301")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -11101,6 +11305,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "C311")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -11190,6 +11398,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "C305")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -11279,6 +11491,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "C306")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -11368,6 +11584,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "C307")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -11457,6 +11677,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "C308")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -11546,6 +11770,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "C309")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)
@@ -11635,6 +11863,10 @@
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/b52121c9-5240-43d0-84a9-dfbd7401385c"
 					(reference "C310")
 					(unit 1)
+					(variant
+						(name "usb")
+						(dnp yes)
+					)
 				)
 			)
 		)

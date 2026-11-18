@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
-"""Write the JLCPCB fabrication and assembly package to out/fab/.
+"""Write the JLCPCB fabrication and assembly package to out/fab/<name>/.
 
-Usage: make_fab.py   (KICAD_CLI overrides the kicad-cli command line)
+Usage: make_fab.py [--variant NAME] [--hand REF,REF]   (KICAD_CLI overrides the kicad-cli command line)
+
+--variant NAME  build a KiCad design variant: its DNP parts leave the BOM, the CPL and the stencil.
+                Without it the package holds every part. The project defines the variant "usb".
+--hand REFS     move these JLC parts to the hand-solder list (U1,U201 makes the order fit Economic PCBA).
+<name> is the variant name or "full", plus "-hand" with --hand.
 
 Outputs: freedo-radio-gerbers.zip, jlc-bom.csv, jlc-cpl.csv, hand-solder.csv.
 The BOM and CPL hold only Asm=JLC parts that are not DNP. Rotation and
@@ -11,9 +16,11 @@ curl -A curl/8 'https://easyeda.com/api/products/<LCSC>/components?version=6.4.1
 gives result.packageDetail.dataStr, PAD shapes in 10 mil units around head.x/head.y
 (a browser user agent gets HTTP 403). JLC rotation is counter-clockwise positive.
 """
+import argparse
 import csv
 import math
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -26,9 +33,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 BOARD = ROOT / "freedo-radio.kicad_pcb"
 SCH = ROOT / "freedo-radio.kicad_sch"
-OUT = ROOT / "out" / "fab"
-WORK = OUT / "kicad"
-GERBERS = OUT / "gerbers"
 ROTATIONS = Path(__file__).with_name("jlc_rotations.csv")
 BOARD_COUNTS = (2, 5)
 LAYERS = "F.Cu,In1.Cu,In2.Cu,B.Cu,F.Paste,B.Paste,F.Silkscreen,B.Silkscreen,F.Mask,B.Mask,Edge.Cuts"
@@ -49,30 +53,56 @@ def natural(ref):
     return head, int(ref[len(head):] or 0)
 
 
-def export():
-    for d in (WORK, GERBERS):
-        shutil.rmtree(d, ignore_errors=True)
+def variant_board(variant, work):
+    """Copy the board with the DNP flag of the variant as the base flag of each footprint.
+
+    kicad-cli plots the paste layer by the base flag (rule no_paste_on_dnp), not by the variant.
+    The project and rule files go with the copy, because KiCad finds them by the board name.
+    """
+    marker = f'(variant\n\t\t\t(name "{variant}")\n\t\t\t(dnp yes)'
+    chunks = BOARD.read_text(encoding="utf-8").split("\n\t(footprint ")
+    refs = set()
+    for i, chunk in enumerate(chunks):
+        if i and marker in chunk:
+            chunk, n = re.subn(r"\n\t\t\(attr ([^)]*)\)", r"\n\t\t(attr \1 dnp)", chunk, count=1)
+            if n != 1:
+                sys.exit(f"variant {variant}: a footprint has no attr line")
+            refs.add(re.search(r'\(property "Reference" "([^"]+)"', chunk).group(1))
+            chunks[i] = chunk
+    copy = work / BOARD.name
+    copy.write_text("\n\t(footprint ".join(chunks), encoding="utf-8")
+    for ext in (".kicad_pro", ".kicad_dru"):
+        shutil.copy(BOARD.with_suffix(ext), work)
+    return copy, refs
+
+
+def export(out, variant):
+    work, gerbers = out / "kicad", out / "gerbers"
+    shutil.rmtree(out, ignore_errors=True)
+    for d in (work, gerbers):
         d.mkdir(parents=True)
-    kicad_cli("sch", "export", "netlist", "--format", "kicadxml", "-o", WORK / "netlist.xml", SCH)
+    kicad_cli("sch", "export", "netlist", "--format", "kicadxml", "-o", work / "netlist.xml", SCH)
     kicad_cli("pcb", "export", "pos", "--format", "csv", "--units", "mm", "--side", "both",
-              "-o", WORK / "pos.csv", BOARD)
+              "-o", work / "pos.csv", BOARD)
+    board, board_dnp = variant_board(variant, work) if variant else (BOARD, set())
     # Settings from JLC "How to Generate Gerber and Drill Files From KiCad 9" (2026-09-24): Protel names,
     # X2 and netlist attributes on, no job file, 4.6 mm; Excellon mm decimal, absolute, separate PTH/NPTH.
     kicad_cli("pcb", "export", "gerbers", "--layers", LAYERS, "--check-zones", "--precision", "6",
-              "-o", GERBERS, BOARD)
-    for job in GERBERS.glob("*.gbrjob"):
+              "-o", gerbers, board)
+    for job in gerbers.glob("*.gbrjob"):
         job.unlink()
     kicad_cli("pcb", "export", "drill", "--format", "excellon", "--drill-origin", "absolute",
               "--excellon-units", "mm", "--excellon-zeros-format", "decimal",
-              "--excellon-oval-format", "alternate", "--excellon-separate-th", "-o", GERBERS, BOARD)
-    with zipfile.ZipFile(OUT / "freedo-radio-gerbers.zip", "w", zipfile.ZIP_DEFLATED) as z:
-        for f in sorted(GERBERS.iterdir()):
+              "--excellon-oval-format", "alternate", "--excellon-separate-th", "-o", gerbers, board)
+    with zipfile.ZipFile(out / "freedo-radio-gerbers.zip", "w", zipfile.ZIP_DEFLATED) as z:
+        for f in sorted(gerbers.iterdir()):
             z.write(f, f.name)
+    return board_dnp
 
 
-def parts():
+def parts(netlist, variant, hand):
     out = []
-    for comp in ET.parse(WORK / "netlist.xml").getroot().iter("comp"):
+    for comp in ET.parse(netlist).getroot().iter("comp"):
         props = {p.get("name"): p.get("value", "") for p in comp.findall("property")}
         out.append({
             "ref": comp.get("ref"),
@@ -80,8 +110,10 @@ def parts():
             "footprint": comp.findtext("footprint", "").split(":")[-1],
             "mpn": props.get("MPN", ""),
             "lcsc": props.get("LCSC", ""),
-            "asm": props.get("Asm", ""),
+            "asm": "hand" if comp.get("ref") in hand else props.get("Asm", ""),
             "dnp": "dnp" in props,
+            "variant_dnp": any(v.get("name") == variant and p.get("name") == "dnp" and p.get("value") == "1"
+                               for v in comp.iter("variant") for p in v.findall("property")),
             "in_bom": "exclude_from_bom" not in props,
         })
     return out
@@ -94,7 +126,7 @@ def write_csv(path, header, rows):
         w.writerows(rows)
 
 
-def bom(jlc):
+def bom(out, jlc):
     groups = defaultdict(list)
     for p in jlc:
         groups[p["lcsc"]].append(p)
@@ -105,7 +137,7 @@ def bom(jlc):
         refs = sorted((p["ref"] for p in ps), key=natural)
         rows.append([ps[0]["value"], ",".join(refs), ps[0]["footprint"], lcsc])
     rows.sort(key=lambda r: natural(r[1].split(",")[0]))
-    write_csv(OUT / "jlc-bom.csv", ["Comment", "Designator", "Footprint", "LCSC Part #"], rows)
+    write_csv(out / "jlc-bom.csv", ["Comment", "Designator", "Footprint", "LCSC Part #"], rows)
     return len(rows)
 
 
@@ -114,10 +146,10 @@ def read_csv(path):
         return list(csv.DictReader(f))
 
 
-def cpl(jlc):
+def cpl(out, jlc):
     # One footprint can map to several EasyEDA lands (and rotations), so the key is the LCSC number too.
     corr = {(r["footprint"], lcsc): r for r in read_csv(ROTATIONS) for lcsc in r["lcsc"].split()}
-    pos = {r["Ref"]: r for r in read_csv(WORK / "pos.csv")}
+    pos = {r["Ref"]: r for r in read_csv(out / "kicad" / "pos.csv")}
     errors = [f"{p['ref']}: no checked JLC rotation for {p['footprint']} with {p['lcsc']} in {ROTATIONS.name}"
               for p in jlc if (p["footprint"], p["lcsc"]) not in corr]
     errors += [f"{p['ref']}: not in the board position file" for p in jlc if p["ref"] not in pos]
@@ -136,15 +168,15 @@ def cpl(jlc):
         x = float(r["PosX"]) + dx * math.cos(a) + dy * math.sin(a)
         y = float(r["PosY"]) + dx * math.sin(a) - dy * math.cos(a)
         rows.append([p["ref"], f"{x:.4f}mm", f"{y:.4f}mm", "Top", f"{(rot + float(c['rotation'])) % 360:g}"])
-    write_csv(OUT / "jlc-cpl.csv", ["Designator", "Mid X", "Mid Y", "Layer", "Rotation"], rows)
+    write_csv(out / "jlc-cpl.csv", ["Designator", "Mid X", "Mid Y", "Layer", "Rotation"], rows)
     return len(rows)
 
 
-def check_designators(jlc):
+def check_designators(out, jlc):
     want = {p["ref"] for p in jlc}
     written = {
-        "jlc-bom.csv": [d for r in read_csv(OUT / "jlc-bom.csv") for d in r["Designator"].split(",")],
-        "jlc-cpl.csv": [r["Designator"] for r in read_csv(OUT / "jlc-cpl.csv")],
+        "jlc-bom.csv": [d for r in read_csv(out / "jlc-bom.csv") for d in r["Designator"].split(",")],
+        "jlc-cpl.csv": [r["Designator"] for r in read_csv(out / "jlc-cpl.csv")],
     }
     for name, refs in written.items():
         if len(refs) != len(set(refs)) or set(refs) != want:
@@ -153,37 +185,57 @@ def check_designators(jlc):
                      f"{len(refs) - len(set(refs))} duplicates")
 
 
-def hand_list(all_parts):
+def hand_list(out, all_parts, variant):
+    def note(p):
+        if p["dnp"]:
+            return "DNP, optional"
+        return f"not fitted in the {variant} variant" if p["variant_dnp"] else "fitted by hand"
+
     groups = defaultdict(list)
     for p in all_parts:
-        if p["asm"] == "hand" or p["dnp"]:
-            groups[p["lcsc"] or p["ref"]].append(p)
+        if p["asm"] == "hand" or p["dnp"] or p["variant_dnp"]:
+            groups[p["lcsc"] or p["ref"], note(p)].append(p)
     rows = []
-    for ps in groups.values():
+    for (_, text), ps in groups.items():
         n = len(ps)
         refs = ",".join(sorted((p["ref"] for p in ps), key=natural))
-        note = "DNP, optional" if ps[0]["dnp"] else "fitted by hand"
-        rows.append([refs, ps[0]["value"], ps[0]["mpn"] or "-", ps[0]["lcsc"] or "-", ps[0]["footprint"], note, n]
-                    + [n * b for b in BOARD_COUNTS])
-    rows.sort(key=lambda r: (r[5], natural(r[0].split(",")[0])))
-    write_csv(OUT / "hand-solder.csv", ["Designator", "Value", "MPN", "LCSC Part #", "Footprint", "Note",
+        rows.append([refs, ps[0]["value"], ps[0]["mpn"] or "-", ps[0]["lcsc"] or "-", ps[0]["footprint"], text, n]
+                    + [0 if ps[0]["variant_dnp"] else n * b for b in BOARD_COUNTS])
+    order = ["fitted by hand", "DNP, optional"]
+    rows.sort(key=lambda r: (order.index(r[5]) if r[5] in order else len(order), natural(r[0].split(",")[0])))
+    write_csv(out / "hand-solder.csv", ["Designator", "Value", "MPN", "LCSC Part #", "Footprint", "Note",
                                         "Per board"] + [f"Qty {b} boards" for b in BOARD_COUNTS], rows)
     return len(rows)
 
 
 def main():
-    export()
-    all_parts = parts()
-    jlc = [p for p in all_parts if p["asm"] == "JLC" and not p["dnp"]]
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--variant", default="", help="KiCad design variant, for example usb")
+    ap.add_argument("--hand", default="", help="comma-separated references that move to the hand-solder list")
+    args = ap.parse_args()
+    hand = {r for r in args.hand.split(",") if r}
+    out = ROOT / "out" / "fab" / ((args.variant or "full") + ("-hand" if hand else ""))
+
+    board_dnp = export(out, args.variant)
+    all_parts = parts(out / "kicad" / "netlist.xml", args.variant, hand)
+    variant_dnp = {p["ref"] for p in all_parts if p["variant_dnp"]}
+    if args.variant and not variant_dnp:
+        sys.exit(f"variant {args.variant}: no schematic symbol is DNP in it")
+    if variant_dnp != board_dnp:
+        sys.exit(f"variant {args.variant}: schematic and board differ on {sorted(variant_dnp ^ board_dnp)}")
+    unknown = hand - {p["ref"] for p in all_parts}
+    if unknown:
+        sys.exit(f"--hand: not in the schematic: {sorted(unknown)}")
+    jlc = [p for p in all_parts if p["asm"] == "JLC" and not p["dnp"] and not p["variant_dnp"]]
     bad = [p["ref"] for p in jlc if not p["lcsc"] or not p["in_bom"]]
     if bad:
         sys.exit(f"Asm=JLC parts without LCSC or excluded from the BOM: {bad}")
-    lines = bom(jlc)
-    placed = cpl(jlc)
-    check_designators(jlc)
-    hand = hand_list(all_parts)
-    print(f"OK: {len(jlc)} JLC parts on {lines} BOM lines, {placed} CPL rows, {hand} hand-solder lines, "
-          f"{len(list(GERBERS.iterdir()))} files in freedo-radio-gerbers.zip, output in {OUT}")
+    lines = bom(out, jlc)
+    placed = cpl(out, jlc)
+    check_designators(out, jlc)
+    rows = hand_list(out, all_parts, args.variant)
+    print(f"OK: {len(jlc)} JLC parts on {lines} BOM lines, {placed} CPL rows, {rows} hand-solder lines, "
+          f"{len(list((out / 'gerbers').iterdir()))} files in freedo-radio-gerbers.zip, output in {out}")
 
 
 if __name__ == "__main__":

@@ -157,6 +157,12 @@
 			(outputdirectory "")
 		)
 	)
+	(variants
+		(variant
+			(name "usb")
+			(description "USB only: the Ethernet and PoE parts are not fitted")
+		)
+	)
 	(footprint "freedo-radio:R_0603_1608Metric"
 		(layer "F.Cu")
 		(uuid "0009d95b-aa6a-466c-9e36-13b0d555d2f8")
@@ -987,6 +993,10 @@
 			(net "GND")
 			(uuid "3a6e8c6a-fd9b-4dd4-aef6-3d698f3b2a9d")
 		)
+		(variant
+			(name "usb")
+			(dnp yes)
+		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/C_0603_1608Metric.step"
 			(offset
@@ -1174,6 +1184,10 @@
 			(net "GND")
 			(uuid "813bbc93-1ba3-41ba-9c21-e12b954affe3")
 		)
+		(variant
+			(name "usb")
+			(dnp yes)
+		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/C_0603_1608Metric.step"
 			(offset
@@ -1360,6 +1374,10 @@
 			(roundrect_rratio 0.25)
 			(net "Net-(C318-Pad1)")
 			(uuid "d99f6fc4-4130-47aa-88b0-e959d806bb49")
+		)
+		(variant
+			(name "usb")
+			(dnp yes)
 		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/R_0603_1608Metric.step"
@@ -1659,6 +1677,10 @@
 			(remove_unused_layers no)
 			(net "/ethernet_poe/VIN-")
 			(uuid "68bbf7ab-71b0-4ba8-8070-e3c922480ba7")
+		)
+		(variant
+			(name "usb")
+			(dnp yes)
 		)
 		(embedded_fonts no)
 	)
@@ -1991,6 +2013,10 @@
 			(layers "F.Cu" "F.Mask" "F.Paste")
 			(net "/ethernet_poe/VIN-")
 			(uuid "4e96f560-3072-4659-a06c-4fae5f9f6523")
+		)
+		(variant
+			(name "usb")
+			(dnp yes)
 		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/SMA_L4.3-W2.6-LS5.2-RD.wrl"
@@ -2531,6 +2557,10 @@
 			(roundrect_rratio 0.25)
 			(net "+3V3")
 			(uuid "28e06d85-3277-4a96-a26e-17b66a16b443")
+		)
+		(variant
+			(name "usb")
+			(dnp yes)
 		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/LED_0603_1608Metric.step"
@@ -3209,6 +3239,10 @@
 			(net "GND")
 			(uuid "f2e79ab3-31be-49aa-a183-a2fd1fcbed57")
 		)
+		(variant
+			(name "usb")
+			(dnp yes)
+		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/C_0603_1608Metric.step"
 			(offset
@@ -3813,6 +3847,10 @@
 			(roundrect_rratio 0.15625)
 			(net "GND")
 			(uuid "4701d344-1ccf-44e2-a7e7-cbc3eacd0b5e")
+		)
+		(variant
+			(name "usb")
+			(dnp yes)
 		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/CP_Elec_6.3x7.7.step"
@@ -4712,6 +4750,10 @@
 			(net "/ethernet_poe/ETH_RST")
 			(uuid "f2148d31-6ecb-42aa-ada6-b05f74a43a37")
 		)
+		(variant
+			(name "usb")
+			(dnp yes)
+		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/R_0603_1608Metric.step"
 			(offset
@@ -5272,6 +5314,10 @@
 			(roundrect_rratio 0.25)
 			(net "Net-(D302-K)")
 			(uuid "494ba4a7-94e2-4a4e-b0f0-1c2b754bc6ca")
+		)
+		(variant
+			(name "usb")
+			(dnp yes)
 		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/R_0603_1608Metric.step"
@@ -5987,6 +6033,10 @@
 			(net "GND")
 			(uuid "3ed2891e-ae04-4ff4-8794-a48c2e7bcefb")
 		)
+		(variant
+			(name "usb")
+			(dnp yes)
+		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/R_0603_1608Metric.step"
 			(offset
@@ -6468,6 +6518,10 @@
 				)
 			)
 		)
+		(variant
+			(name "usb")
+			(dnp yes)
+		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/RJ45-TH_TM24RSG-5A-88.wrl"
 			(offset
@@ -6841,6 +6895,10 @@
 			(roundrect_rratio 0.25)
 			(net "/ethernet_poe/TX_CT")
 			(uuid "81fded36-636a-442f-aca8-3c060d1ed56e")
+		)
+		(variant
+			(name "usb")
+			(dnp yes)
 		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/R_0603_1608Metric.step"
@@ -7216,6 +7274,10 @@
 			(net "GND")
 			(uuid "41ae1dba-26b0-4459-a6fb-c6fdaa80e248")
 		)
+		(variant
+			(name "usb")
+			(dnp yes)
+		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/C_0603_1608Metric.step"
 			(offset
@@ -7402,6 +7464,10 @@
 			(roundrect_rratio 0.25)
 			(net "GND")
 			(uuid "3c0cb584-19b1-46d2-9432-0fa0c67793be")
+		)
+		(variant
+			(name "usb")
+			(dnp yes)
 		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/R_0603_1608Metric.step"
@@ -7590,6 +7656,10 @@
 			(net "GND")
 			(uuid "2b554669-5a96-4222-afbf-30e77e5fa72c")
 		)
+		(variant
+			(name "usb")
+			(dnp yes)
+		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/C_0603_1608Metric.step"
 			(offset
@@ -7776,6 +7846,10 @@
 			(roundrect_rratio 0.25)
 			(net "GND")
 			(uuid "a74f4b09-40b1-466f-823c-d0a3a76c99fe")
+		)
+		(variant
+			(name "usb")
+			(dnp yes)
 		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/C_0603_1608Metric.step"
@@ -8046,6 +8120,10 @@
 			(layers "F.Cu" "F.Mask" "F.Paste")
 			(net "/ethernet_poe/MDI_TX_P")
 			(uuid "21672687-d8e0-4000-a892-88892d154f92")
+		)
+		(variant
+			(name "usb")
+			(dnp yes)
 		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/SMD-16_L12.7-W7.0-H5.7-P1.27-LS9.5-BL.wrl"
@@ -8421,6 +8499,10 @@
 			(net "/ethernet_poe/TD_P")
 			(uuid "9207f7fd-7b25-45ca-baf6-e7b05beb66a2")
 		)
+		(variant
+			(name "usb")
+			(dnp yes)
+		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/R_0603_1608Metric.step"
 			(offset
@@ -8794,6 +8876,10 @@
 			(roundrect_rratio 0.25)
 			(net "Net-(D301-K)")
 			(uuid "686544b1-5bbe-40d1-a87a-e8f0178bb148")
+		)
+		(variant
+			(name "usb")
+			(dnp yes)
 		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/R_0603_1608Metric.step"
@@ -9711,6 +9797,10 @@
 			(net "+3V3")
 			(uuid "fff4a454-286b-43b6-a5b3-01ca736a5e4a")
 		)
+		(variant
+			(name "usb")
+			(dnp yes)
+		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/LED_0603_1608Metric.step"
 			(offset
@@ -10459,6 +10549,10 @@
 			(net "GND")
 			(uuid "c2d0e0eb-5f64-4f24-8dd5-48daca4f7ff4")
 		)
+		(variant
+			(name "usb")
+			(dnp yes)
+		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/C_0603_1608Metric.step"
 			(offset
@@ -10833,6 +10927,10 @@
 			(net "/ethernet_poe/ETH_INT")
 			(uuid "e393744b-35c9-461d-82b4-ced6fd238209")
 		)
+		(variant
+			(name "usb")
+			(dnp yes)
+		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/R_0603_1608Metric.step"
 			(offset
@@ -11019,6 +11117,10 @@
 			(roundrect_rratio 0.25)
 			(net "GND")
 			(uuid "51afde1f-f8a7-44e0-abe8-2e7cccc0c2c9")
+		)
+		(variant
+			(name "usb")
+			(dnp yes)
 		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/C_0603_1608Metric.step"
@@ -11442,6 +11544,10 @@
 			(roundrect_rratio 0.25)
 			(net "/ethernet_poe/RXN")
 			(uuid "346c1a46-46fa-47d4-90a6-c245896d8df5")
+		)
+		(variant
+			(name "usb")
+			(dnp yes)
 		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/R_0603_1608Metric.step"
@@ -12004,6 +12110,10 @@
 			(net "GND")
 			(uuid "af7c624b-5fc5-4848-8c27-20dbe281fa2f")
 		)
+		(variant
+			(name "usb")
+			(dnp yes)
+		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/C_0603_1608Metric.step"
 			(offset
@@ -12190,6 +12300,10 @@
 			(roundrect_rratio 0.25)
 			(net "/ethernet_poe/RX_TERM_P")
 			(uuid "41716775-4e85-409d-aeab-f2f02212b892")
+		)
+		(variant
+			(name "usb")
+			(dnp yes)
 		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/C_0603_1608Metric.step"
@@ -12378,6 +12492,10 @@
 			(net "GND")
 			(uuid "1fa13551-1b1f-4458-9843-1dd740c4d4d1")
 		)
+		(variant
+			(name "usb")
+			(dnp yes)
+		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/C_0603_1608Metric.step"
 			(offset
@@ -12564,6 +12682,10 @@
 			(roundrect_rratio 0.25)
 			(net "Net-(C319-Pad1)")
 			(uuid "a293b971-c03e-4403-8252-6b9e44360521")
+		)
+		(variant
+			(name "usb")
+			(dnp yes)
 		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/R_0603_1608Metric.step"
@@ -13617,6 +13739,10 @@
 			(net "GND")
 			(uuid "fc034cca-4c68-41c1-a319-afb806b3c551")
 		)
+		(variant
+			(name "usb")
+			(dnp yes)
+		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/C_0603_1608Metric.step"
 			(offset
@@ -14088,6 +14214,10 @@
 			(net "/ethernet_poe/TD_N")
 			(uuid "a4478aa7-afde-495e-8006-2e6102016e25")
 		)
+		(variant
+			(name "usb")
+			(dnp yes)
+		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/R_0603_1608Metric.step"
 			(offset
@@ -14428,6 +14558,10 @@
 			(layers "F.Cu" "F.Mask" "F.Paste")
 			(net "/ethernet_poe/CT_12")
 			(uuid "2f31899a-3038-4293-8fe3-0b67ec19c235")
+		)
+		(variant
+			(name "usb")
+			(dnp yes)
 		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/MBS_L4.7-W3.8-P2.40-LS7.0-TL.wrl"
@@ -15920,6 +16054,10 @@
 			(zone_connect 0)
 			(uuid "e880ec73-3684-4c20-a2e7-2748be74e0c1")
 		)
+		(variant
+			(name "usb")
+			(dnp yes)
+		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/LQFP-48_L7.0-W7.0-H1.4-LS9.0-P0.50.wrl"
 			(offset
@@ -16106,6 +16244,10 @@
 			(roundrect_rratio 0.25)
 			(net "/ethernet_poe/RX_TERM_N")
 			(uuid "5006c2a7-8a0b-4439-9377-2ce726e05317")
+		)
+		(variant
+			(name "usb")
+			(dnp yes)
 		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/R_0603_1608Metric.step"
@@ -16753,6 +16895,10 @@
 			(net "GND")
 			(uuid "08481557-dece-4fde-8bc9-af634eb39caf")
 		)
+		(variant
+			(name "usb")
+			(dnp yes)
+		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/C_0805_2012Metric.step"
 			(offset
@@ -16939,6 +17085,10 @@
 			(roundrect_rratio 0.25)
 			(net "Net-(C321-Pad1)")
 			(uuid "6e691ec6-bf8a-44a4-8110-7f77e4165d02")
+		)
+		(variant
+			(name "usb")
+			(dnp yes)
 		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/R_0603_1608Metric.step"
@@ -17215,6 +17365,10 @@
 			(roundrect_rratio 0.16129)
 			(net "GND")
 			(uuid "39d985c6-7537-4e75-957c-2c20662b6026")
+		)
+		(variant
+			(name "usb")
+			(dnp yes)
 		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/C_1808_4520Metric.step"
@@ -17706,6 +17860,10 @@
 			(roundrect_rratio 0.25)
 			(net "/ethernet_poe/BS")
 			(uuid "a2d4c3b7-59c3-423e-b533-24d903a6b6ab")
+		)
+		(variant
+			(name "usb")
+			(dnp yes)
 		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/C_0603_1608Metric.step"
@@ -18350,193 +18508,6 @@
 	)
 	(footprint "freedo-radio:R_0603_1608Metric"
 		(layer "F.Cu")
-		(uuid "c48f10ee-911c-489d-a09e-48e902f10d07")
-		(at 283.6 60.769999)
-		(descr "Resistor SMD 0603 (1608 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 72, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf)")
-		(tags "resistor")
-		(property "Reference" "R221"
-			(at -3.4 0.080001 0)
-			(unlocked yes)
-			(layer "F.SilkS")
-			(uuid "3d5c7ff1-a77b-4355-b9f5-a7387119db69")
-			(effects
-				(font
-					(size 1 0.9)
-					(thickness 0.15)
-				)
-			)
-		)
-		(property "Value" "1k"
-			(at 0 1.43 0)
-			(layer "F.Fab")
-			(uuid "077b4a57-af89-402f-b95a-de8d76fcb694")
-			(effects
-				(font
-					(size 1 1)
-					(thickness 0.15)
-				)
-			)
-		)
-		(property "Datasheet" ""
-			(at 0 0 0)
-			(layer "F.Fab")
-			(hide yes)
-			(uuid "0db69c52-144e-47e2-8e0f-e619c5a46a80")
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Description" "Resistor"
-			(at 0 0 0)
-			(layer "F.Fab")
-			(hide yes)
-			(uuid "23533b2a-fd70-4ac2-987f-ae93fcb3a7a0")
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "KiLib_Generator" "SMD_2terminal_chip_molded"
-			(at 0 0 0)
-			(layer "F.SilkS")
-			(hide yes)
-			(uuid "3fabcd26-fd80-4784-b855-ecc3fe23fe28")
-			(effects
-				(font
-					(size 1 1)
-					(thickness 0.15)
-				)
-			)
-		)
-		(property "MPN" "0603WAF1001T5E"
-			(at 0 0 0)
-			(layer "F.Fab")
-			(hide yes)
-			(uuid "3b375845-795d-4552-83aa-765f539f96c5")
-			(effects
-				(font
-					(size 1.27 1.27)
-					(thickness 0.15)
-				)
-			)
-		)
-		(property "LCSC" "C21190"
-			(at 0 0 0)
-			(layer "F.Fab")
-			(hide yes)
-			(uuid "5f21aabb-45ee-4b7f-b199-248557dd962a")
-			(effects
-				(font
-					(size 1.27 1.27)
-					(thickness 0.15)
-				)
-			)
-		)
-		(property "Asm" "JLC"
-			(at 0 0 0)
-			(layer "F.Fab")
-			(hide yes)
-			(uuid "a8c8e827-7050-4a3d-b1b5-6244b89cf1d3")
-			(effects
-				(font
-					(size 1.27 1.27)
-					(thickness 0.15)
-				)
-			)
-		)
-		(property ki_fp_filters "R_*")
-		(path "/00b1a12d-78e9-4603-825f-6baf2f84fd14/a4a96d11-13ca-4e02-a266-078380ad3b70")
-		(sheetname "/mcu/")
-		(sheetfile "mcu.kicad_sch")
-		(attr smd)
-		(duplicate_pad_numbers_are_jumpers no)
-		(fp_line
-			(start -0.237258 -0.5225)
-			(end 0.237258 -0.5225)
-			(stroke
-				(width 0.15)
-				(type solid)
-			)
-			(layer "F.SilkS")
-			(uuid "c39ec6f6-1080-407f-98b5-99c407ef297e")
-		)
-		(fp_line
-			(start -0.237258 0.5225)
-			(end 0.237258 0.5225)
-			(stroke
-				(width 0.15)
-				(type solid)
-			)
-			(layer "F.SilkS")
-			(uuid "3d34775f-9bb8-465d-b02d-1917ad0d3e9f")
-		)
-		(fp_rect
-			(start -1.48 -0.73)
-			(end 1.48 0.73)
-			(stroke
-				(width 0.05)
-				(type solid)
-			)
-			(fill no)
-			(layer "F.CrtYd")
-			(uuid "9e384ca1-f1a8-4666-9066-783c023b46b9")
-		)
-		(fp_rect
-			(start -0.8 -0.4125)
-			(end 0.8 0.4125)
-			(stroke
-				(width 0.1)
-				(type solid)
-			)
-			(fill no)
-			(layer "F.Fab")
-			(uuid "8f018762-3e94-4879-a094-12f4b64f62d1")
-		)
-		(fp_text user "${REFERENCE}"
-			(at 0 0 0)
-			(layer "F.Fab")
-			(uuid "b427e527-3ada-47c9-8536-577a55f4d32c")
-			(effects
-				(font
-					(size 0.4 0.4)
-					(thickness 0.06)
-				)
-			)
-		)
-		(pad "1" smd roundrect
-			(at -0.825 0)
-			(size 0.8 0.95)
-			(layers "F.Cu" "F.Mask" "F.Paste")
-			(roundrect_rratio 0.25)
-			(net "/mcu/UART0_RX")
-			(uuid "407d3211-2bb5-46cb-b5d9-5651d9a43494")
-		)
-		(pad "2" smd roundrect
-			(at 0.825 0)
-			(size 0.8 0.95)
-			(layers "F.Cu" "F.Mask" "F.Paste")
-			(roundrect_rratio 0.25)
-			(net "Net-(R221-Pad2)")
-			(uuid "80b21f7e-c8b1-4533-b34a-2af24f20d773")
-		)
-		(embedded_fonts no)
-		(model "${KIPRJMOD}/lib/3dmodels/R_0603_1608Metric.step"
-			(offset
-				(xyz 0 0 0)
-			)
-			(scale
-				(xyz 1 1 1)
-			)
-			(rotate
-				(xyz 0 0 0)
-			)
-		)
-	)
-	(footprint "freedo-radio:R_0603_1608Metric"
-		(layer "F.Cu")
 		(uuid "b3b1649f-b0a2-4ae1-a2e1-24d2f64361e8")
 		(at 194.6 89.8 -90)
 		(descr "Resistor SMD 0603 (1608 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 72, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf)")
@@ -18708,6 +18679,10 @@
 			(roundrect_rratio 0.25)
 			(net "Net-(C320-Pad1)")
 			(uuid "28048125-c6d7-4995-84a8-9f2d8c3ec2af")
+		)
+		(variant
+			(name "usb")
+			(dnp yes)
 		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/R_0603_1608Metric.step"
@@ -18895,6 +18870,10 @@
 			(roundrect_rratio 0.25)
 			(net "/ethernet_poe/BS")
 			(uuid "1949ecf0-8ea5-45a1-8b81-8f0104cce23c")
+		)
+		(variant
+			(name "usb")
+			(dnp yes)
 		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/C_0603_1608Metric.step"
@@ -19498,6 +19477,10 @@
 			(net "/ethernet_poe/RXP")
 			(uuid "102308cb-d196-4c04-827a-366cad39fc51")
 		)
+		(variant
+			(name "usb")
+			(dnp yes)
+		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/R_0603_1608Metric.step"
 			(offset
@@ -19919,6 +19902,10 @@
 			(net "Net-(C302-Pad1)")
 			(uuid "4e282162-6a68-431f-af0d-20acae545d94")
 		)
+		(variant
+			(name "usb")
+			(dnp yes)
+		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/R_0603_1608Metric.step"
 			(offset
@@ -20105,6 +20092,10 @@
 			(roundrect_rratio 0.16129)
 			(net "/ethernet_poe/SHIELD")
 			(uuid "56b4b81a-1075-4ca9-bf12-6b1be21390a8")
+		)
+		(variant
+			(name "usb")
+			(dnp yes)
 		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/C_1808_4520Metric.step"
@@ -20480,8 +20471,199 @@
 			(net "/ethernet_poe/BS")
 			(uuid "2a0ef443-9c5f-4fad-8b85-932356a3b9b6")
 		)
+		(variant
+			(name "usb")
+			(dnp yes)
+		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/C_0603_1608Metric.step"
+			(offset
+				(xyz 0 0 0)
+			)
+			(scale
+				(xyz 1 1 1)
+			)
+			(rotate
+				(xyz 0 0 0)
+			)
+		)
+	)
+	(footprint "freedo-radio:R_0603_1608Metric"
+		(layer "F.Cu")
+		(uuid "c48f10ee-911c-489d-a09e-48e902f10d07")
+		(at 283.6 60.769999)
+		(descr "Resistor SMD 0603 (1608 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 72, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf)")
+		(tags "resistor")
+		(property "Reference" "R221"
+			(at -3.4 0.080001 0)
+			(unlocked yes)
+			(layer "F.SilkS")
+			(uuid "3d5c7ff1-a77b-4355-b9f5-a7387119db69")
+			(effects
+				(font
+					(size 1 0.9)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "Value" "1k"
+			(at 0 1.43 0)
+			(layer "F.Fab")
+			(uuid "077b4a57-af89-402f-b95a-de8d76fcb694")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "0db69c52-144e-47e2-8e0f-e619c5a46a80")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Resistor"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "23533b2a-fd70-4ac2-987f-ae93fcb3a7a0")
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "KiLib_Generator" "SMD_2terminal_chip_molded"
+			(at 0 0 0)
+			(layer "F.SilkS")
+			(hide yes)
+			(uuid "3fabcd26-fd80-4784-b855-ecc3fe23fe28")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "MPN" "0603WAF1001T5E"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "3b375845-795d-4552-83aa-765f539f96c5")
+			(effects
+				(font
+					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "LCSC" "C21190"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "5f21aabb-45ee-4b7f-b199-248557dd962a")
+			(effects
+				(font
+					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "Asm" "JLC"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "a8c8e827-7050-4a3d-b1b5-6244b89cf1d3")
+			(effects
+				(font
+					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property ki_fp_filters "R_*")
+		(path "/00b1a12d-78e9-4603-825f-6baf2f84fd14/a4a96d11-13ca-4e02-a266-078380ad3b70")
+		(sheetname "/mcu/")
+		(sheetfile "mcu.kicad_sch")
+		(attr smd)
+		(duplicate_pad_numbers_are_jumpers no)
+		(fp_line
+			(start -0.237258 -0.5225)
+			(end 0.237258 -0.5225)
+			(stroke
+				(width 0.15)
+				(type solid)
+			)
+			(layer "F.SilkS")
+			(uuid "c39ec6f6-1080-407f-98b5-99c407ef297e")
+		)
+		(fp_line
+			(start -0.237258 0.5225)
+			(end 0.237258 0.5225)
+			(stroke
+				(width 0.15)
+				(type solid)
+			)
+			(layer "F.SilkS")
+			(uuid "3d34775f-9bb8-465d-b02d-1917ad0d3e9f")
+		)
+		(fp_rect
+			(start -1.48 -0.73)
+			(end 1.48 0.73)
+			(stroke
+				(width 0.05)
+				(type solid)
+			)
+			(fill no)
+			(layer "F.CrtYd")
+			(uuid "9e384ca1-f1a8-4666-9066-783c023b46b9")
+		)
+		(fp_rect
+			(start -0.8 -0.4125)
+			(end 0.8 0.4125)
+			(stroke
+				(width 0.1)
+				(type solid)
+			)
+			(fill no)
+			(layer "F.Fab")
+			(uuid "8f018762-3e94-4879-a094-12f4b64f62d1")
+		)
+		(fp_text user "${REFERENCE}"
+			(at 0 0 0)
+			(layer "F.Fab")
+			(uuid "b427e527-3ada-47c9-8536-577a55f4d32c")
+			(effects
+				(font
+					(size 0.4 0.4)
+					(thickness 0.06)
+				)
+			)
+		)
+		(pad "1" smd roundrect
+			(at -0.825 0)
+			(size 0.8 0.95)
+			(layers "F.Cu" "F.Mask" "F.Paste")
+			(roundrect_rratio 0.25)
+			(net "/mcu/UART0_RX")
+			(uuid "407d3211-2bb5-46cb-b5d9-5651d9a43494")
+		)
+		(pad "2" smd roundrect
+			(at 0.825 0)
+			(size 0.8 0.95)
+			(layers "F.Cu" "F.Mask" "F.Paste")
+			(roundrect_rratio 0.25)
+			(net "Net-(R221-Pad2)")
+			(uuid "80b21f7e-c8b1-4533-b34a-2af24f20d773")
+		)
+		(embedded_fonts no)
+		(model "${KIPRJMOD}/lib/3dmodels/R_0603_1608Metric.step"
 			(offset
 				(xyz 0 0 0)
 			)
@@ -21089,6 +21271,10 @@
 			(roundrect_rratio 0.25)
 			(net "GND")
 			(uuid "b82e568c-5773-4c09-9eff-bb358150bdc0")
+		)
+		(variant
+			(name "usb")
+			(dnp yes)
 		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/C_0603_1608Metric.step"
@@ -22357,6 +22543,10 @@
 			(net "/ethernet_poe/XO")
 			(uuid "a9c64464-b3ac-4d9e-b123-2834e81a7f0e")
 		)
+		(variant
+			(name "usb")
+			(dnp yes)
+		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/R_0603_1608Metric.step"
 			(offset
@@ -22583,6 +22773,10 @@
 			(layers "F.Cu" "F.Mask" "F.Paste")
 			(net "/ethernet_poe/+VDC")
 			(uuid "af4058ef-40d3-4346-9566-fcb7b650aa9d")
+		)
+		(variant
+			(name "usb")
+			(dnp yes)
 		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/SMA_L4.3-W2.6-LS5.2-RD.wrl"
@@ -23144,6 +23338,10 @@
 			(roundrect_rratio 0.25)
 			(net "/ethernet_poe/BS")
 			(uuid "e592c56e-14b7-45e5-b568-10c5851dd498")
+		)
+		(variant
+			(name "usb")
+			(dnp yes)
 		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/C_0603_1608Metric.step"
@@ -23755,6 +23953,10 @@
 			(net "/ethernet_poe/3V3A")
 			(uuid "7a62894d-cf1b-448c-955f-69123685be2d")
 		)
+		(variant
+			(name "usb")
+			(dnp yes)
+		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/L_0603_1608Metric.step"
 			(offset
@@ -23941,6 +24143,10 @@
 			(roundrect_rratio 0.25)
 			(net "GND")
 			(uuid "f70979d2-dc54-4ca1-b092-b59a6136a150")
+		)
+		(variant
+			(name "usb")
+			(dnp yes)
 		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/C_0603_1608Metric.step"
@@ -24316,6 +24522,10 @@
 			(net "/ethernet_poe/TXP")
 			(uuid "f5e47b85-f342-40c8-a280-7ef693a81f38")
 		)
+		(variant
+			(name "usb")
+			(dnp yes)
+		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/R_0603_1608Metric.step"
 			(offset
@@ -24502,6 +24712,10 @@
 			(roundrect_rratio 0.25)
 			(net "GND")
 			(uuid "36c18a8d-1095-49f0-99ac-c16b0d2f1953")
+		)
+		(variant
+			(name "usb")
+			(dnp yes)
 		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/C_0603_1608Metric.step"
@@ -26039,6 +26253,10 @@
 			(net "GND")
 			(uuid "66985262-a9bf-476b-8e4a-6a46fafadb77")
 		)
+		(variant
+			(name "usb")
+			(dnp yes)
+		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/CRYSTAL-SMD_4P-L3.2-W2.5-BL.wrl"
 			(offset
@@ -26414,6 +26632,10 @@
 			(roundrect_rratio 0.25)
 			(net "/ethernet_poe/TXN")
 			(uuid "7a34120c-17ab-431b-ac42-67abb3990b49")
+		)
+		(variant
+			(name "usb")
+			(dnp yes)
 		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/R_0603_1608Metric.step"
@@ -27094,6 +27316,10 @@
 			(net "/ethernet_poe/RX_TERM_N")
 			(uuid "5ef85d76-95b8-40fa-9b2a-84e8ee13e38e")
 		)
+		(variant
+			(name "usb")
+			(dnp yes)
+		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/C_0603_1608Metric.step"
 			(offset
@@ -27435,6 +27661,10 @@
 			(net "/ethernet_poe/PAIR_45")
 			(uuid "b79d393d-bab9-4bc1-971a-ddbb15520322")
 		)
+		(variant
+			(name "usb")
+			(dnp yes)
+		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/MBS_L4.7-W3.8-P2.40-LS7.0-TL.wrl"
 			(offset
@@ -27621,6 +27851,10 @@
 			(roundrect_rratio 0.25)
 			(net "/ethernet_poe/RX_CT")
 			(uuid "3761fb3b-c6bc-46d4-a5fa-fcde9d469691")
+		)
+		(variant
+			(name "usb")
+			(dnp yes)
 		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/R_0603_1608Metric.step"
@@ -27975,6 +28209,10 @@
 			(roundrect_rratio 0.25)
 			(net "GND")
 			(uuid "c86493c3-36b1-4873-9527-b38c93d1736c")
+		)
+		(variant
+			(name "usb")
+			(dnp yes)
 		)
 		(embedded_fonts no)
 		(model "${KIPRJMOD}/lib/3dmodels/C_0603_1608Metric.step"
@@ -39889,164 +40127,20 @@
 		(uuid "f67e1961-7b67-4098-aa79-91c52b405e5d")
 	)
 	(segment
-		(start 220.15 57.925)
-		(end 220.75 57.325)
+		(start 284.425 60.769999)
+		(end 285.695 59.5)
 		(width 0.2)
 		(layer "F.Cu")
-		(net "/mcu/UART0_RX")
-		(uuid "0be27766-37fe-49a5-bf07-0e8bf4dfee62")
+		(net "Net-(R221-Pad2)")
+		(uuid "28a7c162-eee9-49c5-bf28-04570754a0d1")
 	)
 	(segment
-		(start 220.15 57.925)
-		(end 219.48 57.925)
+		(start 285.695 59.5)
+		(end 287.4 59.5)
 		(width 0.2)
 		(layer "F.Cu")
-		(net "/mcu/UART0_RX")
-		(uuid "0d380e63-d8f6-43b2-930b-c3e6e110cb53")
-	)
-	(segment
-		(start 274.58 55)
-		(end 274.88 55.3)
-		(width 0.2)
-		(layer "F.Cu")
-		(net "/mcu/UART0_RX")
-		(uuid "17d68f90-9d82-4cc0-b083-0c5695e10611")
-	)
-	(segment
-		(start 274.88 59)
-		(end 275.38 59.5)
-		(width 0.2)
-		(layer "F.Cu")
-		(net "/mcu/UART0_RX")
-		(uuid "1bab322e-7b46-4b3b-9316-3cc27386f331")
-	)
-	(segment
-		(start 262 56.1)
-		(end 263.3 56.1)
-		(width 0.2)
-		(layer "F.Cu")
-		(net "/mcu/UART0_RX")
-		(uuid "4039831f-86f1-49f1-b108-de4cf5b281e8")
-	)
-	(segment
-		(start 220.75 51.55)
-		(end 220.75 57.325)
-		(width 0.2)
-		(layer "F.Cu")
-		(net "/mcu/UART0_RX")
-		(uuid "65a7ecb9-b4f8-404d-964c-a0444dce2c6e")
-	)
-	(segment
-		(start 274.88 55.3)
-		(end 274.88 59)
-		(width 0.2)
-		(layer "F.Cu")
-		(net "/mcu/UART0_RX")
-		(uuid "6fc6dd75-e7df-43f5-919d-91de3aef2418")
-	)
-	(segment
-		(start 275.38 59.5)
-		(end 281.505 59.5)
-		(width 0.2)
-		(layer "F.Cu")
-		(net "/mcu/UART0_RX")
-		(uuid "9945e285-c11a-42af-87f5-1468b4fb1fbc")
-	)
-	(segment
-		(start 281.505 59.5)
-		(end 282.775 60.769999)
-		(width 0.2)
-		(layer "F.Cu")
-		(net "/mcu/UART0_RX")
-		(uuid "b88a7191-1f21-45a7-85f2-4c6e9fe6bdf9")
-	)
-	(segment
-		(start 263.3 56.1)
-		(end 264.399999 55)
-		(width 0.2)
-		(layer "F.Cu")
-		(net "/mcu/UART0_RX")
-		(uuid "d103b978-4432-45fb-b741-817be6dc884e")
-	)
-	(segment
-		(start 264.399999 55)
-		(end 274.58 55)
-		(width 0.2)
-		(layer "F.Cu")
-		(net "/mcu/UART0_RX")
-		(uuid "db4c9f0e-bc98-4191-a3e0-6b93fe8d30f5")
-	)
-	(via
-		(at 220.75 51.55)
-		(size 0.45)
-		(drill 0.2)
-		(layers "F.Cu" "B.Cu")
-		(tenting
-			(front yes)
-			(back yes)
-		)
-		(net "/mcu/UART0_RX")
-		(uuid "21a725e5-b3a9-4b26-932e-fb41db325edf")
-	)
-	(via
-		(at 263.3 56.1)
-		(size 0.45)
-		(drill 0.2)
-		(layers "F.Cu" "B.Cu")
-		(tenting
-			(front yes)
-			(back yes)
-		)
-		(net "/mcu/UART0_RX")
-		(uuid "cd7696cc-a236-42b1-84d3-8ea706af6078")
-	)
-	(segment
-		(start 248.3 51.6)
-		(end 247.8 51.1)
-		(width 0.2)
-		(layer "B.Cu")
-		(net "/mcu/UART0_RX")
-		(uuid "19823f72-1b15-4a52-9602-14695fda2f1e")
-	)
-	(segment
-		(start 221.2 51.1)
-		(end 220.75 51.55)
-		(width 0.2)
-		(layer "B.Cu")
-		(net "/mcu/UART0_RX")
-		(uuid "4b5477bf-4a1f-4bfb-a9c1-5938f6a61208")
-	)
-	(segment
-		(start 247.8 51.1)
-		(end 221.2 51.1)
-		(width 0.2)
-		(layer "B.Cu")
-		(net "/mcu/UART0_RX")
-		(uuid "a128cb6f-d352-467c-8695-30b95a28ab59")
-	)
-	(segment
-		(start 248.9 56.1)
-		(end 248.3 55.5)
-		(width 0.2)
-		(layer "B.Cu")
-		(net "/mcu/UART0_RX")
-		(uuid "cd627e22-3e87-490c-b3de-198b5c9e6b36")
-	)
-	(segment
-		(start 263.3 56.1)
-		(end 248.9 56.1)
-		(width 0.2)
-		(layer "B.Cu")
-		(net "/mcu/UART0_RX")
-		(uuid "e6d2de16-dfa2-410b-98f9-db55e5cfce3d")
-	)
-	(segment
-		(start 248.3 55.5)
-		(end 248.3 51.6)
-		(width 0.2)
-		(layer "B.Cu")
-		(net "/mcu/UART0_RX")
-		(uuid "f55b60ac-e49d-43a0-9057-19851db0a838")
+		(net "Net-(R221-Pad2)")
+		(uuid "299d706c-848b-464c-8e3d-711758ca9977")
 	)
 	(segment
 		(start 276.14 66.9)
@@ -42141,6 +42235,166 @@
 		(uuid "dd2222f4-673f-4307-af36-7318319baac4")
 	)
 	(segment
+		(start 220.15 57.925)
+		(end 220.75 57.325)
+		(width 0.2)
+		(layer "F.Cu")
+		(net "/mcu/UART0_RX")
+		(uuid "0be27766-37fe-49a5-bf07-0e8bf4dfee62")
+	)
+	(segment
+		(start 220.15 57.925)
+		(end 219.48 57.925)
+		(width 0.2)
+		(layer "F.Cu")
+		(net "/mcu/UART0_RX")
+		(uuid "0d380e63-d8f6-43b2-930b-c3e6e110cb53")
+	)
+	(segment
+		(start 274.58 55)
+		(end 274.88 55.3)
+		(width 0.2)
+		(layer "F.Cu")
+		(net "/mcu/UART0_RX")
+		(uuid "17d68f90-9d82-4cc0-b083-0c5695e10611")
+	)
+	(segment
+		(start 274.88 59)
+		(end 275.38 59.5)
+		(width 0.2)
+		(layer "F.Cu")
+		(net "/mcu/UART0_RX")
+		(uuid "1bab322e-7b46-4b3b-9316-3cc27386f331")
+	)
+	(segment
+		(start 262 56.1)
+		(end 263.3 56.1)
+		(width 0.2)
+		(layer "F.Cu")
+		(net "/mcu/UART0_RX")
+		(uuid "4039831f-86f1-49f1-b108-de4cf5b281e8")
+	)
+	(segment
+		(start 220.75 51.55)
+		(end 220.75 57.325)
+		(width 0.2)
+		(layer "F.Cu")
+		(net "/mcu/UART0_RX")
+		(uuid "65a7ecb9-b4f8-404d-964c-a0444dce2c6e")
+	)
+	(segment
+		(start 274.88 55.3)
+		(end 274.88 59)
+		(width 0.2)
+		(layer "F.Cu")
+		(net "/mcu/UART0_RX")
+		(uuid "6fc6dd75-e7df-43f5-919d-91de3aef2418")
+	)
+	(segment
+		(start 275.38 59.5)
+		(end 281.505 59.5)
+		(width 0.2)
+		(layer "F.Cu")
+		(net "/mcu/UART0_RX")
+		(uuid "9945e285-c11a-42af-87f5-1468b4fb1fbc")
+	)
+	(segment
+		(start 281.505 59.5)
+		(end 282.775 60.769999)
+		(width 0.2)
+		(layer "F.Cu")
+		(net "/mcu/UART0_RX")
+		(uuid "b88a7191-1f21-45a7-85f2-4c6e9fe6bdf9")
+	)
+	(segment
+		(start 263.3 56.1)
+		(end 264.399999 55)
+		(width 0.2)
+		(layer "F.Cu")
+		(net "/mcu/UART0_RX")
+		(uuid "d103b978-4432-45fb-b741-817be6dc884e")
+	)
+	(segment
+		(start 264.399999 55)
+		(end 274.58 55)
+		(width 0.2)
+		(layer "F.Cu")
+		(net "/mcu/UART0_RX")
+		(uuid "db4c9f0e-bc98-4191-a3e0-6b93fe8d30f5")
+	)
+	(via
+		(at 220.75 51.55)
+		(size 0.45)
+		(drill 0.2)
+		(layers "F.Cu" "B.Cu")
+		(tenting
+			(front yes)
+			(back yes)
+		)
+		(net "/mcu/UART0_RX")
+		(uuid "21a725e5-b3a9-4b26-932e-fb41db325edf")
+	)
+	(via
+		(at 263.3 56.1)
+		(size 0.45)
+		(drill 0.2)
+		(layers "F.Cu" "B.Cu")
+		(tenting
+			(front yes)
+			(back yes)
+		)
+		(net "/mcu/UART0_RX")
+		(uuid "cd7696cc-a236-42b1-84d3-8ea706af6078")
+	)
+	(segment
+		(start 248.3 51.6)
+		(end 247.8 51.1)
+		(width 0.2)
+		(layer "B.Cu")
+		(net "/mcu/UART0_RX")
+		(uuid "19823f72-1b15-4a52-9602-14695fda2f1e")
+	)
+	(segment
+		(start 221.2 51.1)
+		(end 220.75 51.55)
+		(width 0.2)
+		(layer "B.Cu")
+		(net "/mcu/UART0_RX")
+		(uuid "4b5477bf-4a1f-4bfb-a9c1-5938f6a61208")
+	)
+	(segment
+		(start 247.8 51.1)
+		(end 221.2 51.1)
+		(width 0.2)
+		(layer "B.Cu")
+		(net "/mcu/UART0_RX")
+		(uuid "a128cb6f-d352-467c-8695-30b95a28ab59")
+	)
+	(segment
+		(start 248.9 56.1)
+		(end 248.3 55.5)
+		(width 0.2)
+		(layer "B.Cu")
+		(net "/mcu/UART0_RX")
+		(uuid "cd627e22-3e87-490c-b3de-198b5c9e6b36")
+	)
+	(segment
+		(start 263.3 56.1)
+		(end 248.9 56.1)
+		(width 0.2)
+		(layer "B.Cu")
+		(net "/mcu/UART0_RX")
+		(uuid "e6d2de16-dfa2-410b-98f9-db55e5cfce3d")
+	)
+	(segment
+		(start 248.3 55.5)
+		(end 248.3 51.6)
+		(width 0.2)
+		(layer "B.Cu")
+		(net "/mcu/UART0_RX")
+		(uuid "f55b60ac-e49d-43a0-9057-19851db0a838")
+	)
+	(segment
 		(start 241.025 90.025)
 		(end 241.025 90.3)
 		(width 0.2)
@@ -44088,22 +44342,6 @@
 		(layer "B.Cu")
 		(net "/rf/E22_DIO2_PAD19")
 		(uuid "ec99d87e-1acc-4694-969a-6f524ea152de")
-	)
-	(segment
-		(start 284.425 60.769999)
-		(end 285.695 59.5)
-		(width 0.2)
-		(layer "F.Cu")
-		(net "Net-(R221-Pad2)")
-		(uuid "28a7c162-eee9-49c5-bf28-04570754a0d1")
-	)
-	(segment
-		(start 285.695 59.5)
-		(end 287.4 59.5)
-		(width 0.2)
-		(layer "F.Cu")
-		(net "Net-(R221-Pad2)")
-		(uuid "299d706c-848b-464c-8e3d-711758ca9977")
 	)
 	(zone
 		(net "/ethernet_poe/SHIELD")
