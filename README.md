@@ -257,14 +257,14 @@ The easiest way to run freedo is directly as a Home Assistant Add-on (called an 
 
    [![Add Add-on Repository](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FCappyT%2Ffreedo)
 
-   Alternatively, go to Settings → Add-ons → Add-on Store → Repositories and enter:
+   Alternatively, go to Settings > Add-ons > Add-on Store > Repositories and enter:
 
    `https://github.com/CappyT/freedo`
 
 2. **Install and configure freedo**
-   - Go to Settings → Add-ons → Add-on Store.
+   - Go to Settings > Add-ons > Add-on Store.
    - Search for freedo and install it.
-   - Go to freedo → Configuration.
+   - Go to freedo > Configuration.
    - Enable **Show unused optional configuration options**.
    - Select the ESP32 serial port and click Save.
    - Go to Info and start freedo with **Protection Mode enabled**.
@@ -306,7 +306,7 @@ The container starts in dry-run mode.
 
 For volume configuration, time zone settings and building from source, see [docs/OPERATION.md](docs/OPERATION.md).
 
-### Home Assistant Integration (required Add-on or Container Installation)
+### Home Assistant Integration
 
 1. **Add the freedo repository**
 
@@ -314,18 +314,18 @@ For volume configuration, time zone settings and building from source, see [docs
 
    Alternatively, add the repository manually:
 
-   - **Home Assistant 2026.11 and newer (Marketplace):** Open Settings → Marketplace and add `https://github.com/CappyT/freedo` as an Integration.
-   - **Home Assistant versions before 2026.11 (HACS):** Open HACS → menu → Custom repositories. Enter `https://github.com/CappyT/freedo`, select Integration and add the repository.
+   - Open HACS > menu > Custom repositories.
+   - Enter `https://github.com/CappyT/freedo`, select Integration and add the repository.
 
 2. **Download and install the integration**
-   - Go to HACS / Marketplace → Integrations.
+   - Go to HACS > Integrations.
    - Search for freedo and click Download.
    - Restart Home Assistant.
 
 3. **Connect to the freedo integration**
 
    - **Home Assistant Add-on:** Confirm the automatic discovery notification. It provides the host, port and token.
-   - **Docker container:** Go to Settings → Devices & services → Add integration → freedo. Enter the host, port and API token manually.
+   - **Docker container:** Go to Settings > Devices & services > Add integration > freedo. Enter the host, port and API token manually.
 
 See [custom_components/freedo/README.md](custom_components/freedo/README.md) for integration entities, services and blueprints.
 
@@ -364,14 +364,14 @@ The same steps apply when switching back. The two add-ons must not run at the sa
 
 See [addon-beta/DOCS.md](addon-beta/DOCS.md) for details about switching between versions.
 
-Pre-release container images also carry the corresponding version tag and beta suffix.
+Pre-release container images carry the corresponding version tag and the moving `beta` tag.
 
 ### Additional documentation
 
-- [addon/DOCS.md](addon/DOCS.md) – Add-on options, data and backups.
-- [addon-beta/DOCS.md](addon-beta/DOCS.md) – Beta add-on and migration.
-- [docs/OPERATION.md](docs/OPERATION.md) – Docker configuration and operation.
-- [custom_components/freedo/README.md](custom_components/freedo/README.md) – Integration entities, services and blueprints.
+- [addon/DOCS.md](addon/DOCS.md) - Add-on options, data and backups.
+- [addon-beta/DOCS.md](addon-beta/DOCS.md) - Beta add-on and migration.
+- [docs/OPERATION.md](docs/OPERATION.md) - Docker configuration and operation.
+- [custom_components/freedo/README.md](custom_components/freedo/README.md) - Integration entities, services and blueprints.
 
 ## First setup
 
