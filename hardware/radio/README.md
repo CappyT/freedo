@@ -2,11 +2,11 @@
 
 This PCB design is almost completely AI-generated. I have no experience designing a PCB, this work is not tested and may be completely wrong. If you are willing to help, a pull request is accepted.
 
-Documented checks: an electrical review (findings E01 to E20, outcome in section 8.3) and a silkscreen DRC result (section 6.4). No ERC result is documented.
+Documented checks: an electrical review (findings E01 to E20, section 8.3), a pre-order review of 2026-11-18 (findings M1 to M4 and m1 to m9, section 8.4) and the KiCad 10.0.8 checks of 2026-11-18. ERC gives 0 violations. DRC gives 0 errors, 0 unconnected items, 0 schematic parity issues and 8 silkscreen-to-edge warnings, all intended (section 6.4).
 
 ## State of the files
 
-The repository shows no built board, and every bring-up check in section 8.2 is open. `tools/make_fab.py` generates the fabrication package (gerbers, BOM, placement file) on demand. The package is not committed. It comes from an untested design, so have it reviewed before you order it.
+The repository shows no built board, and every bring-up check in section 8.2 is open. The firmware in `firmware/cc1101_bridge` does not run on this board (section 7): a board built today serves electrical bring-up only. `tools/make_fab.py` generates the fabrication package (gerbers, BOM, placement file) on demand, one package for each build of section 5.6. The package is not committed. It comes from an untested design, so have it reviewed before you order it.
 
 ## Licence and provenance
 
@@ -20,13 +20,16 @@ discrete transformer, an optional isolated PoE module and USB-C.
 The host talks to the board over USB (native USB-Serial-JTAG) or, after a firmware port, over Ethernet.
 JLCPCB makes the 4-layer PCB and assembles all SMD parts on the top side.
 The user hand-solders the RJ45 jack, the DP9900LP-5V module, the edge-mount SMA and, when needed, the J203 header.
+The `usb` build variant leaves the Ethernet and PoE parts off the board (section 5.6).
 
 Conventions in this file:
 
 - "(unverified)" marks a value that no document in hand confirms.
-- Class: B = JLC Basic, P = JLC Preferred (Extended without the loading fee), E = Extended.
-- Fit: yes = fitted on every board, opt = hand-soldered only on PoE boards, DNP = footprint only.
-- Class and stock come from a JLC parts database snapshot of 2026-09-24. Check them again at BOM upload.
+- Class: B = JLC Basic, E = Extended. The class changes the price only in Economic PCBA (section 5.6).
+- Fit: yes = fitted in the full build, opt = hand-soldered only on PoE boards, DNP = footprint only. The `usb`
+  variant does not fit the 3xx and 4xx parts.
+- Class comes from the JLC part pages, read 2026-11-18. Stock comes from a JLC parts database snapshot of 2026-09-24.
+  Check both again at BOM upload.
 - Designators: the RF block uses U1, J1, L1, C1, C2 and 1xx. MCU/USB/power uses 2xx, Ethernet 3xx, PoE 4xx.
 
 ## 2. Block diagram
@@ -52,7 +55,7 @@ Conventions in this file:
    3V3 -- L1 -- 3V3_RF -- U1 E07-900MM10S -- ANT -- R191 0R -- L191 shunt -- J1 SMA (edge)
 ```
 
-PoE option: only U401 is optional. JLC fits the SMD PoE parts on every board, because one order has one BOM (section 5.4).
+PoE option: in the full build only U401 is optional. JLC fits the SMD PoE parts on every board of that build, because one order has one BOM (section 5.4).
 
 ## 3. Pin map
 
@@ -85,10 +88,10 @@ Module pads from the ESP32-S3-MINI-1 datasheet v1.7, Table 3-1 (pdf p.11-12).
 | LED TX | 4 | 8 | out | R212 1k, D204 to GND |
 | LED RX | 5 | 9 | out | R213 1k, D205 to GND |
 | LED STATUS | 6 | 10 | out | R214 1k, D206 to GND |
-| USB D- | 19 | 23 | io | R203 22R, U202, J201 A7/B7 |
-| USB D+ | 20 | 24 | io | R204 22R, U202, J201 A6/B6 |
+| USB D- | 19 | 23 | io | R203 33R, U202, J201 A7/B7 |
+| USB D+ | 20 | 24 | io | R204 33R, U202, J201 A6/B6 |
 | UART0 TX (U0TXD) | 43 | 39 | out | R207 1k at the module, TP211, J203-8 |
-| UART0 RX (U0RXD) | 44 | 40 | in | TP212, R218 1k to J203-9 |
+| UART0 RX (U0RXD) | 44 | 40 | in | R221 1k to TP212, R218 1k to J203-9 |
 | BOOT | 0 | 4 | in | R206 10k pull-up, SW202 to GND |
 | EN (CHIP_PU) | - | 45 | in | R205 10k pull-up, C201 1 uF, SW201 to GND |
 | 3V3 | - | 3 | pwr | C206 22 uF + C207 100 nF at the pad |
@@ -173,7 +176,7 @@ Pin notes:
 
 ```
 J201 VBUS -- F201 0.75 A PTC --+-- D201 SMF6.0A -- GND
-                               +-- C208 100 nF, R215 4.7k bleeder -- GND
+                               +-- C208 100 nF, R215 5.1k bleeder -- GND
                                +-- R216 68k -- VBUS_SENSE (GPIO17) -- R217 100k || C209 100 nF -- GND
                                +-- D202 SS34 ---------------+
 U401 +VDC 5.66 V -- C401 100 uF, C402 10 uF -- D402 SS34 ---+-- 5V_SYS: C202 10 uF, C203 100 nF, TP "5V_SYS"
@@ -269,7 +272,10 @@ Visible capacitance at attach: ~7.7 uF effective <= 10 uF.
 ```
 
 The 0.23 A soft-start current then adds to the start-up load. That load is above 100 mA anyway (review E06,
-accepted in section 8.3).
+accepted in section 8.3). The 0.23 A is an upper estimate: while OUT is below half of its value, U203 folds its
+current limit back to 150-350 mA (TLV761 DS 5.5 and 6.3.2, as read by the pre-order review), so the 3V3 ramp is
+slower and the attach current is lower. The ESP32 is in reset during the ramp (EN RC 10 ms). The bring-up measures
+the 3V3 and EN ramps (section 8.2).
 
 VBUS protection:
 
@@ -400,8 +406,10 @@ the E22 model from easyeda2kicad (same 10.0 x 10.0 x 2.5 mm body, centred, offse
 
 J1 choice: the XUNPU drawing shows an end-launch jack for a 1.60 mm board. The center pin (0.95 mm) lies on
 a top pad. The body legs clamp both board faces, so the joints are easy to hand-solder. Stock 1,678.
-The land pattern is three 1.20 x 4.20 mm pads with a 5.65 mm span (XUNPU drawing). Repeat the two ground
-pads on the bottom side. J1 fixes the board thickness at 1.6 mm.
+The XUNPU land is three 1.20 x 4.20 mm pads with a 5.65 mm span that end at the board edge. On this board the
+pads are 3.85 mm long and end 0.40 mm inside the edge, so that the edge can carry a rail (section 5.6). The jack
+legs and the centre pin lie on those 3.85 mm. The two ground pads repeat on the bottom side. J1 fixes the board
+thickness at 1.6 mm.
 
 ### 5.2 MCU and USB
 
@@ -421,9 +429,9 @@ pads on the bottom side. J1 fixes the board thickness at 1.6 mm.
   pull-up has no path to VBUS (review E03). 0.6 pF typ and 0.8 pF max from I/O to GND, VRWM 5 V, VBR 6-9 V,
   IEC 61000-4-2 +-20 kV contact (HJC H5VUT2U DS p.1-2): a small load for full-speed USB.
 - C208 100 nF from VBUS to GND at J201.
-- R215 4.7k from VBUS to GND: with PoE on and USB unplugged, it holds the D202 reverse leakage down. 75 uA (typ at
-  75 C, SS34 DS Fig 2) gives 0.35 V, below the 0.8 V check. It dissipates 6.4 mW at 5.5 V and 10.7 mW at the 7.1 V
-  hot-plug peak, on a 0.1 W 0603.
+- R215 5.1k from VBUS to GND: with PoE on and USB unplugged, it holds the D202 reverse leakage down. 75 uA (typ at
+  75 C, SS34 DS Fig 2) gives 0.38 V, below the 0.8 V check. It dissipates 5.9 mW at 5.5 V and 9.9 mW at the 7.1 V
+  hot-plug peak, on a 0.1 W 0603. It is the part of R201 and R202.
 - VBUS sense: R216 68k from VBUS (after F201) to VBUS_SENSE (GPIO17), R217 100k and C209 100 nF to GND.
 
 ```
@@ -436,14 +444,15 @@ At power-up the pin rises with tau 4 ms, slower than the 0.5 ms soft-start of 3V
 Divider current 33 uA at 5.5 V. GPIO leakage 50 nA max (Table 6-3): no effect.
 ```
 
-- R203, R204 22R in series, close to pads 23/24 (HDG 1.3.13). HDG also suggests optional capacitors to GND.
-  Rev A omits them to keep the 90 ohm pair free of stubs.
+- R203, R204 33R in series, close to pads 23/24. The HDG gives 22 or 33 ohm as the initial value (schematic
+  checklist, USB, read 2026-11-18). 33 ohm is the part of R208 and R209. HDG also suggests optional capacitors to
+  GND. Rev A omits them to keep the 90 ohm pair free of stubs.
 - No external D+ pull-up. The USB-Serial-JTAG controller drives its own D+ pull-up (HDG Table 9, USB_PU) and
   enables it at reset. The firmware turns it off while VBUS_SENSE is low (section 7, USB 2.0 7.2.1).
 - VBUS path: J201 VBUS -> F201 0.75 A PTC -> D201 SMF6.0A to GND -> D202 SS34 -> 5V_SYS.
 - R207 1k in series with U0TXD at the module. HDG 1.3.7 asks for a series resistor (~499R) against 80 MHz
   harmonics; 1k also limits the clamp current from a USB-UART adapter (review E02). R218 1k in series with U0RXD
-  at J203.
+  at J203. R221 1k in series with U0RXD at TP212. So each access point of U0RXD has its own 1k.
 - R208, R209 33R in series with the two SCLK lines at the module (HDG 1.3.8). No capacitor.
 - Power LED D203 on 3V3 through R211 1k. TX, RX, STATUS LEDs are active high: GPIO -> 1k -> LED -> GND.
   The power-up low glitch keeps them off.
@@ -453,25 +462,23 @@ Divider current 33 uA at 5.5 V. GPIO leakage 50 nA max (Table 6-3): no effect.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | U201 | MCU module | ESP32-S3-MINI-1-N8 | module | ESP32-S3-MINI-1-N8 | C2913206 | E | SMD | JLC | yes |
 | J201 | USB-C receptacle | 16P USB 2.0 | SMD + shell legs | HRO TYPE-C-31-M-12 | C165948 | E | SMD | JLC | yes |
-| U202 | USB ESD | 2-line, 0.6 pF, no VBUS pin | SOT-23 | H5VUT2U | C20615824 | P | SMD | JLC | yes |
+| U202 | USB ESD | 2-line, 0.6 pF, no VBUS pin | SOT-23 | H5VUT2U | C20615824 | E | SMD | JLC | yes |
 | F201 | VBUS PTC | 0.75 A hold, 1.5 A trip, 16 V | 0805 | BSMD0805-075-16V | C976303 | E | SMD | JLC | yes |
-| D201 | VBUS TVS | VRWM 6 V, VC 10.3 V | SOD-123FL | SMF6.0A | C19077499 | P | SMD | JLC | yes |
+| D201 | VBUS TVS | VRWM 6 V, VC 10.3 V | SOD-123FL | SMF6.0A | C19077499 | E | SMD | JLC | yes |
 | D202 | USB OR diode | 40 V 3 A Schottky | SMA | SS34 | C8678 | B | SMD | JLC | yes |
 | U203 | 3.3 V LDO | 1 A, 18 V in, soft-start | SOT-223 | TLV76133DCYR | C7527500 | E | SMD | JLC | yes |
 | C202 | 5V_SYS / LDO in | 10 uF 25 V X5R | 0805 | CL21A106KAYNNNE | C15850 | B | SMD | JLC | yes |
 | C203, C205, C207, C208, C209 | decoupling, VBUS sense filter | 100 nF 50 V X7R | 0603 | CC0603KRX7R9BB104 | C14663 | B | SMD | JLC | yes |
 | C204 | LDO out | 10 uF 10 V X5R | 0603 | CL10A106KP8NNNC | C19702 | B | SMD | JLC | yes |
 | C206 | module pad 3 | 22 uF 6.3 V X5R | 0603 | CL10A226MQ8NRNC | C59461 | B | SMD | JLC | yes |
-| R201, R202 | CC Rd | 5.1k 1% | 0603 | 0603WAF5101T5E | C23186 | B | SMD | JLC | yes |
-| R203, R204 | USB series | 22R 1% | 0603 | 0603WAF220JT5E | C23345 | B | SMD | JLC | yes |
+| R201, R202, R215 | CC Rd, VBUS bleeder | 5.1k 1% | 0603 | 0603WAF5101T5E | C23186 | B | SMD | JLC | yes |
 | R205, R206, R210 | EN, GPIO0, radio CSn pull-ups | 10k 1% | 0603 | 0603WAF1002T5E | C25804 | B | SMD | JLC | yes |
-| R215 | VBUS bleeder | 4.7k 1% | 0603 | 0603WAF4701T5E | C23162 | B | SMD | JLC | yes |
 | R216 | VBUS sense, top | 68k 1% | 0603 | 0603WAF6802T5E | C23231 | B | SMD | JLC | yes |
 | R217 | VBUS sense, bottom | 100k 1% | 0603 | 0603WAF1003T5E | C25803 | B | SMD | JLC | yes |
 | C201 | EN delay | 1 uF 50 V X5R | 0603 | CL10A105KB8NNNC | C15849 | B | SMD | JLC | yes |
 | SW201, SW202 | RESET, BOOT | tactile | SMD 5.1 x 5.1 | TS-1187A-B-A-B | C318884 | B | SMD | JLC | yes |
-| R207, R218 | U0TXD, U0RXD series | 1k 1% | 0603 | 0603WAF1001T5E | C21190 | B | SMD | JLC | yes |
-| R208, R209 | SCLK series | 33R 1% | 0603 | 0603WAF330JT5E | C23140 | B | SMD | JLC | yes |
+| R207, R218, R221 | U0TXD, U0RXD at J203, U0RXD at TP212 | 1k 1% | 0603 | 0603WAF1001T5E | C21190 | B | SMD | JLC | yes |
+| R203, R204, R208, R209 | USB series, SCLK series | 33R 1% | 0603 | 0603WAF330JT5E | C23140 | B | SMD | JLC | yes |
 | D203-D206 | PWR, TX, RX, STATUS | red LED | 0603 | KT-0603R | C2286 | B | SMD | JLC | yes |
 | R211-R214 | LED series | 1k 1% | 0603 | 0603WAF1001T5E | C21190 | B | SMD | JLC | yes |
 | J203 | GPIO header | 1x10 2.54 mm | THT | - | - | - | THT | hand | DNP |
@@ -502,8 +509,9 @@ Circuit (W5500 DS v1.1.0 and WIZnet "W5500-Ref-ExternalMag"):
 - Supply: 3V3 = 3V3D to VDD (28) with C312 10 uF + C313 100 nF. FB301 120 ohm bead from 3V3D to 3V3A.
   3V3A: C305-C310 100 nF, one at each AVDD pin (4, 8, 11, 15, 17, 21), plus C311 10 uF.
   WIZnet uses a 120 ohm 0603 bead; 100-2000 ohm at 100 MHz is adequate (WIZnet note g).
-- Crystal Y301 YXC X322525MOB4SI, 25 MHz, CL 12 pF, +-10 ppm. R301 1M across XI/XO, R302 0R in series on
-  XO (W5500 DS Figure 3). The W5500 DS asks for +-30 ppm and a CL 18 pF crystal (DS 5.5.3). The load
+- Crystal Y301 YXC X322525MOB4SI, 25 MHz, CL 12 pF: +-10 ppm at 25 C, +-20 ppm over temperature and 3 ppm per
+  year (YXC YSX321SL DS, as read by the pre-order review). R301 1M across XI/XO, R302 0R in series on
+  XO (W5500 DS Figure 3). The W5500 DS asks for +-30 ppm at 25 C and a CL 18 pF crystal (DS 5.5.3). The load
   capacitors set the effective load to the crystal CL:
   C301 = C302 = 2 x (CL - Cstray) = 2 x (12 - 3) = 18 pF C0G. Cstray 3 pF is unverified: the W5500 DS does not
   give the XI/XO pin capacitance. LilyGO T-ETH-Lite-S3 uses the same crystal class with 18 pF.
@@ -537,13 +545,12 @@ open item if the board must pass a surge test.
 | U301 | Ethernet controller | W5500 | LQFP-48 7x7 | W5500 | C32843 | E | SMD | JLC | yes |
 | T301 | LAN transformer | 1:1, 350 uH, PoE+ 720 mA | SMD-16 12.7x7 | CND-tek B1608S | C507596 | E | SMD | JLC | yes |
 | J301 | RJ45, shielded, no LEDs, 1500 V AC contacts to shield | 8P8C | THT | Hirose TM24RSG-5A-88 | C6285250 | E | THT | hand | yes |
-| Y301 | crystal | 25 MHz CL 12 pF +-10 ppm | 3225-4P | X322525MOB4SI | C9006 | B | SMD | JLC | yes |
+| Y301 | crystal | 25 MHz CL 12 pF +-10 ppm at 25 C | 3225-4P | X322525MOB4SI | C9006 | B | SMD | JLC | yes |
 | C301, C302 | crystal load | 18 pF 5% C0G | 0603 | CL10C180JB8NNNC | C1647 | B | SMD | JLC | yes |
 | R301 | XI-XO | 1M 1% | 0603 | 0603WAF1004T5E | C22935 | B | SMD | JLC | yes |
 | R302, R309-R312 | XO series, MDI damping | 0R | 0603 | 0603WAF0000T5E | C21189 | B | SMD | JLC | yes |
 | R303 | EXRES1 | 12.4k 1% | 0603 | 0603WAF1242T5E | C22865 | E | SMD | JLC | yes |
 | C303 | TOCAP | 4.7 uF 16 V X5R | 0603 | CL10A475KO8NNNC | C19666 | B | SMD | JLC | yes |
-| C304, C317 | 1V2O, RX CT | 10 nF 50 V X7R | 0603 | 0603B103K500NT | C57112 | B | SMD | JLC | yes |
 | FB301 | 3V3D -> 3V3A | 120 ohm at 100 MHz, 2 A | 0603 | BLM18PG121SN1D | C14709 | B | SMD | JLC | yes |
 | C305-C310, C313 | AVDD, VDD decoupling | 100 nF 50 V X7R | 0603 | CC0603KRX7R9BB104 | C14663 | B | SMD | JLC | yes |
 | C311, C312 | 3V3A, VDD bulk | 10 uF 10 V X5R | 0603 | CL10A106KP8NNNC | C19702 | B | SMD | JLC | yes |
@@ -551,19 +558,19 @@ open item if the board must pass a surge test.
 | R306 | TX CT bias | 10R 1% | 0603 | 0603WAF100JT5E | C22859 | B | SMD | JLC | yes |
 | C314 | TX CT | 22 nF 50 V X7R | 0603 | CL10B223KB8NNNC | C21122 | B | SMD | JLC | yes |
 | C315, C316 | RX series | 6.8 nF 50 V X7R | 0603 | 0603B682K500NT | C1631 | B | SMD | JLC | yes |
-| R307, R308 | RX termination | 82R 1% | 0603 | 0603WAF820JT5E | C23255 | P | SMD | JLC | yes |
+| R307, R308 | RX termination | 82R 1% | 0603 | 0603WAF820JT5E | C23255 | E | SMD | JLC | yes |
 | R313, R314 | RSTn, INTn pull-ups | 10k 1% | 0603 | 0603WAF1002T5E | C25804 | B | SMD | JLC | yes |
 | D301, D302 | LINK, ACT | red LED | 0603 | KT-0603R | C2286 | B | SMD | JLC | yes |
 | R315, R316 | LED series | 1k 1% | 0603 | 0603WAF1001T5E | C21190 | B | SMD | JLC | yes |
 | R317-R320 | Bob Smith | 75R 1% | 0603 | 0603WAF750JT5E | C4275 | B | SMD | JLC | yes |
-| C318-C321 | Bob Smith DC block | 10nF/100V X7R | 0603 | 0603B103K101NT | C43253 | E | SMD | JLC | yes |
+| C304, C317, C318-C321 | 1V2O, RX CT, Bob Smith DC block | 10nF/100V X7R | 0603 | 0603B103K101NT | C43253 | E | SMD | JLC | yes |
 | C322, C323 | BS -> SHIELD, SHIELD -> GND | 1nF/2kV X7R | 1808 | 1808B102K202NT | C81332 | E | SMD | JLC | yes |
 
-The schematic Value of C318-C323 carries the voltage (`10nF/100V`, `1nF/2kV`). The BOM groups by Value and
-Footprint, so these parts cannot merge with the 10 nF 50 V C304 and C317.
+The schematic Value of C304, C317 and C318-C323 carries the voltage (`10nF/100V`, `1nF/2kV`). C304 and C317 need
+50 V only. They use the 100 V part of the Bob Smith network, so the order has one 10 nF line.
 
 C322/C323 are 1808 because they cross the isolation barrier. A standard 1206 land has a ~1.8 mm pad gap
-(unverified), below the 2 mm rule. The 1206 part C9196 is Basic and would save one Extended fee.
+(unverified), below the 2 mm rule. The 1206 part C9196 is Basic and would save one Extended fee in Economic PCBA.
 
 ### 5.4 PoE (option)
 
@@ -592,9 +599,10 @@ Circuit (DP9900 DS Figure 3, TI SLUA454 1.4):
   Pin centers along the long axis: 1.27, 3.81, 17.38, 19.92 mm from the body end. Rows 11.38 mm apart.
   Top view: pin 1 bottom-left, pin 4 bottom-right, pin 5 top-right, pin 8 top-left. Output row 1-4,
   input row 5-8. Solder the module directly; hole size for the 0.64 mm square pin: 1.1 mm (unverified).
-- JLC fits BR401, BR402, D401, R401, C401, C402 and D402 on every board: one order has one BOM, and these parts cost
-  less than $1 per board. A board without PoE leaves U401 off. With U401 absent the line-side parts carry no current.
-  The Bob Smith network, T301 and J301 stay on every board.
+- In the full build JLC fits BR401, BR402, D401, R401, C401, C402 and D402 on every board: one order has one BOM,
+  and these parts cost less than $1 per board. A board without PoE leaves U401 off. With U401 absent the line-side
+  parts carry no current. The Bob Smith network, T301 and J301 stay on every board of the full build. The `usb`
+  variant fits no part of this section and of section 5.3.
 
 | Ref | Function | Value | Package | MPN | LCSC | Class | Mount | Asm | Fit |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -611,7 +619,7 @@ Circuit (DP9900 DS Figure 3, TI SLUA454 1.4):
 
 - Labelled round 1.5 mm test pads, probed from the top: 3V3, 5V_SYS, GND (at least 3, one next to each group),
   radio SCLK, SI, SO, CSn, GDO0, GDO2 (TP101-TP107), UART0 TX and RX (TP211, TP212, TP213 GND).
-  TP211/TP212 give the ROM log without a header fitted.
+  TP211/TP212 give the ROM log without a header fitted. TP212 reaches U0RXD through R221 1k.
 - TP101-TP107 are plated pads with a 0.7 mm hole (`TestPoint_THTPad_D1.5mm_Drill0.7mm`) beside the radio bus. A
   B.Cu stub from one tap via on the bus reaches the pad directly, so no stub needs a second via (section 6.4).
   The other test pads are SMD.
@@ -633,37 +641,134 @@ Circuit (DP9900 DS Figure 3, TI SLUA454 1.4):
 
 - Pin 1 is a 3V3 output for small sensors. Never feed 3V3 into it: U203 has no reverse-current protection
   (TLV761 DS 7.1.3).
-- The 1k resistors limit the current into the U0TXD/U0RXD pad clamps from an adapter on an unpowered board to
-  <= 3 mA (review E02). EN is not on the header: download mode uses USB, or BOOT and RESET.
+- The 1k resistors R207, R218 and R221 limit the current into the U0TXD/U0RXD pad clamps from an adapter on an
+  unpowered board to <= 3 mA, on the header and on the test pads (review E02). EN is not on the header: download
+  mode uses USB, or BOOT and RESET.
 
-### 5.6 JLC Extended part count
+### 5.6 Builds, order route and cost
 
-Unique Extended parts that JLC assembles:
+`tools/make_fab.py` writes one package for each build to `out/fab/<name>/`:
 
-| # | Part | LCSC | Block |
+| Build | Command | JLC parts | BOM lines | Hand parts |
+| --- | --- | --- | --- | --- |
+| full | `make_fab.py` | 103 | 44 | J1, J301, U401 on PoE boards |
+| usb | `make_fab.py --variant usb` | 47 | 24 | J1 |
+| full, modules by hand | `make_fab.py --hand U1,U201` | 101 | 42 | J1, J301, U401 on PoE boards, U1, U201 |
+| usb, modules by hand | `make_fab.py --variant usb --hand U1,U201` | 45 | 22 | J1, U1, U201 |
+
+- `usb` is a KiCad design variant. The schematic, the board and the project file hold it. In it the 58 parts of the
+  Ethernet and PoE sheet are DNP: every 3xx and 4xx part that the full build fits, J301 and U401 included. The copper
+  is the same. A usb board has USB only: GPIO9-14 end on open pads. R208 stays fitted, because R209 uses the same
+  BOM line.
+- A variant package has no stencil opening on the parts that it does not fit. kicad-cli plots the paste layer by the
+  base DNP flag of a footprint (rule `no_paste_on_dnp`), not by the variant. So `make_fab.py` plots a copy of the
+  board that carries the variant flags as base flags. The paste layer has 382 openings in the full build and 204 in
+  the usb build.
+- `--hand` moves parts from the JLC BOM and placement file to `hand-solder.csv`. The stencil keeps their openings.
+- `hand-solder.csv` lists the hand parts, the DNP positions and the parts that a variant does not fit.
+- A later fit of the Ethernet parts on a usb board is hand work: U301 is an LQFP-48 with 0.5 mm pitch.
+
+Order route (JLC pages read 2026-11-18):
+
+- JLC places U201 (C2913206) and U1 (C5844212) in Standard PCBA only, and U201 needs X-ray inspection (part pages).
+  Every other JLC line is "Economic and Standard". So the full and usb builds are Standard PCBA orders. The two
+  builds with the modules by hand fit Economic PCBA. Confirm the Economic limits at the quote (4 layers, 1.6 mm,
+  standard stackup, green, ENIG, quantity; unverified for this board).
+- Standard PCBA fees (PCBA price page, updated 2026-10-22): setup $25.56, stencil $8.21, feeder loading $1.53 for each
+  BOM line of any class, $0.0016 for each joint, X-ray $1.64 for each U201 up to 10 pieces and $0.82 from 11,
+  packing $0.50. Economic PCBA fees: setup $8.18, stencil $1.53, $3.07 for each Extended line, $0.0016 for each
+  joint.
+- In Standard PCBA the part class has no effect on the price. Only the count of BOM lines has. In Economic PCBA
+  only the Extended lines pay a fee.
+
+Cost for each board, without PCB, shipping, tax, customs and part attrition. Part prices come from the JLC part
+pages of 2026-11-18, at the tier of the order quantity:
+
+| Build | PCBA | 5 boards | 20 boards | Of which fees, 5 / 20 boards |
+| --- | --- | --- | --- | --- |
+| full | Standard | $41.14 | $22.93 | $22.57 / $6.51 |
+| usb | Standard | $25.95 | $13.28 | $16.16 / $4.69 |
+| full, modules by hand | Economic | $30.19 | $19.68 | $11.62 / $3.26 |
+| usb, modules by hand | Economic | $16.22 | $10.33 | $6.42 / $1.74 |
+
+- U401 adds $5.06 (5 boards) or $4.83 (20 boards) to a PoE board.
+- The hand parts count at the JLC part page price. An order at LCSC adds its own shipping (unverified).
+- PCB price: not verified for this specification. JLC advertises "from $7" for 5 pieces of a 4-layer board up to
+  100 x 100 mm. The ENIG surcharge and the 20-piece price were not read.
+- Standard PCBA can add fees that this table does not hold: rail removal, fixtures ($16.42 for 1-29 pieces, when JLC
+  asks for them) and "confirm parts placement" ($0.45).
+- The three merged BOM lines (33R, 5.1k, 10 nF 100 V) save $4.59 for each Standard order: $0.92 for each board at
+  5 boards, $0.23 at 20.
+
+Edge rails for Standard PCBA (JLC "How to Add Edge Rails and Fiducials", updated 2026-09-09: rails of 5 mm or more
+and fiducials are required; JLC assembly terms: part bodies keep 2.5 mm from the board edge, and JLC adds missing
+rails by its own choice of method):
+
+- The board is ready for rails on the left and right (75 mm) edges, by V-cut or by tabs. Copper keeps 0.4 mm from
+  both edges (JLC: 0.4 mm to a V-cut edge, 0.2 mm to a routed edge). J301 and J1 are hand parts: during assembly
+  both edges are free. No JLC-placed part is nearer than 3.8 mm.
+- The top and bottom edges are not ready for a V-cut: the top GND via row and the pours keep 0.3 mm. A rail there
+  must use tabs (mouse bites).
+- Order with "Edge rails: added by JLCPCB" and this remark: "Rails on the two 75 mm edges only. The module U201
+  overhangs the top edge by 5.0 mm and the USB-C shell J201 overhangs the bottom edge by 0.3 mm. With tabs: no tab
+  at y 39-48 mm on the right edge (edge-launch SMA) and at y 17-35 mm on the left edge (RJ45 mouth)."
+- To agree with JLC at the DFM query (all unverified):
+  1. Rails on two edges only, with the 5.0 mm module overhang on a free edge.
+  2. Parts nearer than 2.5 mm to the free top and bottom edges (list in section 6.4).
+  3. If JLC wants rails on four edges: tabs only on the top and bottom, the top rail under the antenna, no tab under
+     U201 (x 57-73) and J201 (x 60-71).
+  4. V-cut or tabs. A V-cut edge has a +-0.4 mm tolerance (JLC PCB capabilities). It moves the seat of J1 and J301
+     and the board width in an enclosure. Tabs keep the routed edge and leave stubs to file.
+  5. The fee for rail removal, if JLC removes them.
+- The builds with the modules by hand need no rails (Economic PCBA).
+
+Extended lines, for an Economic PCBA order (class from the part pages, 2026-11-18):
+
+| Part | LCSC | Block | In the usb variant |
 | --- | --- | --- | --- |
-| 1 | ESP32-S3-MINI-1-N8 | C2913206 | MCU |
-| 2 | HRO TYPE-C-31-M-12 | C165948 | USB |
-| 3 | BSMD0805-075-16V | C976303 | USB |
-| 4 | TLV76133DCYR | C7527500 | power |
-| 5 | E07-900MM10S | C5844212 | RF |
-| 6 | LQW15AN56NG00D | C167482 | RF |
-| 7 | BLM15HG102SN1D | C76889 | RF |
-| 8 | W5500 | C32843 | Ethernet |
-| 9 | B1608S | C507596 | Ethernet |
-| 10 | 12.4k 1% 0603 | C22865 | Ethernet |
-| 11 | 10 nF 100 V 0603 | C43253 | Ethernet |
-| 12 | 1 nF 2 kV 1808 | C81332 | Ethernet |
-| 13 | SMAJ58A | C123816 | PoE |
-| 14 | EEHZA1E101XP 100 uF 25 V | C264047 | PoE |
+| ESP32-S3-MINI-1-N8 (Standard PCBA only) | C2913206 | MCU | yes |
+| E07-900MM10S (Standard PCBA only) | C5844212 | RF | yes |
+| HRO TYPE-C-31-M-12 | C165948 | USB | yes |
+| BSMD0805-075-16V | C976303 | USB | yes |
+| SMF6.0A | C19077499 | USB | yes |
+| H5VUT2U | C20615824 | USB | yes |
+| TLV76133DCYR | C7527500 | power | yes |
+| LQW15AN56NG00D | C167482 | RF | yes |
+| BLM15HG102SN1D | C76889 | RF | yes |
+| W5500 | C32843 | Ethernet | no |
+| B1608S | C507596 | Ethernet | no |
+| 12.4k 1% 0603 | C22865 | Ethernet | no |
+| 82R 1% 0603 | C23255 | Ethernet | no |
+| 10 nF 100 V 0603 | C43253 | Ethernet | no |
+| 1 nF 2 kV 1808 | C81332 | Ethernet | no |
+| SMAJ58A | C123816 | PoE | no |
+| EEHZA1E101XP 100 uF 25 V | C264047 | PoE | no |
 
-- Total: 14 on every board. JLC charges the fee once per unique part per order
-  (about $3, JLC FAQ, unverified).
-- Not counted: Preferred parts (SMF6.0A, H5VUT2U, C23255), DNP R402, R101-R104, R219, R220, and the hand-soldered
-  J1, J301, J203, U401.
-- Possible saving: C9196 1206 instead of C81332 1808, at the cost of the 2 mm rule.
-- Low-stock items (parts database snapshot): J301 TM24RSG-5A-88 65, DP9900LP-5V 521, E07-900MM10S 649,
-  SMA C5723200 1,678, EEHZA1E101XP 2,321, B1608S 4,015, ESP32-S3-MINI-1-N8 7,392.
+- 17 lines in the full build, 9 in the usb build. With U201 and U1 by hand: 15 and 7.
+- Stock, parts database snapshot of 2026-09-24: J301 TM24RSG-5A-88 65, DP9900LP-5V 521, E07-900MM10S 649,
+  SMA C5723200 1,678, EEHZA1E101XP 2,321, B1608S 4,015, ESP32-S3-MINI-1-N8 7,392. The JLC part pages gave no stock
+  figure to a script on 2026-11-18. Check the stock of U1, U201, J301 and U401 on the order day.
+- Gerber upload: KiCad 10 names the inner layers `-In1_Cu.g1` and `-In2_Cu.g2`. JLC reads the stackup order from
+  these numbers (JLC "How to Generate Gerber and Drill Files in KiCad 9"). Check the order F.Cu, In1.Cu, In2.Cu,
+  B.Cu in the JLC gerber viewer.
+
+### 5.7 Hand assembly
+
+| Tool | Parts |
+| --- | --- |
+| Iron | J1, J301, U401, J203, every 0603 and 0805 part, U202 (SOT-23), U203 (SOT-223), the SMA and SOD-123FL diodes, BR401, BR402, T301 (1.27 mm pitch), SW201, SW202, the LEDs, C401, U1 (castellated, 0.9 mm of land outside the body) |
+| Fine tip, flux, drag soldering | U301 (LQFP-48, 0.5 mm pitch), J201 (0.5 mm pitch signal pads) |
+| Paste and hot air or a hot plate | U201 (the lands end 0.3 mm inside the body, EPAD), Y301 (pads under the body) |
+| Tweezers, easier with hot air | The 0402 parts L1, R191, L191, C191 |
+
+- J1 and U1: the ground pads connect solid to four ground layers (RF, section 6.4). Use a large tip and preheat the
+  board. Solder the J1 centre pin first, then the four ground legs on both faces.
+- U201 by hand (`--hand`): JLC prints paste on the U201 lands and reflows it with the other parts (unverified). Add
+  flux, place the module and heat it with hot air from the top. Too much solder on the EPAD lifts the module
+  (MINI-1 DS 9).
+- U401: check the orientation before the first power-up (section 8.2).
+- J301: pads 11-14 have 0.15 mm rings. Do not rework them more than needed.
+- DNP positions have no paste: C191, R101-R104, R219, R220, R402.
 
 ## 6. Layout rules
 
@@ -714,9 +819,11 @@ feed only (rules RF-M1 to RF-M5; E07 DS 4.1).
   and F.Cu (BS track), below the 3 mm target.
 - Rule check: a GND via placed 1.0 mm from T301 pin 11 on a copy of the board raises `iso_line_side` (1.90 mm to the
   CT_36 track).
-- The M3 screws are chassis. The SHIELD pour ends 0.25 mm from the H3 hole wall, and the system GND pour ends 0.25 mm
-  from H2 and H4. So a metal screw head bonds SHIELD and GND to a metal enclosure and bypasses C323. This is the
-  intended bond for a metal enclosure. Where the chassis must float, use a plastic enclosure or insulating washers.
+- The M3 screws are chassis. Each hole has a 5.4 mm solder mask opening on both faces. Under it the SHIELD pour
+  (H3, with the 6 mm disc zone `SHIELD_H3`) and the system GND pour (H2, H4) are bare ENIG copper from 0.25 mm
+  outside the hole wall. A 5.6 mm M3 screw head lands on that copper. So it bonds SHIELD and GND to a metal
+  enclosure and bypasses C323. This is the intended bond for a metal enclosure. H1 has no copper under its opening.
+  Where the chassis must float, use a plastic enclosure or insulating washers.
 
 - Line side: J301 contacts, T301 pins 9-16, BR401, BR402, D401, R317-R320, C318-C321, node BS, U401 pins 5-8 and
   the traces between them.
@@ -736,9 +843,11 @@ feed only (rules RF-M1 to RF-M5; E07 DS 4.1).
   11.38 mm apart.
 - Rule source: 2 mm for 1500 Vrms on FR4 (Microchip AN3468 7). Others: 1.5 mm (TI SLUA454, AN3533),
   3 mm (Silvertel).
-- J301 withstands 1500 V AC for 1 minute from the terminals to the shield (TM24R catalog p.2). Its maker land keeps
-  1.56 mm from the shield pads 11-14 to the contact pads 1 and 8, with 0.15 mm rings on those pads. That is below the
-  2.0 mm board rule and above the 1.5 mm of TI SLUA454. `iso_line_side` exempts the J301 pads from each other.
+- J301 withstands 1500 V AC for 1 minute from the terminals to the shield (TM24R catalog p.2). The catalog gives the
+  hole positions. The land has 0.20 mm rings on the eight contact pads and 0.15 mm rings on the shell pads 11-14. It
+  keeps 1.51 mm from the shell pads to the contact pads 1 and 8. That is below the 2.0 mm board rule and above the
+  1.5 mm of TI SLUA454. `iso_line_side` exempts the J301 pads from each other. A 0.20 mm ring on the shell pads too
+  leaves 1.46 mm, so they keep 0.15 mm, the JLC absolute minimum for a plated hole (JLC recommends 0.20 mm).
 
 ### 6.3 Stackup, impedance and routing
 
@@ -816,6 +925,8 @@ Net classes (`freedo-radio.kicad_pro`) and custom rules (`freedo-radio.kicad_dru
   0.25 mm hole to other-net copper (0.2 mm inside the J201 land) and `via_not_in_smd_pad`: 0.075 mm from a via to
   any SMD pad of any net, so no via reaches into a pad or its 0.05 mm mask opening (0.071 mm at a square corner).
   A via in the C401 pad, and a via 0.04 mm outside it, each raise the rule on a copy of the board.
+- The rule areas `RAIL_EDGE_LEFT` and `RAIL_EDGE_RIGHT` keep tracks, vias, pads and pours 0.4 mm from the two 75 mm
+  edges on every copper layer. 0.4 mm is the JLC copper clearance to a V-cut edge (0.2 mm to a routed edge).
 - `no_paste_on_dnp` gives the pads of every DNP footprint a -10 mm paste margin. KiCad clamps the aperture to zero
   size and does not plot it, so the stencil has no opening on C191, R101-R104, R219, R220 and R402. The rule reads
   the footprint DNP attribute, which comes from the schematic.
@@ -824,7 +935,8 @@ Routing:
 
 - USB D+/D-: 90 ohm +-10% differential, parallel, equal length. Continuous ground reference. Fewest vias, with a
   ground via pair at each transition. Ground on both sides of the pair (HDG 1.4.8), 0.5 mm from the pair.
-  As routed: F.Cu only, no via, 52.49 mm per line from U201 pads 23/24 to J201, intra-pair skew 0.00 mm. In1.Cu
+  As routed: F.Cu only, no via. The track sums from U201 pads 23/24 to J201 are 55.47 mm (D-) and 54.57 mm (D+),
+  with the loops that join the A and B pads at J201. The 0.9 mm difference has no effect at full speed. In1.Cu
   under the pair is solid.
 - Ethernet MDI: 100 ohm differential, equal length inside each pair, W5500 <-> T301 and T301 <-> J301
   (WIZnet note d). Keep the W5500 close to T301. As routed, the intra-pair skew from pad centre to pad centre is:
@@ -843,12 +955,13 @@ User.Comments. The generated placement maps show them.
 Size reason:
 
 - Short side 75 mm: the extra 5 mm gives the header and LED region above the Ethernet row its height.
-- Assembly route: Economic PCBA needs no rails. Standard PCBA needs edge rails and fiducials (JLC "How to Add Edge
-  Rails and Fiducials"). The board carries three global fiducials (1.0 mm copper, 2.0 mm mask opening, no silk):
-  FID1 (10.5, 3.5), FID2 (94, 20.5), FID3 (90.5, 71.5). The rails are an order-time choice. The top edge cannot take
-  a rail under the antenna overhang, so rails go on the two 75 mm edges. Nearest SMD courtyard per edge, the
-  overhanging U201, J1 and J201 aside: top 0.83 mm (C201), bottom 0.83 mm (R402, DNP; C323 1.06 mm), left 3.82 mm
-  (R319, C320), right 4.69 mm (L191).
+- Assembly route (section 5.6): Economic PCBA needs no rails. Standard PCBA needs edge rails and fiducials (JLC "How
+  to Add Edge Rails and Fiducials"). The board carries three global fiducials (1.0 mm copper, 2.0 mm mask opening, no
+  silk): FID1 (10.5, 4.5), FID2 (94, 20.5), FID3 (90.25, 68.25). Each mask opening keeps 3.5 mm or more from the
+  board edge (JLC asks 3.35 mm). The rails go on the two 75 mm edges. No copper lies within 0.4 mm of those edges, and
+  the nearest SMD courtyard is 3.82 mm away on the left (R319, C320) and 4.69 mm on the right (L191). The top and
+  bottom edges carry the overhanging U201 and J201, and JLC-placed parts nearer than 2.5 mm (courtyard to edge): top
+  C201 0.84 mm, C206 and C207 1.09 mm; bottom C323 1.08 mm, C401 1.22 mm, D201 1.67 mm, F201 2.33 mm.
 - Long side 100 mm: line side, barrier, T301, the MDI parts, U301, U201, the radio and the feed sit in one row with
   pad gaps of 1.0 mm or more between passives.
 - Courtyards cover ~2,570 mm2 of the 7,500 mm2 board (~34%). The rest holds the barrier, the U203 copper, the RF
@@ -859,8 +972,8 @@ Size reason:
 | Top | U201 antenna, overhanging | module center (65, 5.25), rotation 0. The board edge is the module line: the antenna (15.4 x 5.0 mm) is off the board, pads 46-60 end 0.4 mm inside. |
 | Top | SW201 RESET, SW202 BOOT | side by side right of U201, rotation 180, centers (80.6, 5.1) and (88.7, 5.1): the bodies end 2.55 mm from the top edge (JLC conveyor edge 2.5 mm). The EN and BOOT pads form the north row, the GND pads the south row, 1.1 mm pad gap between the switches. The silk labels RESET and BOOT sit above the switches. SW201 is next to pad 45, so EN stays short (HDG 1.3.3). The switches sit on the board, outside the U201 antenna keep-out (y < 0). SW202 ends 0.1 mm from the H2 screw-head courtyard. |
 | Top | J203 GPIO header | rotation -90, pin 1 (3V3) at (49.8, 2.9), pin 10 (GND) at (26.94, 2.9). Its courtyard ends 0.14 mm from the barrier strip, 26 mm from the RF feed. |
-| Right | J1 edge SMA | center (97.85, 43.54), rotation 90. The pads end 0.05 mm inside the Edge.Cuts center line: `j1_edge_launch` allows 0 mm, and DRC counts the 0.05 mm edge line. The flange sits on the edge, the body is off the board. JLC asks for 0.2 mm copper to a routed edge: confirm the J1 pads at the DFM query (hand-soldered edge launch). |
-| Right | TP211-TP213 | UART group at x 97.4, 2.54 mm pitch, top to bottom TP212 RX, TP211 TX, TP213 GND (y 9.5-14.58). The reference sits next to each pad, the net name beyond it after a 1 mm gap. |
+| Right | J1 edge SMA | center (97.85, 43.54), rotation 90. The pads span x 95.75-99.60: they end 0.40 mm inside the edge (section 5.1). The flange sits on the edge, the body is off the board. |
+| Right | TP211-TP213 | UART group at x 97.4, 2.54 mm pitch, top to bottom TP212 RX, TP211 TX, TP213 GND (y 9.5-14.58). The reference sits next to each pad, the net name beyond it after a 1 mm gap. R221 (93.6, 10.77) sits between the RX and TX rows, in the line to TP212, 1.9 mm from the TP212 pad. |
 | Inner | TP101-TP107 | radio group beside the bus fan-out, 2.54 mm pitch: TP106 GDO2, TP105 GDO0, TP101 SCK, TP104 CSN at x 73.3 (y 25.28-32.9), west of the GDO lines; TP107 GND, TP102 MOSI, TP103 MISO at x 89.0 (y 26.92-32.0), east of E22_BUSY. Stubs 4.7-9.4 mm, one via or none. |
 | Left | J301 RJ45, mouth outward | center (7.06, 26), rotation -90. The board edge is 2.6 mm in front of the front pin row; the jack face overhangs the edge by 2.4 mm (TM24R catalog p.3; 2.34 mm in the 3D model). Keep the two catalog no-trace areas at the front shell holes (footprint keep-outs). |
 | Bottom | J201 USB-C, mouth outward | center (65.425, 70.23), rotation 0: its D+/D- pads sit on the vertical line through U201 pads 23/24. The shell front face is 0.30 mm past the edge (front shell legs at y 72.70, face 2.60 mm ahead of them per the HRO drawing), so a plug overmold seats on the shell, not on the board edge. |
@@ -874,7 +987,7 @@ Size reason:
 | Header, LEDs | 25-57 | 0-17 | J203 on the top edge. R212, R213, R214, R211 (y 8, signal pad up) above D204, D205, D206, D203 (y 11.8, anode up) at x 40-49, 3.0 mm pitch: the power LED D203 at the east end. R218 (29.48, 7.1), under J203 pin 9 with room for the pin label. R220 and R219 (46.4) on y 15.8. C207 and C206 (x 55.6 and 53, y 2.6) at U201 pad 3. |
 | Ethernet, system side | 25-61 | 17-41 | U301 (46.5, 26), rotation -90: the MDI pins face T301, the SPI pins, XI/XO and VDD face U201. MDI parts between T301 and U301: the RX parts in columns x 31.2 and 35.0 from y 18.6 to 25.3 (C316/R312 at y 21.35, 1.0 mm pad gap to C315/R311); the TX ladder R305/R310 (y 28.7) and R304/R309 (y 32.8) at x 34.15/36.1, with R306 (32.2, 30) and C314 (30.1, 30). U301 pin shunts: C305 (40.35, 23.4, pin 4), C306 (39, 26.6, pin 8), R303 (39, 28.6, pin 10), C307 (39, 30.6, pin 11). Decoupling fan under the bottom pins, 1.95 mm pitch from x 42.9, y 32.98-33.95: C308 (pin 15), C309 (17), C303 (TOCAP 20), C310 (21), C304 (1V2O 22). C311 (3V3A bulk) at (39.2, 33). R313 (48.4, 19.5) on the RST lane, R314 (52.9, 22.1) on the INT lane, R208 (59.9, 17.6) in the SCLK lane. Right of U301: C313 (53, 28) at pin 28 with C312 (55, 29.3), R301 (57.2, 30.7, upright between XO and XI, 1.25 mm from C312) and R302 on XI/XO, C302 and Y301 (59, 34.3), C301 (55.9, 37.2). FB301 (37, 38.4) and the LINK/ACT row D301, R315, R316, D302 (y 40.3, x 46.4-57.6) under U301. |
 | MCU | 57-73 | 0-16 | U201. The W5500 pads 13-18 sit at the bottom-left corner, the USB pads 23/24 at the bottom center, the E22 pads 25/27/30 at the bottom right, the radio pads 33-38 in the lower right column. |
-| EN, RESET, BOOT, UART | 73-94 | 0-13 | C201/R205 (x 74.9, y 1.6 and 3.8) at pad 45, SW201 RESET (80.6, 5.1), SW202 BOOT (88.7, 5.1), R206 (88.7, 8.45) under SW202, R207 (75.3, 6.95) at pad 39, R209 at pad 35. |
+| EN, RESET, BOOT, UART | 73-94 | 0-13 | C201/R205 (x 74.9, y 1.6 and 3.8) at pad 45, SW201 RESET (80.6, 5.1), SW202 BOOT (88.7, 5.1), R206 (88.7, 8.45) under SW202, R207 (75.3, 6.95) at pad 39, R209 at pad 35, R221 (93.6, 10.77) at TP212. |
 | Radio | 70-96 | 25-55 | U1 (84, 41), rotation 90: SPI pads on top, GDO pads on the left, ANT pad 6 on the right side facing J1. Feed: pad 6 -> C191 (91.0) -> R191 (92.9) -> L191 (94.8) -> J1, straight at y 43.54, 5.85 mm from pad 6 to the J1 pad. C2 and C1 under pad 1 (pad gaps 1.7 and 2.1 mm), L1 next to C1, R101 under pad 3, R102 (93, 35.6) and R104 (93, 38) right of pads 10 and 9, R103 (86.54, 32.35) above pad 11, R210 (75.1, 34.5) on the CSN lane west of the bus. The radio test pads TP101-TP107 flank the bus fan-out (see the edge table). A 1.5 mm ring around the U1 lands stays clear. |
 | Power, USB | 25-70 | 41-75 | U203 (45, 56.2), rotation -90: tab up into the 3V3 copper area, pins down. C204 and C205 at the tab, C203 and C202 under the IN pin. U401 pins 1-4 with R401, C402, D402 (38.6, 62.4), C401 (43.5, 70.2, away from U203 and U401) and R402 (31, 72.2). R203/R204 (x 64.175 and 66.175, y 19.6, 1.05 mm pad gap) at pads 23/24, U202 (64.925, 61) on the pair, R201/R202 beside U202, D202 (57.8, 60), the VBUS row F201, D201, C208, R215 (y 70.8), R216 (62.4, 55.6) and C209 (61.6, 22.0), R217 (61.6, 24.0) on the VBUS_SENSE line from pad 21. |
 
@@ -946,38 +1059,40 @@ Routing (the channels on User.Comments, layer in each label):
 - Header: IO1/IO2/IO7/IO8 on F.Cu in the header region, IO7/IO8 around the LED block. SDA/SCL to J203 on B.Cu.
   UART TX/RX to J203 on B.Cu: under U201, then along the top edge at y 1.55 and 1.1 with a GND via row at y 0.525
   between them and the edge. UART to TP211/TP212 on F.Cu under the SW201 body, then down between the switches.
+  The RX line passes R221 before TP212.
 - Radio test pads: GDO2 takes an F.Cu stub (6.7 mm, no via) from the west side of its lane. GDO0, SCK, CSN, MOSI and
   MISO take one tap via on the bus fan-out and a B.Cu stub of 4.7-9.4 mm to their plated pads.
 
 Layer use as routed (hand-placed geometry, 0/45/90 degree segments; no autorouter output):
 
-- F.Cu: all buses, the RF feed, the USB and Ethernet pairs, the power trunks and the GND pour. 562 segments, 1541 mm.
+- F.Cu: all buses, the RF feed, the USB and Ethernet pairs, the power trunks and the GND pour. 565 segments, 1541 mm.
   Both SPI buses run as one highway each: 0.2 mm tracks at one pitch, 45 degree bends.
 - In1.Cu: solid GND, no tracks. It is the reference for every F.Cu signal.
 - In2.Cu: solid GND, no tracks.
 - B.Cu: GND pour with short crossings. 130 segments, 601.5 mm: 164 mm on the line side (CT and pair lines, no GND
   pour there) and 437.5 mm on the system side. The longest system-side crossing, and so the longest slot in the B.Cu
   pour, is UART0_TX: 50.6 mm (x 32.0-76.3, y 1.5-7.0), with UART0_RX (47.1 mm) beside it. No B.Cu track runs under a B.Cu signal, so no slot sits under a
-  fast signal: those run on F.Cu over In1.Cu, or on B.Cu over In2.Cu (TX pair). The B.Cu GND pour stays one fragment.
+  fast signal: those run on F.Cu over In1.Cu, or on B.Cu over In2.Cu (TX pair). The B.Cu GND pour has two fragments:
+  the main one and a 27.8 mm2 strip at x 45-47, y 1.85-17.4 with 4 vias.
 - Vias: 648, all tented. No via comes within 0.075 mm of an SMD pad, so none sits in a pad or its mask opening
   (`via_not_in_smd_pad`). The nearest are the eight U201 EPAD vias in the gaps between the paste squares (MINI-1 DS
   Fig 11-1), 0.093 mm from the square corners. 592 of 0.45/0.2 mm, 56 of 0.6/0.3 mm (power), 562 on GND.
 - GND stitching: rows at 2 mm pitch along the board edges and along the system side of the barrier (x 25.7), a
-  2.5 mm grid in open areas. Every F.Cu GND fragment (10) has 2 vias or more to In1.Cu/In2.Cu; the B.Cu, In1.Cu and
-  In2.Cu GND pours are one fragment each. The long pour fingers carry their own vias: the strip between the UART
+  2.5 mm grid in open areas. Every F.Cu GND fragment (10) has 2 vias or more to In1.Cu/In2.Cu; the In1.Cu and
+  In2.Cu GND pours are one fragment each, the B.Cu pour has two. The long pour fingers carry their own vias: the strip between the UART
   test-pad lines (3), the LED columns (one more each) and the TD_N meander (2). GND pads use thermal reliefs,
   except the U1, C191, L191 and J1 grounds (solid, RF). The U203 tab is +3V3 and connects solid.
 - Locked: the RF feed, the USB pair, the Ethernet pairs on both sides of T301, the U203 zones and their vias.
 
 Silkscreen:
 
-- Every text is 1.0 mm tall or more with a 0.15 mm stroke, the JLC legend minimum (169 texts, 1.0-1.5 mm).
+- Every text is 1.0 mm tall or more with a 0.15 mm stroke, the JLC legend minimum (170 texts, 1.0-1.5 mm).
 - Every silk line, arc, circle and polygon has a 0.15 mm stroke or more, the JLC minimum line width. Filled marks
   keep their printed size: the stroke grows and the shape shrinks by the same amount.
 - Every reference designator is visible, off every pad, mask opening and via, and off the bodies of other parts. It
   sits nearer its own part than any other. Where no free spot next to the part exists, a 0.15 mm leader line of
   0.3-2.2 mm points to the part: C201, C307, C308, C309, C315, D205, D206, H2, R303, R306, R307, R310, R312, SW202.
-- Labels: "freedo radio", "rev A 2026-09", RESET and BOOT above the switches, USB, "ETH / PoE", "868 MHz", the J203
+- Labels: "freedo radio", "rev A 2026-11", RESET and BOOT above the switches, USB, "ETH / PoE", "868 MHz", the J203
   pin names under the pins (3V3, SDA, SCL, IO1, IO2, IO7, IO8, TX, RX, GND) and a net label next to each test point.
 - Pin-1 and polarity marks come from the footprints (ICs, modules, diodes, LEDs, bridges, C401, J203, T301, U401).
 - U401 marks its orientation, because the DP9900 pins are 180 degree symmetric (DS 4.2: rows 1.46/1.36 mm from the
@@ -999,10 +1114,15 @@ Silkscreen:
 - Both SPI buses are planar (section 3): the lanes on User.Comments keep 0.2 mm from every other-net pad at 0.2 mm
   track width.
 - The 1808 pads of C323 reach 0.2 mm into the 3 mm strip (2.6 mm pad gap, above the 2.0 mm minimum).
-- The antenna overhangs the board edge by 5.0 mm. Check at order time whether JLC asks for rails because of it
-  (unverified).
+- The antenna overhangs the board edge by 5.0 mm. Section 5.6 lists what to agree with JLC for it.
 
 ## 7. Firmware and driver changes
+
+State: the sketch in `firmware/cc1101_bridge` targets the ESP32 DevKit (FQBN `esp32:esp32:esp32`, radio on GPIO 18,
+21, 23, 5, 25, 26, UART at 230400 baud). GPIO22-25 do not exist on the ESP32-S3, and the only host link of this
+board is native USB. No W5500 code exists. So the sketch does not run on this board. The pin map of section 3 is
+fixed: the port follows the board. The port is separate work. Items 1 to 4 and 11 are the minimum for a board that
+talks to the host over USB. Items 8 to 10 serve the full build only.
 
 1. Pins: radio MISO 42, MOSI 41, SCLK 39, CSn 40, GDO0 37, GDO2 36 (today 21, 23, 18, 5, 25, 26 in
    `firmware/cc1101_bridge/cc1101_bridge.ino`). LEDs 4, 5, 6. W5500 RST 9, INT 10, MOSI 11, MISO 12, SCLK 13, CS 14. GPIO38 is spare:
@@ -1092,18 +1212,73 @@ Silkscreen:
 - [ ] `freedo-dev autotune` in receive only. Store the new FSCTRL0 calibration.
 - [ ] Ethernet: 100M full-duplex auto-negotiation with a switch, link and activity LEDs, ping loss over a long
   cable. J301 pin 1 to pin 1 with a patch cable.
+- [ ] Y301: measure the 25 MHz error (open item 9). The W5500 limit is +-30 ppm at 25 C (W5500 DS 5.5.3).
+- [ ] Chassis bond in a metal enclosure: continuity from the enclosure to GND through the H2 and H4 screws and to
+  SHIELD through the H3 screw. H1 stays open.
 
-### 8.3 Accepted review items
+### 8.3 Electrical review, findings E01 to E20
 
-The electrical review lists findings E01-E20. The review file is not in the repository. The design fixes E01-E05, E07, E09, E10
-and E13. E08 (699 MHz spur of the chip-down CC1101) does not apply to the module: section 8.2 measures its spurs.
-E12 and E17 are firmware items (section 7). These stay as accepted:
+The review file is not in the repository. It judged an earlier schematic (LDL1117 regulator, USBLC6 ESD part,
+chip-down CC1101). State of each finding in the files of today:
 
-| ID | Finding | Reason to accept |
+| ID | Finding | State |
 | --- | --- | --- |
-| E06 | The board draws ~0.27 A from power-up and 0.53 A in Wi-Fi bursts; USB 2.0 allows 100 mA before configuration. | Same class as the ESP32-S3-DevKitC-1. Wi-Fi stays off on USB-only boards. PoE boards do not load VBUS. |
-| E11 | The DP9900 minimum load (100 mA) can fail with USB and PoE together at a low DP9900 corner, or with EN held low. | No damage: audible noise and possible PoE cycling only. Fit R402 on boards that run on USB and PoE together. |
-| E14 | F201 hold current derates to 0.41 A at 70 C and 0.34 A at 85 C. | Without Wi-Fi the board draws 0.27-0.29 A: 17 % margin at 85 C local. Keep F201 away from U203. |
+| E01 | No ESD and DC path on the antenna port. | Fixed: L191 56 nH shunt at J1 (section 5.1). |
+| E02 | U0RXD and EN on the header without series resistance: an adapter back-powers the board. | Fixed: R207, R218 and R221 1k. EN is not on the header (section 5.5). |
+| E03 | With PoE on and USB unplugged the board drives D+ and VBUS through the ESD part. | Fixed on the board: U202 H5VUT2U has no VBUS pin, VBUS_SENSE on GPIO17, R215 bleeder. The firmware part is open (section 7, item 11). |
+| E04 | The LDL1117 output capacitance and ESR lay outside its stability plan. | Fixed: U203 is the TLV76133, stable with 1-220 uF and 2-500 mohm (section 4.4). The board has 63 uF nominal. |
+| E05 | USB attach load above 10 uF. | Fixed: C202 10 uF and the U203 soft-start (section 4.4). |
+| E06 | The board draws ~0.27 A from power-up and 0.53 A in Wi-Fi bursts; USB 2.0 allows 100 mA before configuration. | Accepted. Same class as the ESP32-S3-DevKitC-1. Wi-Fi stays off on USB-only boards. PoE boards do not load VBUS. |
+| E07 | VBUS TVS standoff 5.0 V below the 5.5 V of a Type-C charger. | Fixed: D201 is the SMF6.0A, VRWM 6 V (section 4.4). U202 has no VBUS pin. |
+| E08 | 699 MHz spur of the chip-down CC1101 at the limit of EN 300 220-1. | Does not apply to the E07 module. Section 8.2 measures its spurs. |
+| E09 | RJ45 rated 500 V AC from contacts to shield. | Fixed: J301 TM24RSG-5A-88, 1500 V AC (section 5.3). |
+| E10 | U203 junction temperature on PoE. | Fixed: 4.26 cm2 and 3.28 cm2 of 3V3 copper with 16 vias (section 6.4). The bring-up measures it. |
+| E11 | The DP9900 minimum load (100 mA) can fail with USB and PoE together at a low DP9900 corner, or with EN held low. | Accepted. No damage: audible noise and possible PoE cycling only. Fit R402 on boards that run on USB and PoE together. |
+| E12 | 25 mW e.r.p. limit against the PATABLE setting and the antenna gain. | Firmware and antenna item (section 7, item 6). |
+| E13 | 2000 h electrolytic on a 24/7 board. | Fixed: C401 EEHZA1E101XP, 105 C 10000 h, placed away from U203 and U401. |
+| E14 | F201 hold current derates to 0.41 A at 70 C and 0.34 A at 85 C. | Accepted. Without Wi-Fi the board draws 0.27-0.29 A: 17 % margin at 85 C local. Keep F201 away from U203. |
+| E15 | At the 37 V corner of the PoE input, VIN after the bridges is ~35.4 V, below the 36 V of the DP9900. | Accepted, no change. The corner needs a 7 V cable drop. This board draws 50-100 mA at the PI: a 44 V PSE gives 42 V or more over 100 m. |
+| E16 | D401 SMAJ58A clamps at up to 93.6 V at 4.3 A, above the 80 V for 1 ms of the DP9900. VRWM 58 V against 57 V. | Accepted for rev A. It is the reference circuit of the DP9900 DS (Figure 3). The case is a surge or a hot-plugged passive injector. |
+| E17 | GDO0 drives CLK_XOSC/192 into its GPIO until IOCFG0 is written. | Firmware item (section 7, item 12). |
+| E18 | The D+ pull-up is on while EN is low: a host sees an attach and fails to enumerate while reset is held. | Accepted, no change. It ends when RESET is released. |
+| E19 | With PoE on, VBUS shows only C208 100 nF, below the 1 uF of the USB 2.0 "Device Capacitance" ECN. | Accepted, no change. Only ADP attach detection of OTG hosts uses that capacitance. |
+| E20 | No TVS on the MDI lines: a cable discharge reaches the W5500 through T301 (HBM 2 kV). | Accepted for rev A. Same as the WIZnet ExternalMag reference. |
+
+### 8.4 Pre-order review of 2026-11-18
+
+The review file is not in the repository. Findings M1 to M4 (major) and m1 to m9 (minor):
+
+| ID | Finding | State |
+| --- | --- | --- |
+| M1 | JLC places U201 and U1 in Standard PCBA only. | Documented: order route and cost in section 5.6. `make_fab.py --hand U1,U201` builds the Economic package. |
+| M2 | Standard PCBA needs rails, and no edge took one without a conflict. | Fixed for the two 75 mm edges: copper 0.4 mm from both, J1 pads pulled back, rule areas. Section 5.6 lists what to agree with JLC. The JLC answers are open. |
+| M3 | The firmware in the repository does not run on this board. | Open. The board pin map stays. Section 7 states the gap. |
+| M4 | Seven findings of the electrical review had no record. | Fixed: section 8.3 lists all twenty. |
+| m1 | TP212 gave a path to U0RXD without the 1k of E02. | Fixed: R221 1k in the TP212 line. |
+| m2 | Six J301 pads with a 0.15 mm ring. | Fixed for the contact pads 1 and 8 (0.20 mm). The shell pads 11-14 keep 0.15 mm: 0.20 mm leaves 1.46 mm to the contact pads (section 6.2). |
+| m3 | The crystal tolerance covered 25 C only. | Fixed in section 5.3. Section 8.2 measures the 25 MHz error. |
+| m4 | The 3V3 inrush estimate ignored the foldback limit of U203. | Fixed in section 4.4. No board change. |
+| m5 | Documentation drift: rule comment, B.Cu fragments, USB lengths, Preferred class. | Fixed in `freedo-radio.kicad_dru` and in sections 5.2, 5.3, 6.3 and 6.4. |
+| m6 | J1 and U1 ground pads connect solid to four layers. | By design. Section 5.7 gives the soldering note. |
+| m7 | KiCad 10 names the inner layers `.g1` and `.g2`. | These are the names of the JLC guide. Section 5.6 keeps the viewer check. |
+| m8 | Low-stock and single-source parts. | Order-day check in section 5.6. |
+| m9 | Solder mask covered the pours at the mounting holes: the chassis bond was not defined. | Fixed: mask openings at H1-H4 and SHIELD copper around H3 (section 6.2). |
+
+### 8.5 Proposals that need a decision
+
+These changes remove a block, change a module or change the board class. They are not in the files.
+
+| Proposal | Saving for each board | Cost and risk |
+| --- | --- | --- |
+| ESP32-S3-WROOM-1-N8 (C2913198) in place of the MINI-1 | No X-ray: $1.64 up to 10 boards, $0.82 from 11. The part costs $0.19 more (1-9), $0.08 more (10-29). An iron can solder it, so the builds with the modules by hand need no hot air. | New footprint (18 x 25.5 mm) and a new layout of the MCU area, next to both SPI buses. JLC places it in Standard PCBA only too. The GPIO numbers stay. Medium risk. |
+| Header for a ready W5500 module in place of U301, T301, J301 and Y301 | About the saving of the usb variant, on every board. The module price was not read. | No PoE on the board. Removes the Ethernet block and the isolation barrier. Layout change. |
+| USB-only board as a new 2-layer design, about 50 x 45 mm | PCB class "from $2" in place of "from $7" for 5 pieces (unverified) and less area. | New layout and a new review. A 1.0 mm coplanar line with a 0.15 mm gap gives 50 ohm on 1.6 mm (closed form, unverified). |
+| The full board on 2 layers | About $1 at 5 boards (unverified). | Not recommended: 648 vias and 600 mm of B.Cu tracks to route again, the 0.5 mm fan-out of the W5500, and U203 loses the inner planes as heat spreaders. |
+| C206 22 uF -> 10 uF (C19702) | One BOM line: $0.31 at 5 boards, $0.08 at 20 (Standard PCBA). | The MINI-1 DS Figure 9-1 shows 22 uF at the module. Kept. |
+| 0603 in place of the 0402 parts L1, R191, L191 | Easier by hand. R191 as 0R 0603 merges one BOM line: $0.31 at 5 boards. | R191 and L191 sit on the locked RF feed between the via fences: new feed layout, and the pads widen the line. Low gain. |
+| C322, C323 as 1206 (C9196, Basic) | $3.07 for each Economic order. Nothing in Standard PCBA. | The pad gap falls to about 1.8 mm, below the 2.0 mm isolation rule. |
+| L1 as 0R (C17168) | $3.07 for each Economic order. | No bead between 3V3 and the radio supply. |
+| U203 as AMS1117-3.3 (C6186, Basic) | $3.07 for each Economic order. | No soft-start (USB attach, E05), 15 V input limit. Not recommended. |
 
 ## 9. Sources
 
@@ -1151,3 +1326,8 @@ The datasheets are not stored in the repository. Fetch them from the links below
 - JLCPCB PCB assembly FAQ (Basic, Preferred, Extended fees): https://jlcpcb.com/help/article/pcb-assembly-faqs
 - JLCPCB PCBA price (Economic and Standard PCBA): https://jlcpcb.com/help/article/pcb-assembly-price
 - JLCPCB PCBA capabilities (Economic PCBA: standard stackups only): https://jlcpcb.com/capabilities/pcb-assembly-capabilities
+- JLCPCB edge rails and fiducials: https://jlcpcb.com/help/article/how-to-add-edge-rails-fiducials-for-pcb-assembly-order
+- JLCPCB assembly terms (2.5 mm from part body to board edge): https://jlcpcb.com/help/article/terms-and-conditions-of-jlcpcb-assembly-service
+- JLCPCB PCB capabilities (V-cut and tab clearances, annular rings): https://jlcpcb.com/capabilities/pcb-capabilities
+- JLCPCB gerber guide for KiCad: https://jlcpcb.com/help/article/how-to-generate-gerber-and-drill-files-in-kicad-9
+- JLCPCB part pages (price tiers, class, PCBA type): https://jlcpcb.com/partdetail/C2913206 and the other LCSC numbers

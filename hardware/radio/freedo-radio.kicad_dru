@@ -62,7 +62,7 @@
 	(condition "(A.NetClass == 'ETH_100' || A.NetName == '/ethernet_poe/MDI_*') && A.NetName != '/ethernet_poe/TD_*' && A.NetName != '/ethernet_poe/RD_*' && A.NetName != '/ethernet_poe/RX_TERM_*' && !A.intersectsArea('ETH_FANOUT')")
 	(constraint diff_pair_gap (min 0.18mm) (opt 0.20mm) (max 0.22mm)))
 
-# RF feed C125 -> R191 -> J1 (README 6.3): 50 ohm grounded coplanar on F.Cu over In1.Cu, 0.30 mm track, 0.20 mm gap (net class clearance).
+# RF feed U1 pad 6 -> C191 -> R191 -> L191 -> J1 (README 6.3): 50 ohm grounded coplanar on F.Cu over In1.Cu, 0.30 mm track, 0.20 mm gap (net class clearance).
 (rule "rf_50_track"
 	(condition "A.NetClass == 'RF_50'")
 	(constraint track_width (min 0.28mm) (opt 0.30mm) (max 0.32mm)))
