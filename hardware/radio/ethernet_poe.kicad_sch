@@ -9178,7 +9178,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "10nF"
+		(property "Value" "10nF/100V"
 			(at 216.535 97.79 0)
 			(effects
 				(font
@@ -9214,7 +9214,7 @@
 				)
 			)
 		)
-		(property "MPN" "0603B103K500NT"
+		(property "MPN" "0603B103K101NT"
 			(at 215.9 95.25 0)
 			(hide yes)
 			(effects
@@ -9223,7 +9223,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C57112"
+		(property "LCSC" "C43253"
 			(at 215.9 95.25 0)
 			(hide yes)
 			(effects
@@ -9712,7 +9712,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "10nF"
+		(property "Value" "10nF/100V"
 			(at 216.535 158.75 0)
 			(effects
 				(font
@@ -9748,7 +9748,7 @@
 				)
 			)
 		)
-		(property "MPN" "0603B103K500NT"
+		(property "MPN" "0603B103K101NT"
 			(at 215.9 156.21 0)
 			(hide yes)
 			(effects
@@ -9757,7 +9757,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C57112"
+		(property "LCSC" "C43253"
 			(at 215.9 156.21 0)
 			(hide yes)
 			(effects
