@@ -25,6 +25,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import xml.etree.ElementTree as ET
 import zipfile
 from collections import defaultdict
@@ -76,12 +77,12 @@ def variant_board(variant, work):
     return copy, refs
 
 
-def export(out, variant):
+def export(out, variant, netlist):
     work, gerbers = out / "kicad", out / "gerbers"
     shutil.rmtree(out, ignore_errors=True)
     for d in (work, gerbers):
         d.mkdir(parents=True)
-    kicad_cli("sch", "export", "netlist", "--format", "kicadxml", "-o", work / "netlist.xml", SCH)
+    shutil.copy(netlist, work / "netlist.xml")
     kicad_cli("pcb", "export", "pos", "--format", "csv", "--units", "mm", "--side", "both",
               "-o", work / "pos.csv", BOARD)
     board, board_dnp = variant_board(variant, work) if variant else (BOARD, set())
@@ -216,16 +217,22 @@ def main():
     hand = {r for r in args.hand.split(",") if r}
     out = ROOT / "out" / "fab" / ((args.variant or "full") + ("-hand" if hand else ""))
 
-    board_dnp = export(out, args.variant)
-    all_parts = parts(out / "kicad" / "netlist.xml", args.variant, hand)
-    variant_dnp = {p["ref"] for p in all_parts if p["variant_dnp"]}
-    if args.variant and not variant_dnp:
-        sys.exit(f"variant {args.variant}: no schematic symbol is DNP in it")
+    # The arguments are checked against the netlist before the old package is deleted.
+    # The temporary directory lies in the project: the flatpak sees only that tree.
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=out.parent) as tmp:
+        netlist = Path(tmp) / "netlist.xml"
+        kicad_cli("sch", "export", "netlist", "--format", "kicadxml", "-o", netlist, SCH)
+        all_parts = parts(netlist, args.variant, hand)
+        variant_dnp = {p["ref"] for p in all_parts if p["variant_dnp"]}
+        if args.variant and not variant_dnp:
+            sys.exit(f"variant {args.variant}: no schematic symbol is DNP in it")
+        unknown = hand - {p["ref"] for p in all_parts}
+        if unknown:
+            sys.exit(f"--hand: not in the schematic: {sorted(unknown)}")
+        board_dnp = export(out, args.variant, netlist)
     if variant_dnp != board_dnp:
         sys.exit(f"variant {args.variant}: schematic and board differ on {sorted(variant_dnp ^ board_dnp)}")
-    unknown = hand - {p["ref"] for p in all_parts}
-    if unknown:
-        sys.exit(f"--hand: not in the schematic: {sorted(unknown)}")
     jlc = [p for p in all_parts if p["asm"] == "JLC" and not p["dnp"] and not p["variant_dnp"]]
     bad = [p["ref"] for p in jlc if not p["lcsc"] or not p["in_bom"]]
     if bad:
