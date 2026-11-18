@@ -6,7 +6,7 @@
 	(paper "A3")
 	(title_block
 		(title "freedo radio rev A: Ethernet and PoE")
-		(date "2026-09-24")
+		(date "2026-11-18")
 		(rev "A")
 		(comment 1 "U301 W5500, T301, J301 RJ45, Bob Smith, optional U401 PoE PD")
 		(comment 2 "Spec: hardware/radio/README.md sections 5.3 and 5.4")

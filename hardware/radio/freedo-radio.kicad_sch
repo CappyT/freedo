@@ -6,7 +6,7 @@
 	(paper "A4")
 	(title_block
 		(title "freedo radio rev A")
-		(date "2026-09-24")
+		(date "2026-11-18")
 		(rev "A")
 		(comment 1 "ESP32-S3-MINI-1-N8, E07-900MM10S 868 MHz, W5500 Ethernet, isolated PoE option, USB-C")
 		(comment 2 "Design spec: hardware/radio/README.md")

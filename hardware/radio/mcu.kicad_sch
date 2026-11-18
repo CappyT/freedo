@@ -6,7 +6,7 @@
 	(paper "A3")
 	(title_block
 		(title "freedo radio rev A: MCU")
-		(date "2026-09-24")
+		(date "2026-11-18")
 		(rev "A")
 		(comment 1 "U201 ESP32-S3-MINI-1-N8, USB series R, EN, BOOT, UART0, J203 header, LEDs")
 		(comment 2 "Spec: hardware/radio/README.md sections 3 and 5.2")

@@ -6,7 +6,7 @@
 	(paper "A3")
 	(title_block
 		(title "freedo radio rev A: RF, E07-900MM10S 868 MHz")
-		(date "2026-09-24")
+		(date "2026-11-18")
 		(rev "A")
 		(comment 1 "Ebyte E07-900MM10S CC1101 module, E22-900MM22S pad option, spec README 5.1")
 	)

@@ -6,7 +6,7 @@
 	(paper "A4")
 	(title_block
 		(title "freedo radio rev A: USB and power")
-		(date "2026-09-24")
+		(date "2026-11-18")
 		(rev "A")
 		(comment 1 "J201 USB-C, VBUS protection, 5V_SYS diode-OR input, U203 3V3 LDO")
 		(comment 2 "Spec: hardware/radio/README.md sections 4 and 5.2")
