@@ -3,7 +3,7 @@
 	(generator "pcbnew")
 	(generator_version "10.0")
 	(layer "F.Cu")
-	(descr "Hirose TM24RSG-5A-88 RJ45 8P8C, shielded, tab up, no LEDs, THT (LCSC C6285250). Recommended PCB mounting pattern, TM24R catalog 2022.1 p.3: 8 x d0.8 contacts in 3 rows (pins 3/6 on the front row, 2/5/7 4.00 mm behind, 1/4/8 6.54 mm behind), 4 x d1.63 outer shell holes (front pair 15.25 mm apart on the front row, rear pair 11 mm apart 8.925 mm behind), 2 x d1.63 separate ground spring holes 13.25 mm apart 6.00 mm behind. Board edge 2.6 mm in front of the front row (Dwgs.User line). Pin 1 on +X. Mouth toward +Y. Keep-outs = the catalog 'no conductive traces' areas. Pads 1, 8 and 11-14 use 0.15 mm rings: 1.56 mm minimum from a shield pad to a contact pad (TI SLUA454 1.5 mm).")
+	(descr "Hirose TM24RSG-5A-88 RJ45 8P8C, shielded, tab up, no LEDs, THT (LCSC C6285250). Recommended PCB mounting pattern, TM24R catalog 2022.1 p.3: 8 x d0.8 contacts in 3 rows (pins 3/6 on the front row, 2/5/7 4.00 mm behind, 1/4/8 6.54 mm behind), 4 x d1.63 outer shell holes (front pair 15.25 mm apart on the front row, rear pair 11 mm apart 8.925 mm behind), 2 x d1.63 separate ground spring holes 13.25 mm apart 6.00 mm behind. Board edge 2.6 mm in front of the front row (Dwgs.User line). Pin 1 on +X. Mouth toward +Y. Keep-outs = the catalog 'no conductive traces' areas. All contact pads use 0.20 mm rings. The shell pads 11-14 use 0.15 mm rings: 1.51 mm minimum from a shield pad to a contact pad (TI SLUA454 1.5 mm).")
 	(tags "RJ45 8P8C modular jack shielded Hirose TM24R")
 	(property "Reference" "REF**"
 		(at 0 -6.2 0)
@@ -238,7 +238,7 @@
 	)
 	(pad "1" thru_hole circle
 		(at 3.556 -2.08)
-		(size 1.1 1.1)
+		(size 1.2 1.2)
 		(drill 0.8)
 		(layers "*.Cu" "*.Mask")
 		(remove_unused_layers no)
@@ -294,7 +294,7 @@
 	)
 	(pad "8" thru_hole circle
 		(at -3.556 -2.08)
-		(size 1.1 1.1)
+		(size 1.2 1.2)
 		(drill 0.8)
 		(layers "*.Cu" "*.Mask")
 		(remove_unused_layers no)
