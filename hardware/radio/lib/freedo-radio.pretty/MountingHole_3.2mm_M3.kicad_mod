@@ -2,7 +2,7 @@
 	(version 20260206)
 	(generator "kicad-footprint-generator")
 	(layer "F.Cu")
-	(descr "Mounting hole 3.2 mm, M3, NPTH. A 5.4 mm solder mask opening on both faces exposes the copper pour around the hole: the M3 screw head (5.6 mm) lands on it and bonds that pour to the chassis.")
+	(descr "Mounting hole 3.2 mm, M3, NPTH. A 6.0 mm solder mask opening on both faces exposes the copper pour around the hole: a screw head or washer of 6.0 mm or less lands on it and bonds that pour to the chassis.")
 	(tags "mountinghole M3")
 	(property "Reference" "REF**"
 		(at 0 -4.15 0)
@@ -59,7 +59,7 @@
 	)
 	(fp_circle
 		(center 0 0)
-		(end 2.7 0)
+		(end 3 0)
 		(stroke
 			(width 0)
 			(type solid)
@@ -69,7 +69,7 @@
 	)
 	(fp_circle
 		(center 0 0)
-		(end 2.7 0)
+		(end 3 0)
 		(stroke
 			(width 0)
 			(type solid)
