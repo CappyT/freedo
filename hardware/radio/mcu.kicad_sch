@@ -3374,9 +3374,16 @@
 	(wire
 		(pts
 			(xy 271.78 104.14)
-			(xy 294.64 104.14)
+			(xy 279.4 104.14)
 		)
 		(uuid "94135627-452c-4234-a635-812b864fbcea")
+	)
+	(wire
+		(pts
+			(xy 287.02 104.14)
+			(xy 294.64 104.14)
+		)
+		(uuid "ea23d26b-8430-45da-a3c2-febf6248f645")
 	)
 	(label "EN"
 		(at 190.5 116.84 180)
@@ -5622,6 +5629,93 @@
 			(project "freedo-radio"
 				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/00b1a12d-78e9-4603-825f-6baf2f84fd14"
 					(reference "R207")
+					(unit 1)
+				)
+			)
+		)
+	)
+		(symbol
+		(lib_id "freedo-radio:R")
+		(at 283.21 104.14 90)
+		(unit 1)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "a4a96d11-13ca-4e02-a266-078380ad3b70")
+		(property "Reference" "R221"
+			(at 283.21 102.108 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "1k"
+			(at 283.21 104.14 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "freedo-radio:R_0603_1608Metric"
+			(at 283.21 104.14 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 283.21 104.14 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Resistor"
+			(at 283.21 104.14 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "0603WAF1001T5E"
+			(at 283.21 104.14 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C21190"
+			(at 283.21 104.14 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Asm" "JLC"
+			(at 283.21 104.14 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(instances
+			(project "freedo-radio"
+				(path "/11ed978d-3bf3-4322-85f7-9cc8d6b6b029/00b1a12d-78e9-4603-825f-6baf2f84fd14"
+					(reference "R221")
 					(unit 1)
 				)
 			)
