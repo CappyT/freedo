@@ -17,7 +17,7 @@ This is heavily AI-assisted work. The code and the documentation were written la
 - [Install](#install)
   - [Home Assistant Add-on (recommended)](#home-assistant-add-on-recommended)
   - [Standalone Docker container](#standalone-docker-container)
-  - [Home Assistant Integration](#home-assistant-integration-required-for-both-installation-methods)
+  - [Home Assistant Integration](#home-assistant-integration)
   - [Home Assistant Blueprints](#home-assistant-blueprints-optional)
 - [First setup](#first-setup)
 - [Dashboard](#dashboard)
