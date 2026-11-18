@@ -72,11 +72,6 @@
 	(condition "A.NetClass == 'RF_50'")
 	(constraint disallow via))
 
-# J1 is an end-launch SMA: its pads end at the board edge by design (XUNPU drawing).
-(rule "j1_edge_launch"
-	(condition "A.memberOfFootprint('J1')")
-	(constraint edge_clearance (min 0mm)))
-
 # Isolation: the screws are chassis. Line-side copper keeps 2.0 mm beyond the 6.9 mm screw-head courtyard, 3.9 mm from the hole wall.
 (rule "iso_line_to_mounting_holes"
 	(condition "(A.NetClass == 'POE_LINE' && B.memberOfFootprint('H*')) || (B.NetClass == 'POE_LINE' && A.memberOfFootprint('H*'))")
