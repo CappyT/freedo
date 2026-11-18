@@ -127,6 +127,18 @@ three phantom tags survive only as opt-in commissioning fields of
 
 ### Setpoint write path
 
+A live test on a VA01 with firmware 54.20 (2026-11-17) confirmed that a
+setpoint PUT can receive `2.05 Content` instead of `2.04 Changed`.
+The matching ACK for `PUT z/s?id=2` (21.00 C) had MID `0x3e3c`,
+with matching MID and token. The decrypted debug view reported
+`payload: null` and `tlv: null`: no response body was exposed by the
+decoder. The write was applied by the valve.
+
+freedo accepts both `2.04` and `2.05` as successful setpoint responses,
+independent of the device model or reported firmware version. Other
+response codes retain their existing handling.
+
+
 Every `z/s?id=N` write that the coordinator authors is a CoAP CON 0.03. It has
 Uri-Port `ffff`, Content-Format 42 and a token of 1 to 8 random bytes. The
 token length has no meaning. The body holds the tags in the order
@@ -621,8 +633,7 @@ shows it apply a record there, so mode `dbg2` stays refused on the thermostat. N
 
 Both take the shape of the `d/config` write: a CoAP CON 0.03 to the bare path,
 with Uri-Port `ffff`, Content-Format 42 and no query. `d/lock` carries `0290`:
-`01` to lock and `00` to unlock. `d/identify` carries an empty payload. The device
-answers `2.04` to both. The wall thermostat has no `d/lock` resource: its firmware
+`01` to lock and `00` to unlock. `d/identify` carries an empty payload. The captured device answers `2.04` to both. A live VA01 running firmware 54.20 instead answered `2.05 Content` to `d/identify` on 2026-11-17, with matching MID and token; the display showed `Hi`. On the same VA01, child-lock enable and disable commands took effect, but no correlated CoAP response was observed. The wall thermostat has no `d/lock` resource: its firmware
 holds no `d/lock` path and it answers `4.04`. So `EnqueueChildLock` refuses it, and
 the API answers 400 for any device that is not a valve. The thermostat has no child
 lock in any form: its image holds no `0290`, its `d/config` record callback drops

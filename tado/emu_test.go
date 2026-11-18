@@ -1742,7 +1742,7 @@ func TestEnqueueSetpointRequiresCorrelatedApplicationResponse(t *testing.T) {
 		e.OnFrame(frame.Bytes())
 	}
 
-	for _, accepted := range []string{"2.04"} {
+	for _, accepted := range []string{"2.04", "2.05"} {
 		t.Run(accepted, func(t *testing.T) {
 			e, _, _ := newTestEmu(t)
 			if err := e.EnqueueSetpoint("bedroom", SetpointParams{ID: 4, Setpoint: 5, Sched: 5, Overlay: 2}); err != nil {
@@ -1782,10 +1782,6 @@ func TestEnqueueSetpointRequiresCorrelatedApplicationResponse(t *testing.T) {
 			e.confirmByMID(wire, &CoAPMessage{Type: "ACK", Code: "2.01", MID: request.MID, Token: request.Token})
 			if e.Pending("bedroom") != 1 {
 				t.Fatal("wrong 2.01 code completed setpoint")
-			}
-			e.confirmByMID(wire, &CoAPMessage{Type: "ACK", Code: "2.05", MID: request.MID, Token: request.Token})
-			if e.Pending("bedroom") != 1 {
-				t.Fatal("wrong 2.05 code completed setpoint")
 			}
 			feed(t, e, wire, accepted, request.MID, request.Token, 0x46)
 			if e.Pending("bedroom") != 0 {
