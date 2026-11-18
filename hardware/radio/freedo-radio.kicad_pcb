@@ -8,7 +8,7 @@
 	)
 	(paper "A4")
 	(title_block
-		(date "2026-09-25")
+		(date "2026-11-18")
 		(rev "A")
 	)
 	(layers
@@ -30369,7 +30369,7 @@
 			)
 		)
 	)
-	(gr_text "rev A  2026-09"
+	(gr_text "rev A  2026-11"
 		(at 274 114.8 0)
 		(layer "F.SilkS")
 		(uuid "de8c2798-2796-41e9-977c-5b8e1da8c3b6")
