@@ -6,7 +6,8 @@ Usage: make_fab.py [--variant NAME] [--hand REF,REF]   (KICAD_CLI overrides the 
 --variant NAME  build a KiCad design variant: its DNP parts leave the BOM, the CPL and the stencil.
                 Without it the package holds every part. The project defines the variant "usb".
 --hand REFS     move these JLC parts to the hand-solder list (U1,U201 makes the order fit Economic PCBA).
-<name> is the variant name or "full", plus "-hand" with --hand.
+<name> is the variant name or "full", plus "-hand" with --hand. Every --hand set of one variant writes to
+the same directory: a second set replaces the first.
 
 Outputs: freedo-radio-gerbers.zip, jlc-bom.csv, jlc-cpl.csv, hand-solder.csv.
 The BOM and CPL hold only Asm=JLC parts that are not DNP. Rotation and
@@ -54,11 +55,10 @@ def natural(ref):
     return head, int(ref[len(head):] or 0)
 
 
-def variant_board(variant, work):
-    """Copy the board with the DNP flag of the variant as the base flag of each footprint.
+def variant_board(variant):
+    """Return the board text with the variant DNP flag as the base flag of each footprint, and their references.
 
     kicad-cli plots the paste layer by the base flag (rule no_paste_on_dnp), not by the variant.
-    The project and rule files go with the copy, because KiCad finds them by the board name.
     """
     marker = f'(variant\n\t\t\t(name "{variant}")\n\t\t\t(dnp yes)'
     chunks = BOARD.read_text(encoding="utf-8").split("\n\t(footprint ")
@@ -70,14 +70,10 @@ def variant_board(variant, work):
                 sys.exit(f"variant {variant}: a footprint has no attr line")
             refs.add(re.search(r'\(property "Reference" "([^"]+)"', chunk).group(1))
             chunks[i] = chunk
-    copy = work / BOARD.name
-    copy.write_text("\n\t(footprint ".join(chunks), encoding="utf-8")
-    for ext in (".kicad_pro", ".kicad_dru"):
-        shutil.copy(BOARD.with_suffix(ext), work)
-    return copy, refs
+    return "\n\t(footprint ".join(chunks), refs
 
 
-def export(out, variant, netlist):
+def export(out, netlist, board_text):
     work, gerbers = out / "kicad", out / "gerbers"
     shutil.rmtree(out, ignore_errors=True)
     for d in (work, gerbers):
@@ -85,7 +81,13 @@ def export(out, variant, netlist):
     shutil.copy(netlist, work / "netlist.xml")
     kicad_cli("pcb", "export", "pos", "--format", "csv", "--units", "mm", "--side", "both",
               "-o", work / "pos.csv", BOARD)
-    board, board_dnp = variant_board(variant, work) if variant else (BOARD, set())
+    board = BOARD
+    if board_text:
+        # The project and rule files go with the copy, because KiCad finds them by the board name.
+        board = work / BOARD.name
+        board.write_text(board_text, encoding="utf-8")
+        for ext in (".kicad_pro", ".kicad_dru"):
+            shutil.copy(BOARD.with_suffix(ext), work)
     # Settings from JLC "How to Generate Gerber and Drill Files From KiCad 9" (2026-09-24): Protel names,
     # X2 and netlist attributes on, no job file, 4.6 mm; Excellon mm decimal, absolute, separate PTH/NPTH.
     kicad_cli("pcb", "export", "gerbers", "--layers", LAYERS, "--check-zones", "--precision", "6",
@@ -98,7 +100,6 @@ def export(out, variant, netlist):
     with zipfile.ZipFile(out / "freedo-radio-gerbers.zip", "w", zipfile.ZIP_DEFLATED) as z:
         for f in sorted(gerbers.iterdir()):
             z.write(f, f.name)
-    return board_dnp
 
 
 def parts(netlist, variant, hand):
@@ -217,7 +218,7 @@ def main():
     hand = {r for r in args.hand.split(",") if r}
     out = ROOT / "out" / "fab" / ((args.variant or "full") + ("-hand" if hand else ""))
 
-    # The arguments are checked against the netlist before the old package is deleted.
+    # The arguments, the netlist and the board are checked before the old package is deleted.
     # The temporary directory lies in the project: the flatpak sees only that tree.
     out.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=out.parent) as tmp:
@@ -230,9 +231,10 @@ def main():
         unknown = hand - {p["ref"] for p in all_parts}
         if unknown:
             sys.exit(f"--hand: not in the schematic: {sorted(unknown)}")
-        board_dnp = export(out, args.variant, netlist)
-    if variant_dnp != board_dnp:
-        sys.exit(f"variant {args.variant}: schematic and board differ on {sorted(variant_dnp ^ board_dnp)}")
+        board_text, board_dnp = variant_board(args.variant) if args.variant else ("", set())
+        if variant_dnp != board_dnp:
+            sys.exit(f"variant {args.variant}: schematic and board differ on {sorted(variant_dnp ^ board_dnp)}")
+        export(out, netlist, board_text)
     jlc = [p for p in all_parts if p["asm"] == "JLC" and not p["dnp"] and not p["variant_dnp"]]
     bad = [p["ref"] for p in jlc if not p["lcsc"] or not p["in_bom"]]
     if bad:
