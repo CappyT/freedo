@@ -15,7 +15,7 @@ This is heavily AI-assisted work. The code and the documentation were written la
 - [Compared with the tado cloud and HomeKit](#compared-with-the-tado-cloud-and-homekit)
 - [Requirements](#requirements)
 - [Install](#install)
-  - [Home Assistant Add-on](#home-assistant-add-on-recommended)
+  - [Home Assistant Add-on (recommended)](#home-assistant-add-on-recommended)
   - [Standalone Docker container](#standalone-docker-container)
   - [Home Assistant Integration](#home-assistant-integration-required-for-both-installation-methods)
   - [Home Assistant Blueprints](#home-assistant-blueprints-optional)
@@ -306,7 +306,7 @@ The container starts in dry-run mode.
 
 For volume configuration, time zone settings and building from source, see [docs/OPERATION.md](docs/OPERATION.md).
 
-### Home Assistant Integration (required for both installation methods)
+### Home Assistant Integration (required Add-on or Container Installation)
 
 1. **Add the freedo repository**
 
