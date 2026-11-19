@@ -21,7 +21,7 @@ the routes. For the radio facts behind a rule, see [PROTOCOL.md](PROTOCOL.md).
 - `--health-public` makes `GET /api/health` readable without a token, for a container
   health check. The default is off.
 - `--ingress` makes the daemon accept the calls of the dashboard from the connection address
-  `172.30.32.2`, the Home Assistant ingress gateway, without a token. It covers 59 method and path
+  `172.30.32.2`, the Home Assistant ingress gateway, without a token. It covers 61 method and path
   pairs only. Only the add-on start script sets it, and it has no effect unless `SUPERVISOR_TOKEN` is
   set. With the flag, the gateway also reaches the two routes of the
   [state export and import](#state-export-and-import) for a Home Assistant administrator. Every other
@@ -131,6 +131,7 @@ banner.
 | `GET /api/health` | State of the daemon, the radio and the devices, with alerts. |
 | `GET /api/nodes`, `GET /api/nodes/{id}` | Devices with telemetry, battery, faults and settings. |
 | `GET /api/zones` | Zones with members, demand, target, window state and external temperature. |
+| `GET /api/room-order` | Saved order of dashboard heating-room tiles. |
 | `GET /api/circuits` | Heating circuits as the engine sees them. |
 | `GET /api/boiler` | Boiler values, flow limit state, energy and gas estimate. |
 | `GET /api/home` | Home and away state, the scheduled setpoint of each zone and the active preset. |
@@ -162,6 +163,10 @@ banner.
 | `GET /api/zones/{n}/episodes` | Recorded heating and cooling episodes. |
 | `GET /api/zones/{n}/pid-suggestion` | Suggested controller gains from the episodes. |
 | `PATCH /api/home` | Switch the whole home between home and away. |
+
+### Dashboard room order
+
+`GET /api/room-order` returns `{"rooms": [8, 3]}`. `PUT /api/room-order` accepts the same shape and stores the positive, unique room numbers in the daemon's SQLite database. A missing `rooms` array, a non-positive number or a duplicate gets `400`. Unlisted rooms follow the saved rooms in their normal order; deleted rooms are ignored. This setting does not change the installation or device state.
 
 ### Device commands
 

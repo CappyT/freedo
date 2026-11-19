@@ -12,6 +12,8 @@ type Call = (client: Client) => Promise<unknown>;
 const calls: Record<string, Call> = {
 	health: (c) => c.health(),
 	zones: (c) => c.zones(),
+	roomOrder: (c) => c.roomOrder(),
+	setRoomOrder: (c) => c.setRoomOrder([8, 3]),
 	nodes: (c) => c.nodes(),
 	home: (c) => c.home(),
 	boiler: (c) => c.boiler(),
@@ -81,6 +83,8 @@ const calls: Record<string, Call> = {
 const ALLOWED = [
 	'GET /api/health',
 	'GET /api/zones',
+	'GET /api/room-order',
+	'PUT /api/room-order',
 	'GET /api/nodes',
 	'GET /api/home',
 	'GET /api/boiler',

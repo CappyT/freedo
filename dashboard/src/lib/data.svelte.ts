@@ -17,6 +17,7 @@ class Data {
 	boiler = $state<Boiler | null>(null);
 	circuits = $state<Circuit[]>([]);
 	presets = $state<Preset[]>([]);
+	roomOrder = $state<number[]>([]);
 	/** False while no request reaches the daemon. */
 	reachable = $state(true);
 	/** True while the daemon restarts on purpose: no answer is expected, not a fault. */
@@ -89,9 +90,10 @@ class Data {
 			}
 			this.waitEnd = null;
 		}
-		const [health, zones, nodes, home, boiler, circuits, presets] = await Promise.allSettled([
+		const [health, zones, roomOrder, nodes, home, boiler, circuits, presets] = await Promise.allSettled([
 			api.health(),
 			api.zones(),
+			api.roomOrder(),
 			api.nodes(),
 			api.home(),
 			api.boiler(),
@@ -111,13 +113,14 @@ class Data {
 			this.health = health.value;
 		}
 		if (zones.status === 'fulfilled') this.zones = zones.value;
+		if (roomOrder.status === 'fulfilled') this.roomOrder = roomOrder.value.rooms;
 		if (nodes.status === 'fulfilled') this.nodes = nodes.value;
 		if (home.status === 'fulfilled') this.home = home.value;
 		if (boiler.status === 'fulfilled') this.boiler = boiler.value;
 		// An installation with no circuit answers null.
 		if (circuits.status === 'fulfilled') this.circuits = circuits.value ?? [];
 		if (presets.status === 'fulfilled') this.presets = presets.value.presets;
-		const all = [health, zones, nodes, home, boiler, circuits, presets];
+		const all = [health, zones, roomOrder, nodes, home, boiler, circuits, presets];
 		const failed = all.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
 		if (failed.length < all.length) auth.accepted();
 		this.reachable = !(failed.length === all.length && failed.every((r) => r.reason instanceof ApiError && r.reason.status === 0));

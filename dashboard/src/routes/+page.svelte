@@ -9,12 +9,15 @@
 	import Icon, { type IconName } from '#lib/Icon.svelte';
 	import { install } from '#lib/install.svelte.ts';
 	import RadioChip from '#lib/RadioChip.svelte';
+	import { orderRooms } from '#lib/room-order.ts';
 	import { api } from '#lib/session.ts';
 	import Tile, { type TileChip, type TileFill } from '#lib/Tile.svelte';
 	import { stateIcons } from '#lib/today.svelte.ts';
 	import { deviceAlerts, zoneName, type StateKey, type ZoneModel } from '#lib/zones.ts';
 
 	let busy = $state(false);
+	let editingOrder = $state(false);
+	let savingOrder = $state(false);
 	let confirmBoost = $state(false);
 	let menuOpen = $state(false);
 	let menuRoot: HTMLDivElement | undefined = $state();
@@ -30,7 +33,7 @@
 	});
 
 	const zones = $derived(data.models);
-	const rooms = $derived(data.heating);
+	const rooms = $derived(orderRooms(data.heating, data.roomOrder));
 	const presets = $derived(data.presets);
 	const activePreset = $derived(presets.find((preset) => preset.active));
 
@@ -181,7 +184,21 @@
 
 	async function boostAll() {
 		confirmBoost = false;
-		await actMany(rooms.map((m) => () => api.boost(m.zone.number, true)));
+		await actMany(data.heating.map((m) => () => api.boost(m.zone.number, true)));
+	}
+
+	async function moveRoom(index: number, direction: -1 | 1) {
+		const target = index + direction;
+		if (savingOrder || target < 0 || target >= rooms.length) return;
+		const next = [...rooms];
+		const currentRoom = next[index];
+		const targetRoom = next[target];
+		if (!currentRoom || !targetRoom) return;
+		next[index] = targetRoom;
+		next[target] = currentRoom;
+		savingOrder = true;
+		await act(() => api.setRoomOrder(next.map((room) => room.zone.number)));
+		savingOrder = false;
 	}
 
 	const resumeAll = () => actMany(zones.map((m) => () => api.auto(m.zone.number)));
@@ -246,10 +263,28 @@
 
 		{#if rooms.length > 0}
 			<ul class="tiles" aria-label={t('home.rooms')}>
-				{#each rooms as m (m.zone.number)}
-					<li><Tile {...roomTile(m)} /></li>
+				{#each rooms as m, i (m.zone.number)}
+					<li>
+						<Tile {...roomTile(m)} />
+						{#if editingOrder}
+							<div class="move-controls">
+								<button class="move-room" type="button" aria-label={t('home.rooms.moveUp', { room: m.zone.name })} title={t('home.rooms.moveUp', { room: m.zone.name })} disabled={savingOrder || i === 0} onclick={() => moveRoom(i, -1)}>
+									<span class="move-up"><Icon name="chevron" size={18} /></span>
+								</button>
+								<button class="move-room" type="button" aria-label={t('home.rooms.moveDown', { room: m.zone.name })} title={t('home.rooms.moveDown', { room: m.zone.name })} disabled={savingOrder || i === rooms.length - 1} onclick={() => moveRoom(i, 1)}>
+									<span class="move-down"><Icon name="chevron" size={18} /></span>
+								</button>
+							</div>
+						{/if}
+					</li>
 				{/each}
 			</ul>
+			<div class="room-order-toolbar">
+				{#if editingOrder}<p class="room-order-hint">{t('home.rooms.orderHint')}</p>{/if}
+				<button class="room-order-toggle" type="button" aria-pressed={editingOrder} disabled={savingOrder} onclick={() => (editingOrder = !editingOrder)}>
+					{editingOrder ? t('home.rooms.done') : t('home.rooms.edit')}
+				</button>
+			</div>
 		{/if}
 
 		<h2 class="group-title">{t('home.system')}</h2>
@@ -441,6 +476,76 @@
 
 	.tiles > li {
 		display: grid;
+	}
+
+	.room-order-toolbar {
+		display: grid;
+		justify-items: center;
+		gap: 0.35rem;
+		margin: 0.75rem 0 0.5rem;
+	}
+
+	.room-order-hint {
+		margin: 0;
+		color: var(--text-muted);
+		font-size: var(--text-small-size);
+		text-align: center;
+	}
+
+	.room-order-toggle {
+		min-height: 2.25rem;
+		padding: 0 1rem;
+		border: 1px solid var(--border-strong);
+		border-radius: var(--radius-md);
+		background: var(--surface);
+		color: var(--text);
+		font: inherit;
+		font-weight: var(--weight-semibold);
+		cursor: pointer;
+	}
+
+	.room-order-toggle:hover:not(:disabled),
+	.move-room:hover:not(:disabled) {
+		border-color: var(--accent);
+	}
+
+	.room-order-toggle:disabled,
+	.move-room:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.move-controls {
+		display: flex;
+		justify-content: center;
+		gap: 0.5rem;
+		padding-top: 0.5rem;
+	}
+
+	.move-room {
+		display: grid;
+		place-items: center;
+		width: 2.25rem;
+		height: 2.25rem;
+		padding: 0;
+		border: 1px solid var(--border-strong);
+		border-radius: var(--radius-md);
+		background: var(--surface);
+		color: var(--text);
+		cursor: pointer;
+	}
+
+	.move-up,
+	.move-down {
+		display: grid;
+	}
+
+	.move-up {
+		transform: rotate(-90deg);
+	}
+
+	.move-down {
+		transform: rotate(90deg);
 	}
 
 	/* Four tiles of the home and the plant fit one row on a wide screen. */

@@ -143,6 +143,8 @@ export function createClient(options: ClientOptions = {}) {
 			}
 		},
 		zones: () => request<Zones>('GET', 'zones'),
+		roomOrder: () => request<{ rooms: number[] }>('GET', 'room-order'),
+		setRoomOrder: (rooms: number[]) => request<{ rooms: number[] }>('PUT', 'room-order', { rooms }),
 		nodes: () => request<NodeView[]>('GET', 'nodes'),
 		home: () => request<Home>('GET', 'home'),
 		boiler: () => request<Boiler>('GET', 'boiler'),

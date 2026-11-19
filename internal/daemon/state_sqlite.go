@@ -507,6 +507,36 @@ func (s *stateStore) SetActivePreset(ctx context.Context, id int64) error {
 	return err
 }
 
+// RoomOrder returns the stored dashboard order, or an empty order when none is saved.
+func (s *stateStore) RoomOrder(ctx context.Context) ([]int, error) {
+	var raw string
+	if err := s.db.QueryRowContext(ctx, `SELECT value FROM meta WHERE key = 'dashboard_room_order'`).Scan(&raw); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return []int{}, nil
+		}
+		return nil, err
+	}
+	var order []int
+	if err := json.Unmarshal([]byte(raw), &order); err != nil {
+		return nil, fmt.Errorf("dashboard room order: %w", err)
+	}
+	if order == nil {
+		return []int{}, nil
+	}
+	return order, nil
+}
+
+// SaveRoomOrder stores the dashboard order without touching installation or desired state.
+func (s *stateStore) SaveRoomOrder(ctx context.Context, order []int) error {
+	body, err := json.Marshal(order)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx,
+		`INSERT OR REPLACE INTO meta (key, value) VALUES ('dashboard_room_order', ?)`, string(body))
+	return err
+}
+
 // SetZoneProgram stores the home or away program of zone in preset.
 func (s *stateStore) SetZoneProgram(ctx context.Context, preset int64, zone int, away bool, programs []tado.ScheduleProgram) error {
 	mode := "home"
