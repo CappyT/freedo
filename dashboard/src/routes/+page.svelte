@@ -279,12 +279,6 @@
 					</li>
 				{/each}
 			</ul>
-			<div class="room-order-toolbar">
-				{#if editingOrder}<p class="room-order-hint">{t('home.rooms.orderHint')}</p>{/if}
-				<button class="room-order-toggle" type="button" aria-pressed={editingOrder} disabled={savingOrder} onclick={() => (editingOrder = !editingOrder)}>
-					{editingOrder ? t('home.rooms.done') : t('home.rooms.edit')}
-				</button>
-			</div>
 		{/if}
 
 		<h2 class="group-title">{t('home.system')}</h2>
@@ -350,6 +344,14 @@
 				</li>
 			{/if}
 		</ul>
+		{#if rooms.length > 0}
+			<div class="room-order-toolbar">
+				{#if editingOrder}<p class="room-order-hint">{t('home.rooms.orderHint')}</p>{/if}
+				<button class="room-order-toggle" type="button" aria-pressed={editingOrder} disabled={savingOrder} onclick={() => (editingOrder = !editingOrder)}>
+					{editingOrder ? t('home.rooms.done') : t('home.rooms.edit')}
+				</button>
+			</div>
+		{/if}
 	{/if}
 </section>
 
