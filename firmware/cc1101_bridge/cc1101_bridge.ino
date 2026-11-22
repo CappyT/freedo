@@ -5,10 +5,9 @@
 //   SCLK -> D18(GPIO18)   MOSI -> D23(GPIO23)   MISO -> D21(GPIO21)
 //   CSN  -> D5 (GPIO5)    GDO0 -> D25(GPIO25)   GDO2 -> D26(GPIO26)
 //
-// The serial protocol and every status code stay identical to v1, except that
-// the RECV-shaped blobs of RECV, of AUTOACK and of the CSLQUEUE inbound record
-// carry FREQEST as one trailing byte after the LQI/CRC byte. See README.md in
-// this folder for the wire format and the v1 differences.
+// The RECV-shaped blobs of RECV, of AUTOACK and of the CSLQUEUE inbound record
+// carry FREQEST as one trailing byte after the LQI/CRC byte. Every request ends
+// with a CRC-8. See README.md in this folder for the wire format.
 //
 // Structure:
 //   serialTask (core 0) parses requests and writes every response byte.
@@ -24,6 +23,8 @@
 //   While the host keeps a pair window open (CMD_PAIRWIN), the idle drain and
 //   CMD_AUTOACK answer an Enhanced Beacon Request with an Enhanced Beacon. The
 //   CSL state machine never does.
+//   The host can switch on a listen before talk (CMD_LBT). It runs before the first
+//   frame of a train and of a pair beacon, and never before an Enhanced ACK.
 
 #include <Arduino.h>
 #include <SPI.h>
@@ -62,7 +63,7 @@ static const size_t SERIAL_TX_BUF = 2048;
 #endif
 #define BANNER_STR_(x) #x
 #define BANNER_STR(x) BANNER_STR_(x)
-static const char BANNER[] = "CC1101BRIDGE v2.10 (" BANNER_STR(FIRMWARE_BUILD) ")";
+static const char BANNER[] = "CC1101BRIDGE v2.11 (" BANNER_STR(FIRMWARE_BUILD) ")";
 
 static const uint8_t REQ_MAGIC = 0xA5;
 static const uint8_t RSP_MAGIC = 0x5A;
@@ -81,7 +82,10 @@ enum : uint8_t {
   CMD_RABURST = 0x0B,
   CMD_CSLTX = 0x0C,
   CMD_CSLQUEUE = 0x0D,
-  CMD_PAIRWIN = 0x0E
+  CMD_PAIRWIN = 0x0E,
+  CMD_CONFIGURED = 0x0F,
+  CMD_AIRTIME = 0x10,
+  CMD_LBT = 0x11
 };
 
 // Status bytes of the response header. The host maps every one of them.
@@ -98,10 +102,14 @@ enum : uint8_t {
   ST_NOANCHOR = 0x18,
   ST_QUEUE_FULL = 0x19,
   ST_NEIGHBOR_FULL = 0x1A,
+  ST_BUSY = 0x1B,
+  ST_UNCONFIGURED = 0x1C,
+  ST_AIRTIME = 0x1D,
   ST_BAD_CMD = 0xE0,
   ST_BAD_LEN = 0xE1,
   ST_BAD_PAYLOAD = 0xE2,
-  ST_BAD_ARGS = 0xE3
+  ST_BAD_ARGS = 0xE3,
+  ST_BAD_CRC = 0xE4
 };
 
 // Streaming markers (CMD_STREAM, CMD_RESPOND). One frame is
@@ -119,6 +127,9 @@ static const uint32_t STREAM_DEFAULT_MS = 10000;
 static const size_t MAX_PAYLOAD = 1024;
 static const uint32_t SERIAL_INTERBYTE_MS = 1000;
 static const uint32_t SERIAL_REQUEST_MS = 3000;  // total budget for one request
+// The host sends a request at least every 1.25 s. Without a valid one for this
+// long the bridge forgets the coordinator, the pair window and the queue.
+static const uint32_t HOST_TIMEOUT_MS = 5000;
 
 // ------------------------------------------------------------- CC1101 register
 
@@ -128,6 +139,8 @@ static const uint8_t CC_FREQEST = 0x32;
 static const uint8_t CC_MARCSTATE = 0x35;
 static const uint8_t CC_RXBYTES = 0x3B;
 static const uint8_t CC_TXBYTES = 0x3A;
+static const uint8_t CC_RSSI = 0x34;
+static const uint8_t CC_PKTSTATUS = 0x38;
 static const uint8_t CC_RXFIFO = 0x3F;
 static const uint8_t CC_TXFIFO = 0x3F;
 static const uint8_t CC_SRES = 0x30;
@@ -145,14 +158,18 @@ static const uint8_t WRITE_BURST = 0x40;
 // times a second. The pins stay low until the host loads its register set.
 static const uint8_t GDO_CFG_LOW = 0x2F;
 static const uint8_t GDO_QUIET_TRIES = 4;
+static const uint8_t GDO_RESET_VALUE = 0x3F;
 
 static const uint8_t MARC_STATE_MASK = 0x1F;
+static const uint8_t MARC_RX = 0x0D;
+static const uint8_t MARC_RX_RST = 0x0F;  // RX, RX_END and RX_RST all keep the packet in the FIFO
 static const uint8_t MARC_TX = 0x13;
 static const uint8_t MARC_TX_END = 0x14;
 static const uint8_t MARC_TXFIFO_UNDER = 0x16;
 static const uint8_t FIFO_BYTES_MASK = 0x7F;
 static const uint8_t FIFO_ERROR_BIT = 0x80;
 static const uint8_t CRC_OK_BIT = 0x80;
+static const uint8_t PKT_SFD_BIT = 0x08;  // PKTSTATUS: sync word detected
 
 static const uint8_t FIFO_SIZE = 64;
 static const uint8_t MAX_TX_FRAME = 140;  // longest sub-frame payload of a train
@@ -161,8 +178,9 @@ static const uint8_t MAX_TRAIN = 48;  // sub-frames per CMD_RESPOND response
 static const uint8_t MAX_MATCH = 64;
 static const uint32_t TX_TMO_MS = 100;
 
-// The chip needs a settle time between CS low and the first clock edge. The slow
-// profile is the safe default, the fast profile keeps the wake-up burst tight.
+// The chip needs a settle time between CS low and the first clock edge. In active
+// mode it is 20 ns (datasheet table 22), so the fast profile serves every access. The
+// slow profile covers the power-on reset sequence only, inside manualReset.
 static const uint32_t SPI_SLOW_HZ = 1000000;
 static const uint32_t SPI_FAST_HZ = 6000000;
 static const uint16_t SPI_SLOW_SETTLE_US = 150;
@@ -176,16 +194,26 @@ static const uint8_t STATUS_READ_TRIES = 4;
 static const uint32_t CSL_PERIOD_US = 1000000;
 static const uint32_t CSL_UNIT_US = 320;  // one CSL phase unit, 10 symbols
 static const uint32_t CSL_SAMPLE_GUARD_US = 40000;
+// A train without an anchor covers one whole CSL period, as the commercial bridge does: the
+// first frame announces 3125 units and the train lasts about 1.003 s there. That is 3 ms over
+// the 1 s of EN 300 220 Ton_max, and a shorter train would miss the device that samples in
+// the gap.
 static const uint32_t CSL_BOOTSTRAP_US = 1000000;
+static const uint16_t RA_PERIOD_UNITS = 3125;  // 1 s of CSL phase units
+static const uint32_t RA_PERIOD_US = 1000000;
+// CMD_TXTRAIN and CMD_RESPOND stop before a frame that would end more than this after the
+// first one started, so that a train of long frames stays under the 1 s of Ton_max.
+static const uint32_t HOST_TRAIN_MAX_US = 980000;
 static const uint8_t CSL_WAKE_CAP = 253;
 static const uint16_t CSL_ACK_TMO_MAX_MS = 1000;
 static const uint16_t CSL_FOLLOW_TMO_MS = 500;
 static const uint8_t CSL_FOLLOW_MAX = 6;
 static const uint8_t CSL_WAKE_BUDGET = 4;  // wake frames per state machine step
+// Between the end of the last wake frame and the start of the Data frame. The
+// commercial coordinator leaves 9 to 24 ms, median 12 ms (docs/PROTOCOL.md).
+static const uint32_t CSL_DATA_GAP_US = 12000;
 static const uint32_t CSL_GUARD_MARGIN_MS = 400;
 static const uint8_t CSL_ANCHOR_MISS_LIMIT = 4;
-static const uint16_t RA_PERIOD_UNITS = 3125;  // 1 s of CSL phase units
-static const uint32_t RA_PERIOD_US = 1000000;
 static const uint8_t RA_WAKE_CAP = 253;
 
 static const uint8_t CSL_ANCHORS = 16;
@@ -210,6 +238,41 @@ static const uint8_t CSL_INBOUND_DEPTH = 32;
 // full batches at once.
 static_assert(CSL_JOB_POOL >= 4 * CSL_NEIGHBOR_DEPTH, "job pool too small for a full batch");
 static_assert(CSL_JOB_POOL < CSL_JOB_NONE, "job index does not fit the pool sentinel");
+
+// -------------------------------------------------------------------- airtime
+
+// One frame on air is preamble 4, sync 4, length 1, payload and CRC 2 bytes, and a
+// byte takes 160 us at 50 kBaud. The window is 61 buckets of one minute, so it is 60 to
+// 61 minutes long and always covers a full real hour. The firmware always counts. It refuses a
+// transmission only when the host set a budget (CMD_AIRTIME with a budget): the Tcum_on of polite
+// spectrum access, 36 s per hour with no listen and 100 s with it (ETSI EN 300 220-2 clause 4.6).
+static const uint32_t AIR_BYTE_US = 160;
+static const uint8_t AIR_FRAME_OVERHEAD = 4 + 4 + 1 + 2;
+static const uint8_t AIR_BUCKETS = 61;
+static const uint64_t AIR_BUCKET_US = 60ULL * 1000000ULL;
+static const uint16_t AIR_BUCKET_MAX_MS = 60000;
+
+// ---------------------------------------------------------------- listen before talk
+
+// Polite spectrum access (ETSI EN 300 220-2 clause 4.6): listen at least 160 us, defer by a
+// random multiple of the listen time, give up after a few tries. The commercial bridge uses
+// a backoff of 0 to 6 x 640 us.
+static const uint32_t LBT_LISTEN_US = 160;
+static const uint8_t LBT_TRIES = 3;
+static const uint32_t LBT_BACKOFF_UNIT_US = 640;
+static const uint8_t LBT_BACKOFF_MAX_UNITS = 6;
+// The RSSI of a receiver that just entered RX is valid after about 230 us (datasheet 17.3
+// and DN505 5.2, calculated for this register set and not measured).
+static const uint32_t LBT_SETTLE_US = 250;
+// A listen that starts with the receiver settled takes about 190 us, one that waits for the
+// RSSI up to LBT_SETTLE_US more, plus the SPI reads. The anchored train starts its listen
+// this long before its first frame.
+static const uint32_t LBT_LEAD_US = 500;
+// RX to TX takes about 30 us (datasheet table 34). A chip still in RX after this time refused
+// the STX.
+static const uint32_t CCA_START_US = 300;
+static const int8_t LBT_THRESHOLD_DEFAULT_DBM = -80;
+static const int RSSI_OFFSET_DBM = 74;  // datasheet table 31, 868 MHz, 1.2 to 500 kBaud
 
 // ----------------------------------------------------------------- pair window
 
@@ -325,7 +388,8 @@ enum : uint8_t {
   CSL_RX = 1,
   CSL_WAKE = 2,
   CSL_ACK = 3,
-  CSL_FOLLOW = 4
+  CSL_FOLLOW = 4,
+  CSL_LISTEN = 5
 };
 
 enum : uint8_t {
@@ -334,7 +398,9 @@ enum : uint8_t {
   OUT_NOACK = 2,
   OUT_BADACK = 3,
   OUT_INPUT = 4,
-  OUT_NOANCHOR = 5
+  OUT_NOANCHOR = 5,
+  OUT_AIRTIME = 6,
+  OUT_BUSY = 7
 };
 
 enum : uint8_t { CSLQ_ENQUEUE = 0, CSLQ_POLL = 1, CSLQ_FLUSH = 2 };
@@ -349,7 +415,12 @@ struct CslTxn {
   uint8_t sent;
   bool sawInvalid;
   bool targetStored;
+  bool anchored;     // the train is timed on an anchor, so its end is fixed
+  bool lbtPending;   // the listen before the first frame is not done yet
+  bool gated;        // the first frame leaves from RX, after a clear listen
+  uint8_t lbtTries;  // listens that found the channel busy
   CslJob job;
+  uint64_t listenAtUs;
   uint64_t startUs;
   uint64_t wakeEndUs;
   uint64_t windowEndUs;
@@ -388,6 +459,10 @@ static std::atomic<uint32_t> gdoSeq(0);
 // Low 32 bits of the end-of-frame instant. A 32-bit store is atomic on this
 // core, a 64-bit one is not, and the high word is rebuilt from the clock.
 static std::atomic<uint32_t> gdo0StampLo(0);
+// Milliseconds (low 32 bits) of the last valid request. serialTask stores it on
+// every request with a good CRC, radioTask stores it again when a command ends,
+// because a long RECV or STREAM leaves the host waiting for the reply.
+static std::atomic<uint32_t> hostRequestMs(0);
 
 static const uint32_t NOTIFY_RADIO = 0x1;
 static const uint32_t NOTIFY_ALL_BITS = 0xFFFFFFFFUL;
@@ -396,8 +471,16 @@ static const uint32_t NOTIFY_ALL_BITS = 0xFFFFFFFFUL;
 
 static SPISettings spiSlow(SPI_SLOW_HZ, MSBFIRST, SPI_MODE0);
 static SPISettings spiFast(SPI_FAST_HZ, MSBFIRST, SPI_MODE0);
-static SPISettings *spiActive = &spiSlow;
-static uint16_t spiSettleUs = SPI_SLOW_SETTLE_US;
+static SPISettings *spiActive = &spiFast;
+static uint16_t spiSettleUs = SPI_FAST_SETTLE_US;
+
+// Budget in ms set by CMD_AIRTIME. 0 means no cap. No cap after boot and after CMD_RESET.
+static uint32_t airBudgetMs = 0;
+// Listen before talk, set by CMD_LBT. Off after boot and after CMD_RESET.
+static bool lbtOn = false;
+static int8_t lbtThresholdDbm = LBT_THRESHOLD_DEFAULT_DBM;
+// The instant from which the RSSI of the receiver is valid: set when the chip enters RX.
+static uint64_t rxValidUs = 0;
 
 static RxAssembler rx;
 static uint32_t gdoSeenSeq = 0;
@@ -424,6 +507,18 @@ static bool exclusiveWaiting;
 static uint8_t coordEUI[8];
 static bool coordKnown;
 static uint16_t coordPhase;
+
+// False at boot, after manualReset and after a chip reset that the idle tick
+// detects. The host sets it with CMD_CONFIGURED once its register set is loaded.
+// A chip with reset values must not transmit: FREQ2..0 is 800 MHz there.
+static bool configured;
+static bool hostLapsed;
+static uint64_t lastIocfgCheckUs;
+
+// Airtime of the last hour, in 61 one-minute buckets.
+static uint32_t airBucket[AIR_BUCKETS];
+static uint64_t airMinute;
+static uint32_t airSumUs;
 
 // The pair window the host opened with CMD_PAIRWIN. The beacons take seq and
 // frame counter from the block the host reserved for them.
@@ -473,6 +568,87 @@ static uint16_t macFCS(const uint8_t *p, size_t n) {
     }
   }
   return crc;
+}
+
+// CRC-8, polynomial 0x07, init 0x00, no reflection, no final xor.
+static uint8_t crc8(uint8_t crc, const uint8_t *p, size_t n) {
+  for (size_t i = 0; i < n; i++) {
+    crc ^= p[i];
+    for (uint8_t bit = 0; bit < 8; bit++) {
+      crc = (crc & 0x80) ? (uint8_t)((crc << 1) ^ 0x07) : (uint8_t)(crc << 1);
+    }
+  }
+  return crc;
+}
+
+static inline uint32_t nowMs32() {
+  return (uint32_t)(nowUs() / 1000ULL);
+}
+
+// ------------------------------------------------------------------------ airtime
+
+// Move the window to the current minute and drop the buckets that left it.
+static void airAdvance() {
+  uint64_t minute = nowUs() / AIR_BUCKET_US;
+  if (minute <= airMinute) return;
+  uint64_t steps = minute - airMinute;
+  if (steps >= AIR_BUCKETS) {
+    memset(airBucket, 0, sizeof(airBucket));
+    airSumUs = 0;
+  } else {
+    for (uint64_t i = 1; i <= steps; i++) {
+      uint32_t *b = &airBucket[(airMinute + i) % AIR_BUCKETS];
+      airSumUs -= *b;
+      *b = 0;
+    }
+  }
+  airMinute = minute;
+}
+
+// Time on air of one frame of n payload bytes.
+static uint32_t airFrameUs(uint8_t n) {
+  return ((uint32_t)n + AIR_FRAME_OVERHEAD) * AIR_BYTE_US;
+}
+
+// Count one transmitted frame of n payload bytes.
+static void airCount(uint8_t n) {
+  airAdvance();
+  uint32_t us = airFrameUs(n);
+  airBucket[airMinute % AIR_BUCKETS] += us;
+  airSumUs += us;
+}
+
+// Load per-minute values in ms, oldest first, the last one for the current minute. The
+// array with the larger total wins, whole: a preload sent to a bridge that did not reset
+// must not erase what it counted, and a bucket by bucket maximum would copy one busy
+// minute into every bucket as the host and the window shift against each other.
+static void airPreload(const uint8_t *p) {
+  airAdvance();
+  uint32_t sumUs = 0;
+  for (uint8_t k = 0; k < AIR_BUCKETS; k++) {
+    uint16_t ms = ((uint16_t)p[2 * k] << 8) | p[2 * k + 1];
+    if (ms > AIR_BUCKET_MAX_MS) ms = AIR_BUCKET_MAX_MS;
+    sumUs += (uint32_t)ms * 1000U;
+  }
+  if (sumUs <= airSumUs) return;
+  for (uint8_t k = 0; k < AIR_BUCKETS; k++) {
+    uint16_t ms = ((uint16_t)p[2 * k] << 8) | p[2 * k + 1];
+    if (ms > AIR_BUCKET_MAX_MS) ms = AIR_BUCKET_MAX_MS;
+    uint8_t age = AIR_BUCKETS - 1 - k;
+    airBucket[(airMinute % AIR_BUCKETS + AIR_BUCKETS - age) % AIR_BUCKETS] = (uint32_t)ms * 1000U;
+  }
+  airSumUs = sumUs;
+}
+
+static uint32_t airMs() {
+  airAdvance();
+  return airSumUs / 1000U;
+}
+
+// With a budget set, a transmission that is not an Enhanced ACK starts only below the budget.
+// The frames of a job that started go out whole, so one job can cross the budget.
+static bool airAllowed() {
+  return airBudgetMs == 0 || airMs() < airBudgetMs;
 }
 
 // ------------------------------------------------------------------ interrupts
@@ -576,10 +752,25 @@ static void ccArmRx() {
   ccStrobe(CC_SIDLE);
   ccStrobe(CC_SFRX);
   ccStrobe(CC_SRX);
+  rxValidUs = nowUs() + LBT_SETTLE_US;
+}
+
+static void rxReset();
+
+// Arm the receiver only when it is not receiving. SIDLE and SFRX on a chip that
+// is in RX drop a frame that is on the air or waits in the FIFO, so a chip in RX
+// without an overflow keeps its FIFO and the assembler keeps its state.
+static void ccEnsureRx() {
+  uint8_t m = ccStatus(CC_MARCSTATE) & MARC_STATE_MASK;
+  bool overflow = (ccStatus(CC_RXBYTES) & FIFO_ERROR_BIT) != 0;
+  if (!overflow && m >= MARC_RX && m <= MARC_RX_RST) return;
+  ccArmRx();
+  rxReset();
 }
 
 // Manual power-on reset, CC1101 datasheet 19.1.2, then quiet GDO pins.
 static void manualReset() {
+  configured = false;
   spiUseFast(false);
   csHigh();
   delayMicroseconds(5);
@@ -601,6 +792,55 @@ static void manualReset() {
     ccWriteReg(CC_IOCFG2, GDO_CFG_LOW);
     if (ccReadReg(CC_IOCFG0) == GDO_CFG_LOW && ccReadReg(CC_IOCFG2) == GDO_CFG_LOW) break;
   }
+  spiUseFast(true);
+}
+
+// ------------------------------------------------------------- listen before talk
+
+// One sample shows a signal when the RSSI is at or above the threshold or a sync word was
+// found. RSSI_dBm = signed(raw) / 2 - 74, so the comparison runs in half dB steps.
+static bool lbtSampleBusy(uint8_t rssiRaw, uint8_t pktStatus) {
+  int half = (int)(int8_t)rssiRaw;
+  return half >= 2 * ((int)lbtThresholdDbm + RSSI_OFFSET_DBM) || (pktStatus & PKT_SFD_BIT) != 0;
+}
+
+// The instant to start the listen so that it ends by the start of the first frame.
+static uint64_t lbtListenAt(uint64_t startUs, uint64_t now) {
+  return (startUs > now + LBT_LEAD_US) ? startUs - LBT_LEAD_US : now;
+}
+
+static uint32_t lbtBackoffUs() {
+  return (esp_random() % (LBT_BACKOFF_MAX_UNITS + 1U)) * LBT_BACKOFF_UNIT_US;
+}
+
+// One listen: put the chip in RX if it is not, wait until its RSSI is valid, then sample the
+// RSSI and PKTSTATUS over LBT_LISTEN_US. The GDO pins are in use, so the chip is polled over
+// SPI. The channel is clear when no sample shows a signal. The RSSI freezes while a sync word
+// is received, so the sync word bit is read next to it.
+static bool lbtListenOnce() {
+  ccEnsureRx();
+  while (nowUs() < rxValidUs) {
+  }
+  uint64_t end = nowUs() + LBT_LISTEN_US;
+  do {
+    uint8_t rssi = ccStatus(CC_RSSI);
+    uint8_t pkt = ccStatus(CC_PKTSTATUS);
+    if (lbtSampleBusy(rssi, pkt)) return false;
+  } while (nowUs() < end);
+  return true;
+}
+
+// Listen from `notBeforeUs` on, with a blocking backoff between the tries. True when a
+// listen found the channel clear.
+static bool lbtClear(uint64_t notBeforeUs) {
+  for (uint8_t i = 0; i < LBT_TRIES; i++) {
+    uint64_t from = (i == 0) ? notBeforeUs : nowUs() + lbtBackoffUs();
+    while (nowUs() < from) {
+      esp_task_wdt_reset();
+    }
+    if (lbtListenOnce()) return true;
+  }
+  return false;
 }
 
 // ------------------------------------------------------------------ frame sends
@@ -624,8 +864,6 @@ static bool ccTxWait(uint32_t tmoMs) {
   return false;
 }
 
-static void rxReset();
-
 // A failed TX leaves the chip in IDLE, or in TX after a timeout. Put it in RX
 // with an empty RX FIFO, where TXOFF_MODE=RX leaves a TX that ends well.
 static bool ccTxFailed() {
@@ -634,36 +872,91 @@ static bool ccTxFailed() {
   return false;
 }
 
+// A CC1101 that reset alone reads IOCFG0 = 0x3F. A second read confirms it, so one
+// corrupt SPI read does not drop the configuration. On a reset: quiet the GDO pins,
+// clear `configured` and return true.
+static bool ccQuietIfReset() {
+  if (ccReadReg(CC_IOCFG0) != GDO_RESET_VALUE) return false;
+  if (ccReadReg(CC_IOCFG0) != GDO_RESET_VALUE) return false;
+  ccWriteReg(CC_IOCFG0, GDO_CFG_LOW);
+  ccWriteReg(CC_IOCFG2, GDO_CFG_LOW);
+  configured = false;
+  rxReset();
+  return true;
+}
+
+enum : uint8_t { SEND_OK = 0, SEND_FAIL = 1, SEND_BUSY = 2 };
+
 // Transmit one variable-length frame ([len][payload], the chip appends the CRC).
 // Streams the FIFO when the frame does not fit in one burst.
-static bool ccSendFrame(const uint8_t *payload, uint8_t n) {
-  if (n == 0 || n > MAX_TX_FRAME) return false;
+//
+// fromRx is the first frame after a listen. The frame leaves with STX from RX, so MCSM1
+// CCA_MODE=3 is a second gate (datasheet 17.5, 19.4): the chip stays in RX when the
+// channel is not clear or a packet is arriving. That ends in SEND_BUSY and sends nothing.
+// A chip that is not in RX with empty FIFOs takes the normal path instead.
+static uint8_t ccSendFrameEx(const uint8_t *payload, uint8_t n, bool fromRx) {
+  if (!configured || n == 0 || n > MAX_TX_FRAME) return SEND_FAIL;
+  // Every transmission passes here, so a chip that reset in the middle of a job
+  // chain never sends with reset registers (FREQ2..0 is 800 MHz there).
+  if (ccQuietIfReset()) return SEND_FAIL;
   uint8_t data[1 + MAX_TX_FRAME];
   data[0] = n;
   memcpy(data + 1, payload, n);
   uint16_t total = 1 + (uint16_t)n;
-  // SIDLE keeps a frame cut off mid-air in the RX FIFO, and TXOFF_MODE=RX puts
-  // the reply to this frame behind it, so flush now while the chip is idle.
-  // One access carries all three strobes (datasheet 10.4, RX to IDLE ~0.1 us).
-  uint8_t prep[3] = {CC_SIDLE, CC_SFRX, CC_SFTX};
-  spiXfer(prep, sizeof(prep));
-  rxReset();
+  if (fromRx) {
+    uint8_t rb = ccStatus(CC_RXBYTES);
+    uint8_t m = ccStatus(CC_MARCSTATE) & MARC_STATE_MASK;
+    bool inRx = m >= MARC_RX && m <= MARC_RX_RST;
+    // Bytes in the RX FIFO of a chip in RX: a frame is arriving or arrived.
+    if (inRx && (rb & FIFO_ERROR_BIT) == 0 && (rb & FIFO_BYTES_MASK) != 0) return SEND_BUSY;
+    // SFTX and SFRX work in IDLE only, so a chip that needs a flush takes the normal path.
+    if (!inRx || (rb & FIFO_ERROR_BIT) != 0 || (ccStatus(CC_TXBYTES) & (FIFO_BYTES_MASK | FIFO_ERROR_BIT)) != 0) {
+      fromRx = false;
+    }
+  }
+  if (!fromRx) {
+    // SIDLE keeps a frame cut off mid-air in the RX FIFO, and TXOFF_MODE=RX puts
+    // the reply to this frame behind it, so flush now while the chip is idle.
+    // One access carries all three strobes (datasheet 10.4, RX to IDLE ~0.1 us).
+    uint8_t prep[3] = {CC_SIDLE, CC_SFRX, CC_SFTX};
+    spiXfer(prep, sizeof(prep));
+    rxReset();
+  }
   uint8_t first = (total > FIFO_SIZE) ? FIFO_SIZE : (uint8_t)total;
   ccWriteFifo(data, first);
   uint16_t idx = first;
   ccStrobe(CC_STX);
+  if (fromRx) {
+    // RX to TX takes about 30 us. A chip that is still in RX after CCA_START_US refused.
+    uint64_t until = nowUs() + CCA_START_US;
+    uint8_t m;
+    for (;;) {
+      m = ccStatus(CC_MARCSTATE) & MARC_STATE_MASK;
+      if (m == MARC_TX || m == MARC_TX_END || m == MARC_TXFIFO_UNDER || nowUs() >= until) break;
+    }
+    if (m != MARC_TX && m != MARC_TX_END && m != MARC_TXFIFO_UNDER) {
+      uint8_t drop[4] = {CC_SIDLE, CC_SFTX, CC_SFRX, CC_SRX};
+      spiXfer(drop, sizeof(drop));
+      rxValidUs = nowUs() + LBT_SETTLE_US;
+      rxReset();
+      return SEND_BUSY;
+    }
+  }
+  airCount(n);
   uint64_t deadline = nowUs() + (uint64_t)TX_TMO_MS * 1000ULL;
   while (idx < total) {
     esp_task_wdt_reset();
     if (nowUs() > deadline) {
       ccStrobe(CC_SIDLE);
       ccStrobe(CC_SFTX);
-      return ccTxFailed();
+      ccTxFailed();
+      return SEND_FAIL;
     }
     uint8_t tb = ccStatus(CC_TXBYTES);
     if (tb & FIFO_ERROR_BIT) {  // TXFIFO_UNDERFLOW: SFTX is the only way out (15.4)
       ccStrobe(CC_SFTX);
-      return ccTxFailed();
+      ccTxFailed();
+      return SEND_FAIL;
     }
     // A read above 64 is a corrupt one (datasheet 10.3): read again.
     uint8_t used = tb & FIFO_BYTES_MASK;
@@ -673,21 +966,44 @@ static bool ccSendFrame(const uint8_t *payload, uint8_t n) {
     ccWriteFifo(data + idx, (uint8_t)chunk);
     idx += chunk;
   }
-  if (!ccTxWait(TX_TMO_MS)) return ccTxFailed();
-  return true;
+  if (!ccTxWait(TX_TMO_MS)) {
+    ccTxFailed();
+    return SEND_FAIL;
+  }
+  rxValidUs = nowUs() + LBT_SETTLE_US;  // TXOFF_MODE=RX: the chip is back in RX
+  return SEND_OK;
+}
+
+static bool ccSendFrame(const uint8_t *payload, uint8_t n) {
+  return ccSendFrameEx(payload, n, false) == SEND_OK;
+}
+
+// True when a frame of n payload bytes that starts at startUs still ends within
+// HOST_TRAIN_MAX_US of the first one.
+static bool trainFits(uint64_t firstUs, uint64_t startUs, uint8_t n) {
+  return startUs + airFrameUs(n) - firstUs <= HOST_TRAIN_MAX_US;
 }
 
 // Transmit `count` packed [len][bytes] sub-frames back-to-back, with no serial
 // round-trip between them: the gap is SPI plus state machine time, not the
-// ~2.5 ms USB serial latency a host-driven burst pays. Returns the frames sent.
-static uint8_t ccSendTrain(const uint8_t *p, size_t len, uint8_t count) {
+// ~2.5 ms USB serial latency a host-driven burst pays. The train stops before a frame that
+// would end more than HOST_TRAIN_MAX_US after the first one started. `gated` sends the first
+// frame from RX, and `busy` reports that the chip refused it. Returns the frames sent.
+static uint8_t ccSendTrain(const uint8_t *p, size_t len, uint8_t count, bool gated, bool *busy) {
   uint8_t sent = 0;
   size_t off = 0;
+  uint64_t firstUs = 0;
   for (uint8_t i = 0; i < count; i++) {
     if (off >= len) break;
     uint8_t n = p[off];
     if (n == 0 || n > MAX_TX_FRAME || off + 1 + (size_t)n > len) break;
-    if (!ccSendFrame(p + off + 1, n)) break;
+    if (sent == 0) firstUs = nowUs();
+    else if (!trainFits(firstUs, nowUs(), n)) break;
+    uint8_t r = ccSendFrameEx(p + off + 1, n, gated && sent == 0);
+    if (r != SEND_OK) {
+      if (r == SEND_BUSY && busy != nullptr) *busy = true;
+      break;
+    }
     off += 1 + (size_t)n;
     sent++;
   }
@@ -933,6 +1249,7 @@ static void pairAnswer(const uint8_t *raw, size_t rawLen) {
     return;
   }
   uint64_t stampUs = stampFromLo(gdo0StampLo.load(std::memory_order_relaxed));
+  if (!airAllowed()) return;
   if (pairWin.left == 0 || rawLen != (size_t)1 + EBR_LEN + 2 || raw[0] != EBR_LEN || !rxCrcOk(raw, rawLen)) return;
   const uint8_t *req = raw + 1;
   if (req[0] != 0x0B || req[1] != 0xE8 || req[15] != SEC_CTRL) return;
@@ -963,14 +1280,20 @@ static void pairAnswer(const uint8_t *raw, size_t rawLen) {
   eb[27] = (uint8_t)(fcs >> 8);
   ccmMic(eb, eb + CCM_AAD_LEN, EB_LEN - CCM_AAD_LEN - CCM_MIC_LEN, eb + EB_LEN - CCM_MIC_LEN);
   ccmCrypt(eb, eb + CCM_AAD_LEN, EB_LEN - CCM_AAD_LEN - CCM_MIC_LEN);
-  pairWin.seq++;
-  pairWin.ctr++;
-  pairWin.left--;
+  // The listen runs in the gap before the beacon, after the request has faded from the
+  // RSSI. A busy channel, or a chip that refuses the STX, sends nothing and keeps the seq
+  // and the counter: the device asks again 8 s later.
+  if (lbtOn && !lbtClear(stampUs + LBT_SETTLE_US)) return;
   // A stamp from an earlier frame lies in the past and waits for nothing.
   uint64_t at = stampUs + EB_GAP_US;
   while (nowUs() < at) {
   }
-  if (ccSendFrame(eb, EB_LEN) && pairWin.sent != 0xFF) pairWin.sent++;
+  uint8_t sentState = ccSendFrameEx(eb, EB_LEN, lbtOn);
+  if (sentState == SEND_BUSY) return;
+  pairWin.seq++;
+  pairWin.ctr++;
+  pairWin.left--;
+  if (sentState == SEND_OK && pairWin.sent != 0xFF) pairWin.sent++;
 }
 
 static void pairClose() {
@@ -1262,6 +1585,8 @@ static uint8_t cslWireStatus(uint8_t outcome) {
   if (outcome == OUT_NOACK) return ST_NOACK;
   if (outcome == OUT_BADACK) return ST_BADACK;
   if (outcome == OUT_NOANCHOR) return ST_NOANCHOR;
+  if (outcome == OUT_AIRTIME) return ST_AIRTIME;
+  if (outcome == OUT_BUSY) return ST_BUSY;
   return ST_TXFAIL;
 }
 
@@ -1329,7 +1654,6 @@ static bool cslPark() {
 // Deliver a decided outcome. A parked OK never turns into a failure later: the
 // state machine looks at the outcome before it looks at the transaction guard.
 static void cslDeliver() {
-  spiUseFast(false);
   if (txn.job.kind == JOB_QUEUED) {
     if (!cslPark()) return;
   } else if (txn.job.kind == JOB_SYNC_CSL) {
@@ -1338,8 +1662,7 @@ static void cslDeliver() {
     cslReplyRA();
   }
   memset(&txn, 0, sizeof(txn));
-  ccArmRx();
-  rxReset();
+  ccEnsureRx();
 }
 
 static void cslCompleteNow(uint8_t outcome) {
@@ -1347,7 +1670,7 @@ static void cslCompleteNow(uint8_t outcome) {
   cslDeliver();
 }
 
-static bool cslSendWake(const CslJob *job, uint16_t rendez) {
+static uint8_t cslSendWake(const CslJob *job, uint16_t rendez, bool gated) {
   uint8_t dst0 = job->shortAddr[0];
   uint8_t dst1 = job->shortAddr[1];
   if (job->kind == JOB_RA) {  // the Router Advertisement wakes every neighbour
@@ -1356,22 +1679,22 @@ static bool cslSendWake(const CslJob *job, uint16_t rendez) {
   }
   uint8_t wake[12] = {0x25, job->data[2], 0xCD, 0xAB, dst0, dst1, 0x82, 0x0E,
                       (uint8_t)rendez, (uint8_t)(rendez >> 8), 0x80, 0x3F};
-  spiUseFast(true);
-  bool ok = ccSendFrame(wake, sizeof(wake));
-  spiUseFast(job->kind == JOB_RA);
-  return ok;
+  return ccSendFrameEx(wake, sizeof(wake), gated);
 }
 
 static void cslSendData() {
-  if (txn.sent == 0 || !cslSendWake(&txn.job, 0)) {
+  if (txn.sent == 0 || cslSendWake(&txn.job, 0, false) != SEND_OK) {
     cslCompleteNow(OUT_TXFAIL);
     return;
   }
+  // The last wake frame announces rendezvous 0, as the commercial coordinator
+  // does, and the Data frame follows after the commercial gap.
+  uint64_t dataAt = nowUs() + CSL_DATA_GAP_US;
+  while (nowUs() < dataAt) {
+  }
   // ccSendFrame clears what the wake burst left in the RX FIFO before the Data
   // frame goes out, so the Enhanced ACK lands in an empty FIFO.
-  spiUseFast(txn.job.kind == JOB_RA);
   bool ok = ccSendFrame(txn.job.data, txn.job.dataLen);
-  spiUseFast(false);
   if (!ok) {
     cslCompleteNow(OUT_TXFAIL);
     return;
@@ -1384,6 +1707,14 @@ static void cslSendData() {
   rxReset();
   txn.windowEndUs = nowUs() + (uint64_t)txn.job.ackTmoMs * 1000ULL;
   txn.state = CSL_ACK;
+}
+
+// The guard follows the parameters of this job, so a legitimate worst case never trips it:
+// whole wake window, ACK timeout, follow window and margin.
+static void cslSetGuard() {
+  uint64_t followUs = (txn.job.flags & CSL_FLAG_FOLLOW) ? (uint64_t)CSL_FOLLOW_TMO_MS * 1000ULL : 0;
+  txn.guardUs = txn.wakeEndUs + (uint64_t)txn.job.ackTmoMs * 1000ULL + followUs +
+                (uint64_t)CSL_GUARD_MARGIN_MS * 1000ULL;
 }
 
 // Take an uplink that lands in the window before the burst. A Router
@@ -1405,7 +1736,37 @@ static void cslStepRx(uint64_t now) {
     return;
   }
   if (cslDrainWindow(now)) return;
-  if (now >= txn.startUs) txn.state = CSL_WAKE;
+  if (now < (txn.lbtPending ? txn.listenAtUs : txn.startUs)) return;
+  txn.state = txn.lbtPending ? CSL_LISTEN : CSL_WAKE;
+}
+
+// One listen, or the wait for the backoff of the last one. An uplink that lands meanwhile
+// is answered as in the other states. A clear channel goes back to CSL_RX, which holds the
+// first frame until the start instant. A job that is busy LBT_TRIES times, or that has no
+// window left, ends with ST_BUSY.
+static void cslStepListen(uint64_t now) {
+  if (now >= txn.wakeEndUs) {
+    cslCompleteNow(OUT_BUSY);
+    return;
+  }
+  if (cslDrainWindow(now)) return;
+  if (now < txn.listenAtUs) return;
+  if (lbtListenOnce()) {
+    txn.lbtPending = false;
+    txn.gated = true;
+    if (!txn.anchored) {
+      txn.startUs = nowUs();
+      txn.wakeEndUs = txn.startUs + (txn.job.kind == JOB_RA ? RA_PERIOD_US : CSL_BOOTSTRAP_US);
+      cslSetGuard();
+    }
+    txn.state = CSL_RX;
+    return;
+  }
+  if (++txn.lbtTries >= LBT_TRIES) {
+    cslCompleteNow(OUT_BUSY);
+    return;
+  }
+  txn.listenAtUs = nowUs() + lbtBackoffUs();
 }
 
 static void cslStepWake(uint64_t now) {
@@ -1421,13 +1782,15 @@ static void cslStepWake(uint64_t now) {
     int64_t delta = (int64_t)(txn.wakeEndUs - nowUs());
     if (delta < (int64_t)CSL_UNIT_US) break;
     uint32_t rendez = (uint32_t)delta / CSL_UNIT_US;
-    if (txn.job.kind == JOB_RA) {
-      // The first burst frame always announces a whole period, the rest count down.
+    if (!txn.anchored) {
+      // The first frame of a train without an anchor announces a whole period, the rest count down.
       if (txn.sent == 0) rendez = RA_PERIOD_UNITS;
       else if (rendez > RA_PERIOD_UNITS) rendez = RA_PERIOD_UNITS;
     }
-    if (!cslSendWake(&txn.job, (uint16_t)rendez)) {
-      cslCompleteNow(OUT_TXFAIL);
+    uint8_t r = cslSendWake(&txn.job, (uint16_t)rendez, txn.gated);
+    txn.gated = false;
+    if (r != SEND_OK) {
+      cslCompleteNow(r == SEND_BUSY ? OUT_BUSY : OUT_TXFAIL);
       return;
     }
     txn.sent++;
@@ -1503,40 +1866,43 @@ static void cslStepFollow(uint64_t now) {
   cslStoreInboundForJob(raw, rawLen, &txn.job, freqest);
 }
 
-// Set up the timing of one job and open its receive window.
+// Set up the timing of one job and open its receive window. With listen before talk the
+// listen starts LBT_LEAD_US before the first frame, so an anchored train starts at the same
+// instant as without it. A train without an anchor starts when the listen ends.
 static void cslStart(const CslJob *job) {
   memset(&txn, 0, sizeof(txn));
   txn.active = true;
   txn.job = *job;
   uint64_t now = nowUs();
-  uint64_t followUs = (job->flags & CSL_FLAG_FOLLOW) ? (uint64_t)CSL_FOLLOW_TMO_MS * 1000ULL : 0;
   if (job->kind == JOB_RA) {
     txn.startUs = now;
     txn.wakeEndUs = now + RA_PERIOD_US;
-    spiUseFast(true);
   } else {
     int8_t idx = anchorForJob(job);
     if (idx >= 0) {
       uint32_t guardUs = 0;
       uint64_t sample = anchorNextSample(idx, now, &guardUs);
+      txn.anchored = true;
       txn.startUs = sample - guardUs;
       txn.wakeEndUs = sample + guardUs;
     } else {
       txn.startUs = now;
       txn.wakeEndUs = now + CSL_BOOTSTRAP_US;
     }
-    ccArmRx();
-    rxReset();
+    ccEnsureRx();
   }
-  // The guard follows the parameters of this job, so a legitimate worst case
-  // never trips it: whole wake window, ACK timeout, follow window and margin.
-  txn.guardUs = txn.wakeEndUs + (uint64_t)job->ackTmoMs * 1000ULL + followUs +
-                (uint64_t)CSL_GUARD_MARGIN_MS * 1000ULL;
-  txn.state = (now < txn.startUs) ? CSL_RX : CSL_WAKE;
+  cslSetGuard();
+  txn.lbtPending = lbtOn;
+  uint64_t gateUs = txn.startUs;
+  if (txn.lbtPending) {
+    txn.listenAtUs = lbtListenAt(txn.startUs, now);
+    gateUs = txn.listenAtUs;
+  }
+  txn.state = (now < gateUs) ? CSL_RX : (txn.lbtPending ? CSL_LISTEN : CSL_WAKE);
 }
 
 static bool cslCanSchedule() {
-  return !txn.active && !exclusiveWaiting && cslCompleteCount < CSL_COMPLETE_DEPTH;
+  return configured && !txn.active && !exclusiveWaiting && cslCompleteCount < CSL_COMPLETE_DEPTH;
 }
 
 // Pick the neighbour whose wake window opens first, round-robin on a tie.
@@ -1571,6 +1937,14 @@ static bool cslScheduleNext() {
   if (best == nullptr) return false;
   uint8_t jobIdx = cslNeighborPop(best);
   cslCursor = (uint8_t)(((best - cslNeighbors) + 1) % CSL_NEIGHBORS);
+  if (!airAllowed()) {
+    memset(&txn, 0, sizeof(txn));
+    txn.active = true;
+    txn.job = cslJobs[jobIdx];
+    cslJobRelease(jobIdx);
+    cslCompleteNow(OUT_AIRTIME);
+    return true;
+  }
   cslStart(&cslJobs[jobIdx]);
   cslJobRelease(jobIdx);
   return true;
@@ -1592,6 +1966,7 @@ static void cslStep() {
   }
   switch (txn.state) {
     case CSL_RX: cslStepRx(now); break;
+    case CSL_LISTEN: cslStepListen(now); break;
     case CSL_WAKE: cslStepWake(now); break;
     case CSL_ACK: cslStepAck(now); break;
     default: cslStepFollow(now); break;
@@ -1600,6 +1975,31 @@ static void cslStep() {
 
 // ------------------------------------------------------------------- idle drain
 
+// A CC1101 that resets alone (a brown-out) goes back to IOCFG0 = 0x3F, a 135 kHz
+// clock on GDO0 that fires 270000 interrupts a second. Quiet the pins and leave
+// the chip unconfigured until the host loads its register set again. The host
+// never writes 0x3F to IOCFG0.
+static void ccWatchReset(uint64_t now) {
+  if (now - lastIocfgCheckUs < (uint64_t)RADIO_IDLE_TICK_MS * 1000ULL) return;
+  lastIocfgCheckUs = now;
+  ccQuietIfReset();
+}
+
+// A host that stopped talking leaves no coordinator, no pair window and no job:
+// the bridge must not acknowledge or transmit on its behalf.
+static void hostWatch() {
+  bool lapsed = (uint32_t)(nowMs32() - hostRequestMs.load(std::memory_order_relaxed)) >= HOST_TIMEOUT_MS;
+  if (!lapsed) {
+    hostLapsed = false;
+    return;
+  }
+  if (hostLapsed) return;
+  hostLapsed = true;
+  coordKnown = false;
+  pairClose();
+  cslQueueClear();
+}
+
 // Between transactions the chip stays in RX because MCSM1 has TXOFF_MODE=RX, so
 // frames pile up in the 64-byte FIFO until it overflows. Drain them on the GDO
 // interrupt. While the host transmits, answer and store them for its next
@@ -1607,16 +2007,17 @@ static void cslStep() {
 static void idleRxService() {
   uint64_t now = nowUs();
   if (now < hostSpiHoldoffUs) return;  // the host is driving the radio itself
+  ccWatchReset(now);
+  if (!configured) return;
   if (!rxDuePump(now)) return;
   if (!rxPump()) return;
   uint8_t raw[MAX_RX_RAW];
   size_t rawLen = 0;
   uint8_t freqest = 0;
   rxTake(raw, &rawLen, nullptr, &freqest);
-  if (!rxCrcOk(raw, rawLen)) {
-    ccArmRx();  // a bad CRC leaves the receiver out of step with the air
-    return;
-  }
+  // A bad CRC needs no flush: the frame is out of the FIFO, and a flush would
+  // drop a frame that follows.
+  if (!rxCrcOk(raw, rawLen)) return;
   if (!coordKnown) return;
   pairAnswer(raw, rawLen);
   cslStoreInbound(raw, rawLen, coordEUI, coordPhase, freqest);
@@ -1660,7 +2061,7 @@ static void streamWindow(uint32_t durMs, uint8_t matchOff, const uint8_t *match,
       // round-trip could answer. TX drops out of RX, so re-arm afterwards.
       if (respCount && (matchLen == 0 || ((size_t)matchOff + matchLen <= (size_t)pktLen &&
                                           memcmp(raw + 1 + matchOff, match, matchLen) == 0))) {
-        ccSendTrain(resp, respLen, respCount);
+        if (airAllowed()) ccSendTrain(resp, respLen, respCount, false, nullptr);
         ccArmRx();
         rxReset();
       }
@@ -1723,6 +2124,10 @@ static void cmdCSLTx(const uint8_t *p, uint16_t len) {
     sendResp(ST_NOANCHOR, &sent, 1);
     return;
   }
+  if (!airAllowed()) {
+    sendResp(ST_AIRTIME, &sent, 1);
+    return;
+  }
   cslStart(&job);
 }
 
@@ -1732,6 +2137,10 @@ static void cmdRABurst(const uint8_t *p, uint16_t len) {
   uint8_t sent = 0;
   if (len < 3 || len > MAX_TX_FRAME || (p[0] != 0x49 && p[0] != 0x59) || p[1] != 0xE8) {
     sendResp(ST_INPUT, &sent, 1);
+    return;
+  }
+  if (!airAllowed()) {
+    sendResp(ST_AIRTIME, &sent, 1);
     return;
   }
   CslJob job;
@@ -1806,6 +2215,10 @@ static void cmdQueueEnqueue(const uint8_t *p, uint16_t len) {
   }
   if (pos != len) {
     sendResp(ST_INPUT, nullptr, 0);
+    return;
+  }
+  if (!airAllowed()) {
+    sendResp(ST_AIRTIME, nullptr, 0);
     return;
   }
   CslNeighbor *entry = cslNeighborFind(shortAddr, false);
@@ -1897,10 +2310,7 @@ static void cmdQueue(const uint8_t *p, uint16_t len) {
     cslQueueClear();
     coordKnown = false;
     pairClose();
-    if (!txn.active) {  // a job that still owes a reply keeps the receiver
-      ccArmRx();
-      rxReset();
-    }
+    if (!txn.active) ccEnsureRx();  // a job that still owes a reply keeps the receiver
     sendResp(ST_OK, nullptr, 0);
     return;
   }
@@ -1912,12 +2322,34 @@ static void cmdQueue(const uint8_t *p, uint16_t len) {
 // Only PING, GDO and CSLQUEUE run while a transaction is in flight. Everything
 // else waits for the state machine, so no host strobe lands mid transaction.
 static bool cmdNeedsRadio(uint8_t cmd) {
-  return cmd != CMD_PING && cmd != CMD_GDO && cmd != CMD_CSLQUEUE;
+  return cmd != CMD_PING && cmd != CMD_GDO && cmd != CMD_CSLQUEUE && cmd != CMD_CONFIGURED &&
+         cmd != CMD_AIRTIME && cmd != CMD_LBT;
+}
+
+// PING, XFER, GDO, RESET, STROBE, CONFIGURED, AIRTIME and LBT run on a chip with
+// reset values. An unknown command stays BAD_CMD.
+static bool cmdNeedsConfigured(uint8_t cmd) {
+  switch (cmd) {
+    case CMD_RECV:
+    case CMD_STREAM:
+    case CMD_TXTRAIN:
+    case CMD_RESPOND:
+    case CMD_AUTOACK:
+    case CMD_RABURST:
+    case CMD_CSLTX:
+    case CMD_CSLQUEUE:
+    case CMD_PAIRWIN: return true;
+    default: return false;
+  }
 }
 
 static void execCommand(CmdMsg *msg) {
   uint8_t *p = msg->payload;
   uint16_t len = msg->len;
+  if (!configured && cmdNeedsConfigured(msg->cmd)) {
+    sendResp(ST_UNCONFIGURED, nullptr, 0);
+    return;
+  }
   switch (msg->cmd) {
     case CMD_PING: {
       const char *s = BANNER;
@@ -1926,6 +2358,7 @@ static void execCommand(CmdMsg *msg) {
     }
     case CMD_XFER: {
       hostSpiHoldoffUs = nowUs() + (uint64_t)HOST_SPI_HOLDOFF_MS * 1000ULL;
+      rxValidUs = nowUs() + LBT_SETTLE_US;  // the host may have strobed SRX
       bool ready = spiXfer(p, len);
       sendResp(ready ? ST_OK : ST_NOT_READY, p, len);
       break;
@@ -1936,6 +2369,7 @@ static void execCommand(CmdMsg *msg) {
         break;
       }
       hostSpiHoldoffUs = nowUs() + (uint64_t)HOST_SPI_HOLDOFF_MS * 1000ULL;
+      rxValidUs = nowUs() + LBT_SETTLE_US;
       spiXfer(p, 1);
       sendResp(ST_OK, p, 1);
       break;
@@ -1954,14 +2388,16 @@ static void execCommand(CmdMsg *msg) {
       cslQueueClear();
       manualReset();
       rxReset();
+      lbtOn = false;
+      lbtThresholdDbm = LBT_THRESHOLD_DEFAULT_DBM;
+      airBudgetMs = 0;
       sendResp(ST_OK, nullptr, 0);
       break;
     }
     case CMD_RECV: {
       uint32_t tmo = (len >= 2) ? (((uint32_t)p[0] << 8) | p[1]) : 2000;
       coordKnown = false;
-      ccArmRx();
-      rxReset();
+      ccEnsureRx();
       uint8_t pkt[MAX_RX_RAW + 1];
       size_t plen = 0;
       uint8_t freqest = 0;
@@ -1984,8 +2420,7 @@ static void execCommand(CmdMsg *msg) {
       uint32_t tmo = ((uint32_t)p[0] << 8) | p[1];
       uint16_t phase = (uint16_t)p[10] | ((uint16_t)p[11] << 8);
       coordRemember(p + 2, phase);
-      ccArmRx();
-      rxReset();
+      ccEnsureRx();
       uint8_t pkt[MAX_RX_RAW + 1];
       size_t plen = 0;
       uint8_t freqest = 0;
@@ -2032,6 +2467,10 @@ static void execCommand(CmdMsg *msg) {
         sendResp(ST_BAD_ARGS, nullptr, 0);
         break;
       }
+      if (respCount != 0 && !airAllowed()) {
+        sendResp(ST_AIRTIME, nullptr, 0);
+        break;
+      }
       streamWindow(dur, matchOff, p + 4, matchLen, p + 5 + matchLen,
                    len - (5 + (size_t)matchLen), respCount);
       break;
@@ -2043,14 +2482,74 @@ static void execCommand(CmdMsg *msg) {
         sendResp(ST_BAD_ARGS, nullptr, 0);
         break;
       }
-      uint8_t sent = ccSendTrain(p + 1, len - 1, p[0]);
-      sendResp(ST_OK, &sent, 1);
+      uint8_t sent = 0;
+      if (!airAllowed()) {
+        sendResp(ST_AIRTIME, &sent, 1);
+        break;
+      }
+      // CMD_RESPOND answers a frame it just received, within the window of the peer, and
+      // takes no listen.
+      if (lbtOn && !lbtClear(0)) {
+        sendResp(ST_BUSY, &sent, 1);
+        break;
+      }
+      bool blocked = false;
+      sent = ccSendTrain(p + 1, len - 1, p[0], lbtOn, &blocked);
+      sendResp(blocked ? ST_BUSY : ST_OK, &sent, 1);
       break;
     }
     case CMD_RABURST: cmdRABurst(p, len); break;
     case CMD_CSLTX: cmdCSLTx(p, len); break;
     case CMD_CSLQUEUE: cmdQueue(p, len); break;
     case CMD_PAIRWIN: cmdPairWin(p, len); break;
+    case CMD_CONFIGURED: {
+      if (len != 0) {
+        sendResp(ST_BAD_ARGS, nullptr, 0);
+        break;
+      }
+      configured = true;
+      sendResp(ST_OK, nullptr, 0);
+      break;
+    }
+    case CMD_LBT: {
+      if (len != 2) {
+        sendResp(ST_BAD_LEN, nullptr, 0);
+        break;
+      }
+      if (p[0] > 1) {
+        sendResp(ST_BAD_ARGS, nullptr, 0);
+        break;
+      }
+      lbtOn = p[0] != 0;
+      lbtThresholdDbm = (int8_t)p[1];
+      sendResp(ST_OK, p, 2);
+      break;
+    }
+    case CMD_AIRTIME: {
+      // 122 bytes load the buckets. 126 bytes load them and set the budget in ms, uint32 big endian.
+      if (len != 0 && len != 2 * AIR_BUCKETS && len != 2 * AIR_BUCKETS + 4) {
+        sendResp(ST_BAD_LEN, nullptr, 0);
+        break;
+      }
+      if (len != 0) airPreload(p);
+      if (len == 2 * AIR_BUCKETS + 4) {
+        const uint8_t *b = p + 2 * AIR_BUCKETS;
+        airBudgetMs = ((uint32_t)b[0] << 24) | ((uint32_t)b[1] << 16) | ((uint32_t)b[2] << 8) | b[3];
+      }
+      uint32_t ms = airMs();
+      uint8_t out[8 + 2 * AIR_BUCKETS] = {(uint8_t)(ms >> 24), (uint8_t)(ms >> 16), (uint8_t)(ms >> 8),
+                                         (uint8_t)ms, (uint8_t)(airBudgetMs >> 24),
+                                         (uint8_t)(airBudgetMs >> 16), (uint8_t)(airBudgetMs >> 8),
+                                         (uint8_t)airBudgetMs};
+      for (uint8_t k = 0; k < AIR_BUCKETS; k++) {
+        uint8_t age = AIR_BUCKETS - 1 - k;
+        uint16_t b = airBucket[(airMinute % AIR_BUCKETS + AIR_BUCKETS - age) % AIR_BUCKETS] / 1000U;
+        out[8 + 2 * k] = (uint8_t)(b >> 8);
+        out[9 + 2 * k] = (uint8_t)b;
+      }
+      sendResp(ST_OK, out, sizeof(out));
+      break;
+    }
     default: sendResp(ST_BAD_CMD, nullptr, 0); break;
   }
 }
@@ -2067,7 +2566,9 @@ static uint32_t radioWaitMs() {
     // The outcome is decided but the completion ring is full: wait for a poll.
     if (txn.outcomeReady) return RADIO_IDLE_TICK_MS;
     if (txn.state == CSL_WAKE) return 0;
-    uint64_t next = (txn.state == CSL_RX) ? txn.startUs : txn.windowEndUs;
+    uint64_t next = txn.windowEndUs;
+    if (txn.state == CSL_RX) next = txn.lbtPending ? txn.listenAtUs : txn.startUs;
+    else if (txn.state == CSL_LISTEN) next = txn.listenAtUs;
     uint64_t now = nowUs();
     uint32_t cap = RADIO_IDLE_TICK_MS;
     if (next > now) {
@@ -2095,11 +2596,13 @@ static void radioTask(void *) {
     CmdMsg *msg = nullptr;
     bool have = xQueuePeek(qCmd, &msg, 0) == pdTRUE;
     exclusiveWaiting = have && cmdNeedsRadio(msg->cmd);
+    hostWatch();
     cslStep();
     if (have && (!exclusiveWaiting || !txn.active)) {
       xQueueReceive(qCmd, &msg, 0);
       exclusiveWaiting = false;
       execCommand(msg);
+      hostRequestMs.store(nowMs32(), std::memory_order_relaxed);
       xQueueSend(qCmdFree, &msg, portMAX_DELAY);
       continue;
     }
@@ -2206,6 +2709,7 @@ static void serialTask(void *) {
 
     uint8_t head[3];
     if (!serialReadN(head, 3, (uint64_t)SERIAL_REQUEST_MS * 1000ULL)) continue;
+    uint8_t crc = crc8(0, head, sizeof(head));
     size_t len = ((size_t)head[1] << 8) | head[2];
     if (len > MAX_PAYLOAD) {
       serialReject(ST_BAD_LEN);
@@ -2219,6 +2723,19 @@ static void serialTask(void *) {
       serialReject(ST_BAD_PAYLOAD);
       continue;
     }
+    crc = crc8(crc, msg->payload, len);
+    uint8_t wantCrc = 0;
+    if (!serialReadN(&wantCrc, 1, (uint64_t)SERIAL_REQUEST_MS * 1000ULL)) {
+      xQueueSend(qCmdFree, &msg, portMAX_DELAY);
+      serialReject(ST_BAD_PAYLOAD);
+      continue;
+    }
+    if (wantCrc != crc) {
+      xQueueSend(qCmdFree, &msg, portMAX_DELAY);
+      serialReject(ST_BAD_CRC);
+      continue;
+    }
+    hostRequestMs.store(nowMs32(), std::memory_order_relaxed);
     xQueueSend(qCmd, &msg, portMAX_DELAY);
     if (radioTaskHandle != nullptr) xTaskNotify(radioTaskHandle, NOTIFY_RADIO, eSetBits);
   }

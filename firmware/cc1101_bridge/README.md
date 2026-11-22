@@ -15,14 +15,40 @@ byte only when it is there.
 
 The contract with the host driver:
 
-- Request frame `A5 cmd lenHi lenLo payload`, response frame
+- Request frame `A5 cmd lenHi lenLo payload crc`, response frame
   `5A status lenHi lenLo payload`, 230400 8N1 (921600 before v2.10, see
   [Serial rate](#serial-rate)), payload limit 1024 bytes.
+- The request CRC is CRC-8 with polynomial `0x07`, init `0x00`, no reflection and
+  no final xor, over `cmd`, `lenHi`, `lenLo` and the payload. A request with a bad
+  CRC is dropped and gets `5A E4 00 00`, so the host still reads one reply per
+  request.
 - Commands `01` PING to `0D` CSLQUEUE, with the same request and response layout.
   `0E` PAIRWIN is new in v2.9, see below. `0B` RABURST also takes a frame with
   FCF `59 E8`.
-- Status bytes `00`, `10` to `1A`, and `E0` to `E3`. The host also maps `1B`
-  BUSY, which this firmware never sends, see below.
+- `0F` CONFIGURED has an empty payload and answers `00`. The host sends it when its
+  register load ends.
+- `10` AIRTIME with an empty payload answers `00` with 8 + 2 x 61 bytes: the
+  milliseconds on air over the window and the budget in force (0 means no cap), both as uint32 big
+  endian, then 61 uint16 big endian per-minute values in ms, oldest first, the
+  current partial minute last. A payload of 122 bytes (61 uint16 big endian, same
+  order) loads the buckets, so the last value is the current minute. The array
+  with the larger total wins, whole: when the loaded total is larger than the
+  window total, the window takes the loaded array, also when the window holds
+  airtime that the loaded array lacks. Otherwise the window keeps its own count
+  unchanged. It never mixes the two arrays bucket by bucket. The host loads the
+  last array that it read from the bridge, so the airtime that the bridge sent
+  after that read is the only airtime that a load can erase. A payload of 126 bytes
+  loads the buckets and then sets the budget in ms as uint32 big endian, 0 for no cap. It answers like a
+  query. Any other length answers `E1`. The budget is 0 after boot and after RESET, so the host
+  sends it at every start. The command is allowed while the flag is false: the host loads the
+  buckets and the budget before CONFIGURED.
+- `11` LBT takes 2 bytes, enable (0 or 1) and the threshold as int8 dBm. It answers `00`
+  with the same 2 bytes. Another length answers `E1`, an enable byte above 1 answers
+  `E3`. It is off with -80 dBm after boot and after RESET. The command is allowed while
+  the flag is false: the host sends it before CONFIGURED. See Listen before talk in Design.
+- Status bytes `00`, `10` to `1D` and `E0` to `E4`. `1B` BUSY, `1C` UNCONFIGURED and `1D`
+  AIRTIME are new in v2.11, see Listen before talk, Configured flag and Airtime in Design. `1D`
+  comes only when the host set a budget.
 - Stream markers `5A F1` frame with FREQEST, `5A F2 00` end, `5A F3 00`
   heartbeat every 500 ms.
 - CSLQUEUE ENQUEUE, POLL and FLUSH records and completion records. The inbound
@@ -34,7 +60,7 @@ The contract with the host driver:
   ACK timeout semantics. An anchored job can report up to 255 frames, because
   its guard grows with the age of the anchor.
 - The PING banner keeps the `CC1101BRIDGE` prefix and reads
-  `CC1101BRIDGE v2.10 (<build>)`. The build is the release version of a released
+  `CC1101BRIDGE v2.11 (<build>)`. The build is the release version of a released
   image, for example `0.3.1`, and `dev` for a local build. The host tests only the
   prefix. A reply carries no command echo, so after a
   request misses its deadline the host sends a PING and reads every reply
@@ -55,6 +81,44 @@ value back into FSCTRL0, so it tunes on the frames it receives anyway instead of
 on a dedicated stream window. An older host reads the blob by its length byte and
 ignores the trailing byte.
 
+**Request CRC.** `serialTask` reads one CRC byte after the payload and compares it
+with the CRC it computed. A byte lost inside a request no longer turns later bytes
+into a command. A bad request goes to no queue and answers `E4`. A request
+longer than 1024 bytes still answers `E1` with no CRC check.
+
+**Configured flag.** The flag is false at boot, after `CMD_RESET` and after the
+bridge finds the chip reset. `CMD_CONFIGURED` sets it. While it is false,
+every command except PING, XFER, GDO, RESET, STROBE, CONFIGURED, AIRTIME and LBT
+answers `1C`, the frame send refuses, the queue starts no job and the idle drain
+answers and stores nothing. A chip with reset values sits at 800 MHz with no
+calibration, so it must not transmit. The idle tick reads IOCFG0 every 8 ms,
+except in the 500 ms after a host XFER or STROBE and while a transaction or a
+command runs. Every frame send also reads IOCFG0 before it transmits. The value
+`0x3F` is the reset value, a 135 kHz clock on GDO0. A read of `0x3F` is read again.
+When both reads give `0x3F`, the bridge writes `0x2F` to IOCFG0 and IOCFG2, which
+quiets the pins, clears the flag and, in a frame send, refuses the frame.
+
+**Airtime.** Every frame that leaves the chip adds its time on air to a sliding
+hour: preamble 4, sync 4, length 1, payload and CRC 2 bytes, 160 us per byte. The
+window is 61 buckets of one minute, so it is 60 to 61 minutes long and covers a full
+real hour. The firmware always counts, and it has no budget after boot and after RESET: nothing is
+refused. The host can set one with `CMD_AIRTIME` (the airtime limit option, alpha, not verified on a
+plant: [issue 42](https://github.com/CappyT/freedo/issues/42)). The budget follows the Tcum_on of
+polite spectrum access in ETSI EN 300 220-2 (clause 4.6, band M, per 200 kHz): 36000 ms with no
+listen before talk and 100000 ms with it. An Enhanced ACK is always sent and always counted. With
+a budget, any other transmission refuses to start while the sum is at or above the
+budget: `CMD_CSLTX`, a CSLQUEUE ENQUEUE, `CMD_TXTRAIN`, `CMD_RESPOND` with a
+response train and `CMD_RABURST` answer `1D`, a queued job completes with `1D`,
+and a pair beacon is not sent. A job that started sends all its frames, so one
+job can cross the budget. A frame that the host sends with `CMD_XFER` or
+`CMD_STROBE` is not counted.
+
+**Host timeout.** With no valid request for 5000 ms the bridge forgets the
+coordinator, closes the pair window and clears the queue, the completion ring and
+the inbound ring. The host sends a request at least every 1.25 s. A command that
+ends counts as a request, so a long `CMD_RECV` or `CMD_STREAM` does not trigger
+the timeout.
+
 **Two tasks.** `serialTask` on core 0 parses requests and writes every response
 byte. `radioTask` on core 1 owns SPI and all radio state. No other code touches
 SPI. The serial port is never left unread while the radio works, so a 1024-byte
@@ -64,9 +128,15 @@ request cannot overrun the UART buffer. The receive buffer is 2048 bytes.
 synchronous `CMD_CSLTX` and the `CMD_RABURST` wake burst all run as a job on it.
 
 **Arbitration.** A command that needs the radio waits until the machine is idle, so a
-host `SIDLE` strobe cannot land in the middle of a transaction. PING, GDO and
-CSLQUEUE answer at once, so the host keeps polling the queue while a transaction is
-in flight.
+host `SIDLE` strobe cannot land in the middle of a transaction. PING, GDO, CSLQUEUE,
+CONFIGURED, AIRTIME and LBT answer at once, so the host keeps polling the queue while a
+transaction is in flight.
+
+**SPI profile.** Every access runs at 6 MHz with 1 us between CS low and the first
+clock. The datasheet gives 150 us only for a chip in power-down, and the bridge
+never sends SPWD or SXOFF. The slow profile (1 MHz, 150 us) runs only inside the
+power-on reset sequence. The computed delay from the end of an uplink to the start of
+its Enhanced ACK is about 0.4 ms. It is not measured on air.
 
 **Interrupt driven receive.** GDO0 gives the end of frame instant in the
 interrupt handler, with a 64-bit timestamp. GDO2 gives the RX FIFO threshold,
@@ -79,7 +149,15 @@ the frame.
 **Idle receive.** Between transactions the chip stays in RX, because MCSM1 has
 TXOFF_MODE=RX and RXOFF_MODE=RX. `CMD_RECV` and `CMD_AUTOACK` also end in RX,
 with a frame that already started left in the FIFO. The idle drain removes those
-frames, which keeps the FIFO clean. A frame with a bad CRC flushes the FIFO. The
+frames, which keeps the FIFO clean. A frame with a bad CRC needs no flush: it is
+out of the FIFO already.
+
+**No strobe in RX.** `CMD_RECV`, `CMD_AUTOACK`, a CSLQUEUE FLUSH, the end of every job
+and the start of every job except a Router Advertisement read MARCSTATE and RXBYTES. They
+send SIDLE, SFRX and SRX only when the chip is not in RX, or when the FIFO
+overflowed. SIDLE and SFRX on a chip in RX drop a frame that is on the air or in
+the FIFO, for example the second fragment of a datagram that follows an Enhanced
+ACK. The assembler keeps its state. The
 drain pauses for 500 ms after `CMD_XFER`, `CMD_STROBE` or `CMD_RESET`, because
 the host drives the radio itself in that case. While the bridge knows a
 coordinator, the drain answers a frame addressed to it with the Enhanced ACK and
@@ -92,9 +170,9 @@ each receive window, so a stored frame reaches it within one window. `CMD_AUTOAC
 transmitting leaves a drain that answers nothing and stores nothing.
 
 **Reset clears the queue.** `CMD_RESET` also cancels the queued jobs, the
-completion ring and the inbound ring, as a CSLQUEUE FLUSH does. The host loads
-its register set next, and a job a crashed session left behind must not
-transmit on a chip that is half configured. The anchors stay.
+completion ring and the inbound ring, as a CSLQUEUE FLUSH does, and clears the
+configured flag. The host loads its register set next, and a job a crashed session
+left behind must not transmit on a chip that is half configured. The anchors stay.
 
 **Stable status reads.** A helper reads a status register until two reads agree.
 TI errata: RXBYTES, TXBYTES and MARCSTATE read while the radio is active can
@@ -122,17 +200,63 @@ completion slot is not reported as TXFAIL. The guard comes from the parameters o
 the job: whole wake window, plus ACK timeout, plus follow window, plus 400 ms of
 margin. The legitimate worst case is about 2.6 s.
 
-**No listen before transmit.** The commercial bridge listens before the first
-frame of a job (`csl_tx_statemachine` at 0x36948: a random backoff of 0 to 6 x
-640 us and a listen of 3.97 ms). This bridge does not, because the listen broke
-delivery on air. A bisection ran 15 minutes per build with the same host code
-and plant. v2.5 plus the listen alone (3.97 to 7.81 ms, ending where the train
-starts) got 43.9% of the CSL jobs answered, against 81.7% for v2.5 and 79.6%
-for v2.5 plus the anchor changes below. Jobs without the bootstrap flag: 33/102
-against 78/100 and 49/61. Jobs with it: 35/53 against 65/75 and 41/52. Only
-one job found the channel busy, so the trains went out and were not answered.
-The loss is on the 80 ms anchored train: the 1 s train kept its rate (27/33
-against 22/25). The cause is open, see [PROTOCOL.md](../../docs/PROTOCOL.md).
+**Listen before talk.** `CMD_LBT` switches it on. It is off after boot and after
+`CMD_RESET`, with a threshold of -80 dBm. It follows the polite spectrum access of
+ETSI EN 300 220-2 (clause 4.6).
+
+The listen runs before the first frame of a CSL wake-up train (a queued job and
+`CMD_CSLTX`), of `CMD_RABURST`, of `CMD_TXTRAIN` and of a pair beacon. It does not
+run before an Enhanced ACK. The ACK leaves about 1 ms after the uplink, and the
+listen needs 250 us for the RSSI and 160 us for the sample, so the window cannot hold
+it. The commercial bridge also sends its Enhanced ACK without a listen. The listen
+does not run before the Data frame that follows a train, because the train and the
+Data frame are one dialogue. It does not run before the response train of
+`CMD_RESPOND`, which answers a frame that just arrived.
+
+One listen puts the chip in RX when it is not, waits until the RSSI is valid, then
+reads RSSI and PKTSTATUS over SPI for at least 160 us. The RSSI updates every 59 us,
+so that is three updates or more. Both GDO pins are in use, so the bridge polls. The
+RSSI is valid 250 us after the chip enters RX. That value is calculated from datasheet
+17.3 and DN505 and is not measured. A chip that has been in RX for longer needs no
+wait. RSSI_dBm = signed(raw) / 2 - 74 (datasheet table 31). The channel is busy when
+one sample is at or above the threshold, or when PKTSTATUS shows a sync word.
+
+A busy channel gives a random backoff of 0 to 6 x 640 us, as in the commercial
+bridge, then a new listen, up to 3 listens. After the third busy listen the job
+completes with `1B`. A queued job reports `1B` in its completion record.
+`CMD_CSLTX`, `CMD_RABURST` and `CMD_TXTRAIN` answer `1B` with 0 frames sent. A pair
+beacon is not sent and keeps its seq and counter. The backoff of a job does not block
+the state machine, so an uplink that arrives meanwhile is answered. The backoff of
+`CMD_TXTRAIN` and of a pair beacon blocks the radio task, for about 9 ms at most.
+
+A clear channel is followed by the first frame, sent with STX from RX. MCSM1
+CCA_MODE=3 (RSSI below the chip threshold and no packet in reception) is a second
+gate. When the chip does not leave RX, or a frame sits in the RX FIFO, the bridge
+sends nothing and the job ends with `1B` at once. The carrier sense point of the chip
+comes from the AGC registers: about -90 dBm by estimate, not measured at 50 kBaud.
+So this gate can be stricter than the threshold of the host.
+
+An anchored train starts at the same instant as without the listen. The listen
+starts 500 us before the start instant (`LBT_LEAD_US`: 250 us for the RSSI, 160 us
+for the sample, and the SPI reads). A listen that ends early waits for the start
+instant. A busy listen and its backoff move the first frame later. The train still
+ends at the same instant, so it is shorter. A train without an anchor (bootstrap and
+Router Advertisement) starts when the listen ends and keeps its full length. In a
+pair window the listen runs inside the 3968 us gap, from 250 us after the request
+ends, and the beacon leaves at the same instant as without the listen.
+
+It is off by default because an earlier build, with a listen of 3.97 to 7.81 ms that
+ended where the train starts, got 43.9% of the CSL jobs answered against 81.7% in a
+15 minute bisection on air, with the same host code and plant. Only one job found the
+channel busy. The loss is on the 80 ms anchored train: the 1 s train kept its rate
+(27/33 against 22/25). The cause is open, see [PROTOCOL.md](../../docs/PROTOCOL.md).
+The effect of this listen on air is not measured.
+
+**Gap before the Data frame.** The Data frame starts 12 ms after the end of the last
+wake frame. The commercial coordinator leaves 9 to 24 ms, median 12 ms. The last wake
+frame announces rendezvous 0, as in the commercial trains, so the field counts down to
+the start of that frame and not to the start of the Data frame. The gap is a constant
+and is not tuned on air.
 
 **Anchor table.** An anchor has no age limit: 4 missed Enhanced ACKs in a row
 drop it, as in the commercial bridge. Eviction picks the least recently
@@ -162,6 +286,21 @@ stamps within 0.3 ms, or 30% of them up to 20 ms late, every anchored train
 covers the sample, also after 1 h with no refresh, and the worst margin is
 never below the one of the fixed 40 ms guard.
 
+**Train length.** The bootstrap train and the Router Advertisement burst cover one
+whole CSL period, as the commercial bridge does: the first frame announces 3125
+units and the rendezvous counts down to 0 over the period (254 frames over 1.003 s
+in the captures, a step of 4.0 ms). The window is 1 s. The frame that ends after
+the window and the last wake frame add up to 8 ms, so the train lasts about 1.003
+to 1.01 s on air (not measured here). That is over the 1 s of EN 300 220 Ton_max by
+a few ms. The decision is to accept it, as the commercial bridge does: a shorter
+train leaves a gap in the period, a device that samples in the gap misses the train,
+and another 1 s train follows. The guard of an anchored job stops at 500 ms on each
+side, so its train never passes the same length. `CMD_TXTRAIN` and `CMD_RESPOND`
+stop before a frame that would end more than 980 ms after the first frame, and the
+reply gives the frames sent. A train of 48 frames of 140 bytes would last 1.16 s, so
+the cap cuts it to 40 frames. The Data frame follows 12 ms after the last wake
+frame. It is a second transmission of the same dialogue.
+
 **Enhanced ACK phase.** The CSL phase of the Enhanced ACK comes from the host:
 the phase field of `CMD_AUTOACK`, of a `CMD_CSLTX` with the follow flag and of
 each CSLQUEUE record. A CSLTX without the follow flag keeps the last phase known
@@ -179,7 +318,7 @@ shows the free-running one is harmless.
 **Stale anchor after a reboot.** A device that reboots and rejoins samples at a
 new CSL phase. Its uplinks carry no CSL IE, so only its next Enhanced ACK shows
 the new phase. A job with the bootstrap flag skips an anchor that has missed at
-least once and sends the 1 s train instead. The Enhanced ACK of the train
+least once and sends the bootstrap train instead. The Enhanced ACK of the train
 replaces the anchor. A missed ACK counts against the anchor also after a train,
 so an anchor that keeps missing expires after 4 misses. A job without the
 bootstrap flag keeps the anchor until then.
@@ -212,7 +351,7 @@ with Frame Pending set (FCF `59 E8`), then under the pairing key. `CMD_RABURST`
 takes both frames.
 
 **Shared job pool.** The firmware keeps 128 jobs in one pool and links them into per
-neighbour lists. Static RAM is 64092 bytes. The pool holds four full batches at once. An enqueue
+neighbour lists. Static RAM is 64460 bytes. The pool holds four full batches at once. An enqueue
 that finds the pool short answers `0x19`, the same status as a full neighbour
 queue.
 
@@ -328,7 +467,7 @@ freedo-dev ping -p /dev/ttyUSB0
 freedo-dev config -p /dev/ttyUSB0
 ```
 
-`freedo-dev ping` prints `CC1101BRIDGE v2.10 (<build>)`. `freedo-dev config` prints
+`freedo-dev ping` prints `CC1101BRIDGE v2.11 (<build>)`. `freedo-dev config` prints
 VERSION `0x04` or `0x14` for a live CC1101.
 
 ## Wiring
@@ -350,9 +489,8 @@ sets both registers to `0x2F`, which drives the pin low, until the host loads
 its register set. The reset value of IOCFG0 is `0x3F`, a 135 kHz clock that
 would fire the GDO0 interrupt 270000 times a second. An ESP32 that reboots with
 the USB link up, or a CC1101 that browns out, leaves the chip on these reset
-values and every request still gets an answer. The daemon reads IOCFG0 back
-after a lost CSL completion and after about 10 s of receive windows with no
-frame, and exits on any value but `0x07`, so its supervisor restarts it and it
-configures the chip again. With GDO2 wired, a frame longer
+values. The firmware clears the configured flag in both cases, so a command that
+needs the radio answers `0x1C` until the host loads its register set again. For a
+CC1101 that resets alone, the idle tick sets both pins low again. With GDO2 wired, a frame longer
 than 64 bytes leaves the FIFO as soon as the threshold trips. Without it the 8 ms
 tick does the same work with more latency.
