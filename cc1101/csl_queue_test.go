@@ -62,8 +62,8 @@ func TestCSLQueueEnqueueAndCompletion(t *testing.T) {
 		t.Fatalf("completion=%+v err=%v", got, err)
 	}
 	wantPayload := append([]byte{cslQueueEnqueue, 1, 0, 7, 0, byte(len(data) + 7), 0xa1, 0, 0, 50, cslTxFlagBootstrap | cslTxFlagFollow, 0x0a, 0x01, 0xa1, 0}, data...)
-	want := append([]byte{reqMagic, cmdCSLQueue, 0, byte(len(wantPayload))}, wantPayload...)
-	if len(p.writes) != 2 || !bytes.Equal(p.writes[0], want) || !bytes.Equal(p.writes[1], []byte{reqMagic, cmdCSLQueue, 0, 1, cslQueuePoll}) {
+	want := withCRC(append([]byte{reqMagic, cmdCSLQueue, 0, byte(len(wantPayload))}, wantPayload...))
+	if len(p.writes) != 2 || !bytes.Equal(p.writes[0], want) || !bytes.Equal(p.writes[1], withCRC([]byte{reqMagic, cmdCSLQueue, 0, 1, cslQueuePoll})) {
 		t.Fatalf("writes=%x", p.writes)
 	}
 }

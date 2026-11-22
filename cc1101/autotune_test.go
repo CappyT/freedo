@@ -267,7 +267,7 @@ func TestRecvFWFreqEst(t *testing.T) {
 			if !bytes.Equal(frame.Payload, blob[1:3]) || !frame.CRCOK || frame.LQI != 0x7f {
 				t.Errorf("the trailing byte moved the rest of the blob: %+v", frame)
 			}
-			want := []byte{reqMagic, cmdRecv, 0x00, 0x02, 0x07, 0xd0}
+			want := withCRC([]byte{reqMagic, cmdRecv, 0x00, 0x02, 0x07, 0xd0})
 			if len(p.writes) != 1 || !bytes.Equal(p.writes[0], want) {
 				t.Errorf("request = %x, want %x", p.writes, want)
 			}

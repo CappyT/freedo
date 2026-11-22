@@ -113,11 +113,16 @@ func (b *Bridge) EnqueueCSLBatch(jobs []CSLQueueRequest) error {
 			return len(data) == 1 && int(data[0]) == len(jobs)
 		case cslTxInput, cslQueueFull, cslQueueNeighborFull:
 			return len(data) == 0
+		case statusAirtime:
+			return true
 		}
 		return false
 	})
 	if err != nil {
 		return err
+	}
+	if status == statusAirtime {
+		return ErrAirtimeBudget
 	}
 	if status == cslQueueFull {
 		return ErrCSLQueueFull

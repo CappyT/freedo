@@ -27,9 +27,12 @@ func (b *Bridge) SendRouterAdvertBurst(frame []byte, timeout time.Duration) (int
 		b.timeout = timeout
 	}
 	defer func() { b.timeout = savedTimeout }()
-	status, data, err := b.req(cmdRABurst, frame, func(_ byte, data []byte) bool { return len(data) == 1 })
+	status, data, err := b.reqRadio(cmdRABurst, frame, func(status byte, data []byte) bool { return status == statusAirtime || len(data) == 1 })
 	if err != nil {
 		return 0, err
+	}
+	if status == statusAirtime {
+		return 0, fmt.Errorf("RABURST: %w", ErrAirtimeBudget)
 	}
 	if len(data) != 1 {
 		return 0, fmt.Errorf("RABURST response has %d-byte payload", len(data))

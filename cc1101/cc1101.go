@@ -2,7 +2,9 @@ package cc1101
 
 import (
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"time"
 )
@@ -47,14 +49,14 @@ var tadoRegs = []struct{ addr, val byte }{
 	{FIFOTHR, 0x47}, // ADC_RETENTION on (RX BW < 325 kHz), FIFO thr 33/32
 	{SYNC1, 0xD3},
 	{SYNC0, 0x91},
-	{PKTLEN, 0xFF},
-	{PKTCTRL1, 0x04}, // append RSSI/LQI/CRC status, no address check
-	{PKTCTRL0, 0x05}, // variable length, CRC on, whitening off
-	{CHANNR, 0x1A},   // channel 26 (per-install; sweep if RX is silent)
-	{FSCTRL1, 0x06},  // 152 kHz IF (Tado firmware value)
-	{FSCTRL0, 0x40},  // this module's crystal-offset compensation; the daemon seeds the
-	//                   stored autotune calibration at start, then the hardware FOC tracks
-	//                   the residual per-transmitter offset. No host retune (Tado approach).
+	{PKTLEN, 0x8C},         // 140: the firmware frame limit; a longer frame is cut on the chip
+	{PKTCTRL1, 0x04},       // append RSSI/LQI/CRC status, no address check
+	{PKTCTRL0, 0x05},       // variable length, CRC on, whitening off
+	{CHANNR, 0x1A},         // channel 26 (per-install; sweep if RX is silent)
+	{FSCTRL1, 0x06},        // 152 kHz IF (Tado firmware value)
+	{FSCTRL0, TuneDefault}, // crystal-offset compensation; the daemon seeds the stored
+	//                         calibration at start, then the hardware FOC tracks the
+	//                         residual per-transmitter offset. No host retune (Tado approach).
 	{FREQ2, 0x21}, // base 863.125 MHz; carrier = base + CHANNR*199.951 kHz
 	{FREQ1, 0x32},
 	{FREQ0, 0x76},
@@ -135,12 +137,51 @@ func (b *Bridge) ReadBurst(addr byte, n int) ([]byte, error) {
 	return d[1:], nil
 }
 
+// ConfigureOption adds a step to Configure.
+type ConfigureOption func(*configureSteps)
+
+type configureSteps struct {
+	airtime *[AirtimeBuckets]uint16
+	budget  *uint32
+	lbt     *LBT
+}
+
+// WithAirtime loads the airtime buckets into the firmware, after the register
+// load and before CMD_CONFIGURED. A reset of the ESP32 clears its count, and the
+// load gives it back the time on air that the last session counted.
+func WithAirtime(buckets [AirtimeBuckets]uint16) ConfigureOption {
+	return func(c *configureSteps) { c.airtime = &buckets }
+}
+
+// WithAirtimeBudget sets the airtime budget of the firmware in ms, with the
+// airtime load. The firmware has no budget after the reset that Configure sends,
+// so without this option it refuses nothing. See AirtimeBudget.
+func WithAirtimeBudget(ms uint32) ConfigureOption {
+	return func(c *configureSteps) { c.budget = &ms }
+}
+
+// WithLBT sets the listen-before-talk switch of the firmware, after the airtime
+// load and before CMD_CONFIGURED. The firmware starts with the switch off, and a
+// restart of the host without a reset of the ESP32 leaves the last setting in
+// place, so the host sends its own setting at every start.
+func WithLBT(l LBT) ConfigureOption {
+	return func(c *configureSteps) { c.lbt = &l }
+}
+
 // Configure resets the chip, loads the Tado PHY registers, and calibrates. It
 // first flushes the CSL queue: jobs a crashed session left in the bridge would
 // otherwise transmit on a chip that is half configured. Firmware v2.5 clears
-// the queue on the reset as well.
-func (b *Bridge) Configure() error {
-	if err := b.FlushCSLQueue(); err != nil {
+// the queue on the reset as well. A synthesizer that does not lock after its
+// retries is an error, and the firmware stays unconfigured, so it refuses every
+// transmit command: the caller starts again.
+func (b *Bridge) Configure(opts ...ConfigureOption) error {
+	var steps configureSteps
+	for _, opt := range opts {
+		opt(&steps)
+	}
+	// A fresh or reset chip answers the flush with ST_UNCONFIGURED. The reset
+	// below clears the queue anyway.
+	if err := b.FlushCSLQueue(); err != nil && !errors.Is(err, ErrUnconfigured) {
 		return err
 	}
 	if err := b.Reset(); err != nil {
@@ -158,23 +199,62 @@ func (b *Bridge) Configure() error {
 	if err := b.WriteBurst(PATABLE, []byte{paTable0}); err != nil {
 		return err
 	}
-	b.curFSCTRL0 = 0x40 // matches the tadoRegs FSCTRL0 default (drift-range center)
-	b.Strobe(SIDLE)
-	b.Strobe(SCAL)
-	time.Sleep(5 * time.Millisecond)
-	return nil
+	b.curFSCTRL0 = TuneDefault
+	if err := b.CalibrateSynth(); err != nil {
+		return fmt.Errorf("configure: %w", err)
+	}
+	if steps.airtime != nil || steps.budget != nil {
+		var buckets [AirtimeBuckets]uint16
+		if steps.airtime != nil {
+			buckets = *steps.airtime
+		}
+		var err error
+		if steps.budget != nil {
+			_, err = b.LoadAirtime(buckets, *steps.budget)
+		} else {
+			_, err = b.PreloadAirtime(buckets)
+		}
+		if err != nil {
+			return fmt.Errorf("configure: airtime preload: %w", err)
+		}
+	}
+	if steps.lbt != nil {
+		switch err := b.SetLBT(*steps.lbt); {
+		case err == nil:
+		case errors.Is(err, ErrLBTUnsupported) && !steps.lbt.Enabled:
+			// A firmware with no switch never listens: nothing to turn off.
+		case errors.Is(err, ErrLBTUnsupported):
+			return &FirmwareError{Found: b.bannerLevel(), Banner: b.banner, Contract: "has no CMD_LBT (listen before talk)"}
+		default:
+			return fmt.Errorf("configure: lbt: %w", err)
+		}
+	}
+	// Last, after the register load: the firmware refuses every transmit command
+	// until it hears this.
+	return b.markConfigured()
 }
 
 // Configured reports whether the chip still holds the register set Configure
 // loaded. An ESP32 that rebooted with the USB link up, or a CC1101 that browned
 // out, leaves the chip on reset defaults: every request still gets an answer,
-// but the radio hears nothing.
+// but the radio hears nothing. The idle loop sends it, with no transaction out,
+// so it waits as XFER does.
 func (b *Bridge) Configured() (bool, error) {
-	v, err := b.ReadReg(IOCFG0)
+	return b.configured(b.req)
+}
+
+// ConfiguredBehindJob is Configured for the call after a CSL job that expired:
+// the transaction can still run, so the request waits as PAIRWIN does.
+func (b *Bridge) ConfiguredBehindJob() (bool, error) {
+	return b.configured(b.reqRadio)
+}
+
+func (b *Bridge) configured(req func(byte, []byte, replyCheck) (byte, []byte, error)) (bool, error) {
+	_, d, err := req(cmdXfer, []byte{IOCFG0 | readSingle, 0x00}, okLen(2))
 	if err != nil {
 		return false, err
 	}
-	return v == iocfg0Tado, nil
+	return d[1] == iocfg0Tado, nil
 }
 
 // PartVersion returns PARTNUM and VERSION (VERSION 0x04/0x14 = a live CC1101).
@@ -194,17 +274,49 @@ func s8(x byte) int {
 	return int(x)
 }
 
+// ErrNoSynthLock means the synthesizer calibration did not lock: FSCAL1 reads
+// 0x3F after SCAL (datasheet 22.1). The chip then cannot hold the carrier.
+var ErrNoSynthLock = errors.New("the synthesizer did not lock after SCAL")
+
+const (
+	fscal1NoLock     = 0x3F
+	synthCalAttempts = 3
+	synthCalSettle   = 8 * time.Millisecond
+)
+
+// CalibrateSynth runs the manual synthesizer calibration and reads FSCAL1 back.
+// MCSM0 turns the automatic calibration off, so this is the only one: at start,
+// after a register change, and every hour from the live loop. A calibration that
+// does not lock is tried again, and the error follows when every try fails.
+func (b *Bridge) CalibrateSynth() error {
+	for range synthCalAttempts {
+		if _, err := b.Strobe(SIDLE); err != nil {
+			return err
+		}
+		if _, err := b.Strobe(SCAL); err != nil {
+			return err
+		}
+		time.Sleep(synthCalSettle)
+		v, err := b.ReadReg(FSCAL1)
+		if err != nil {
+			return err
+		}
+		if v != fscal1NoLock {
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: %d attempts", ErrNoSynthLock, synthCalAttempts)
+}
+
 // setFSCTRL0 writes the frequency-offset register and recalibrates the synth so
-// the new offset takes effect.
+// the new offset takes effect. The register is written even when the
+// calibration finds no lock, and the error says so.
 func (b *Bridge) setFSCTRL0(v byte) error {
 	if err := b.WriteReg(FSCTRL0, v); err != nil {
 		return err
 	}
-	b.Strobe(SIDLE)
-	b.Strobe(SCAL)
-	time.Sleep(8 * time.Millisecond)
 	b.curFSCTRL0 = v
-	return nil
+	return b.CalibrateSynth()
 }
 
 // FSCTRL0 returns the current frequency-offset register value.
@@ -259,9 +371,8 @@ const (
 	// units: on air it reads a few units off the passive bench value, so it
 	// moves the register only outside this band.
 	TuneAccept = 8
-	// TuneDefault is the register the receiver starts from without a stored
-	// calibration: the value this module class needs (the chip default 0x40
-	// belongs to the old module).
+	// TuneDefault is the register Configure loads, and the receiver starts from
+	// without a stored calibration: the value this module class needs.
 	TuneDefault byte = 0x34
 )
 
@@ -359,6 +470,13 @@ func TuneLabel(source string) string {
 	return hex.EncodeToString([]byte(source))
 }
 
+// TuneTarget applies a correction to the register. FSCTRL0 is a signed byte: the
+// result saturates at its limits instead of wrapping to the other end.
+func TuneTarget(reg byte, correction int) byte {
+	v := min(max(s8(reg)+correction, math.MinInt8), math.MaxInt8)
+	return byte(int8(v))
+}
+
 // Autotune centers FSCTRL0 on the live Tado carrier from a dedicated stream
 // window. `freedo-dev autotune` runs it once per chip or installation and stores
 // the result, which the daemon seeds at start. It reads the residual frequency
@@ -383,7 +501,7 @@ func (b *Bridge) Autotune() (fsctrl0 byte, ok bool, err error) {
 		if correction >= -TuneDeadband && correction <= TuneDeadband {
 			return b.curFSCTRL0, true, nil
 		}
-		if err := b.setFSCTRL0(byte(int(b.curFSCTRL0) + correction)); err != nil {
+		if err := b.setFSCTRL0(TuneTarget(b.curFSCTRL0, correction)); err != nil {
 			return b.curFSCTRL0, false, err
 		}
 	}
@@ -416,7 +534,8 @@ func (b *Bridge) autotuneRound(budget time.Duration, want int) (map[string][]int
 // --- TX ---
 
 // Send transmits one variable-length frame (payload without the length byte).
-// It streams the FIFO for frames longer than 64 bytes. Returns false if the
+// The firmware does not count a frame sent this way in its airtime budget, so
+// only bench tools may call it. It streams the FIFO for frames longer than 64 bytes. Returns false if the
 // frame did not leave the chip within timeout, and false with an error if the
 // TX FIFO underflowed.
 func (b *Bridge) Send(payload []byte, timeout time.Duration) (bool, error) {
@@ -524,12 +643,19 @@ func (b *Bridge) SendTrain(frames [][]byte, timeout time.Duration) (int, error) 
 	if timeout > saved {
 		b.timeout = timeout
 	}
-	status, d, err := b.req(cmdTxTrain, pkt, func(status byte, d []byte) bool {
-		return status == 0 && len(d) == 1 && int(d[0]) <= len(frames)
+	status, d, err := b.reqRadio(cmdTxTrain, pkt, func(status byte, d []byte) bool {
+		return status == statusAirtime || (len(d) == 1 && int(d[0]) <= len(frames) && (status == 0 || status == cslTxBusy))
 	})
 	b.timeout = saved
 	if err != nil {
 		return 0, err
+	}
+	if status == statusAirtime {
+		return 0, fmt.Errorf("TXTRAIN: %w", ErrAirtimeBudget)
+	}
+	if status == cslTxBusy && len(d) == 1 {
+		// With the listen on and a busy channel, the firmware sends nothing.
+		return int(d[0]), fmt.Errorf("TXTRAIN: %w", ErrCSLTxBusy)
 	}
 	if status != 0x00 || len(d) < 1 {
 		return 0, fmt.Errorf("TXTRAIN status 0x%02X", status)
@@ -588,6 +714,11 @@ func (b *Bridge) RecvFW(timeout time.Duration) (*RxFrame, error) {
 	if ms > 0xFFFF {
 		ms = 0xFFFF
 	}
+	saved := b.timeout
+	if timeout > saved {
+		b.timeout = timeout
+	}
+	defer func() { b.timeout = saved }()
 	status, data, err := b.req(cmdRecv, []byte{byte(ms >> 8), byte(ms)}, func(status byte, data []byte) bool {
 		return (status == autoAckNoFrame && len(data) == 0) || (status == 0 && parseRxBlobExact(data) != nil)
 	})
@@ -624,7 +755,7 @@ func (b *Bridge) StreamUntil(dur time.Duration, cb func(*RxFrame) bool) error {
 	if err := b.resync(time.Now().Add(b.timeout + time.Second)); err != nil {
 		return err
 	}
-	if _, err := b.port.Write([]byte{reqMagic, cmdStream, 0x00, 0x02, byte(ms >> 8), byte(ms)}); err != nil {
+	if _, err := b.port.Write(buildRequest(cmdStream, []byte{byte(ms >> 8), byte(ms)})); err != nil {
 		return err
 	}
 	return b.readStream(dur, cb)
@@ -658,6 +789,13 @@ func (b *Bridge) readStream(dur time.Duration, cb func(*RxFrame) bool) error {
 			return b.resyncStream(err)
 		}
 		switch t[0] {
+		case statusUnconfigured, statusBadCRC, statusBadPayload:
+			// The firmware refused the STREAM request itself.
+			b.readExact(2) // the reply length, 0
+			if t[0] == statusUnconfigured {
+				return ErrUnconfigured
+			}
+			return errRequestDropped
 		case streamEnd:
 			b.readExact(1) // trailing 0x00
 			return nil

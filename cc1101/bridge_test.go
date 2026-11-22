@@ -41,7 +41,7 @@ type firmwarePort struct {
 
 func (p *firmwarePort) Write(data []byte) (int, error) {
 	p.fakePort.Write(data)
-	cmd, payload := data[1], data[4:]
+	cmd, payload := data[1], data[4:len(data)-1]
 	p.cmds = append(p.cmds, cmd)
 	sub := byte(0)
 	if len(payload) > 0 {
@@ -60,6 +60,10 @@ func (p *firmwarePort) Write(data []byte) (int, error) {
 		reply = []byte{0x0f}
 	case cmdPing:
 		reply = []byte("CC1101BRIDGE v2.5")
+	case cmdAirtime:
+		reply = make([]byte, airtimeReplyLen)
+	case cmdLBT:
+		reply = append([]byte(nil), payload...)
 	}
 	p.read = append(p.read, autoAckResponse(0, reply)...)
 	return len(data), nil
@@ -91,7 +95,7 @@ func TestConfiguredReadsIOCFG0(t *testing.T) {
 		if err != nil || got != tc.want {
 			t.Fatalf("IOCFG0 %#02x: configured=%t err=%v, want %t", tc.iocfg0, got, err, tc.want)
 		}
-		if want := []byte{reqMagic, cmdXfer, 0, 2, IOCFG0 | readSingle, 0}; !bytes.Equal(p.writes[0], want) {
+		if want := withCRC([]byte{reqMagic, cmdXfer, 0, 2, IOCFG0 | readSingle, 0}); !bytes.Equal(p.writes[0], want) {
 			t.Fatalf("request=%x, want %x", p.writes[0], want)
 		}
 	}

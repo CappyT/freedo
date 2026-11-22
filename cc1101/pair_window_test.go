@@ -25,7 +25,7 @@ func TestSetPairWindow(t *testing.T) {
 	want := []byte{reqMagic, cmdPairWindow, 0x00, 0x20, 0x00, 0x78}
 	want = append(want, key...)
 	want = append(want, coordinator...)
-	want = append(want, 0x59, 0x04, 0x03, 0x02, 0x01, 0x40)
+	want = withCRC(append(want, 0x59, 0x04, 0x03, 0x02, 0x01, 0x40))
 	if len(p.writes) != 1 || !bytes.Equal(p.writes[0], want) {
 		t.Fatalf("open request=%x, want %x", p.writes, want)
 	}
@@ -35,7 +35,7 @@ func TestSetPairWindow(t *testing.T) {
 	if sent, err := b.SetPairWindow(PairWindow{}); err != nil || sent != 3 {
 		t.Fatalf("close: sent=%d err=%v, want 3", sent, err)
 	}
-	if want := []byte{reqMagic, cmdPairWindow, 0x00, 0x02, 0x00, 0x00}; !bytes.Equal(p.writes[0], want) {
+	if want := withCRC([]byte{reqMagic, cmdPairWindow, 0x00, 0x02, 0x00, 0x00}); !bytes.Equal(p.writes[0], want) {
 		t.Fatalf("close request=%x, want %x", p.writes[0], want)
 	}
 
@@ -67,7 +67,7 @@ func TestSendRouterAdvertBurstFramePending(t *testing.T) {
 	if sent, err := b.SendRouterAdvertBurst([]byte{0x59, 0xe8, 0x42}, time.Second); err != nil || sent != 254 {
 		t.Fatalf("sent=%d err=%v", sent, err)
 	}
-	if want := []byte{reqMagic, cmdRABurst, 0x00, 0x03, 0x59, 0xe8, 0x42}; !bytes.Equal(p.writes[0], want) {
+	if want := withCRC([]byte{reqMagic, cmdRABurst, 0x00, 0x03, 0x59, 0xe8, 0x42}); !bytes.Equal(p.writes[0], want) {
 		t.Fatalf("request=%x, want %x", p.writes[0], want)
 	}
 }

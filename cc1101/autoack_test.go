@@ -120,6 +120,9 @@ func TestReqRejectsOversizedResponse(t *testing.T) {
 	}
 }
 
+// withCRC appends the request crc to the bytes of a request.
+func withCRC(req []byte) []byte { return append(req, crc8(req[1:])) }
+
 // txPort answers the SPI transactions Send makes: a strobe returns a chip status
 // byte, and a status-register read returns the scripted MARCSTATE or TXBYTES.
 type txPort struct {
@@ -133,7 +136,7 @@ func (p *txPort) Write(data []byte) (int, error) {
 	p.fakePort.Write(data)
 	payload := []byte{0x0f}
 	if data[1] == cmdXfer {
-		body := data[4:]
+		body := data[4 : len(data)-1]
 		payload = make([]byte, len(body))
 		if len(body) == 2 {
 			switch body[0] &^ readBurst {
@@ -200,7 +203,7 @@ func TestSendWaitsForTXToFinish(t *testing.T) {
 func countStrobes(p *txPort, addr byte) int {
 	n := 0
 	for _, w := range p.writes {
-		if len(w) == 5 && w[1] == cmdStrobe && w[4] == addr {
+		if len(w) == 6 && w[1] == cmdStrobe && w[4] == addr {
 			n++
 		}
 	}
@@ -301,7 +304,7 @@ func TestRecvAutoAck(t *testing.T) {
 				t.Fatalf("freqEst = %d,%t, want %d", got.Frame.FreqEst, got.Frame.HasFreqEst, tc.freqEst)
 			}
 			want := append([]byte{reqMagic, cmdAutoAck, 0x00, 0x0c, 0x12, 0x34}, coordinator...)
-			want = append(want, 0x78, 0x56)
+			want = withCRC(append(want, 0x78, 0x56))
 			if len(p.writes) != 1 || !bytes.Equal(p.writes[0], want) {
 				t.Fatalf("request = %x, want %x", p.writes, want)
 			}
@@ -350,7 +353,7 @@ func TestSendRouterAdvertBurst(t *testing.T) {
 			if (err != nil) != tc.err || sent != tc.want {
 				t.Fatalf("result sent=%d err=%v, want %d error=%v", sent, err, tc.want, tc.err)
 			}
-			want := []byte{reqMagic, cmdRABurst, 0x00, 0x03, 0x49, 0xe8, 0x42}
+			want := withCRC([]byte{reqMagic, cmdRABurst, 0x00, 0x03, 0x49, 0xe8, 0x42})
 			if len(p.writes) != 1 || !bytes.Equal(p.writes[0], want) {
 				t.Fatalf("request=%x, want %x", p.writes, want)
 			}

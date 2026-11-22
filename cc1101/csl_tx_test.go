@@ -83,7 +83,7 @@ func TestSendCSLData(t *testing.T) {
 			if (got.Ack != nil) != tc.ack {
 				t.Fatalf("ack=%v, want=%v", got.Ack, tc.ack)
 			}
-			want := append([]byte{reqMagic, cmdCSLTx, 0, byte(len(data) + 5), 0, 50, 1, 0x0a, 0x01}, data...)
+			want := withCRC(append([]byte{reqMagic, cmdCSLTx, 0, byte(len(data) + 5), 0, 50, 1, 0x0a, 0x01}, data...))
 			if len(p.writes) != 1 || !bytes.Equal(p.writes[0], want) {
 				t.Fatalf("request=%x, want=%x", p.writes, want)
 			}
@@ -114,7 +114,7 @@ func TestSendCSLDataFollowResponse(t *testing.T) {
 	if got.Ack == nil || len(got.Follow) != 2 || got.Follow[0] == nil || got.Follow[1] == nil || got.Dropped != 0 {
 		t.Fatalf("result=%+v", got)
 	}
-	want := append([]byte{reqMagic, cmdCSLTx, 0, byte(len(data) + 7), 0, 50, cslTxFlagBootstrap | cslTxFlagFollow, 0x0a, 0x01, 0xa1, 0x00}, data...)
+	want := withCRC(append([]byte{reqMagic, cmdCSLTx, 0, byte(len(data) + 7), 0, 50, cslTxFlagBootstrap | cslTxFlagFollow, 0x0a, 0x01, 0xa1, 0x00}, data...))
 	if len(p.writes) != 1 || !bytes.Equal(p.writes[0], want) {
 		t.Fatalf("request=%x, want=%x", p.writes, want)
 	}

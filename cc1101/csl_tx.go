@@ -21,6 +21,7 @@ const (
 	cslTxBadAck   = 0x17
 	cslTxNoAnchor = 0x18
 	cslTxBusy     = 0x1b
+	cslTxAirtime  = statusAirtime
 	cslTxMinSent  = 3
 	// An anchor that ages widens its train up to the bootstrap length, so an
 	// anchored job has the same bound as a bootstrap one.
@@ -133,6 +134,8 @@ func parseCSLTxResult(status byte, data []byte, waitResponse bool) (*CSLTxResult
 		return result, ErrCSLTxNoAnchor
 	case cslTxBusy:
 		return result, ErrCSLTxBusy
+	case cslTxAirtime:
+		return result, ErrAirtimeBudget
 	default:
 		return result, fmt.Errorf("CSLTX status 0x%02x", status)
 	}
@@ -190,5 +193,5 @@ func parseCSLTxAck(raw []byte) *RxFrame {
 // cslTxFailure reports a CSLTX status that ends a job with nothing to report
 // but the frame count.
 func cslTxFailure(status byte) bool {
-	return (status >= cslTxInput && status <= cslTxNoAnchor) || status == cslTxBusy
+	return (status >= cslTxInput && status <= cslTxNoAnchor) || status == cslTxBusy || status == cslTxAirtime
 }

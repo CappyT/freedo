@@ -50,7 +50,7 @@ func (b *Bridge) SetPairWindow(w PairWindow) (int, error) {
 		payload = binary.LittleEndian.AppendUint32(payload, w.Counter)
 		payload = append(payload, w.Count)
 	}
-	status, data, err := b.req(cmdPairWindow, payload, func(_ byte, data []byte) bool { return len(data) == 1 })
+	status, data, err := b.reqRadio(cmdPairWindow, payload, func(_ byte, data []byte) bool { return len(data) == 1 })
 	if err != nil {
 		return 0, err
 	}

@@ -143,3 +143,135 @@ func TestSilentBridgeCountsASerialError(t *testing.T) {
 		t.Fatalf("owed=%d serial errors=%d, want 1 and 1", len(b.owed), b.SerialErrors())
 	}
 }
+
+// firmwareHostTimeout is the silence after which the firmware drops its
+// coordinator, its queue and its pair window.
+const firmwareHostTimeout = 5 * time.Second
+
+// A request whose reply is lost holds the host silent until its reply deadline.
+// The deadline of a request that has no window of its own, and the one of the
+// 250 ms receive window of the live loop, leave a wide margin under the firmware
+// host timeout, so the timeout never fires while the daemon is alive.
+func TestLostReplyKeepsTheHostSilentUnderTheFirmwareTimeout(t *testing.T) {
+	const bound = 1500 * time.Millisecond
+	for name, call := range map[string]func(*Bridge) error{
+		"airtime": func(b *Bridge) error { _, err := b.Airtime(); return err },
+		"autoack": func(b *Bridge) error {
+			_, err := b.RecvAutoAck(250*time.Millisecond, make([]byte, 8), 0)
+			return err
+		},
+		// The idle register check: the loop sends it with no job out.
+		"configured": func(b *Bridge) error { _, err := b.Configured(); return err },
+		"recv":       func(b *Bridge) error { _, err := b.RecvFW(250 * time.Millisecond); return err },
+		"strobe":     func(b *Bridge) error { _, err := b.Strobe(SCAL); return err },
+		"xfer":       func(b *Bridge) error { _, err := b.Xfer([]byte{0x80, 0}); return err },
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			b, err := start(firmwareAt(DefaultBaud, "CC1101BRIDGE v2.11 (test)"), 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			b.port = &linkPort{} // from here on the firmware never answers
+			begin := time.Now()
+			err = call(b)
+			silence := time.Since(begin)
+			if !errors.Is(err, ErrLinkFault) {
+				t.Fatalf("err = %v, want a link fault", err)
+			}
+			if silence > bound {
+				t.Fatalf("a lost reply keeps the host silent for %s, want at most %s (firmware host timeout %s)", silence.Round(10*time.Millisecond), bound, firmwareHostTimeout)
+			}
+		})
+	}
+}
+
+// The firmware runs a command that needs the radio when the CSL transaction in
+// progress has ended, and the requests behind it wait in the same queue. A
+// transaction lasts up to 3.9 s. The live loop can send PAIRWIN, a Router
+// Advertisement burst, a train and the register check after an expired job with a job out, so these
+// wait longer than the 1.25 s of an ordinary request, and a late reply is no
+// link fault. Here the firmware answers 2.5 s after the request, as it does
+// behind a transaction.
+func TestCommandsThatNeedTheRadioWaitBehindATransaction(t *testing.T) {
+	ra := make([]byte, 40)
+	ra[0], ra[1] = 0x49, 0xe8
+	for _, tc := range []struct {
+		name  string
+		cmd   byte
+		reply []byte
+		call  func(*Bridge) error
+	}{
+		{"pair window", cmdPairWindow, autoAckResponse(0, []byte{0}), func(b *Bridge) error {
+			_, err := b.SetPairWindow(PairWindow{Duration: time.Minute, Key: make([]byte, 16), Coordinator: make([]byte, 8), Count: 1})
+			return err
+		}},
+		{"router advertisement burst", cmdRABurst, autoAckResponse(0, []byte{20}), func(b *Bridge) error {
+			_, err := b.SendRouterAdvertBurst(ra, time.Second)
+			return err
+		}},
+		{"train", cmdTxTrain, autoAckResponse(0, []byte{1}), func(b *Bridge) error {
+			_, err := b.SendTrain([][]byte{make([]byte, 12)}, time.Second)
+			return err
+		}},
+		{"register check after a job", cmdXfer, autoAckResponse(0, []byte{0, 0x07}), func(b *Bridge) error {
+			_, err := b.ConfiguredBehindJob()
+			return err
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			p := &linkPort{reply: func(p *linkPort, req []byte) {
+				if req[1] != tc.cmd {
+					return
+				}
+				go func() {
+					time.Sleep(2500 * time.Millisecond)
+					p.feed(tc.reply)
+				}()
+			}}
+			b := &Bridge{port: p, timeout: requestWindow}
+			if err := tc.call(b); err != nil {
+				t.Fatalf("a reply 2.5 s after the request failed: %v", err)
+			}
+			if b.SerialErrors() != 0 || len(b.owed) != 0 {
+				t.Fatalf("serialErrors=%d owed=%d, want none", b.SerialErrors(), len(b.owed))
+			}
+		})
+	}
+}
+
+// The idle step sends XFER and STROBE with no job out, where no transaction can
+// hold them back. A lost reply keeps the short window, so that two lost requests
+// in a row cannot pass the 5 s of the firmware host timeout.
+func TestIdleXferAndStrobeKeepTheShortWindow(t *testing.T) {
+	for name, call := range map[string]func(*Bridge) error{
+		"strobe": func(b *Bridge) error { _, err := b.Strobe(SCAL); return err },
+		"xfer":   func(b *Bridge) error { _, err := b.Xfer([]byte{0x80, 0}); return err },
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			b := &Bridge{port: &linkPort{reply: func(p *linkPort, req []byte) {}}, timeout: requestWindow}
+			begin := time.Now()
+			err := call(b)
+			if silent := time.Since(begin); !errors.Is(err, ErrLinkFault) || silent > 2*time.Second {
+				t.Fatalf("err=%v after %s, want a link fault after about 1.25 s", err, silent)
+			}
+		})
+	}
+}
+
+// An ordinary request keeps its 1.25 s window: the keepalive rule of the idle
+// loop depends on it.
+func TestOrdinaryRequestKeepsItsShortWindow(t *testing.T) {
+	p := &linkPort{reply: func(p *linkPort, req []byte) {}}
+	b := &Bridge{port: p, timeout: requestWindow}
+	begin := time.Now()
+	_, err := b.Airtime()
+	if !errors.Is(err, ErrLinkFault) {
+		t.Fatalf("err=%v, want a link fault for a request that gets no reply", err)
+	}
+	if elapsed := time.Since(begin); elapsed > 2*time.Second {
+		t.Fatalf("an ordinary request waited %s, want about 1.25 s", elapsed)
+	}
+}
