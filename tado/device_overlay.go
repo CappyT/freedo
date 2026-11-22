@@ -98,7 +98,9 @@ func (e *EmuState) takeDeviceOverlay(zone int, dev []byte, body []byte) {
 	}
 	if len(updates) > 0 {
 		key := zoneKey(zone, "z/s")
+		before := e.zoneHeating(zone)
 		e.storeZoneState(zone, "z/s", encodeTLVs(mergeConfigTLVs(parseTLVList(e.zoneState[key]), updates)))
+		e.heldOverlays[zone] = heldOverlay{written: e.zoneHeating(zone), replaced: before}
 		e.restateDeviceOverlay(zone)
 	}
 	delete(e.zoneWrites, zone)
@@ -114,6 +116,7 @@ func (e *EmuState) endDeviceOverlay(zone int, dev []byte) {
 	auto := []TLV{{Tag: "6240", Val: []byte{overlayAuto}}}
 	key := zoneKey(zone, "z/s")
 	e.storeZoneState(zone, "z/s", encodeTLVs(mergeConfigTLVs(parseTLVList(e.zoneState[key]), auto)))
+	delete(e.heldOverlays, zone)
 	if ns, ok := e.nodes[hexEUI(dev)]; ok && ns.holdsZone(zone) && len(ns.raw["6240"]) == 1 {
 		e.cacheTLVs(ns, auto, "", ClassData, e.name(dev), "self", "")
 	}

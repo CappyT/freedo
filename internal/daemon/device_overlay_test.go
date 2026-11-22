@@ -255,3 +255,51 @@ func TestInstallAPIPatchesDeviceOverlayEnd(t *testing.T) {
 		t.Errorf("stored rules = %v, want none for the default", stored.Options.DeviceOverlayEnds)
 	}
 }
+
+// programBlock is the z/s report of a zone 5 member that runs the 19.5 C
+// program block.
+var programBlock = []tado.TLV{
+	{Tag: "6240", Val: []byte{0x00}}, {Tag: "6200", Val: []byte{0x07, 0x9e}},
+	{Tag: "61e0", Val: []byte{0x01}}, {Tag: "62e0", Val: []byte{0x00}},
+}
+
+// TestDeviceOverlayHoldsAgainstABehindMember reproduces issue #38 on the API:
+// one member sets an overlay on its wheel and the other member keeps
+// reporting the program until the zone relays reach it. The room target stays
+// the overlay through those reports, also past the echo window.
+func TestDeviceOverlayHoldsAgainstABehindMember(t *testing.T) {
+	clock := newTestClock(windowStart)
+	d, url, in := deviceOverlayDaemon(t, nil, clock, nil)
+	endsAt := windowStart.Add(time.Hour).Format(time.RFC3339)
+	overlayFromDevice(t, d, in, "VA1000000006", 5, 2200, 0x6301)
+	wantDeviceOverlay(t, "after the overlay", url, 22, endsAt)
+	for i := range 4 {
+		clock.advance(40 * time.Second)
+		echoZone(t, d, in, "VA1000000001", 5, 0x6302+uint16(i), programBlock)
+		wantDeviceOverlay(t, "after a report of the behind member", url, 22, endsAt)
+	}
+	echoZone(t, d, in, "VA1000000001", 5, 0x6310, append(bedroomBlock(2200)[:3:3], programBlock[1:]...))
+	wantDeviceOverlay(t, "after the member took the overlay", url, 22, endsAt)
+}
+
+// TestDashboardWriteEndsTheHeldDeviceOverlay: a dashboard setpoint replaces
+// the device overlay. Past the echo window, a member report of the program is a
+// change on the device again and the zone takes it, as for any coordinator
+// write.
+func TestDashboardWriteEndsTheHeldDeviceOverlay(t *testing.T) {
+	clock := newTestClock(windowStart)
+	d, url, in := deviceOverlayDaemon(t, nil, clock, nil)
+	writer := wireOf(t, in, "VA1000000006")
+	overlayFromDevice(t, d, in, "VA1000000001", 5, 2200, 0x6321)
+	if _, code := postZone(t, url, 5, "setpoint", map[string]any{"setpointC": 25}); code != http.StatusOK {
+		t.Fatalf("setpoint: code=%d", code)
+	}
+	for pending(t, d, writer) > 0 {
+		deliverAck(t, d, in, writer)
+	}
+	clock.advance(2 * time.Minute)
+	echoZone(t, d, in, "VA1000000001", 5, 0x6322, programBlock)
+	if target := mustTarget(t, url, 5); target["source"] != "program" {
+		t.Errorf("target = %v, want the program the member reported", target)
+	}
+}

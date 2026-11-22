@@ -2282,8 +2282,11 @@ func zoneFallbacks(e *tado.EmuState) []map[string]any {
 func (d *daemon) logZoneStateReports(e *tado.EmuState) {
 	for _, r := range e.TakeZoneStateReports() {
 		note := ""
-		if r.Stale {
+		switch {
+		case r.Stale:
 			note = " (stale echo of a replaced write, not taken)"
+		case r.Behind:
+			note = " (member has not taken the device overlay, setpoint not taken)"
 		}
 		log.Printf("zone %d z/s from %s: %s%s", r.Zone, r.Device, tado.ZoneStateSummary(r.Body), note)
 	}

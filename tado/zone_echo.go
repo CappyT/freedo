@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"maps"
+	"slices"
 	"strings"
 	"time"
 )
@@ -25,13 +26,24 @@ type deliveredWrite struct {
 	replaced map[string][]byte
 }
 
+// heldOverlay is a device overlay the zone took from a PUT
+// h/<home>/z/<n>/overlay, and the heating block it replaced. The other members
+// take it later through the zone relays and report the replaced block until
+// then.
+type heldOverlay struct {
+	written  map[string][]byte
+	replaced map[string][]byte
+}
+
 // ZoneStateReport is one z/s?lid=N report of a zone member. Stale marks a late
-// echo of a block a newer write replaced: the zone did not take it.
+// echo of a block a newer write replaced, and Behind a report of the block a
+// held device overlay replaced: the zone took the heating tags of neither.
 type ZoneStateReport struct {
 	Zone   int
 	Device string // short address of the reporter
 	Body   []byte
 	Stale  bool
+	Behind bool
 }
 
 func heatingTagsOf(list []TLV) map[string][]byte {
@@ -59,6 +71,7 @@ func (e *EmuState) noteZoneWrite(zone int, before map[string][]byte) {
 		return
 	}
 	e.zoneWrites[zone] = deliveredWrite{at: e.cfg.Now(), written: after, replaced: before}
+	delete(e.heldOverlays, zone)
 }
 
 // staleZoneEcho reports whether m is a member report of the heating block the
@@ -101,9 +114,40 @@ func (e *EmuState) adoptZoneReport(zone int, updates []TLV) {
 	}
 }
 
-func (e *EmuState) noteZoneStateReport(zone int, src []byte, body []byte, stale bool) {
+// behindDeviceOverlay reports whether a member report shows the block that the
+// held device overlay of its zone replaced, or the program: the member has not
+// taken the overlay yet. Only the reporter's DELETE or a coordinator write ends
+// a device overlay, so such a report must not undo it (issue #38). A report of
+// another overlay is a new change, and the zone takes it.
+func (e *EmuState) behindDeviceOverlay(zone int, updates []TLV) bool {
+	h, ok := e.heldOverlays[zone]
+	if !ok {
+		return false
+	}
+	report := heatingTagsOf(updates)
+	differs, replaced := false, true
+	for tag, v := range report {
+		differs = differs || !bytes.Equal(v, h.written[tag])
+		replaced = replaced && bytes.Equal(v, h.replaced[tag])
+	}
+	auto := len(report["6240"]) == 1 && report["6240"][0] == overlayAuto
+	return differs && (replaced || auto)
+}
+
+// withoutHeating returns updates without the heating block tags.
+func withoutHeating(updates []TLV) []TLV {
+	out := make([]TLV, 0, len(updates))
+	for _, tlv := range updates {
+		if !slices.Contains(zoneHeatingTags, tlv.Tag) {
+			out = append(out, tlv)
+		}
+	}
+	return out
+}
+
+func (e *EmuState) noteZoneStateReport(zone int, src []byte, body []byte, stale, behind bool) {
 	e.zoneStateReports = append(e.zoneStateReports, ZoneStateReport{
-		Zone: zone, Device: ShortFromWire(src), Body: append([]byte(nil), body...), Stale: stale,
+		Zone: zone, Device: ShortFromWire(src), Body: append([]byte(nil), body...), Stale: stale, Behind: behind,
 	})
 }
 

@@ -238,3 +238,61 @@ func TestDeviceOverlaySurvivesAnotherMembersReport(t *testing.T) {
 		t.Errorf("read of z/5/s = %s %v, want 2.05 with 6240 02 and 6280 09c4", m.Code, got)
 	}
 }
+
+// TestDeviceOverlayBehindReportKeepsItsOtherTags: a member that has not taken
+// the device overlay reports the program with an open window. The zone keeps
+// the overlay and takes the window, and the report is marked behind.
+func TestDeviceOverlayBehindReportKeepsItsOtherTags(t *testing.T) {
+	in := fixtureInstall(t)
+	e := NewEmu(in.EmuConfig(), NewUnhandledLogger(io.Discard))
+	e.SetHomeState(true, map[int]float64{5: 16})
+	e.OnFrame(synthDeviceUplink(t, in, mustHex(kitchenBEUIHex), CoAPReq{
+		Type: "CON", Code: "0.03", MID: 0x7531, Token: []byte{0x28},
+		Path: homePath(in, "z", "5", "overlay"), Options: []CoAPOption{optOctets},
+		Payload: encodeTLVs([]TLV{
+			{Tag: "6280", Val: []byte{0x09, 0xc4}}, {Tag: "6240", Val: []byte{0x02}}, {Tag: "6260", Val: []byte{0x01}},
+		}),
+	}))
+	e.TakeZoneStateReports()
+	e.OnFrame(synthZoneUplink(t, in, mustHex(kitchenAEUIHex), CoAPReq{
+		Type: "CON", Code: "0.03", MID: 0x7532, Token: []byte{0x29},
+		Path: []string{"z", "s"}, Query: []string{"lid=5"},
+		Payload: encodeTLVs([]TLV{
+			{Tag: "6240", Val: []byte{0x00}}, {Tag: "6200", Val: []byte{0x06, 0x40}},
+			{Tag: "61e0", Val: []byte{0x01}}, {Tag: "62e0", Val: []byte{0x01}},
+		}),
+	}))
+	block, ok := e.ZoneBlock(5)
+	if !ok || block.Overlay != 2 || block.SetpointC == nil || *block.SetpointC != 25 || !block.OpenWindow {
+		t.Errorf("zone block = %+v (known=%t), want the 25 C overlay with the open window", block, ok)
+	}
+	if got := e.TakeZoneStateReports(); len(got) != 1 || !got[0].Behind || got[0].Stale {
+		t.Errorf("reports = %+v, want one report marked behind", got)
+	}
+}
+
+// TestDeviceOverlayNewChangeOnAnotherMemberIsTaken: while the zone holds a
+// device overlay, another member reports a different overlay. That is a new
+// change, not a member behind, and the zone takes it.
+func TestDeviceOverlayNewChangeOnAnotherMemberIsTaken(t *testing.T) {
+	in := fixtureInstall(t)
+	e := NewEmu(in.EmuConfig(), NewUnhandledLogger(io.Discard))
+	e.SetHomeState(true, map[int]float64{5: 16})
+	e.OnFrame(synthDeviceUplink(t, in, mustHex(kitchenBEUIHex), CoAPReq{
+		Type: "CON", Code: "0.03", MID: 0x7541, Token: []byte{0x2a},
+		Path: homePath(in, "z", "5", "overlay"), Options: []CoAPOption{optOctets},
+		Payload: encodeTLVs([]TLV{
+			{Tag: "6280", Val: []byte{0x09, 0xc4}}, {Tag: "6240", Val: []byte{0x02}}, {Tag: "6260", Val: []byte{0x01}},
+		}),
+	}))
+	e.OnFrame(synthZoneUplink(t, in, mustHex(kitchenAEUIHex), CoAPReq{
+		Type: "CON", Code: "0.03", MID: 0x7542, Token: []byte{0x2b},
+		Path: []string{"z", "s"}, Query: []string{"lid=5"},
+		Payload: encodeTLVs([]TLV{
+			{Tag: "6280", Val: []byte{0x08, 0x98}}, {Tag: "6240", Val: []byte{0x02}}, {Tag: "6260", Val: []byte{0x01}},
+		}),
+	}))
+	if block, ok := e.ZoneBlock(5); !ok || block.Overlay != 2 || block.SetpointC == nil || *block.SetpointC != 22 {
+		t.Errorf("zone block = %+v (known=%t), want the new 22 C overlay", block, ok)
+	}
+}

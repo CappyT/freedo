@@ -645,6 +645,8 @@ type EmuState struct {
 	// zone_echo.go.
 	zoneWrites       map[int]deliveredWrite
 	zoneStateReports []ZoneStateReport
+	// heldOverlays holds the device overlay each zone took and has not ended.
+	heldOverlays map[int]heldOverlay
 	// home is the state of the whole home and schedC the setpoint the weekly
 	// program holds in each zone. The daemon owns both and pushes them here with
 	// SetHomeState; every z/s write the emulator builds stamps them. homeSet
@@ -737,6 +739,7 @@ func NewEmu(cfg EmuConfig, log *UnhandledLogger) *EmuState {
 		zones:          map[int]map[string]bool{},
 		zoneState:      map[string][]byte{},
 		zoneWrites:     map[int]deliveredWrite{},
+		heldOverlays:   map[int]heldOverlay{},
 		zoneProxyPend:  map[midKey]*zoneProxyWait{},
 		zoneRep:        map[int]*demandReport{},
 		ownedMeasure:   map[int][]byte{},
@@ -2411,11 +2414,18 @@ func (e *EmuState) cacheZoneState(m *CoAPMessage, src []byte) {
 	}
 	if res == "z/s" {
 		stale := e.staleZoneEcho(m)
-		e.noteZoneStateReport(zone, src, m.Payload, stale)
-		if stale {
+		behind := !stale && e.behindDeviceOverlay(zone, updates)
+		e.noteZoneStateReport(zone, src, m.Payload, stale, behind)
+		switch {
+		case stale:
 			return
+		case behind:
+			if updates = withoutHeating(updates); len(updates) == 0 {
+				return
+			}
+		default:
+			e.adoptZoneReport(zone, updates)
 		}
-		e.adoptZoneReport(zone, updates)
 	}
 	e.storeZoneState(zone, res, encodeTLVs(mergeConfigTLVs(parseTLVList(e.zoneState[zoneKey(zone, res)]), updates)))
 }
