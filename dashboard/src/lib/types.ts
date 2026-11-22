@@ -69,7 +69,13 @@ export interface Health {
 	frames: number;
 	micFails: number;
 	routerAdvertsSent: number;
-	downlink: { sent: number; delivered: number; dropped: number };
+	downlink: {
+		sent: number;
+		delivered: number;
+		dropped: number;
+		/** Live radio only: jobs that sent a frame and their estimated time on air, by kind, since the start. */
+		kinds?: Record<string, { attempts: number; airtimeMs: number }>;
+	};
 	queue: { pending: number; awaitingCSL: number; flowPending: number; zoneProxies: number };
 	devices: HealthDevice[];
 	alerts: { device: string; short: string; label: string; alerts: string[] }[];

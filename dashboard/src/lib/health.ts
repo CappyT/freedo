@@ -11,3 +11,8 @@ export function serialLink(health: Health | null): SerialLink {
 	if (health?.serialErrors === undefined) return 'none';
 	return health.serialErrors > 0 ? 'warning' : 'ok';
 }
+
+/** The System card row `settings.downlink` lists the counts in the order of its label: sent, delivered, dropped. */
+export function downlinkCounts(downlink: Health['downlink']): string {
+	return `${downlink.sent} / ${downlink.delivered} / ${downlink.dropped}`;
+}

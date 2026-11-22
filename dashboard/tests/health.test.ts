@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { serialLink } from '../src/lib/health.ts';
+import { downlinkCounts, serialLink } from '../src/lib/health.ts';
 import type { Health } from '../src/lib/types.ts';
 
 const health = (over: Partial<Health>) => ({ ok: true, mode: 'live', ...over }) as Health;

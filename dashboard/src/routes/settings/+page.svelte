@@ -7,7 +7,7 @@
 	import { exportState, importState, refusal, uptimeOf, waitForRestart } from '#lib/backup.ts';
 	import ConfirmDialog from '#lib/ConfirmDialog.svelte';
 	import { data } from '#lib/data.svelte.ts';
-	import { serialLink } from '#lib/health.ts';
+	import { downlinkCounts, serialLink } from '#lib/health.ts';
 	import { fmt, t } from '#lib/i18n.svelte.ts';
 	import Icon from '#lib/Icon.svelte';
 	import { install } from '#lib/install.svelte.ts';
@@ -334,7 +334,7 @@
 								{#if health.fsctrl0 !== undefined}<div><dt>FSCTRL0</dt><dd class="num">{health.fsctrl0}</dd></div>{/if}
 								<div><dt>{t('settings.micFails')}</dt><dd class="num">{fmt.number(health.micFails, 0)}</dd></div>
 								<div><dt>{t('settings.queue')}</dt><dd class="num">{fmt.number(health.queue.pending, 0)}</dd></div>
-								<div><dt>{t('settings.downlink')}</dt><dd class="num">{health.downlink.delivered} / {health.downlink.sent} / {health.downlink.dropped}</dd></div>
+								<div><dt>{t('settings.downlink')}</dt><dd class="num">{downlinkCounts(health.downlink)}</dd></div>
 								<div><dt>{t('settings.unhandled')}</dt><dd class="num">{fmt.number(health.unhandled, 0)}</dd></div>
 							</dl>
 						</details>
