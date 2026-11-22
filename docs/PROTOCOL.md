@@ -254,6 +254,18 @@ node, with the head and the `62e0` of now. A queued write with `6440` or a zone
 configuration tag stays (`restateDeviceOverlay`,
 `TestDeviceOverlayRestatesQueuedZoneWrites`).
 
+The other members take a device overlay through the zone relays, minutes later
+on the plant of #38. Until then they report the block the overlay replaced, or
+the program. Such a report does not end the overlay: only the reporter's DELETE
+and a coordinator write do. freedo keeps the overlay in the zone block, takes
+the other tags of the report (`62e0`, `6200`), and answers a zone state read
+with the overlay. Without that, the reporter read `6240=0` and no `6280` at its
+next `GET z/N/s`, went to auto and kept the old `6280`. A member report of a
+different overlay is a new change, and the zone takes it
+(`behindDeviceOverlay`, `TestDeviceOverlaySurvivesAnotherMembersReport`,
+`TestDeviceOverlayHoldsAgainstABehindMember`). The rule is in memory only: after
+a restart, a report of the program ends the overlay again.
+
 The elected reporter sends `DELETE h/<home>/z/N/overlay` with no body when the
 `6240` of the zone goes to 0 on the device. The builder picks DELETE on `6240=0`
 and PUT with the block otherwise (valve 0x11d1c, thermostat 0x11a94). The
