@@ -27,7 +27,9 @@ ports_description:
   18080/tcp: HTTP API
 options:
   transmit: false
+  airtime_limit: false
 schema:
   serial_port: device(subsystem=tty)?
   api_token: password?
   transmit: bool
+  airtime_limit: bool?

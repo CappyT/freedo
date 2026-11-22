@@ -14,3 +14,12 @@ configuration:
     description: >-
       Envoie des trames par radio. Désactivé signifie dry-run. Éteignez la
       passerelle commerciale avant d'activer cette option.
+  airtime_limit:
+    name: Limite d'airtime (alpha)
+    description: >-
+      Alpha, non vérifié sur une installation. Garde l'airtime horaire sous le
+      budget ETSI de 36 s. Le pont refuse
+      au-delà et la radio diffère une partie du trafic près de la limite, donc
+      une installation chargée est plus lente. Nécessite le firmware du pont
+      actuel. État et aide recherchée :
+      https://github.com/CappyT/freedo/issues/42. Désactivé par défaut.

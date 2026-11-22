@@ -14,3 +14,11 @@ configuration:
     description: >-
       Send frames on air. Off means dry-run. Switch the commercial bridge off
       before you turn this on.
+  airtime_limit:
+    name: Airtime limit (alpha)
+    description: >-
+      Alpha, not verified on a plant. Keep the hourly airtime under the ETSI
+      budget of 36 s. The bridge refuses above
+      it and the radio defers some traffic near it, so a busy plant is slower.
+      Needs the current bridge firmware. Status and help wanted:
+      https://github.com/CappyT/freedo/issues/42. Off by default.

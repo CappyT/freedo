@@ -40,6 +40,11 @@ if [ "$transmit" = true ]; then
   set -- "$@" --tx
 fi
 
+airtime_limit=$(jq -r '.airtime_limit // false' "$options")
+if [ "$airtime_limit" = true ]; then
+  set -- "$@" --airtime-limit
+fi
+
 # Tell Home Assistant where the API is, so the integration needs no address.
 # The Supervisor pushes a message only when its config changed, and the stable
 # and the beta add-on take turns: the start time makes every start a change, so

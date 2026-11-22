@@ -14,3 +14,13 @@ configuration:
     description: >-
       Invia frame via radio. Disattivato significa dry-run. Spegni il bridge
       commerciale prima di attivarlo.
+  airtime_limit:
+    name: Limite di airtime (alpha)
+    description: >-
+      Alpha, non verificato su un impianto. Mantiene l'airtime orario sotto il
+      budget ETSI di 36 s. Il
+      bridge rifiuta oltre il limite e la radio rinvia parte del traffico
+      vicino al limite, quindi un impianto carico è più lento. Richiede il
+      firmware del bridge attuale. Stato e aiuto richiesto:
+      https://github.com/CappyT/freedo/issues/42. Disattivato per impostazione
+      predefinita.

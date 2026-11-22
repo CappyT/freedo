@@ -53,8 +53,8 @@ The log says how long each wait is.
 
 ## Options
 
-The options `serial_port`, `api_token` and `transmit` work as in the stable add-on. This add-on has
-no option of its own.
+The options `serial_port`, `api_token`, `transmit` and `airtime_limit` work as in
+the stable add-on. `airtime_limit` is alpha and not verified on a plant: see [status and help wanted](https://github.com/CappyT/freedo/issues/42). This add-on has no option of its own.
 
 A configuration saved by a release up to 0.7.0 holds the option `import_stable_state`. The option has
 no effect, and the Supervisor logs a warning about it at each start. Open the Configuration tab and

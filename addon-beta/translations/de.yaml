@@ -14,3 +14,12 @@ configuration:
     description: >-
       Sendet Frames per Funk. Aus bedeutet dry-run. Schalte die kommerzielle
       Bridge aus, bevor du dies einschaltest.
+  airtime_limit:
+    name: Airtime-Limit (Alpha)
+    description: >-
+      Alpha, nicht an einer Anlage geprüft. Hält die stündliche Sendezeit
+      unter dem ETSI-Budget von 36 s. Die Bridge
+      lehnt darüber ab und das Radio verschiebt nahe der Grenze einen Teil des
+      Verkehrs, eine ausgelastete Anlage ist also langsamer. Benötigt die
+      aktuelle Bridge-Firmware. Stand und Hilfe gesucht:
+      https://github.com/CappyT/freedo/issues/42. Standardmäßig aus.

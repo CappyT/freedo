@@ -31,6 +31,7 @@ before you use it.
 | `serial_port` | empty | The serial port of the radio bridge. Empty means no radio: the daemon only serves its API. |
 | `api_token` | empty | The bearer token of the API. Empty means the add-on creates one on the first start. |
 | `transmit` | off | Send frames on air. Off is dry-run: the daemon listens and decides, and sends nothing. |
+| `airtime_limit` | off | Alpha, not verified on a plant: [status and help wanted](https://github.com/CappyT/freedo/issues/42). Keep the hourly airtime under the ETSI budget: 36 s. The bridge refuses above it and the radio defers some traffic near it, so a busy plant (about 100 to 120 s an hour on 9 devices) is slower. Needs the current bridge firmware. See Airtime budget in docs/OPERATION.md of the project. |
 
 The add-on starts in dry-run. Turn Transmit on only after the
 [first radio session](https://github.com/CappyT/freedo/blob/main/docs/OPERATION.md#first-radio-session)

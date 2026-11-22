@@ -89,6 +89,16 @@ if contains "running freedo 0.6.0 (stable add-on)" "$out" && contains "RAN 0.6.0
 else no "stable starts with a leftover channel option: $out"; fi
 if [ ! -d "$sd/channel" ]; then ok "stable removes the old channel cache"; else no "stable removes the old channel cache"; fi
 
+# --- stable: the airtime limit option becomes a daemon flag -------------------
+printf '{"api_token":"tok","transmit":false,"airtime_limit":true}\n' > "$sd/options.json"
+out=$(run_case "$sd" "$share" "$work/stable-bin" "$stable") || true
+if contains "--airtime-limit" "$out"; then ok "stable passes the airtime limit to the daemon"
+else no "stable passes the airtime limit to the daemon: $out"; fi
+printf '{"api_token":"tok","transmit":false,"airtime_limit":false}\n' > "$sd/options.json"
+out=$(run_case "$sd" "$share" "$work/stable-bin" "$stable") || true
+if contains "RAN 0.6.0" "$out" && ! contains "--airtime-limit" "$out"; then ok "stable passes no airtime limit flag while the option is off"
+else no "stable passes no airtime limit flag while the option is off: $out"; fi
+
 # --- stable: nothing is copied to the share folder ----------------------------
 if [ ! -e "$share/freedo/stable" ] && grep -q "ran 0.6.0" "$sd/freedo-state.db"; then
   ok "stable writes no copy of the state to the share folder"
