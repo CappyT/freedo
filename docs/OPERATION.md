@@ -17,6 +17,9 @@ sends nothing.
 | `--state <file>` | Name the database. |
 | `--addr`, `--api-token-file`, `--health-public`, `--insecure-no-auth` | See [API.md](API.md#address-and-authentication). |
 | `--beacon <duration>` | Longest interval of the Router Advertisement. Default 10 minutes. `0` disables it. |
+| `--lbt` | Listen before the first frame of a CSL job and defer the job while the channel is busy. Default off. Needs bridge firmware with `CMD_LBT`. See [Listen before talk](#listen-before-talk). |
+| `--lbt-threshold <dBm>` | Level above which the channel counts as busy with `--lbt`, from -120 to -20. Default -80. |
+| `--airtime-limit` | Alpha, not verified on a plant ([status](https://github.com/CappyT/freedo/issues/42)). Keep the hourly airtime under the ETSI budget, 36 s, or 100 s with `--lbt`. Default off. Needs bridge firmware that takes the budget. See [Airtime budget](#airtime-budget). |
 | `--debug-api` | Enable the debug routes. |
 | `--version` | Print the build stamp. |
 
@@ -412,9 +415,11 @@ The receiver needs a frequency calibration (register FSCTRL0) once for each chip
 calibrates itself: you do not need a shell or a stopped daemon.
 
 Without a stored calibration, the daemon starts the receiver on FSCTRL0 0x34, the register this
-radio module needs. The hardware frequency offset compensation absorbs up to 21 units of residual
+radio module needs. The chip configuration loads 0x34 too, so the developer tools start on it. The hardware frequency offset compensation absorbs up to 21 units of residual
 offset, so the receiver hears the devices before the calibration. Nothing blocks pairing or
-transmit while `calibrated` is `false`.
+transmit while `calibrated` is `false`, with one exception: while the radio holds a register other
+than the home value, a scan step or a candidate, it defers the Router Advertisement bursts and the
+CSL bootstrap trains. An empty plant, or a new one, stays on 0x34 until a device is paired.
 
 When the database holds no calibration, the receiver calibrates itself on the frames of the paired
 devices. It reads the frequency error of each uplink that it receives in a plain receive window.
@@ -423,8 +428,11 @@ transmission, because their reading is not a measurement. On an empty plant the 
 start when the first device is paired and sends its own uplinks. After 20 readings the radio
 computes the correction. A correction inside +-8 units, half the compensation margin, ends the
 measurement on the current register. Outside that band the radio moves the register by the
-correction and measures one more round. After at most three rounds it keeps the register and the
-daemon stores it. The band is wide because the measurement on air reads a few units off the bench
+correction and measures one more round, with at most three writes. A round that ends on a write
+or on a clipped reading is never a result: only a round that finds the register inside the band
+ends the measurement, and only then does the daemon store it. When the round after the third
+write is still outside the band, `calibration.state` is `unsettled`, the radio keeps the register
+and the daemon stores nothing. The band is wide because the measurement on air reads a few units off the bench
 value: see [PROTOCOL.md](PROTOCOL.md#freqest-and-autotune). The log shows one line for each register
 write, `receiver calibration: round 1: correction -13 on 20 frames of 4 sources, FSCTRL0 0x34 ->
 0x27`, and one line for the result: `receiver calibration: FSCTRL0 0x27 measured on 20 frames of 4
@@ -432,9 +440,53 @@ sources, stored`. At the next start the daemon writes the stored register once a
 measures nothing. A session that hears too few frames stays in `measuring`, and the next start
 measures again.
 
+A receiver that is far from the carrier decodes no frame, so no reading can move its register.
+The register scans in this case only. The scan starts when the installation has at least one
+device and no frame from a device of the installation arrived for 10 minutes. A frame of another
+network, or of the commercial coordinator, does not count. The radio steps the register by 30
+units around its home value, alternately up and down across the range of the register, 3 minutes
+for each step. The home value is the stored calibration, or 0x34 when none is stored. The first
+step that decodes a frame of a device ends the scan and becomes the candidate: the register stays
+on it, and the normal rounds measure from there. The log shows `receiver calibration: scan step 1
+of 8`.
+
+The daemon keeps and stores the candidate only when a round settles inside +-8 units. When the
+rounds end outside the band, or no round settles within 30 minutes, the radio writes the home value
+back and holds the scan for 1 hour, as after a pass that decoded nothing. The Router Advertisement
+bursts and the CSL bootstrap trains go out on the home value during the hold. A write that the link
+loses leaves the register unknown: the radio tries the home value again every 5 s until it works,
+without comparing it to the value that the host last wrote, and a scan step whose write failed ends
+the pass. The write of a correction in a measurement round is the same: the radio writes that
+correction again every 5 s, collects nothing until it works, and the daemon never stores a register
+that the chip may not hold. While a register is unknown, `radioWarnings` has a line that says so and
+the long transmissions wait. `calibration.candidate` in
+`GET /api/health` is `true` while a candidate runs, and `radioWarnings` has a line that names the
+candidate register, the home value and the deadline. A plant with sparse uplinks can need more
+than 30 minutes for the 20 readings of a round. It then goes back home and scans again after
+the hold.
+
+A pass that decodes no frame from a device restores the home value and waits 1 hour before the
+next pass. Opening a pair window stops the scan too, restores the home value before the window
+opens when no CSL job is out, and holds the scan back until 10 minutes after the window. A pair window ends a candidate too. The transmit carrier
+moves with the receive register. While a scan step, a candidate, a restore that did not work yet or
+the reset write of `POST /api/radio/calibrate` that waits for the loop holds another register than
+the home value, the daemon defers the Router Advertisement bursts and
+the CSL bootstrap trains. They go out again when the
+register is the home value, or when the daemon stores the candidate. `radioWarnings` in
+`GET /api/health` has a line while the radio scans, while it measures a candidate and after a pass
+that decoded nothing: check the antenna, the module and that a device transmits.
+
+After a calibration, the radio keeps the readings of the frames it hears. When enough of them
+arrive, `calibration.residual` in `GET /api/health` is the offset they still read. A residual
+beyond +-8 units adds a line to `radioWarnings`: the module drifted. Press Calibrate again.
+
+The radio also runs the calibration of the frequency synthesizer (SCAL) once every hour, and
+reads the lock back. A chip that does not lock holds every transmission: see
+[Synthesizer lock](#synthesizer-lock).
+
 Read the state in `GET /api/health`: `calibrated` and `calibration.state`, which is `stored`,
-`measuring` or `measured`. In `measuring`, `calibration.readings` of `calibration.want` shows the
-progress. See [Receiver calibration](API.md#receiver-calibration). The radio step of the page First
+`measuring`, `measured` or `unsettled`. In `measuring`, `calibration.readings` of
+`calibration.want` shows the progress. See [Receiver calibration](API.md#receiver-calibration). The radio step of the page First
 setup shows the same count. The count stays at 0 until a device is paired and talks. If it stays at
 0 after that, the bridge hears nothing: check the board and the antenna.
 
@@ -448,6 +500,246 @@ For a bench without a running daemon, the developer tool `freedo-dev autotune` m
 the same value: see [CONTRIBUTING.md](../CONTRIBUTING.md#radio-calibration). The measurements are in
 [PROTOCOL.md](PROTOCOL.md#freqest-and-autotune).
 
+## Bridge firmware level
+
+The daemon needs bridge firmware v2.11 or later. The firmware prints its level in the banner,
+for example `CC1101BRIDGE v2.11 (0.4.0)`, and the daemon logs it at start.
+
+Firmware v2.11 adds three things that the daemon relies on:
+
+- Every serial request ends with a CRC-8 byte. The firmware drops a request with a wrong CRC and
+  answers `ST_BAD_CRC`. The daemon treats it as a lost request and counts it in `serialErrors`.
+- The firmware refuses every transmit command until the daemon sends `CMD_CONFIGURED`, which comes
+  after the register load. A chip that the ESP32 or the CC1101 reset has no register set, and the
+  firmware then answers `ST_UNCONFIGURED`. The daemon ends the radio loop at once, and the
+  supervisor restarts it and configures the chip.
+- The firmware counts the time on air of the last hour. It refuses a transmission above a budget
+  only when the airtime limit is on, and it is off by default: see [Airtime budget](#airtime-budget).
+
+The firmware also drops its coordinator, its pair window and its queue after 5 s with no request.
+The idle loop sends a request at least every 1.25 s: a receive window of 250 ms waits for its reply
+for 1.25 s at most, and so does every request with no window of its own. A lost reply stretches
+the gap to the reply wait of that request, then 100 ms of backoff follow. A queue poll waits 2 s.
+PAIRWIN, a train, a Router Advertisement burst and the register check after an expired CSL job
+wait 4.5 s: the loop can send them while a CSL job is out, and the firmware runs them when the CSL
+transaction in progress has ended, up to 3.9 s. The idle register check, the idle register writes
+and the synthesizer calibration (XFER and STROBE) keep the 1.25 s, because no transaction can hold
+them back: two lost replies in a row stay under the 5 s of the firmware, which counts from the
+arrival of its last request and the end of its last command.
+
+A bridge below v2.11 does not start the radio. Before the daemon closes the port, it sends the
+bridge a queue flush and a chip reset, so that a bridge that a session left armed stops its
+transmitter. A firmware that predates the CRC byte reads those requests and ignores the last byte. The
+daemon keeps running as with no bridge, in dry-run, and `GET /api/health` answers `503` with `radioError`, for example:
+
+```text
+bridge firmware v2.10 found, v2.11 or later required: flash firmware/cc1101_bridge, see docs/OPERATION.md (Bridge firmware level)
+```
+
+Fix: flash firmware v2.11 or later, see the
+[firmware README](../firmware/cc1101_bridge/README.md#flash-a-released-image), and restart the
+daemon. A bridge that answers at neither 230400 nor 921600 baud stops the start with a message
+that names both rates.
+
+A v2.11 build from before the per-minute airtime buckets reports the level v2.11, but it answers
+`CMD_AIRTIME` with 8 bytes and refuses the load. The daemon then runs as with no bridge, like for an
+old level, and `radioError` says that the firmware has the old AIRTIME command and that you flash
+the firmware of the release of the daemon. The daemon does not try this bridge again.
+
+The developer tools that transmit through raw SPI (the `freedo-dev` commands that call `Send`)
+are not in the airtime count of the firmware. Do not use them for a long session.
+
+## Airtime budget
+
+The firmware adds up the time on air of every frame it sends, over a sliding hour. The count is
+always on and `GET /api/health` reports it as `airtime`. By default nothing refuses or defers a
+transmission for it: the firmware has no budget (`airtime.budgetMs` is 0) and the daemon holds
+nothing back. A plant of 9 devices needs about 100 to 120 s an hour, and a cap would throttle it.
+
+`--airtime-limit` (add-on option `airtime_limit`) turns the limit on. Alpha, not verified on a plant: [status and help wanted](https://github.com/CappyT/freedo/issues/42). It is off by
+default. The budget follows the cumulative on-time limit of the 868.0 to 868.6 MHz band under polite
+spectrum access (EN 300 220-2, clause 4.6, per 200 kHz channel): 36 s an hour (1 %) without
+`--lbt` and 100 s an hour with it. The daemon sends the budget to the firmware in `Configure`,
+with the airtime load, and at every start: the firmware has no budget after a reset. With the
+limit on:
+
+- The firmware refuses a transmission that starts above the budget with `ST_AIRTIME` (`1D`). A job
+  that started sends all its frames, so one job can cross the budget. An Enhanced ACK is always
+  sent.
+- From 90 % of the budget the daemon holds back the Router Advertisement bursts and the CSL
+  bootstrap trains, the two long transmissions. It sends them again under 80 %. The log shows a
+  warning at each change.
+- A job or a command that the firmware refuses is deferred, not failed: the daemon tries it again
+  after one minute. The daemon does not build a Router Advertisement burst while the radio defers
+  it: the log says so once for each period of deferral.
+- The bootstrap trains are paced: see [Bootstrap pace](#bootstrap-pace).
+- Known limits of the alpha:
+  - A deferral holds the Router Advertisement bursts and the bootstrap trains for any origin,
+    also for a user command. A user command to a device that has no anchor goes out with no train
+    and ends with no anchor, and the daemon asks again.
+  - A job that always asks for a train is refused while the radio defers, whatever the anchor:
+    pair, auth, the link-maintenance echo and a fragmented datagram (a firmware block, a large
+    config write). The echo keeps its probe and goes out when the deferral ends.
+  - A one-frame job to a device that has an anchor goes out while the radio defers.
+  - A job to a device with a known anchor is not held by the pace. If the anchors of several
+    devices miss, the firmware sends a train for each of those jobs, and more than 4 trains can
+    start in a minute. The completion counts the train, so the pace holds the next train of an
+    unknown device.
+- `airtime` in `GET /api/health` has `limit` `true`, `budgetMs`, `deferring` and `overBudget`.
+  `radioWarnings` has a line while the hour is above the budget or the radio defers.
+
+With the limit off the bridge must run the firmware of this release. An older v2.11 build has a
+fixed cap of 100 s an hour and refuses above it. The log says so once, and `GET /api/health` shows
+`airtime.budgetMs` above 0 with `limit` `false`: flash the bridge. The host starts no deferral for
+that cap, and it holds an echo that the bridge refuses for 60 s.
+
+The cost: with a plant that needs more than the budget, the radio defers often, the bootstrap
+trains wait and commands are slower. The channel-busy refusal of `--lbt` is separate and retries
+after 2 s.
+
+### Bootstrap pace
+
+A CSL bootstrap train is 252 frames and about 1 s on air. After a restart of the daemon no device
+has a sample anchor in the bridge, so each queued job asks for a train. The 9 devices of the bench
+sent 15 trains in the 879 s of a log after a restart. The daemon starts the trains at least 2 s
+apart, except the echo and the fragmented jobs, which skip that cooldown. With the airtime limit on
+it also starts at most 4 trains in any minute, for all devices together (a job to a known anchor
+is the exception below). With the limit off (the default) there is no limit of trains in a minute.
+With the limit off a queued job that asks inside the 2 s after the last train waits for the rest
+of them, where before it went out with no train. With the limit off the train that an echo sends
+on a known anchor starts no cooldown. A train that a
+job needs and cannot start is deferred: the job stays in the queue of its device, keeps its tries,
+and asks again. A job over the limit asks again when the oldest train of the minute leaves the
+window. A job that asks inside the 2 s after the last train waits for the rest of them in the same
+way, and does not go out with no train. A deferral does not drop a job. The log shows
+`CSL bootstrap train deferred: ... paced`, once a minute at most.
+
+With the airtime limit on, a job that asks for a train books a slot when it starts. The bridge sends a train only when it
+has no anchor for the device. A job that ran on an anchor sent about 22 wake frames and no train,
+and its slot returns when the job completes. The daemon holds the anchor of a device as known for 10
+minutes after the last Enhanced ACK of any job to it, with the bootstrap flag or without it. A
+train of one period that the device did not answer ends the known anchor at once (limit on only:
+with the limit off the next job uses the anchor). A job to a device with a known anchor, such as a
+firmware transfer or the link-maintenance echo, is never held by the pace and books no slot. If the
+firmware sends a train for it anyway (the anchor missed), the completion counts that train in the
+window of the minute and starts the 2 s cooldown (limit on only). The first frame of a batch
+decides, and the retry cooldown of the device does not start. So a burst of jobs to known anchors
+that all miss can exceed 4 trains in a minute: see the limits of the alpha. A job that sent a train
+keeps its slot for the minute. The
+link-maintenance echo needs its train for a device with no known anchor, so the pace holds it like
+a queued job: it keeps its probe and goes out at a later tick, and it never goes out with no train.
+A held echo does not stop the echoes of the other devices, and it is not asked again at each tick:
+it waits the retry that the pace named, and at least 2 s. While the radio itself holds long
+transmissions (synthesizer, scan, airtime deferral) it waits until the hold ends, and 60 s at most. A fragmented datagram books one slot for
+all its frames, and its first frame decides. A fragmented response that the pace refuses goes out
+whole on the anchor, with no train for any fragment. A job that the firmware turned away before
+its first frame returns its slot. While jobs that have not completed hold the four slots, a job
+that waits asks again after 2 s.
+
+The pace serves a job that carries a user command before a refresh. A user command is a write that
+the API or Home Assistant asked for: setpoint, mode, overlay, boost, child lock, open window,
+identify, calibrate, reboot, display, pair, the home and away switch and the config write of the
+API. A refresh is traffic that the daemon starts: zone measure and notify, config pushes of the
+installation, time, reads, schedule block changes and the firmware transfer. A device whose queue
+holds a user command counts as a user command for the whole queue, because the train that opens
+the link serves every job behind it. A refresh gives way while a user command waits for a slot,
+with the limit on or off. Jobs on an anchor have no order by origin. A
+waiting job that does not ask again within 5 s of its retry time stops holding the refreshes back.
+A response to a device request, such as the CoAP acknowledgement of a report, has no retry of its
+own: over the limit it goes out on the anchor the bridge holds, with no train, and the device asks
+again. `GET /api/health` shows the devices that wait in `bootstrap.waiting` and the limit of trains in a
+minute in `bootstrap.perMinute` (0 with the airtime limit off).
+
+The firmware keeps the count in 61 buckets of one minute and loses it at each reset of the ESP32,
+and opening the serial port can reset the ESP32. The daemon therefore stores the buckets and their
+time in its database. It stores the first reading after it opens the bridge. It stores each later
+reading only when its buckets changed, so a radio that sends nothing writes the database once. It
+stores the last reading again at a clean shutdown, after the radio read the firmware a last time.
+The stored buckets move forward by the whole minutes since they were stored, and the sub-minute
+rest of that time stays, so a store every 10 to 50 s still ages them. The array with the larger
+total wins, whole: the moved stored buckets or the reading. A tie keeps the stored array. So an
+ESP32 that reset alone and reports zeros does not erase the count that the database holds, and no
+busy minute is copied into other buckets.
+
+The minute of the firmware and the minute of the daemon have different phases: the daemon drops a
+bucket up to 59 s after the firmware does. After the first reading of a run, the daemon therefore
+compares a reading with the stored buckets moved one minute more. A reading that holds new airtime
+wins in that gap, and the count never lacks the airtime of the last minute at a stop. A kill with no
+final store can lose the airtime that the bridge sent after the last reading, up to 10 s of it, when
+the stored buckets hold a minute that the firmware already dropped. A
+reading with an earlier time than the stored one means that the wall clock went back: the daemon
+keeps the buckets and gives them the time of the reading, so they age from there.
+
+After the daemon opens the bridge and loads the registers, and before it sends `CMD_CONFIGURED`, it
+moves the stored buckets forward by the whole minutes that passed, drops the buckets older than
+61 minutes, and loads them into the firmware with `CMD_AIRTIME` and a 122-byte payload (126 bytes with the
+airtime limit on: the buckets and the budget in ms as `uint32` big endian). A new
+database loads zeros. The firmware compares the total of the load with the total of its own
+window. When the load total is larger, the window takes the load. Otherwise the window keeps its
+own count. So a load never lowers the count, also when the open did not reset the ESP32.
+`CMD_AIRTIME` with no payload reads the count: `used` and the budget in force (0 means no cap) in milliseconds as `uint32` big endian, then the 61
+buckets as `uint16` big endian in milliseconds, oldest first.
+
+## Listen before talk
+
+`--lbt` is experimental and the add-ons do not offer it. On a 9-device plant with no other 868 MHz
+traffic, a 30 minute run at -80 dBm found the channel busy about 40 times a minute, on every device.
+The cause is not measured yet: the threshold, the RSSI offset or the moment of the reading.
+
+`--lbt` makes the firmware listen before the first frame of a CSL job. The daemon sends the
+setting in `Configure`, after the register load and the airtime load and before `CMD_CONFIGURED`,
+as `CMD_LBT` with 2 bytes: the switch (0 or 1) and the threshold in dBm as a signed byte. The
+firmware echoes the 2 bytes. The daemon sends the setting at every start, also with the switch off,
+so that a bridge that did not reset does not keep the setting of an earlier run. A firmware without
+`CMD_LBT` starts with the switch off. With `--lbt` it is a firmware that needs a flash, and the
+daemon runs as with no bridge.
+
+A job that finds the channel busy is deferred, not failed: nothing went on air, the job keeps its
+tries and the daemon sends it again after 2 s. `GET /api/health` shows `lbt` with `enabled`,
+`thresholdDbm` and `busy`, the number of jobs and bursts that found the channel busy since the
+daemon started. The reason for the default and for the Enhanced ACK, which has no listen, is in
+[Channel access](PROTOCOL.md#channel-access).
+
+## Synthesizer lock
+
+The CC1101 cannot hold the carrier while its synthesizer is not locked. After every SCAL the
+daemon reads FSCAL1 back: the value 0x3F means no lock. One calibration makes three tries.
+
+At start, a bridge that fails its configuration does not stop the daemon. The cause can be a
+synthesizer that does not lock, or any other error of the register load. The daemon then runs as
+with no bridge: on a mock radio, in dry-run. `GET /api/health` answers `503` with `radioError`
+that names the cause, for example:
+
+```text
+configure the bridge: configure: the synthesizer did not lock after SCAL: 3 attempts: the daemon tries again every 1m0s
+```
+
+The start loads the registers and the airtime, sends `CMD_CONFIGURED`, and then writes the
+calibration seed into FSCTRL0, which runs SCAL again. A seed write that fails for any reason, a
+synthesizer that does not lock or a reply that the link lost, is a failed start: the register can
+hold the seed with no lock result.
+
+The daemon opens the bridge again every 60 s and runs this whole check: the register load and the
+seed write with its lock. When a try works, the real start works too, so the daemon restarts itself
+and runs the normal start: the register load, the airtime load, `CMD_CONFIGURED`, the stored receiver
+calibration and the `--tx` setting of the command line. A seed that does not lock keeps the daemon on the mock
+radio and does not restart it. A bridge with firmware below v2.11
+is not tried again: it needs a flash, see [Bridge firmware level](#bridge-firmware-level).
+
+While the daemon runs, a synthesizer that is not locked at the hourly calibration, or after a
+register write, holds the radio:
+
+- The radio transmits nothing: no Enhanced ACK, no Router Advertisement burst, no CSL job and no
+  pair window beacon. A pair window that is open closes, and a request to open one is refused. The
+  refusal also covers a lock lost by the register write that the open sends before the window.
+  The receiver stays on and hears frames.
+- The radio calibrates the synthesizer again every minute. The warning in `radioWarnings` says so.
+  A calibration that locks lifts the hold, and the radio sends again.
+- A job that the hold refuses is deferred: the daemon tries it again after one minute.
+- After 3 failed retries in a row the radio loop ends, 3 minutes after the first failed
+  calibration. The daemon stops, and the supervisor starts
+  it. The start opens the bridge and configures it as above.
+
 ## Serial link faults
 
 Symptom: the log shows lines like these, and `serialErrors` in `GET /api/health` grows.
@@ -455,8 +747,6 @@ Symptom: the log shows lines like these, and `serialErrors` in `GET /api/health`
 ```text
 rx autoack: serial link fault: reply truncated: deadline exceeded after 89/113 bytes
 CSL queue poll: serial link fault: reply truncated: deadline exceeded after 98/119 bytes
-bridge: CC1101BRIDGE v2.9 at 921600 baud
-WARNING: this firmware talks 921600 baud, which loses replies on some USB hosts
 ```
 
 Before version 0.3.1 the daemon ended with `radio loop ended: live radio owner ended`
@@ -468,11 +758,9 @@ or a lower rate from 500 kbaud in both directions. It showed on a Raspberry Pi 5
 second full-speed USB device on the same bus, and not on an x86 host. The point of loss inside
 the USB stack is not measured. Bridge firmware v2.10 and later talks 230400 baud.
 
-Fix: flash firmware v2.10 or later, see the
-[firmware README](../firmware/cc1101_bridge/README.md#flash-a-released-image). The daemon
-tries 230400 and then 921600, so an old bridge keeps working until you flash it. The daemon
-logs the banner and the rate at start. A bridge that answers at neither rate stops the start
-with a message that names both rates.
+Fix: flash firmware v2.11 or later: see [Bridge firmware level](#bridge-firmware-level). The
+daemon logs the banner and the rate at start. A request that loses a byte fails its CRC, and the
+firmware drops it instead of running a wrong command.
 
 What the daemon does with a lost reply:
 

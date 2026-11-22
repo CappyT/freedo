@@ -482,8 +482,10 @@ Heating is safety relevant.
 
 - One coordinator per plant. Two coordinators on one network give duplicate answers and an
   inconsistent state. Switch the commercial bridge off before freedo transmits. As a last safeguard the
-  daemon stops to transmit for the rest of the run when it hears a data frame with its own coordinator
-  source address (`bridgePresent` in `/api/health`).
+  daemon stops to transmit for the rest of the run when it hears a frame that only the commercial
+  bridge sends: a data frame or a broadcast with its own coordinator source address, and, on a live radio,
+  an Enhanced ACK from its own EUI or a wake-up train to one of its devices (`bridgePresent` in
+  `/api/health`).
 - The daemon starts in dry-run and sends nothing until you add `--tx`.
 - Setpoints stay in range: 5 to 25 C for a room, 30 to 65 C for hot water.
 - The wall thermostat enters a zone fallback when it loses the zone owner. The modes are `hold` (last demand,

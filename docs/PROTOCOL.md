@@ -1577,7 +1577,17 @@ restart after a reboot.
   `CoAPReq.GenerateMID` asks for a new MID. `MID` is sent as given.
 - Deduplication. freedo keeps the answer to each CON that it serves itself, per device
   and MID, for `EXCHANGE_LIFETIME` (247 s), at most 8 per device. A byte-identical
-  retransmission gets the same answer and is not processed again. The same MID with
+  retransmission gets the same answer and is not processed again. A MAC retry of the same
+  frame (same seq) repeats the answer only when the copy it retries was answered, and it does not
+  use the budget of re-acks. A CoAP retransmission (a new frame) is answered while the budget
+  lasts: the budget is one answer and one re-ack that the device acknowledged with an Enhanced ACK
+  on the Data frame. An answer in the radio queue counts until its completion, and leaves the
+  count if the completion shows no ACK (a stale anchor, a lost frame). A re-ack never uses the
+  train of one period once an answer counts. A CON whose answers the device never acknowledged is
+  answered again with the train allowed, because the device still waits. A copy over the budget
+  gets no answer, and neither do its MAC retries. A re-ack that ends with no ACK leaves the
+  budget, so a device that keeps retransmitting gets re-acks on the anchor with no train, as many
+  as its own CON retransmissions. The same MID with
   other bytes is a new request. Relayed and proxied exchanges and `time` are not
   cached. The active GETs and the proxied zone GETs are keyed by device and MID.
 - MID spaces. An answer that a device addresses to us carries a MID of our counter, so
@@ -2042,6 +2052,37 @@ holds no sample for behind a train of one period (253 wake frames, first rendezv
 a long watch capture). It sends the echo to a synced device behind the short train. freedo
 sends the echo with `CSLBootstrapAlways`: the bridge uses the anchor when it has one with no
 miss, else the train of one period. The echo does not end as "no target sample anchor".
+
+### Channel access
+
+The bridge listens before it transmits only when the host turns the listen on (`CMD_LBT`, daemon
+flag `--lbt`). The switch is off by default. With the switch on, the firmware listens before the
+first frame of a CSL job. A level above the threshold (default -80 dBm) answers the job with
+status `0x1b`, which is `cc1101.ErrCSLTxBusy`. The job goes back to its queue and the daemon
+sends it again after 2 s. The health field `lbt.busy` counts these answers. The threshold follows
+the ETSI clear channel limit for a 200 kHz channel: -79 dBm (EN 300 220-2, polite spectrum
+access, with a listen of 160 us at least). A lower threshold is allowed and defers more.
+
+The switch is off because a listen that ended where the train starts lowered the share of CSL
+jobs that a device answered from 81.7 % to 43.9 % in the bisection of firmware v2.8. The cause
+is open. Only one job found the channel busy in that run.
+
+An Enhanced ACK goes out without a listen. The commercial coordinator sends it 0 to 1 ms after the
+end of the Data frame, and the device waits for it in that window. A listen needs the receiver to
+settle (about 230 us, calculated and not measured) and 160 us of measurement, and the ACK would
+miss the window. The peer has just used the channel, so the ACK is the second half of a dialogue
+that the peer started. The firmware counts the ACK in its airtime count. The standard has no
+text that exempts an ACK from the listen: this is a decision of the project, not a rule of the
+standard.
+
+The cumulative limit of the band is 1 % of an hour, 36 s, in a 200 kHz channel, and 100 s an hour
+with a listen before talk (EN 300 220-2, clause 4.6). The firmware counts the time on air of every
+frame. The airtime limit is optional and off by default: the firmware then has no budget and
+refuses nothing, because a plant of 9 devices needs about 100 to 120 s an hour. The limit is alpha
+and not verified on a plant: [status and help wanted](https://github.com/CappyT/freedo/issues/42). With it, the host sends the
+budget (36000 ms, or 100000 ms with `--lbt`) in the airtime load of `CMD_AIRTIME`: 126 bytes, the
+61 buckets and the budget as `uint32` big endian. The firmware refuses a transmission above the
+budget with `1D`, and has no budget after a reset. See [Airtime budget](OPERATION.md#airtime-budget).
 
 ### FREQEST and autotune
 

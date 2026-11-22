@@ -818,8 +818,10 @@ at least one alarm. `/api/nodes` shows the same data as `LowBattery`, `Fault`, `
   plus 50 mV per cell. `BatteryPct` is linear per cell, 0 % at the threshold and 100 % at
   1500 mV.
 - A device is `offline` after `offline_after_sec` without a frame.
-- `bridgePresent` turns true when the daemon hears a data frame with its own coordinator
-  source address. The daemon then stops to transmit for the rest of the run, and
+- `bridgePresent` turns true when the daemon hears a frame that only the commercial bridge
+  sends: a data frame or a broadcast with its own coordinator source address, and, on a live
+  radio (`--port`), an Enhanced ACK with its own EUI as source or a wake-up train to a device of
+  the installation. The daemon then stops to transmit for the rest of the run, and
   `transmitAllowed` is false. This is a last safeguard. It does not replace switching the
   commercial bridge off.
 - `zoneFallback` lists the zones that the wall thermostat reports in fallback (`6460`). The
@@ -840,8 +842,53 @@ at least one alarm. `/api/nodes` shows the same data as `LowBattery`, `Fault`, `
   [Receiver calibration](#receiver-calibration). While the daemon waits after an import it answers
   `200` with `importWait` and no other state: see
   [State export and import](#state-export-and-import).
+- `radioError` in `GET /api/health` is a text. It exists when the live radio loop ended, when
+  the bridge firmware is older than v2.11 or has the old AIRTIME command, and when the bridge
+  fails its configuration at start,
+  for example because the synthesizer does not lock. In the last two cases the daemon runs in
+  dry-run as with no bridge, and `mode` is `mock`. For old firmware the text names the firmware
+  found and what to flash: see [Bridge firmware level](OPERATION.md#bridge-firmware-level).
+  For a failed configuration the text names the cause, and the daemon opens and configures the
+  bridge again every 60 s. When that works, the daemon restarts and starts the live radio: see
+  [Synthesizer lock](OPERATION.md#synthesizer-lock).
+- `airtime` in `GET /api/health` is the time on air of the last hour. It exists in live mode once
+  the bridge answered. `usedMs` is the time the firmware had the transmitter on in the last hour,
+  `limit` is `true` when the airtime limit is on (`--airtime-limit`, alpha, off by default,
+  [status](https://github.com/CappyT/freedo/issues/42)). Without the limit the count refuses nothing. `budgetMs` is the budget that the bridge reports: 0
+  with the firmware of this release unless the limit is on, and above 0 on an older v2.11 build with
+  a fixed cap (`share` follows it, and `deferring` and `overBudget` stay `false`). With the limit
+  `budgetMs` is the budget of the firmware (36000 without `--lbt`, 100000 with it), `share` is `usedMs / budgetMs`, `deferring`
+  is `true` from 90 % of the budget until the share is under 80 % and the daemon then holds back
+  Router Advertisement bursts and CSL bootstrap trains, and `overBudget` is `true` while `usedMs` is
+  above `budgetMs`. See [Airtime budget](OPERATION.md#airtime-budget).
+  The daemon stores the per-minute count of the firmware in its database, so that the count
+  survives a restart of the bridge.
+- `downlink.kinds` in `GET /api/health` exists in live mode. It counts the traffic that the radio put
+  on air since the daemon started, by kind of job: `measure` (zone measure push), `notify` (zone
+  notification to an observer), `zone_relay`, `reply` (answer to a device request), `ra` (Router
+  Advertisement burst), `echo` (link-maintenance echo), `fw` (firmware block), `fw_state`, `get`,
+  `command` (setpoint, mode, hot water, child lock, open window, calibrate, reboot and the other
+  user writes), `rewrite`, `identify`, `config`, `auth`, `pair` and `other`. Each kind has
+  `attempts`, the jobs that sent at least one frame (one for each frame of a fragmented
+  datagram), and `airtimeMs`, an estimate of their time on air from the frame counts and sizes.
+  The total of the firmware is `airtime.usedMs`. A kind appears after its first job.
+- `lbt` in `GET /api/health` exists in live mode. `enabled` and `thresholdDbm` are the setting that
+  the bridge got at the start (`--lbt`, `--lbt-threshold`), and `busy` is the number of CSL jobs and
+  Router Advertisement bursts that found the channel busy since the daemon started. See
+  [Listen before talk](OPERATION.md#listen-before-talk).
+- `bootstrap` in `GET /api/health` exists in live mode. `waiting` is the number of devices whose
+  queued job waits for a slot to start a CSL bootstrap train, and `perMinute` is the limit of
+  trains that start in one minute (4 with the airtime limit on, 0 for no limit). See [Bootstrap pace](OPERATION.md#bootstrap-pace).
+- `radioWarnings` in `GET /api/health` is a list of texts, and it exists only when the list is
+  not empty. A line means that the radio needs a person: a register scan, because no device
+  was heard for 10 minutes, or a scan pass that decoded nothing, a register that no round
+  confirmed, a residual beyond +-8 units, a synthesizer that is not locked, or an airtime budget
+  that is nearly spent (airtime limit on). While the synthesizer is not locked the radio transmits nothing and
+  calibrates again every minute, and the loop ends after 3 failed retries: see
+  [Synthesizer lock](OPERATION.md#synthesizer-lock).
 - `serialErrors` in `GET /api/health` is the number of serial replies that the link to the
-  bridge lost since the daemon started. It exists in live mode. A reply that stops short is
+  bridge lost since the daemon started. A request that the firmware dropped for a bad CRC
+  counts too. It exists in live mode. A reply that stops short is
   discarded and the daemon reads the next one, so the radio frame inside it is lost. The live
   radio loop ends only when one kind of exchange, the queue poll or the receive window, failed
   every time for 30 s. A count that keeps growing points to the USB link: see
@@ -856,12 +903,22 @@ receives, while the daemon runs. See [Radio calibration](OPERATION.md#radio-cali
   Without a stored calibration the receiver starts on `0x34`.
 - `calibrated` is `true` when the register comes from a stored or a measured calibration.
 - `calibration` holds `state`: `stored` (the register came from the database at start),
-  `measuring` (the radio collects readings) or `measured` (the radio measured the register in
-  this session). The daemon then stores a measured register and logs the result of the write.
+  `measuring` (the radio collects readings), `measured` (the radio measured the register in
+  this session) or `unsettled` (no round found the register inside the band, and the daemon
+  stores nothing). The daemon stores a measured register and logs the result of the write.
   In `measuring` it also holds `readings`, the usable readings of the round in progress, and
   `want`, the readings one round needs (20): `{"state": "measuring", "readings": 7, "want": 20}`.
   A round whose correction is inside +-8 units ends the measurement on the current register;
-  outside that band the radio moves the register and measures again, at most three rounds.
+  outside that band the radio moves the register and measures again, with at most three
+  writes. A plant that has a device, and hears no frame from a device for 10 minutes, scans
+  the register: it steps it by 30 units, 3 minutes for each step, until a frame of a device
+  decodes. `radioWarnings` has a line during the scan and after a pass that decoded nothing. An
+  empty plant never scans. The step that decoded a frame is a candidate: `candidate` is `true`
+  while the radio measures on it, for at most 30 minutes. The daemon stores the register only when a
+  round settles inside the band. Else the register goes back to the stored value, or to `0x34`.
+- `calibration.residual` is the offset in register units that the frames heard after the
+  calibration still read. It exists when enough frames arrived since the last register write. A
+  value beyond +-8 adds a line to `radioWarnings`.
 - `POST /api/radio/calibrate` deletes the stored calibration, sets the register back to `0x34`
   before the radio samples, and starts a new measurement from there. It answers `202` with the `calibration` object, which is
   `{"state": "measuring", "readings": 0, "want": 20}`. It answers `409` with `{"error": ...}` when
