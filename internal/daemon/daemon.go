@@ -68,6 +68,43 @@ type pairWindowRadio interface {
 	SetPairWindow(cc1101.PairWindow) (int, error)
 }
 
+// longTXRadio says that the live radio refuses Router Advertisement bursts and
+// CSL bootstrap trains for now: the synthesizer is not locked, a calibration scan
+// holds the transmit carrier off the devices, or the airtime limit is on and the
+// last hour is near the budget.
+type longTXRadio interface {
+	LongTXDeferred() bool
+}
+
+// defaultLBTThresholdDBm is the level of --lbt-threshold: the ETSI clear channel
+// limit for a 200 kHz channel is -79 dBm.
+const defaultLBTThresholdDBm = -80
+
+// busyRadio counts the jobs and bursts that found the channel busy.
+type busyRadio interface {
+	CSLBusy() uint64
+}
+
+// bootstrapRadio reports the CSL bootstrap trains that wait for a slot of the pace,
+// and the limit of trains in a minute (0: no limit).
+type bootstrapRadio interface {
+	BootstrapWaiting() int
+	BootstrapLimit() int
+}
+
+// downlinkKindsRadio reports the downlink traffic of a live radio by kind.
+type downlinkKindsRadio interface {
+	DownlinkKinds() map[string]radio.KindCount
+}
+
+// bridgeSettings is what the daemon sets in the bridge and the radio at the start.
+type bridgeSettings struct {
+	lbt cc1101.LBT
+	// airtimeLimit turns the airtime limit on: the firmware refuses above the
+	// budget of its listen setting, the radio defers near it and paces the trains.
+	airtimeLimit bool
+}
+
 type liveRadioStatus interface {
 	TXArmed() bool
 	RadioError() error
@@ -87,6 +124,13 @@ type calibratingRadio interface {
 	CalibrationResults() <-chan radio.CalibrationResult
 }
 
+// liveRadioHealth reports what only a live radio knows: the airtime of the last
+// hour, and the conditions that need a person.
+type liveRadioHealth interface {
+	Airtime() (radio.Airtime, bool)
+	Warnings() []string
+}
+
 // liveSerialErrors counts the serial replies the link to the bridge lost. Only a
 // live radio has a serial link, so health omits the field in the other modes.
 type liveSerialErrors interface {
@@ -94,16 +138,23 @@ type liveSerialErrors interface {
 }
 
 type daemon struct {
+	// lbt is the listen-before-talk setting the bridge got at the start.
+	lbt cc1101.LBT
 	emu *tado.EmuState
 	// inst is read on the HTTP goroutines and replaced on the engine one, so it
 	// is swapped as a whole validated installation, never edited in place.
-	inst             atomic.Pointer[tado.Install]
-	radio            radio.Radio
-	state            *stateStore
-	saveSeq          uint64
-	unsaved          bool      // an engine change owed to the database, see saveLearned
-	savedAt          time.Time // the last save the engine made itself
-	dryRun           bool
+	inst    atomic.Pointer[tado.Install]
+	radio   radio.Radio
+	state   *stateStore
+	saveSeq uint64
+	unsaved bool      // an engine change owed to the database, see saveLearned
+	savedAt time.Time // the last save the engine made itself
+	dryRun  bool
+	// radioFault is why the radio did not start, for health. The daemon runs as
+	// with no bridge.
+	radioFault       string
+	faultMu          sync.Mutex    // radioFault changes while the daemon retries the bridge
+	radioReady       chan struct{} // the bridge opens and configures again: restart to start it
 	mode             string
 	cmds             chan func()
 	dispatch         chan struct{}
@@ -225,6 +276,8 @@ type daemon struct {
 	// calMu orders the store write of a measured calibration against a
 	// re-calibration request, so a stale result never lands after the clear.
 	calMu sync.Mutex
+	// airtimeSync is the last airtime reading the daemon stored.
+	airtimeSync airtimeSync
 	// pairBridgeOpen says that the bridge firmware took the open pair window
 	// and nobody closed it yet. It belongs to the engine goroutine.
 	pairBridgeOpen bool
@@ -242,6 +295,13 @@ type daemon struct {
 	taps        map[*rxTap]struct{}
 	tapStop     chan struct{}
 	tapStopOnce sync.Once
+
+	// beaconDeferLogged: the log says that the radio defers the Router
+	// Advertisement, once for each period of deferral.
+	beaconDeferLogged bool
+	// pacedLogAt is the last time the log said that the bootstrap pace held a job
+	// that an uplink offered.
+	pacedLogAt time.Time
 }
 
 type cslAdmissionWait uint8
@@ -265,8 +325,12 @@ const (
 	// A job that found the channel busy put nothing on the air. It retries on
 	// the scale of the commercial MAC retransmission, 2 to 6 s.
 	cslBusyRetryBackoff = 2 * time.Second
-	coapRetryMin        = 0x501 * time.Millisecond
-	coapRetrySpread     = 0x280
+	// A job that the radio deferred (synthesizer, scan, airtime limit) put nothing
+	// on the air, and neither did a job that the bridge refused for the airtime
+	// budget. The hour slides, so the retry waits a minute.
+	cslAirtimeRetryBackoff = time.Minute
+	coapRetryMin           = 0x501 * time.Millisecond
+	coapRetrySpread        = 0x280
 	// beaconPoll is how often the daemon asks whether a periodic Router
 	// Advertisement is due.
 	beaconPoll = time.Second
@@ -298,6 +362,7 @@ func newDaemon(in *tado.Install, emu *tado.EmuState, radio radio.Radio, dryRun b
 		done:             make(chan struct{}),
 		radioLost:        make(chan error, 1),
 		restart:          make(chan struct{}, 1),
+		radioReady:       make(chan struct{}, 1),
 		retryAfter:       time.After,
 		retryNow:         time.Now,
 		retryRand:        randomRetryUint16,
@@ -335,6 +400,9 @@ func newDaemon(in *tado.Install, emu *tado.EmuState, radio radio.Radio, dryRun b
 	d.inst.Store(in)
 	if emu != nil {
 		emu.SetTXArmed(d.txArmed)
+	}
+	if pr, ok := d.radio.(plantRadio); ok {
+		pr.SetPlant(installPlant{d})
 	}
 	return d
 }
@@ -495,18 +563,7 @@ func (d *daemon) run(ctx context.Context) {
 		case <-maintenance.C:
 			d.linkMaintenanceTick(d.emu)
 		case <-beaconC:
-			// A dry-run holds the tick: the burst is 255 frames to log.
-			if !d.txArmed() {
-				continue
-			}
-			actions, due, err := d.emu.MaybeBeacon()
-			if err != nil {
-				log.Printf("beacon: %v", err)
-				continue
-			}
-			if due {
-				d.txActions(actions)
-			}
+			d.beaconTick()
 		case fr, ok := <-frames:
 			if !ok {
 				// A finished replay must not stop the engine: the API keeps
@@ -545,8 +602,30 @@ func (d *daemon) noteRadioLost() {
 	}
 }
 
+// noteAnswersSent tells the emulator which answers to a CON the radio queue took:
+// they count against the re-ack budget of the CON while they are in flight.
+func (d *daemon) noteAnswersSent(queued []tado.Action) {
+	for _, a := range queued {
+		if a.AnswerCounts && len(a.Bytes) >= 11 {
+			d.emu.NoteAnswerSent(a.Bytes[3:11], a.AnswerMID)
+		}
+	}
+}
+
+// noteAnswersEnded tells the emulator that answers to a CON ended, with the
+// device's Enhanced ACK or without it. The budget of re-acks is spent on answers
+// that the device acknowledged, not on frames built or sent.
+func (d *daemon) noteAnswersEnded(ended []tado.Action, acked bool) {
+	for _, a := range ended {
+		if a.AnswerCounts && len(a.Bytes) >= 11 {
+			d.emu.NoteAnswerEnded(a.Bytes[3:11], a.AnswerMID, acked)
+		}
+	}
+}
+
 func (d *daemon) handleCSLCompletion(completion radio.CSLCompletion) {
 	action := completion.Action
+	d.noteAnswersEnded([]tado.Action{action}, completion.Result != nil && completion.Result.Ack != nil)
 	target := d.queueTarget(action)
 	d.releaseCSLAdmissionWait(target)
 	d.logCSLCompletionFollow(completion)
@@ -556,8 +635,11 @@ func (d *daemon) handleCSLCompletion(completion radio.CSLCompletion) {
 	d.emu.CompleteQueuedDownlinkAttempt(action.Bytes[3:11], action.Bytes[2])
 	if completion.Result == nil || completion.Result.Sent == 0 {
 		delay := proactiveDownlinkRetryBackoff
-		if errors.Is(completion.Err, cc1101.ErrCSLTxBusy) {
+		switch {
+		case errors.Is(completion.Err, cc1101.ErrCSLTxBusy):
 			delay = cslBusyRetryBackoff
+		case errors.Is(completion.Err, cc1101.ErrAirtimeBudget):
+			delay = cslAirtimeRetryBackoff
 		}
 		retryAt := d.retryNow().Add(delay)
 		if d.emu.DeferDownlinkAttempt(action.Bytes[3:11], action.Bytes[2], retryAt) {
@@ -740,7 +822,20 @@ type linkMaintEntry struct {
 	retry int8
 	age   uint16
 	wait  uint16
+	// holdUntil is the instant before which the echo is not asked again, after the
+	// radio held it. radioHold says that the hold comes from the radio itself
+	// (airtime deferral, synthesizer, scan): the echo then waits until the hold
+	// ends, and at most until holdMax.
+	holdUntil, holdMax time.Time
+	radioHold          bool
 }
+
+const (
+	// linkMaintHoldMin is the shortest wait before a held echo is asked again.
+	linkMaintHoldMin = 2 * time.Second
+	// linkMaintHoldMax is the longest wait while the radio holds long transmissions.
+	linkMaintHoldMax = 60 * time.Second
+)
 
 func (d *daemon) initLinkMaintenance() {
 	inst := d.inst.Load()
@@ -818,14 +913,28 @@ func (d *daemon) linkMaintenanceTick(e *tado.EmuState) {
 			return
 		}
 	}
+	start := d.linkMaintCursor
 	for n := range d.linkMaintOrder {
-		i := (d.linkMaintCursor + n) % len(d.linkMaintOrder)
+		i := (start + n) % len(d.linkMaintOrder)
 		target := d.linkMaintOrder[i]
 		entry := d.linkMaint[target]
 		if entry.state == 2 || entry.retry < 0 || entry.wait != 0 {
 			continue
 		}
-		d.sendLinkMaintenanceEcho(e, target)
+		if d.echoHeld(target, &entry) {
+			continue
+		}
+		if wait, radioHold, held := d.sendLinkMaintenanceEcho(e, target); held {
+			// The radio holds the echo: it keeps its retry and waits before it is asked
+			// again, like a queued job that waits. The next device that is due goes
+			// now, and the cursor moves on as it does for an echo that went out.
+			now := d.retryNow()
+			entry.holdUntil, entry.radioHold = now.Add(wait), radioHold
+			entry.holdMax = now.Add(linkMaintHoldMax)
+			d.linkMaint[target] = entry
+			d.linkMaintCursor = (i + 1) % len(d.linkMaintOrder)
+			continue
+		}
 		entry.retry++
 		entry.wait = linkMaintPostSendTicks
 		d.linkMaint[target] = entry
@@ -835,26 +944,108 @@ func (d *daemon) linkMaintenanceTick(e *tado.EmuState) {
 	}
 }
 
-func (d *daemon) sendLinkMaintenanceEcho(e *tado.EmuState, target string) {
+// echoHeld reports that the echo of target waits after a hold of the radio. The
+// hold of the pace ends at the instant that the pace named. A hold of the radio
+// itself (airtime deferral, synthesizer, scan) ends when the radio stops
+// deferring, and at the latest at holdMax: the radio is asked every
+// linkMaintHoldMin until then. A held echo is not built again at each tick.
+func (d *daemon) echoHeld(target string, entry *linkMaintEntry) bool {
+	if entry.holdUntil.IsZero() {
+		return false
+	}
+	now := d.retryNow()
+	if now.Before(entry.holdUntil) {
+		return true
+	}
+	if lr, ok := d.radio.(longTXRadio); ok && entry.radioHold && now.Before(entry.holdMax) && lr.LongTXDeferred() {
+		entry.holdUntil = now.Add(linkMaintHoldMin)
+		if entry.holdUntil.After(entry.holdMax) {
+			entry.holdUntil = entry.holdMax
+		}
+		d.linkMaint[target] = *entry
+		return true
+	}
+	entry.holdUntil, entry.holdMax, entry.radioHold = time.Time{}, time.Time{}, false
+	d.linkMaint[target] = *entry
+	return false
+}
+
+// sendLinkMaintenanceEcho sends the probe to target. It reports held when the
+// radio held the echo back (the bootstrap pace, the airtime deferral, the
+// synthesizer or a scan): nothing went on the air, so the caller keeps the retry
+// and waits before it asks again. wait is the least time to wait, and radioHold
+// says that the radio itself holds long transmissions.
+func (d *daemon) sendLinkMaintenanceEcho(e *tado.EmuState, target string) (wait time.Duration, radioHold, held bool) {
 	if d.dryRun || e.BridgeSeen() || e.FirmwareLocked(target) {
-		return
+		return 0, false, false
 	}
 	batcher, ok := d.radio.(immediateBatchRadio)
 	if !ok {
-		return
+		return 0, false, false
 	}
 	action, err := e.LinkMaintenanceEcho(target)
 	if err != nil {
 		log.Printf("link maintenance: %v", err)
-		return
+		return 0, false, false
 	}
 	result, err := batcher.SendImmediate([]tado.Action{action}, true)
+	var paced *radio.BootstrapPaced
+	switch {
+	case errors.As(err, &paced):
+		return max(paced.RetryAfter, linkMaintHoldMin), false, true
+	case errors.Is(err, cc1101.ErrAirtimeBudget):
+		// The radio holds long transmissions (synthesizer, scan, airtime deferral):
+		// the echo waits until that ends. A refusal with no deferral to poll (the limit
+		// off and an old bridge that refuses) has no end that the daemon can see, so
+		// the echo waits the longest hold.
+		if lr, ok := d.radio.(longTXRadio); ok && lr.LongTXDeferred() {
+			return linkMaintHoldMin, true, true
+		}
+		return linkMaintHoldMax, false, true
+	}
 	if err != nil {
 		log.Printf("link maintenance: %v", err)
 	}
 	for _, ack := range result.Acks {
 		d.handleFrame(ack, false)
 	}
+	return 0, false, false
+}
+
+// beaconTick sends the periodic Router Advertisement when it is due.
+func (d *daemon) beaconTick() {
+	// A dry-run holds the tick: the burst is 255 frames to log.
+	if !d.txArmed() {
+		return
+	}
+	// A burst that the radio defers has used a frame counter, so the radio is
+	// asked before the burst is built.
+	if d.beaconDeferred() {
+		return
+	}
+	actions, due, err := d.emu.MaybeBeacon()
+	if err != nil {
+		log.Printf("beacon: %v", err)
+		return
+	}
+	if due {
+		d.txActions(actions)
+	}
+}
+
+// beaconDeferred reports that the radio refuses the Router Advertisement burst
+// for now. It logs once for each period of deferral.
+func (d *daemon) beaconDeferred() bool {
+	lr, ok := d.radio.(longTXRadio)
+	if !ok || !lr.LongTXDeferred() {
+		d.beaconDeferLogged = false
+		return false
+	}
+	if !d.beaconDeferLogged {
+		d.beaconDeferLogged = true
+		log.Printf("beacon: the radio defers long transmissions: the Router Advertisement waits")
+	}
+	return true
 }
 
 func (d *daemon) txActions(actions []tado.Action) {
@@ -935,13 +1126,42 @@ func (d *daemon) handleFrame(fr []byte, paired bool) {
 	result, err := batcher.SendImmediate(batch, !d.emu.BridgeSeen())
 	d.revertUnsubmitted(batch, append(append([]tado.Action(nil), result.Submitted...), result.Accepted...))
 	markAwaitingCSL(d.emu, result)
+	d.noteAnswersSent(result.Accepted)
+	d.noteAnswersEnded(result.Delivered, true)
 	d.completeBeacon(err == nil)
 	if err != nil {
-		log.Printf("immediate tx: %v", err)
+		var paced *radio.BootstrapPaced
+		switch {
+		case !errors.As(err, &paced):
+			log.Printf("immediate tx: %v", err)
+		case d.retryNow().Sub(d.pacedLogAt) >= time.Minute:
+			log.Printf("immediate tx: %v", err)
+			d.pacedLogAt = d.retryNow()
+		}
+		d.retryPaced(batch, result, err)
 		return
 	}
 	for _, ack := range result.Acks {
 		d.handleFrame(ack, false)
+	}
+}
+
+// retryPaced makes the queued job that the bootstrap pace deferred in the
+// immediate path ask again. An uplink offered the job and no timer is set there:
+// without this the job waits for the next uplink, and the pace counts it as a
+// waiter that never returns.
+func (d *daemon) retryPaced(actions []tado.Action, result radio.ImmediateResult, err error) {
+	var paced *radio.BootstrapPaced
+	if !errors.As(err, &paced) {
+		return
+	}
+	flown := append(append([]tado.Action(nil), result.Submitted...), result.Accepted...)
+	for _, a := range actions {
+		if !a.QueueAttempt || slices.ContainsFunc(flown, func(f tado.Action) bool { return bytes.Equal(f.Bytes, a.Bytes) }) {
+			continue
+		}
+		d.scheduleQueuedRetryAfter(d.emu, d.queueTarget(a), paced.RetryAfter)
+		return
 	}
 }
 
@@ -991,6 +1211,22 @@ func (d *daemon) dispatchQueued(e *tado.EmuState, target string) {
 	}
 	if after < before {
 		d.requestQueuedDispatch(target)
+		return
+	}
+	// The bootstrap pace holds the job: it waits for a slot, and the try is not spent.
+	var paced *radio.BootstrapPaced
+	if errors.As(err, &paced) && len(result.Accepted) == 0 && len(result.Submitted) == 0 {
+		e.HoldQueuedDownlink(target, paced.RetryAfter)
+		d.scheduleQueuedRetryAfter(e, target, paced.RetryAfter)
+		return
+	}
+	// Nothing went out: the firmware refused the job for the airtime budget, or
+	// the radio deferred it. The hour slides, so the job waits a minute, whatever
+	// its kind.
+	if errors.Is(err, cc1101.ErrAirtimeBudget) && len(result.Accepted) == 0 && len(result.Submitted) == 0 {
+		log.Printf("queued dispatch: %v: retry in %s", err, cslAirtimeRetryBackoff)
+		e.HoldQueuedDownlink(target, cslAirtimeRetryBackoff)
+		d.scheduleQueuedRetryAfter(e, target, cslAirtimeRetryBackoff)
 		return
 	}
 	if len(result.Accepted) > 0 {
@@ -1587,42 +1823,131 @@ func (d *daemon) persist(err error) error {
 
 // --- radios ---
 
-func newLiveRadio(store *stateStore, port string, coordinator []byte, phase uint16, autoAck, tuneDebug bool) (*radio.Live, error) {
+// bridgeLink is the serial link of a bridge as the daemon starts it.
+type bridgeLink interface {
+	radio.SeededBridge
+	Banner() string
+	Baud() int
+	Configure(...cc1101.ConfigureOption) error
+}
+
+// openBridge opens the serial link of the bridge. Tests replace it.
+var openBridge = func(port string) (bridgeLink, error) {
 	br, err := cc1101.Open(port)
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("bridge: %s at %d baud", br.Banner(), br.Baud())
-	if br.Baud() != cc1101.DefaultBaud {
-		log.Printf("WARNING: this firmware talks %d baud, which loses replies on some USB hosts: flash firmware v2.10 or later (docs/OPERATION.md)", br.Baud())
+	return br, nil
+}
+
+// errRadioConfigure marks a bridge that opened but did not start: the chip
+// failed its configuration, for example because the synthesizer does not lock.
+var errRadioConfigure = errors.New("configure the bridge")
+
+// openRadio starts the live radio on a port. A bridge that cannot start does not
+// stop the daemon: it runs as with no bridge on a mock radio, and fault says why.
+// A firmware below cc1101.FirmwareLevel needs a flash, so fault names the
+// firmware found and what to flash. A bridge that fails its configuration can
+// recover, so retry is true and the caller tries again.
+func openRadio(store *stateStore, port string, coordinator []byte, phase uint16, autoAck, tuneDebug bool, set bridgeSettings) (link radio.Radio, mode, fault string, retry bool, err error) {
+	r, err := newLiveRadio(store, port, coordinator, phase, autoAck, tuneDebug, set)
+	var fw *cc1101.FirmwareError
+	switch {
+	case errors.As(err, &fw):
+		fmt.Fprintf(os.Stderr, "WARNING: %v: the radio is not started\n", err)
+		return radio.NewMock(nil), "mock", err.Error(), false, nil
+	case errors.Is(err, errRadioConfigure):
+		fmt.Fprintf(os.Stderr, "WARNING: %v: the radio is not started\n", err)
+		return radio.NewMock(nil), "mock", retryFault(err), true, nil
+	case err != nil:
+		return nil, "", "", false, err
 	}
-	if err := br.Configure(); err != nil {
+	return r, "live", "", false, nil
+}
+
+// retryFault is the health text of a bridge that the daemon tries to start again.
+func retryFault(err error) string {
+	return fmt.Sprintf("%v: the daemon tries again every %s", err, radioRetryEvery)
+}
+
+// openConfiguredBridge opens the bridge, loads its register set and writes the
+// calibration seed, which is the start check that the retry probe repeats. stored
+// says the register holds a stored calibration. A failure after the open closes
+// the bridge and wraps errRadioConfigure.
+func openConfiguredBridge(store *stateStore, port string, set bridgeSettings) (br bridgeLink, stored bool, err error) {
+	br, err = openBridge(port)
+	if err != nil {
+		return nil, false, err
+	}
+	log.Printf("bridge: %s at %d baud", br.Banner(), br.Baud())
+	// The firmware counts the airtime from zero after a reset. The load gives it
+	// the count of the previous run, before it accepts any transmission.
+	if err := br.Configure(bridgeConfigureOptions(store, set)...); err != nil {
 		br.Close()
+		return nil, false, fmt.Errorf("%w: %w", errRadioConfigure, err)
+	}
+	if stored, err = seedFSCTRL0(store, br); err != nil {
+		br.Close()
+		return nil, false, fmt.Errorf("%w: %w", errRadioConfigure, err)
+	}
+	return br, stored, nil
+}
+
+// bridgeConfigureOptions lists the steps of Configure after the register load.
+// The firmware has no budget after the reset, so it refuses nothing unless the
+// airtime limit sends one here, with the value that the listen setting sets.
+func bridgeConfigureOptions(store *stateStore, set bridgeSettings) []cc1101.ConfigureOption {
+	opts := []cc1101.ConfigureOption{cc1101.WithAirtime(storedAirtime(store, time.Now())), cc1101.WithLBT(set.lbt)}
+	if budget, limited := airtimeBudgetFor(set); limited {
+		opts = append(opts, cc1101.WithAirtimeBudget(budget))
+	}
+	return opts
+}
+
+// airtimeBudgetFor is the budget that the daemon sends to the firmware, and
+// whether it sends one: only with the airtime limit on, with the value of the
+// listen setting.
+func airtimeBudgetFor(set bridgeSettings) (budget uint32, limited bool) {
+	if !set.airtimeLimit {
+		return 0, false
+	}
+	return cc1101.AirtimeBudget(set.lbt), true
+}
+
+func newLiveRadio(store *stateStore, port string, coordinator []byte, phase uint16, autoAck, tuneDebug bool, set bridgeSettings) (*radio.Live, error) {
+	br, stored, err := openConfiguredBridge(store, port, set)
+	if err != nil {
 		return nil, err
 	}
-	r, err := startSeededRadio(store, br, coordinator, phase, autoAck, tuneDebug)
+	r, err := startRadio(br, coordinator, phase, autoAck, tuneDebug, stored, set.airtimeLimit)
 	if err != nil {
 		br.Close()
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", errRadioConfigure, err)
 	}
 	return r, nil
 }
 
-// startSeededRadio seeds FSCTRL0 from the store, then starts the receive loop on
-// that register value. Without a stored calibration it seeds cc1101.TuneDefault
-// and the loop measures one from there.
-func startSeededRadio(store *stateStore, br radio.SeededBridge, coordinator []byte, phase uint16, autoAck, tuneDebug bool) (*radio.Live, error) {
-	stored := seedFSCTRL0(store, br)
-	return radio.StartSeeded(br, coordinator, phase, autoAck, tuneDebug, stored)
+func startRadio(br radio.SeededBridge, coordinator []byte, phase uint16, autoAck, tuneDebug, stored, airtimeLimit bool) (*radio.Live, error) {
+	// A radio started without --tx latches its transmitter off for good: a call
+	// site that forgets the dry-run check cannot arm it.
+	var opts []radio.Option
+	if !autoAck {
+		opts = append(opts, radio.WithTXBlocked())
+	}
+	if airtimeLimit {
+		opts = append(opts, radio.WithAirtimeLimit())
+	}
+	return radio.StartSeeded(br, coordinator, phase, autoAck, tuneDebug, stored, opts...)
 }
 
 // seedFSCTRL0 writes the stored receiver calibration into FSCTRL0 and reports
 // whether the register holds it. As in the Tado firmware, the register then
 // holds for the whole session and the hardware FOC absorbs the offset of each
 // transmitter. Without a stored value it writes cc1101.TuneDefault, the start
-// of the measurement. A seed the radio refuses is a log line, never a reason
-// to refuse to start: the radio measures the calibration instead.
-func seedFSCTRL0(store *stateStore, br radio.TunableBridge) bool {
+// of the measurement. Any error of the write is an error of the start: the write
+// ran SCAL, and a reply lost on the link leaves the register changed with no
+// lock result. A chip that cannot hold the carrier must not start.
+func seedFSCTRL0(store *stateStore, br radio.TunableBridge) (bool, error) {
 	seed, stored := cc1101.TuneDefault, false
 	if store != nil {
 		value, ok, err := store.FSCTRL0(context.Background())
@@ -1634,10 +1959,9 @@ func seedFSCTRL0(store *stateStore, br radio.TunableBridge) bool {
 		}
 	}
 	if err := br.SetFSCTRL0(seed); err != nil {
-		fmt.Fprintf(os.Stderr, "seed FSCTRL0=%#02x: %v\n", seed, err)
-		return false
+		return false, fmt.Errorf("seed FSCTRL0=%#02x: %w", seed, err)
 	}
-	return stored
+	return stored, nil
 }
 
 // storeCalibrations stores each calibration the live radio measures, so the
@@ -1681,6 +2005,12 @@ func calibrationHealth(c radio.Calibration) map[string]any {
 	out := map[string]any{"state": c.State}
 	if c.State == radio.CalibrationMeasuring {
 		out["readings"], out["want"] = c.Readings, c.Want
+	}
+	if c.Candidate {
+		out["candidate"] = true
+	}
+	if c.HasResidual {
+		out["residual"] = c.Residual
 	}
 	return out
 }
@@ -2118,12 +2448,32 @@ func (d *daemon) healthBase() (map[string]any, bool) {
 	if radio, ok := d.radio.(liveSerialErrors); ok {
 		health["serialErrors"] = radio.SerialErrors()
 	}
+	if lr, ok := d.radio.(liveRadioHealth); ok {
+		if a, known := lr.Airtime(); known {
+			health["airtime"] = map[string]any{
+				"usedMs": a.UsedMS, "budgetMs": a.BudgetMS, "limit": a.Limit,
+				"share": math.Round(a.Share*1000) / 1000, "deferring": a.Deferring, "overBudget": a.OverBudget,
+			}
+		}
+		if warnings := lr.Warnings(); len(warnings) > 0 {
+			health["radioWarnings"] = warnings
+		}
+	}
+	if br, ok := d.radio.(busyRadio); ok {
+		health["lbt"] = map[string]any{"enabled": d.lbt.Enabled, "thresholdDbm": d.lbt.ThresholdDBm, "busy": br.CSLBusy()}
+	}
+	if br, ok := d.radio.(bootstrapRadio); ok {
+		health["bootstrap"] = map[string]any{"waiting": br.BootstrapWaiting(), "perMinute": br.BootstrapLimit()}
+	}
+	if fault := d.fault(); fault != "" {
+		health["radioError"] = fault
+	}
 	// calibrated says the register comes from a stored or a measured
 	// calibration. Only a live radio has one.
 	// A live radio with no register to move reports neither field.
 	if cr, ok := d.radio.(calibratingRadio); ok && d.mode == "live" {
 		if c := cr.Calibration(); c.State != "" {
-			health["calibrated"] = c.State != radio.CalibrationMeasuring
+			health["calibrated"] = c.State == radio.CalibrationStored || c.State == radio.CalibrationMeasured
 			health["calibration"] = calibrationHealth(c)
 		}
 	}
@@ -2165,6 +2515,13 @@ func (d *daemon) healthEngine(e *tado.EmuState, txArmed bool) map[string]any {
 			"flowPending": e.FlowPending(),
 			"zoneProxies": e.PendingZoneProxies(),
 		},
+	}
+	if kr, ok := d.radio.(downlinkKindsRadio); ok {
+		kinds := map[string]any{}
+		for kind, c := range kr.DownlinkKinds() {
+			kinds[kind] = map[string]any{"attempts": c.Attempts, "airtimeMs": math.Round(c.AirtimeMS)}
+		}
+		health["downlink"].(map[string]any)["kinds"] = kinds
 	}
 	// A thermostat listed here is served its d/config without tag 015d until it reports one.
 	if unknown := e.UnknownInterfaceModules(); len(unknown) > 0 {
@@ -4395,6 +4752,9 @@ func Main(args []string) {
 	beacon := fs.Duration("beacon", defaultBeaconInterval, "longest interval of the 0x49e8 router advertisement, each one random from a third of it, transmitted with --tx alone (0 = disabled; overrides beacon_sec)")
 	noAutoQueue := fs.Bool("no-auto-queue", false, "never queue automatic writes: UTC-offset, zone forwarding, firmware reads")
 	tuneDebug := fs.Bool("tune-debug", false, "log the FREQEST reading of every received frame (overrides tune_debug)")
+	lbtOn := fs.Bool("lbt", false, "listen before the first frame of a CSL job and defer the job while the channel is busy (needs bridge firmware with CMD_LBT)")
+	lbtThreshold := fs.Int("lbt-threshold", defaultLBTThresholdDBm, "level in dBm above which the channel counts as busy with --lbt, from -120 to -20")
+	airtimeLimit := fs.Bool("airtime-limit", false, "ALPHA, not verified on a plant (https://github.com/CappyT/freedo/issues/42): keep the hourly airtime under the ETSI budget, 36 s without --lbt and 100 s with it. The bridge refuses above it, the radio defers router advertisements and CSL bootstrap trains near it and paces the trains. Needs bridge firmware that takes the budget")
 	debugAPI := fs.Bool("debug-api", false, "serve /api/debug/dissect, /api/debug/decrypt and /api/debug/rx; they decrypt any frame a caller sends and stream live traffic (overrides debug_api)")
 	faultTimeDelay := fs.Duration("fault-time-delay", 0, "FAULT INJECTION (test F12): hold our answer to the \"time\" resource back by this long; past 5 s the device discards it and asks again")
 	faultNoTime := fs.Bool("fault-no-time", false, "FAULT INJECTION (test F12): never answer the \"time\" resource, so the device never gets a clock and its weekly schedule never runs")
@@ -4484,6 +4844,11 @@ flags:
 	if !given["beacon"] {
 		*beacon = b.BeaconInterval()
 	}
+	if *lbtThreshold < -120 || *lbtThreshold > -20 {
+		die("--lbt-threshold %d: want a level from -120 to -20 dBm", *lbtThreshold)
+	}
+	lbtSetting := cc1101.LBT{Enabled: *lbtOn, ThresholdDBm: int8(*lbtThreshold)}
+	bridgeSet := bridgeSettings{lbt: lbtSetting, airtimeLimit: *airtimeLimit}
 	token, err := apiToken(*tokenFile, b, os.LookupEnv)
 	if err != nil {
 		die("%v", err)
@@ -4562,6 +4927,7 @@ flags:
 	cfg.RouterAdvertInterval = *beacon
 	cfg.NoZoneFanOut = true
 	cfg.NoAutoQueue = *noAutoQueue
+	cfg.LiveRadio = *port != ""
 	cfg.TimeDelay, cfg.SuppressTime = *faultTimeDelay, *faultNoTime
 	if cfg.SuppressTime || cfg.TimeDelay > 0 {
 		fmt.Fprintf(os.Stderr, "FAULT INJECTION ACTIVE: time suppressed=%v delayed=%s - "+
@@ -4583,6 +4949,7 @@ flags:
 	}
 
 	var link radio.Radio
+	radioFault := ""
 	mode := "mock"
 	if *port != "" && *doTx {
 		at, _, err := install.ReadMetaUint(context.Background(), store.db, metaImportedAt)
@@ -4600,14 +4967,15 @@ flags:
 			}
 		}
 	}
+	retryRadio := false
 	switch {
 	case *port != "":
-		r, err := newLiveRadio(store, *port, in.CoordinatorEUI(), cfg.CSLPhase, *doTx, *tuneDebug)
+		var err error
+		link, mode, radioFault, retryRadio, err = openRadio(store, *port, in.CoordinatorEUI(), cfg.CSLPhase, *doTx, *tuneDebug, bridgeSet)
 		if err != nil {
 			closeStore(store)
 			die("%v", err)
 		}
-		link, mode = r, "live"
 	case *replay != "":
 		r, err := radio.NewReplay(*replay)
 		if err != nil {
@@ -4619,7 +4987,9 @@ flags:
 		link = radio.NewMock(nil)
 	}
 
-	d := newDaemon(in, emu, link, !*doTx, mode)
+	d := newDaemon(in, emu, link, !*doTx || radioFault != "", mode)
+	d.radioFault = radioFault
+	d.lbt = lbtSetting
 	d.debugAPI = *debugAPI
 	if err := d.attachState(store); err != nil {
 		closeStore(store)
@@ -4660,6 +5030,10 @@ flags:
 	ctx, cancel := context.WithCancel(context.Background())
 	go d.run(ctx)
 	go d.storeCalibrations(ctx)
+	go d.storeAirtime(ctx)
+	if retryRadio {
+		go d.retryRadio(ctx, func() error { return probeBridge(store, *port, bridgeSet) })
+	}
 
 	srv := newAPIServer(*addr, serverHandler(token, *healthPublic, *ingress, d.mux()))
 	// An open rx tap would otherwise hold the whole HTTP drain budget.
@@ -4699,11 +5073,14 @@ flags:
 		timeout = t.C
 	}
 	var httpErr, radioErr error
-	restart := false
+	restart, restartWhy := false, "the import"
 	select {
 	case <-d.restart:
 		restart = true
 		fmt.Println("import: a state is staged, restarting")
+	case <-d.radioReady:
+		restart, restartWhy = true, "the radio start"
+		fmt.Println("radio: the bridge opens and configures: restarting to start the live radio")
 	case s := <-sig:
 		fmt.Printf("interrupted by %s\n", s)
 		// A second signal leaves at once, whatever the shutdown is waiting for.
@@ -4747,6 +5124,7 @@ flags:
 	}
 	cancel()
 	closeWithin("the radio", radioCloseBudget, link.Close)
+	d.storeAirtimeFinal()
 	if store != nil {
 		closeWithin("the state database", stateCloseBudget, store.Close)
 	}
@@ -4760,7 +5138,7 @@ flags:
 	if restart {
 		// A service manager or a restart policy starts the process when this fails,
 		// and that start applies the staged file too.
-		die("restart after the import: %v", reexec())
+		die("restart after %s: %v", restartWhy, reexec())
 	}
 }
 

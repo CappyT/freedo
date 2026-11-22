@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/hex"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"freedo/cc1101"
+	"freedo/internal/install"
 	"freedo/internal/radio"
 	"freedo/tado"
 )
@@ -73,6 +75,7 @@ flags:
 	cfg := in.EmuConfig()
 	cfg.TxCounter, cfg.CSLPhase = b.TxCounterSeed(), b.CSLPhase
 	cfg.NoAutoQueue = true
+	cfg.LiveRadio = true
 	if given["txctr"] {
 		cfg.TxCounter = uint32(*txctr)
 	}
@@ -80,6 +83,13 @@ flags:
 
 	br := openBridge(fs)
 	check(br.Configure())
+	// Configure loads the default register. The delivery rate this tool prints
+	// belongs to the carrier the daemon uses, so it takes the stored calibration.
+	dbPath := mustDatabase(fs)
+	if err := seedStoredTune(br, func() (byte, bool, error) { return install.LoadFSCTRL0(dbPath) }); err != nil {
+		br.Close()
+		die("%v", err)
+	}
 
 	mode := "DRY-RUN (nothing goes on air)"
 	if *doTx {
@@ -156,6 +166,35 @@ flags:
 
 	fmt.Printf("\n=== cold-start delivery: %d/%d = %.1f%% ===\n", ok, done, 100*float64(ok)/float64(done))
 	printEmuReport(emu, ulog)
+}
+
+// tuneRegister is the frequency-offset register of the bridge.
+type tuneRegister interface {
+	SetFSCTRL0(byte) error
+}
+
+// seedStoredTune writes the stored receiver calibration into the register, as
+// the daemon does at start. Without one, or when it cannot be read, the register
+// keeps the default that Configure loaded. A write whose synthesizer calibration
+// does not lock is an error: the tool transmits with this register.
+func seedStoredTune(br tuneRegister, load func() (byte, bool, error)) error {
+	value, ok, err := load()
+	switch {
+	case err != nil:
+		fmt.Fprintf(os.Stderr, "stored FSCTRL0: %v: the default register stays\n", err)
+	case ok:
+		if err := br.SetFSCTRL0(value); err != nil {
+			if errors.Is(err, cc1101.ErrNoSynthLock) {
+				return fmt.Errorf("seed FSCTRL0=%#02x: %w", value, err)
+			}
+			fmt.Fprintf(os.Stderr, "seed FSCTRL0=%#02x: %v\n", value, err)
+			return nil
+		}
+		fmt.Printf("receiver register: stored calibration FSCTRL0=%#02x\n", value)
+	default:
+		fmt.Printf("receiver register: no stored calibration, FSCTRL0=%#02x\n", cc1101.TuneDefault)
+	}
+	return nil
 }
 
 func validateColdStartPreflight(window time.Duration) error {

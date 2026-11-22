@@ -69,3 +69,26 @@ func TestEmulateTXSendsAfterTheStream(t *testing.T) {
 		t.Fatalf("%d sends inside the stream, want none", link.inStream)
 	}
 }
+
+// TestEmitLiveStopsOnceTheBridgeIsHeard: an Enhanced ACK from our own EUI means
+// the commercial bridge is on air, so no action goes out any more.
+func TestEmitLiveStopsOnceTheBridgeIsHeard(t *testing.T) {
+	cfg := fixtureInstall.EmuConfig()
+	cfg.LiveRadio = true
+	emu := tado.NewEmu(cfg, tado.NewUnhandledLogger(io.Discard))
+	link := &streamLink{}
+	act := tado.Action{Bytes: []byte{1}}
+	emitLive(link, emu, act, true)
+	if link.sent != 1 {
+		t.Fatalf("sent=%d before the bridge is heard, want 1", link.sent)
+	}
+	device := []byte{0x02, 0xa6, 0xce, 0xfa, 0x07, 0xc5, 0x1b, 0x00}
+	emu.OnFrame(tado.BuildEnhAck(1, device, fixtureInstall.CoordinatorEUI(), 0x0100))
+	if !emu.BridgeSeen() {
+		t.Fatal("setup: the bridge ACK was not detected")
+	}
+	emitLive(link, emu, act, true)
+	if link.sent != 1 {
+		t.Fatalf("sent=%d after the bridge is heard, want no more", link.sent)
+	}
+}

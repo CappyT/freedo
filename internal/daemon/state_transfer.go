@@ -433,5 +433,30 @@ func reexec() error {
 	if err != nil {
 		return err
 	}
+	closeFilesOnExec()
 	return syscall.Exec(exe, os.Args, os.Environ())
+}
+
+// closeFilesOnExec marks every open descriptor above stderr close-on-exec. The
+// serial library opens its port without the flag and takes the exclusive lock of
+// the line: a port that a bridge probe or a radio that did not close in time still
+// holds would make the new image fail to open it.
+func closeFilesOnExec() {
+	fds := make([]int, 0, 16)
+	if entries, err := os.ReadDir("/proc/self/fd"); err == nil {
+		for _, e := range entries {
+			if fd, err := strconv.Atoi(e.Name()); err == nil {
+				fds = append(fds, fd)
+			}
+		}
+	} else {
+		for fd := 0; fd < 1024; fd++ {
+			fds = append(fds, fd)
+		}
+	}
+	for _, fd := range fds {
+		if fd > 2 {
+			syscall.CloseOnExec(fd)
+		}
+	}
 }

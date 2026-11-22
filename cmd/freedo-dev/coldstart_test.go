@@ -2,7 +2,9 @@ package main
 
 import (
 	"encoding/hex"
+	"errors"
 	"flag"
+	"fmt"
 	"io"
 	"testing"
 	"time"
@@ -259,4 +261,47 @@ func mustHexBytes(t *testing.T, s string) []byte {
 		t.Fatal(err)
 	}
 	return b
+}
+
+type fakeTuneRegister struct {
+	writes []byte
+	err    error
+}
+
+func (r *fakeTuneRegister) SetFSCTRL0(v byte) error {
+	r.writes = append(r.writes, v)
+	return r.err
+}
+
+// Configure loads the default register. A stored calibration replaces it, as it
+// does at the start of the daemon, and nothing else touches the register.
+func TestColdStartSeedsTheStoredCalibration(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		load  func() (byte, bool, error)
+		wants []byte
+	}{
+		{"stored", func() (byte, bool, error) { return 0x2f, true, nil }, []byte{0x2f}},
+		{"none stored", func() (byte, bool, error) { return 0, false, nil }, nil},
+		{"unreadable", func() (byte, bool, error) { return 0, false, errors.New("no database") }, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			br := &fakeTuneRegister{}
+			if err := seedStoredTune(br, tc.load); err != nil {
+				t.Fatal(err)
+			}
+			if string(br.writes) != string(tc.wants) {
+				t.Fatalf("register writes %x, want %x", br.writes, tc.wants)
+			}
+		})
+	}
+}
+
+// A stored register whose SCAL does not lock stops the tool before it transmits.
+func TestColdStartSeedRefusesAnUnlockedSynthesizer(t *testing.T) {
+	br := &fakeTuneRegister{err: fmt.Errorf("%w: 3 attempts", cc1101.ErrNoSynthLock)}
+	err := seedStoredTune(br, func() (byte, bool, error) { return 0x2f, true, nil })
+	if !errors.Is(err, cc1101.ErrNoSynthLock) {
+		t.Fatalf("seedStoredTune=%v, want ErrNoSynthLock", err)
+	}
 }

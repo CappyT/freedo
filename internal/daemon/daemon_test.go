@@ -184,6 +184,7 @@ type immediateTestRadio struct {
 	mu       sync.Mutex
 	batches  [][]tado.Action
 	submit   bool
+	deliver  bool
 	accept   bool
 	cslQueue bool
 	err      error
@@ -206,6 +207,9 @@ func (r *immediateTestRadio) SendImmediate(actions []tado.Action, _ bool) (radio
 	}
 	if r.accept {
 		result.Accepted = append([]tado.Action(nil), actions...)
+	}
+	if r.deliver {
+		result.Delivered = append([]tado.Action(nil), actions...)
 	}
 	result.CSLQueue = r.cslQueue
 	return result, r.err
@@ -1888,6 +1892,42 @@ func TestLinkMaintenanceSelectsOneReadyTargetInOrder(t *testing.T) {
 	}
 	if len(radio.batches) != 2 || d.linkMaint[secondKey].retry != 1 {
 		t.Fatalf("second transition batches=%d entries=%+v", len(radio.batches), d.linkMaint)
+	}
+}
+
+// The echo needs its train, so a bootstrap pace that holds it makes it wait: the
+// retry of the probe is not spent, and the same echo goes out at a later tick.
+func TestLinkMaintenanceEchoWaitsWhenThePaceHoldsIt(t *testing.T) {
+	paced := &radio.BootstrapPaced{RetryAfter: 17 * time.Second, Waiting: 1}
+	live := newImmediateTestRadio(false, paced)
+	emu := tado.NewEmu(tado.EmuConfig{TxCounter: 100000}, tado.NewUnhandledLogger(io.Discard))
+	d := newDaemon(defaultInstall, emu, live, false, "live")
+	dev, err := defaultInstall.Resolve("a408")
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := hex.EncodeToString(dev.WireEUI())
+	clock := &holdClock{now: time.Unix(1_700_000_000, 0)}
+	d.retryNow = clock.read
+	d.linkMaintTick = linkMaintStartupTicks
+	d.linkMaint = map[string]linkMaintEntry{key: {state: 1, retry: 0}}
+	d.linkMaintOrder = []string{key}
+	for range 3 {
+		d.linkMaintenanceTick(emu)
+		clock.advance(128 * time.Millisecond)
+	}
+	if len(live.batches) != 1 {
+		t.Fatalf("%d echoes asked, want one: a held echo waits", len(live.batches))
+	}
+	if entry := d.linkMaint[key]; entry.retry != 0 || entry.wait != 0 {
+		t.Fatalf("entry %+v, want the retry kept while the pace holds the echo", entry)
+	}
+	live.err = nil
+	live.submit = true
+	clock.advance(17 * time.Second)
+	d.linkMaintenanceTick(emu)
+	if entry := d.linkMaint[key]; entry.retry != 1 {
+		t.Fatalf("entry %+v, want one retry spent once the echo went out", entry)
 	}
 }
 
@@ -3885,6 +3925,41 @@ func TestQueuedCSLBusyRetriesSoon(t *testing.T) {
 	}
 	if queued := emu.Queue(device.Serial); len(queued) != 1 || queued[0].Tries != 0 {
 		t.Fatalf("busy counted an attempt: queue=%+v", queued)
+	}
+}
+
+// A job the firmware refused for the hourly airtime budget put nothing on the
+// air: it counts no attempt, and it waits for the hour to slide.
+func TestQueuedCSLAirtimeRefusalDefersTheJob(t *testing.T) {
+	device, err := defaultInstall.Resolve("VA1000000005")
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 8, 20, 10, 47, 56, 0, time.UTC)
+	cfg := defaultInstall.EmuConfig()
+	cfg.Now = func() time.Time { return now }
+	emu := tado.NewEmu(cfg, tado.NewUnhandledLogger(io.Discard))
+	if err := emu.EnqueueChildLock(device.Serial, 5, true); err != nil {
+		t.Fatal(err)
+	}
+	immediate := newImmediateTestRadio(false, nil)
+	immediate.cslQueue, immediate.accept = true, true
+	d := newDaemon(defaultInstall, emu, immediate, false, "live")
+	clock := newManualRetryClock()
+	d.retryAfter, d.retryNow = clock.after, func() time.Time { return now }
+	t.Cleanup(func() { close(d.done) })
+
+	d.dispatchQueued(emu, device.Serial)
+	attempts := immediate.queuedAttempts()
+	if len(attempts) != 1 {
+		t.Fatalf("initial attempts=%+v", attempts)
+	}
+	d.handleCSLCompletion(radio.CSLCompletion{Action: attempts[0], Result: &cc1101.CSLTxResult{Sent: 0}, Err: cc1101.ErrAirtimeBudget})
+	if got := clock.wait(t); got != cslAirtimeRetryBackoff {
+		t.Fatalf("airtime retry delay=%s, want %s", got, cslAirtimeRetryBackoff)
+	}
+	if queued := emu.Queue(device.Serial); len(queued) != 1 || queued[0].Tries != 0 {
+		t.Fatalf("the refusal counted an attempt: queue=%+v", queued)
 	}
 }
 

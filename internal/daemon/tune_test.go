@@ -45,11 +45,14 @@ func newTunableBridge(reg byte) *tunableLiveBridge {
 }
 
 // offCenterBridge receives an endless run of frames whose FREQEST sits far
-// from zero, the input a runtime tune would fold back into FSCTRL0.
+// from zero, the input a runtime tune would fold back into FSCTRL0. With
+// carrier set, the reading is the offset left after the register, so a
+// correction settles it.
 type offCenterBridge struct {
 	*tunableLiveBridge
-	mu   sync.Mutex
-	recv int
+	mu      sync.Mutex
+	recv    int
+	carrier *int
 }
 
 func (b *offCenterBridge) RecvFW(time.Duration) (*cc1101.RxFrame, error) {
@@ -57,6 +60,9 @@ func (b *offCenterBridge) RecvFW(time.Duration) (*cc1101.RxFrame, error) {
 	b.recv++
 	b.mu.Unlock()
 	time.Sleep(time.Millisecond)
+	if b.carrier != nil {
+		return tuneDataFrame("abcde", *b.carrier-int(int8(b.FSCTRL0()))), nil
+	}
 	return tuneDataFrame("abcde", 15), nil
 }
 
@@ -87,6 +93,17 @@ func captureLog(t *testing.T) *bytes.Buffer {
 // A stored calibration holds for the whole session: the daemon writes it once,
 // at start, and a long run of off-center FREQEST readings leaves the register
 // and the store alone.
+// startSeededTestRadio runs the two calls that openConfiguredBridge and
+// newLiveRadio make after the open and the register load: seed FSCTRL0 from the
+// store, then start the receive loop on it.
+func startSeededTestRadio(store *stateStore, br radio.SeededBridge, coordinator []byte, phase uint16, autoAck, tuneDebug bool) (*radio.Live, error) {
+	stored, err := seedFSCTRL0(store, br)
+	if err != nil {
+		return nil, err
+	}
+	return startRadio(br, coordinator, phase, autoAck, tuneDebug, stored, false)
+}
+
 func TestLiveRadioHoldsTheStoredFSCTRL0(t *testing.T) {
 	store := newTestStore(t, filepath.Join(t.TempDir(), "state.db"))
 	if err := store.SetFSCTRL0(context.Background(), 0x33); err != nil {
@@ -95,7 +112,7 @@ func TestLiveRadioHoldsTheStoredFSCTRL0(t *testing.T) {
 	bridge := &offCenterBridge{tunableLiveBridge: newTunableBridge(0x40)}
 	logs := captureLog(t)
 
-	r, err := startSeededRadio(store, bridge, defaultInstall.CoordinatorEUI(), 0, false, true)
+	r, err := startSeededTestRadio(store, bridge, defaultInstall.CoordinatorEUI(), 0, false, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,10 +146,11 @@ func TestLiveRadioHoldsTheStoredFSCTRL0(t *testing.T) {
 // hears, and the daemon stores the result for the next start.
 func TestLiveRadioMeasuresAndTheDaemonStores(t *testing.T) {
 	store := newTestStore(t, filepath.Join(t.TempDir(), "state.db"))
-	bridge := &offCenterBridge{tunableLiveBridge: newTunableBridge(0x40)}
+	carrier := int(int8(cc1101.TuneDefault)) + 15
+	bridge := &offCenterBridge{tunableLiveBridge: newTunableBridge(0x40), carrier: &carrier}
 	captureLog(t)
 
-	r, err := startSeededRadio(store, bridge, defaultInstall.CoordinatorEUI(), 0, false, false)
+	r, err := startSeededTestRadio(store, bridge, defaultInstall.CoordinatorEUI(), 0, false, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,8 +163,8 @@ func TestLiveRadioMeasuresAndTheDaemonStores(t *testing.T) {
 	t.Cleanup(cancel)
 	go d.storeCalibrations(ctx)
 
-	// The bridge reads +15 whatever the register holds, so the radio writes
-	// TuneRounds corrections from the default and takes the last one.
+	// The carrier sits 15 units above the default: one correction settles it, and
+	// the next round confirms the register.
 	deadline := time.Now().Add(5 * time.Second)
 	for {
 		v, ok, err := store.FSCTRL0(context.Background())
@@ -154,8 +172,8 @@ func TestLiveRadioMeasuresAndTheDaemonStores(t *testing.T) {
 			t.Fatal(err)
 		}
 		if ok {
-			if v != 0x61 {
-				t.Fatalf("stored FSCTRL0=%#02x, want 0x61", v)
+			if v != 0x43 {
+				t.Fatalf("stored FSCTRL0=%#02x, want 0x43", v)
 			}
 			break
 		}
@@ -170,7 +188,7 @@ func TestLiveRadioMeasuresAndTheDaemonStores(t *testing.T) {
 	if err := r.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if want := []byte{cc1101.TuneDefault, 0x43, 0x52, 0x61}; !bytes.Equal(bridge.writes, want) {
+	if want := []byte{cc1101.TuneDefault, 0x43}; !bytes.Equal(bridge.writes, want) {
 		t.Errorf("FSCTRL0 writes=%x, want %x: the default seed, then the corrections", bridge.writes, want)
 	}
 }
@@ -199,7 +217,11 @@ func TestSeedFSCTRL0SeedsTheDefault(t *testing.T) {
 				}
 			}
 			bridge := newTunableBridge(0x40)
-			if got := seedFSCTRL0(store, bridge); got != tc.stored {
+			got, err := seedFSCTRL0(store, bridge)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tc.stored {
 				t.Errorf("seedFSCTRL0=%t, want %t", got, tc.stored)
 			}
 			if !bytes.Equal(bridge.writes, []byte{tc.want}) {
@@ -253,7 +275,7 @@ func TestRadioCalibrateRouteResetsToTheDefault(t *testing.T) {
 		reg:               0x40,
 		carrier:           int(int8(cc1101.TuneDefault)) - 5,
 	}
-	r, err := startSeededRadio(store, bridge, defaultInstall.CoordinatorEUI(), 0, false, false)
+	r, err := startSeededTestRadio(store, bridge, defaultInstall.CoordinatorEUI(), 0, false, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -305,5 +327,17 @@ func TestRadioCalibrateRouteResetsToTheDefault(t *testing.T) {
 	}
 	if want := "receiver calibration: stored value forgotten, FSCTRL0 0x34 (default), measuring again"; !strings.Contains(logs.String(), want) {
 		t.Errorf("log=%q, want %q", logs.String(), want)
+	}
+}
+
+// Health says that the radio measures on a candidate register, and omits the
+// field when it does not.
+func TestCalibrationHealthShowsTheCandidate(t *testing.T) {
+	got := calibrationHealth(radio.Calibration{State: radio.CalibrationMeasuring, Readings: 3, Want: 20, Candidate: true})
+	if got["candidate"] != true || got["state"] != radio.CalibrationMeasuring || got["readings"] != 3 {
+		t.Fatalf("health %v, want a measuring candidate", got)
+	}
+	if _, ok := calibrationHealth(radio.Calibration{State: radio.CalibrationStored})["candidate"]; ok {
+		t.Fatal("candidate reported on a stored calibration")
 	}
 }

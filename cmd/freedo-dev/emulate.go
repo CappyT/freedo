@@ -115,6 +115,7 @@ flags:
 	}
 	cfg.RouterAdvertInterval = *beacon
 	cfg.NoEnhAck, cfg.NoCoAPAck = !*ack, !*ack
+	cfg.LiveRadio = *replay == ""
 	emu := tado.NewEmu(cfg, ulog)
 
 	for _, s := range sets {
@@ -271,7 +272,7 @@ loop:
 				fmt.Fprintf(os.Stderr, "beacon: %v\n", err)
 			} else if due {
 				for _, a := range actions {
-					emitLive(br, a, doTx)
+					emitLive(br, emu, a, doTx)
 				}
 				completeDryRunBeacon(emu, doTx)
 			}
@@ -328,14 +329,14 @@ func emulateWindow(br liveLink, window time.Duration, emu *tado.EmuState, dis *t
 			if doTx {
 				owed = append(owed, a)
 			} else {
-				emitLive(br, a, false)
+				emitLive(br, emu, a, false)
 			}
 		}
 		completeDryRunBeacon(emu, doTx)
 		return len(owed) > 0
 	})
 	for _, a := range owed {
-		emitLive(br, a, doTx)
+		emitLive(br, emu, a, doTx)
 	}
 	return err
 }
@@ -350,10 +351,14 @@ func completeDryRunBeacon(emu *tado.EmuState, doTx bool) {
 // outside a firmware stream; see emulateWindow. The host-driven Send has no
 // wake train and comes too late for an ACK window: it is a bench tool, and the
 // daemon sends real traffic through the firmware CSL queue.
-func emitLive(br liveLink, a tado.Action, doTx bool) {
+func emitLive(br liveLink, emu *tado.EmuState, a tado.Action, doTx bool) {
 	if !doTx {
 		fmt.Printf("       (dry-run) would send [%s] node=%s reason=%s tx=%s\n",
 			a.Kind, a.Node, a.Reason, hex.EncodeToString(a.Bytes))
+		return
+	}
+	if emu.BridgeSeen() {
+		fmt.Printf("       (bridge heard) not sending [%s] node=%s reason=%s\n", a.Kind, a.Node, a.Reason)
 		return
 	}
 	ok, err := br.Send(a.Bytes, time.Second)

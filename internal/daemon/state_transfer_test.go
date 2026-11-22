@@ -552,3 +552,33 @@ func TestStateRoundTripAcrossARestart(t *testing.T) {
 		t.Error("the backup does not hold the replaced installation")
 	}
 }
+
+// A descriptor that a library opened without close-on-exec, such as the serial
+// port of a bridge probe, must not survive the restart: the lock of the port
+// would stay and the new image could not open it.
+func TestRestartDoesNotCarryOpenDescriptorsIntoTheNewImage(t *testing.T) {
+	var fds [2]int
+	if err := syscall.Pipe(fds[:]); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		syscall.Close(fds[0])
+		syscall.Close(fds[1])
+	})
+	flags := func(fd int) uintptr {
+		v, _, errno := syscall.Syscall(syscall.SYS_FCNTL, uintptr(fd), syscall.F_GETFD, 0)
+		if errno != 0 {
+			t.Fatal(errno)
+		}
+		return v
+	}
+	if flags(fds[0])&syscall.FD_CLOEXEC != 0 {
+		t.Skip("the platform opens a pipe close-on-exec: nothing to show")
+	}
+	closeFilesOnExec()
+	for _, fd := range fds {
+		if flags(fd)&syscall.FD_CLOEXEC == 0 {
+			t.Errorf("descriptor %d survives an exec", fd)
+		}
+	}
+}
