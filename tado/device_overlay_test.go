@@ -296,3 +296,28 @@ func TestDeviceOverlayNewChangeOnAnotherMemberIsTaken(t *testing.T) {
 		t.Errorf("zone block = %+v (known=%t), want the new 22 C overlay", block, ok)
 	}
 }
+
+// TestNodeViewInAutoShowsTheProgramSetpoint: after a return to the program the
+// device reports 6240=0 without 6280 and keeps the 6280 of its last overlay.
+// The node view shows the program setpoint it acts on (issue #38).
+func TestNodeViewInAutoShowsTheProgramSetpoint(t *testing.T) {
+	in := synthInstall(t)
+	e := NewEmu(in.EmuConfig(), nil)
+	va, err := in.Resolve("VA0000000001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ns := e.node(va.WireEUI())
+	ns.raw["6280"] = tempC(25)
+	ns.raw["6200"] = tempC(16)
+	ns.raw["6240"] = []byte{overlayAuto}
+	ns.refreshLastKnown()
+	if v := e.valveView(ns); v.Mode != "auto" || v.SetpointC != 16 || v.SchedSetpointC != 16 {
+		t.Errorf("view Mode=%q SetpointC=%v SchedSetpointC=%v, want auto at the 16 C program", v.Mode, v.SetpointC, v.SchedSetpointC)
+	}
+	ns.raw["6240"] = []byte{0x02}
+	ns.refreshLastKnown()
+	if v := e.valveView(ns); v.Mode != "manual" || v.SetpointC != 25 {
+		t.Errorf("view Mode=%q SetpointC=%v, want the 25 C manual overlay", v.Mode, v.SetpointC)
+	}
+}

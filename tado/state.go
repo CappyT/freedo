@@ -323,6 +323,11 @@ func (e *EmuState) valveView(ns *NodeState) ValveView {
 	if len(ns.raw["6240"]) > 0 {
 		v.Mode = modeString(ns.LastOverlay)
 	}
+	// In auto the device keeps the 6280 of its last overlay but acts on the
+	// program setpoint (issue #38).
+	if v.Mode == "auto" && len(ns.raw["6200"]) == 2 {
+		v.SetpointC = v.SchedSetpointC
+	}
 	if level := ns.batteryLevel(); level > 0 {
 		opts, kind := e.batteryModel(ns.Short)
 		v.BatteryPct = opts.BatteryPct(kind, level)
