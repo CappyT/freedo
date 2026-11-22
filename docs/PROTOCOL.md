@@ -18,6 +18,8 @@ device identifiers and keys. The text names them by what they show:
 - the pairing capture: a recording of two valves that join the network;
 - the long watch captures: recordings of many hours with firmware transfers;
 - the 15-minute aligned capture: a recording of burner cycles.
+- the sensor trace: a decoded and redacted recording of a wireless temperature sensor on a
+  third-party coordinator, from issue #7.
 
 Test names in parentheses point to the code that guards a statement. Firmware names and
 addresses come from a static reading of the device images. They support a statement
@@ -1771,6 +1773,154 @@ one. The device confirms the new image at the first `2.xx` answer to its
 `PUT d/<serial>/fw/state`. Nothing on the device checks that an image is for its hardware.
 
 No transfer has run on air. The tests use synthetic data only.
+
+### Wireless temperature sensor
+
+freedo does not support this device yet (issue #7). Its serial prefix is `SU`. The serial check
+in `tado/serial_learn.go` and `reSerial` in `tado/tlv.go` accept `VA` and `RU` only, and no
+device kind exists for it. This section records what the sensor does, so that a later change
+can serve it.
+
+Sources. The sensor trace is a decoded and redacted recording of one sensor on a third-party
+coordinator (2026-11-17 and 18, attached to issue #7). Its identifiers are invented. The notes
+[docs/SENSOR.md](https://github.com/svenrienstra/tado-local-coordinator/blob/master/docs/SENSOR.md)
+of the same author (tado-local-coordinator, MIT) add facts that the trace does not hold. A fact
+marked "reported by SENSOR.md, not seen in the trace" rests on those notes alone. The coordinator
+of the trace is not the commercial bridge. Its answers are its own, so the trace shows what the
+sensor accepts, not what the commercial bridge serves. The trace holds no valve and no wall
+thermostat.
+
+What it is:
+
+- It is a battery device with no motor, so a changed document homes nothing. It reports the
+  battery voltage in `d/<serial>/sen` tag `0162` (4153 to 4198 mV in the trace).
+- `d/fw/state` reports type `01a0`=8, the type of the valves and the wall thermostat. The
+  running slot is `003a`=`35c1` (215.1), slot 0x10 is `0035`=`1241` (73.1), slot 0x11 is
+  `0039`=`35c1` (215.1) and `0210` is the build hash. The document also holds `0180`=1 and,
+  in 5 of 6 frames, `014c`=1. It has no `0285`. The 6 frames of the trace come at the join
+  and the re-join of 2026-11-17, not on a timer.
+- After its first config it sends `d/<serial>/err` (`01a3`=0) and `d/<serial>/fallback`
+  (`0182`=0), as a valve does. The trace holds no `d/<serial>/act`.
+
+Join:
+
+- A device that holds the key of another network must be factory reset on the device. In the
+  trace header, a pairing reset did not make it leave the tado network. SENSOR.md adds that a
+  long press and the pairing-reset menu entry left the old key in place and the device showed
+  E0, and that the commercial bridge must be unplugged, or it answers the Beacon Request.
+  Reported by SENSOR.md, not seen in the trace.
+- The sequence of the trace: a Beacon Request, answered. A Router Solicitation under the pairing
+  key. Two Router Advertisements. `POST d/pair` with tag `12` (the key in plaintext). An ICMPv6
+  Echo Request. The `2.04` for `d/pair`, 2.1 s after the POST. Then `POST auth/token`,
+  `PUT d/<serial>/fw/state`, `GET time`, `PUT z/p?lid=11` and `GET d/<serial>/config`.
+- `auth/token` carries `0260` (the serial as a string) and `0007` (16 bytes under the cloud
+  key of the device). The answer is `2.05` with `025e` (the session id) and `025f`=`05a0`
+  (1440, meaning unknown).
+- The answer to `GET time` is `2.05` with 5 bytes and no option: the byte `0d`, then the Unix
+  time as 4 bytes, little-endian. The value matches the time of the host link to the second.
+- After a host restart the sensor re-associates with a Router Solicitation and an Echo Request,
+  then reads `d/<serial>/config`, with no new `d/pair`. After an action on the device that the
+  trace does not name (2026-11-17, 11:04), it sent Router Solicitations under the pairing key
+  again. Four `d/pair` POSTs 7 s apart got no answer, twice. From 11:41 it reported under the
+  network key again.
+- With no Router Advertisement, the last uplink came 29 minutes after the last advertisement
+  (09:50 to 10:19). Router Solicitations every 3 s began 8 minutes after that uplink. The trace
+  has gaps, so it does not pin the 20 minutes of [Router advertisement](#router-advertisement).
+  The sensor samples the channel every second and sends right after a sample, so an anchored
+  reply lands about 1 s later. Reported by SENSOR.md, not seen in the trace.
+
+Config and zone documents. The sensor sends every GET with Content-Format 42 and Block2
+`NUM/0/128`. The host answered with ETag and Block2 and no Content-Format. Values are big-endian.
+
+| Path | Tags the sensor accepted | Notes |
+|---|---|---|
+| `GET d/<serial>/config` | `0143`=0, `015c` home id (u32), `02b3`=0, `015e`=`0d0b`, `0158`=`0200` | 25 bytes. Shorter than the thermostat document: no `0140`, `015d`, `0149`, `021a` or `015a` |
+| `GET h/<home>/z/11/config` | `6020`=1, `63e0`=1, `63a0`, `8000`, `8400`, `6040`, `6080`=1000, `60a0`=500, `60c0`=1500, `60e0`=1, `62c0`=900, `6380`=900 | 217 bytes. The document of [Zone config document](#zone-config-document), with the sensor as owner and only member |
+| `GET h/<home>/z/11/s` | `6160`=1, `6180`=0, `6020`=1, `61e0`=1, `6200`=1800, `6240`=0, `62e0`=0 | 29 bytes. The block of [Zone read path](#zone-read-path), with no `6440` |
+
+- `015e`=`0d0b` is the role byte `0d` of the elected owner and the zone id 11, as in
+  [Heat demand chain](#heat-demand-chain). The sensor takes the document without `015d`, the
+  interface module id. SENSOR.md warns that a wrong `015d` harms valves and thermostats and that
+  the id for a sensor is unknown. Reported by SENSOR.md, not seen in the trace.
+- Every URI of the zone document is `coap://[fe80:0:0:0:<EUI-64, U/L bit flipped>]/z/<r>` and
+  names the sensor itself. `63a0` and `8000` end in `/z/s`, `8400` and `6040` in `/z/p`. The
+  trace holds no `/z<N>` form of `6040`, no `8200` and no `6060`.
+- The first reads came in this order: `d/<serial>/config` twice with two MIDs about 3 s apart,
+  the zone document in 4 blocks, `PUT d/err`, `PUT d/fallback`, and the zone state 6 s after
+  the last block. Then it sent `d/<serial>/sen`, `PUT h/<home>/z/11/act` with `40a0` alone and
+  `PUT z/s?lid=11`, the echo of its zone state.
+- Later, it reads `d/<serial>/config` and the zone document about hourly, with the held ETag,
+  and takes `2.03` (7 pairs in the trace). It reads the zone state every 20 minutes and about
+  5 s after each config pair.
+- Before the host serves a `d/config`, the sensor repeats the GET under one MID up to 20 times
+  over 3 to 4 minutes, then starts a new MID. In the same period it sends one `z/p` PUT up to
+  20 times under one MID, although the host ACKs every copy with `2.04`. After the zone
+  document is served, most `z/p` updates go out once. The cause is unknown.
+- `z/p?lid=11` carries `4060` (temperature, centi-degrees), `40a0` (demand, %) and `0135`
+  (humidity, 0.1 %), with Max-Age 1800, to port 5683. `d/<serial>/sen`, `act` and the
+  documents go to port 4005. `d/<serial>/sen` carries `0162` (battery, mV), `012d` and `012e`
+  (temperature, centi-degrees), `0135` and `0136` (4 to 6, like the ambient light tag of the
+  valve, not proven for the sensor). `012d` equals `4060` of the same moment. `012d` minus
+  `012e` runs from -0.22 to +0.05 C while no `0140` is served.
+- The host answered `2.04` with no body to every PUT of the sensor, and the sensor accepted it.
+- Paths seen in SENSOR.md only. `PUT d/identify` gets `2.04` and the display shows "HI".
+  `GET d/fw/state` gets `2.05`. `GET z/config` and `GET z/config?lid=11` get an empty `2.05`.
+  `GET z/s?lid=11` gets `6160`=1, `6020`=1, `61e0`=1, `6200`=1800, `6240`=2, which is probably the
+  state after a reset. `GET d/config`, `d/fw` and `d/sched` get `4.05`. `GET d/lock` gets `4.04`.
+  `GET z/s` with no query gets `4.00`. A wrong document is repaired with a new ETag or with
+  `POST d/reboot`. Reported by SENSOR.md, not seen in the trace.
+
+Block2. A document with more than one block goes out in 64-byte blocks:
+
+- The sensor sends every block request with SZX 3 (128 bytes). The host answered with SZX 2 and
+  counted `NUM` in its own blocks. The 217-byte zone document came as `0/1/64`, `1/1/64`,
+  `2/1/64` and `3/0/64` (64, 64, 64 and 25 bytes). The sensor asked `1/0/128`, `2/0/128` and
+  `3/0/128` in turn and stopped at the last block.
+- A host that read `NUM` as RFC 7959 section 2.4 does (block 1 of 128 is block 2 of 64)
+  answered `NUM` 1 with its block 2. The sensor asked `NUM` 1 again several times, restarted at
+  `NUM` 0 every few seconds and never finished (2026-11-18, 09:27 to 09:29). Serving `NUM` as
+  asked ended the loop.
+- The trace holds no 128-byte answer. SENSOR.md gives the reason for 64 bytes: each block then
+  fits one frame. Reported by SENSOR.md, not seen in the trace. freedo serves the size that the
+  request names (`requestedBlock2` in `tado/emu.go`), so a sensor read gets blocks of 128 bytes
+  over two frames. The effect on the sensor is untested.
+- The `2.03` of a conditional GET carries Block2 `0/0/64` in the trace. The sensor accepted it.
+
+Zone controller. The zone document names the sensor as owner and as measuring device. The sensor
+then runs the controller of the zone, like a valve:
+
+- It computes `40a0` from the setpoint it holds and its own temperature. At 18.00 C set and
+  18.66 C measured, it reported 0 %. At 20.00 C set and 17.91 C measured, it reported 100 %. It
+  reports the value in `PUT h/<home>/z/11/act` and `PUT z/p?lid=11` 1 to 4 s after a change of
+  its zone state.
+- A write of `z/s?id=11` with a new `6200` reaches the sensor: the echo shows the new value
+  (21.00 C at 15:08, 18.00 C at 15:11). The trace holds the echo, not the write. The write body
+  (`6160 6180 6020 61e0 6200 6240 62e0 6440`) and the setpoint on the display are reported by
+  SENSOR.md, not seen in the trace.
+- The echo has the order `6240 6200 61e0 6160 6180 6020 62e0`, or `6280 6240 6260 6200 61e0 6160
+  6180 6020 62e0` with an overlay.
+
+Overlay. A setpoint set on the sensor is a device overlay, as for the wheel of a valve (see
+[Setpoint write path](#setpoint-write-path)):
+
+- The sensor sends `CON PUT h/<home>/z/11/overlay` with `6280` (the setpoint), `6240`=2 and
+  `6260`=1. Its demand follows within 1 s (`act` 94 % at 21.00 C, 100 % at 20.00 C). The echo
+  `z/s?lid=11` follows 3.1 to 4.7 s after the PUT.
+- The sensor reads the zone state about every 20 minutes. When the host answers with `6240`=0
+  and no overlay tags, the sensor drops the overlay at once. In the trace, 17 minutes after a
+  21.00 C overlay, the demand fell from 100 % to 53 % within 4 s and the echo read `6240`=0.
+  The echo still held `6280`=2100 and `6260`=1, because the sensor keeps every tag that the
+  body omits.
+- A setpoint set on the device therefore lasts at most about 20 minutes, unless the coordinator
+  keeps the overlay and serves it in the zone state (`6240`, `6260`, `6280`) until it ends.
+- The host of the trace kept a 20.00 C overlay for 5 minutes: the PUT came at 19:16:51 and the
+  expiry write at 19:21:51. No zone state read falls between them, so the served overlay state
+  and the loss of the overlay at a host restart are reported by SENSOR.md, not seen in the
+  trace.
+- The expiry write is `CON PUT z/s?id=11` from port 4005 with Uri-Port `ffff` and Content-Format
+  42. It carries `6160 6180 6020 61e0 6200 6240 62e0` with `6240`=0 and no `6440`. The sensor
+  answered `2.04` after 1.1 s. The demand fell from 100 % to 36 % within 4 s and the echo came 6
+  s after the write. This is the expiry write of [Setpoint write path](#setpoint-write-path).
 
 ## Firmware bridge v2
 
