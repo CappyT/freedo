@@ -346,9 +346,23 @@ func (e *EmuState) ZoneObservers(zone int) []ZoneObserver {
 	return out
 }
 
+// measureWithoutHumidity is a zone measure body with the humidity tag 0135
+// left out. A humidity step is not a reason to notify: the thermostat gets it
+// with the next notification of a temperature or demand change, or with the
+// refresh.
+func measureWithoutHumidity(body []byte) []byte {
+	var kept []TLV
+	for _, t := range parseTLVList(body) {
+		if t.Tag != "0135" {
+			kept = append(kept, t)
+		}
+	}
+	return encodeTLVs(kept)
+}
+
 // NotifyZoneObservers queues a notification of the served measure of zone to
-// each observer whose last one carried another measure or is zoneNotifyEvery
-// old, and returns those observers. The notification is a NON 2.05 under the
+// each observer whose last one carried another measure, apart from the
+// humidity, or is zoneNotifyEvery old, and returns those observers. The notification is a NON 2.05 under the
 // token of the registration, so a newer one supersedes it in the queue
 // (queueZoneHop).
 func (e *EmuState) NotifyZoneObservers(zone int) []ZoneObserver {
@@ -360,7 +374,7 @@ func (e *EmuState) NotifyZoneObservers(zone int) []ZoneObserver {
 	var out []ZoneObserver
 	for _, key := range slices.Sorted(maps.Keys(e.zoneObservers[zone])) {
 		s := e.zoneObservers[zone][key]
-		if bytes.Equal(s.body, body) && now.Sub(s.at) < zoneNotifyEvery {
+		if bytes.Equal(measureWithoutHumidity(s.body), measureWithoutHumidity(body)) && now.Sub(s.at) < zoneNotifyEvery {
 			continue
 		}
 		seq := nextObserveSeq(s.seq)

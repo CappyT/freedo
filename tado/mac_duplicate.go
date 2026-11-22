@@ -49,7 +49,7 @@ func (e *EmuState) macDuplicateActions(f *Frame, srcEUI []byte, srcLbl string) [
 	}
 	actions := e.enhAckAction(f, srcEUI, srcLbl)
 	if !IsFragment(f.Plaintext) {
-		if dup, ok := e.answerDuplicate(srcEUI, ParseApp(f.Plaintext).coapOrNil(), srcLbl); ok {
+		if dup, ok := e.answerDuplicate(srcEUI, ParseApp(f.Plaintext).coapOrNil(), srcLbl, true); ok {
 			actions = append(actions, dup...)
 		}
 	}

@@ -36,7 +36,19 @@ type answeredCON struct {
 	code    string
 	uri     string
 	at      time.Time
+	// acked counts the answers to this CON that the device acknowledged with an
+	// Enhanced ACK: the first one, and the re-acks of CoAP retransmissions.
+	// inflight counts the answers that the radio holds and has not completed: they
+	// count against the budget until their completion says whether the device
+	// heard them. An answer to a MAC retry of the same frame counts in neither.
+	acked, inflight int
+	// lastAnswered says that the last copy of the CON that was not a MAC retry
+	// got an answer. A MAC retry repeats the answer only then.
+	lastAnswered bool
 }
+
+// answers is the number of answers that count against the budget of re-acks.
+func (a *answeredCON) answers() int { return a.acked + a.inflight }
 
 // rememberAnswer files the answer to a CON, so a retransmission of it is
 // answered again without being processed again (RFC 7252 4.5).
@@ -71,13 +83,49 @@ func (e *EmuState) rememberAnswer(dst []byte, m *CoAPMessage, pkt []byte, code s
 		code:    code,
 		uri:     m.URI(),
 		at:      now,
+
+		lastAnswered: true,
 	}
 }
 
-// answerDuplicate resends the answer a retransmitted CON already got. A CON
-// with the same MID and other bytes is a new request, as after a device
-// restart, and is processed as one.
-func (e *EmuState) answerDuplicate(src []byte, m *CoAPMessage, srcLbl string) ([]Action, bool) {
+// NoteAnswerSent records that an answer to the CON of dst with message ID mid is
+// in the radio queue. It counts against the budget of re-acks until
+// NoteAnswerEnded. The daemon calls it for an action with AnswerCounts.
+func (e *EmuState) NoteAnswerSent(dst []byte, mid uint16) {
+	if a, ok := e.answered[midKey{hexEUI(dst), mid}]; ok {
+		a.inflight++
+	}
+}
+
+// NoteAnswerEnded records the end of an answer: the device acknowledged it with
+// an Enhanced ACK, or not. An answer with no ACK (a stale anchor, a lost frame)
+// does not spend the budget.
+func (e *EmuState) NoteAnswerEnded(dst []byte, mid uint16, acked bool) {
+	a, ok := e.answered[midKey{hexEUI(dst), mid}]
+	if !ok {
+		return
+	}
+	if a.inflight > 0 {
+		a.inflight--
+	}
+	if acked {
+		a.acked++
+	}
+}
+
+// answerDuplicate answers a CON that the device sent again, as long as an answer
+// is still due. mac says that the copy is a MAC retry of the same frame (same
+// sequence number): the device missed the Enhanced ACK. It repeats the answer
+// only when the copy it retries was answered, and the answer does not count
+// against the budget. A CoAP retransmission (a new frame) gets one re-ack once an
+// answer counts, and no more: each one would cost a train. An answer counts when
+// the device acknowledged it, or while it is in the radio queue. A CON whose
+// answers the device never acknowledged is answered again, with the train
+// allowed, because the device still waits for it. Once an answer counts, a re-ack
+// goes out on the anchor the bridge holds, never with a train of one period
+// (Action.NoBootstrap). A CON with the same MID and other bytes is a new request,
+// as after a device restart, and is processed as one.
+func (e *EmuState) answerDuplicate(src []byte, m *CoAPMessage, srcLbl string, mac bool) ([]Action, bool) {
 	if m == nil || m.Type != "CON" || !isRequestCode(m.Code) {
 		return nil, false
 	}
@@ -85,12 +133,26 @@ func (e *EmuState) answerDuplicate(src []byte, m *CoAPMessage, srcLbl string) ([
 	if !ok || e.cfg.Now().Sub(a.at) >= exchangeLifetime || !bytes.Equal(a.request, m.Raw) {
 		return nil, false
 	}
+	switch {
+	case mac && !a.lastAnswered:
+		return nil, true
+	case !mac && a.answers() >= 2:
+		a.lastAnswered = false
+		return nil, true
+	}
 	actions, err := e.coapReplyActions(a.pkt, a.dst, a.code, a.uri, m.MID, srcLbl)
 	if err != nil {
 		return nil, false
 	}
 	for i := range actions {
 		actions[i].Reason += " (duplicate)"
+		actions[i].NoBootstrap = a.answers() >= 1
+	}
+	if !mac {
+		a.lastAnswered = true
+		if len(actions) > 0 {
+			actions[0].AnswerCounts, actions[0].AnswerMID = true, m.MID
+		}
 	}
 	return actions, true
 }

@@ -91,6 +91,26 @@ func (k ActionKind) String() string {
 	return "None"
 }
 
+// Origin says who asked for a downlink: a person, through the API or Home
+// Assistant, or the daemon itself. The radio paces the CSL bootstrap trains
+// and serves a user command before a refresh.
+type Origin uint8
+
+const (
+	// OriginRefresh is daemon-initiated traffic: zone measures, config pushes,
+	// time, reads and firmware transfer. It is the zero value.
+	OriginRefresh Origin = iota
+	// OriginUser is a write that the API or Home Assistant asked for.
+	OriginUser
+)
+
+// userKinds are the downlink kinds that only a user write queues.
+var userKinds = map[string]bool{
+	"setpoint": true, "dhw": true, "childlock": true, "boost": true, "mode": true,
+	"identify": true, "calibrate": true, "reboot": true, "openwindow": true,
+	"pair": true, "extui": true, "dbg2": true,
+}
+
 // Action is one frame the daemon should transmit (or, in dry-run, just log).
 // Bytes carries no CC1101 CRC; the Enhanced ACK's own 2-byte MAC FCS is included
 // because it is part of the frame the device validates.
@@ -130,9 +150,65 @@ type Action struct {
 	// bridge may hold a stale anchor for it; the firmware prefers a warm anchor
 	// over the train until it misses once.
 	CSLBootstrapAlways bool
+	// Job is the kind of the queued downlink that the action sends. Other actions
+	// leave it empty.
+	Job string
+	// NoBootstrap forbids the train of one period for this action: it goes out on
+	// the anchor the bridge holds, and ends with no air time when there is none.
+	// A repeated answer to a retransmitted CON uses it once an earlier answer for
+	// that CON counts: the device that sent the CON is awake, and the
+	// repeat was not worth a train.
+	NoBootstrap bool
+	// AnswerCounts marks the frame of an answer to a CON that counts against the
+	// budget of re-acks: the daemon calls NoteAnswerSent with AnswerMID when the
+	// radio queues it, and NoteAnswerEnded when it ends. A MAC retry of the same
+	// frame gets an answer that does not count.
+	AnswerCounts bool
+	AnswerMID    uint16
 	// ZoneRelay marks a re-emitted zone datagram. Its requester retransmits
 	// within seconds, so a missed Enhanced ACK retries on that scale.
 	ZoneRelay bool
+	// Origin is OriginUser when a queued downlink of the same device carries a
+	// user command: a bootstrap train builds the anchor that all of them use.
+	Origin Origin
+}
+
+// JobKind names what the action sends, for the per-kind counters of the health:
+// measure, notify, zone_relay, reply, ra, echo, fw, fw_state, get, command,
+// rewrite, identify, config, auth, pair or other. A queued downlink is named by
+// its queue kind. The zone queue holds the notifications to an observer and the
+// relayed requests of other devices, and a get is a firmware state read or any
+// other read.
+func (a Action) JobKind() string {
+	switch {
+	case a.Reason == "link-maintenance echo":
+		return "echo"
+	case strings.HasPrefix(a.Reason, "beacon"):
+		return "ra"
+	case strings.HasPrefix(a.Reason, "coap-ack"), strings.HasPrefix(a.Reason, "zone-proxy-timeout"):
+		return "reply"
+	}
+	switch a.Job {
+	case zoneMeasureKind:
+		return "measure"
+	case "zone":
+		if strings.Contains(a.Reason, "zone notify") {
+			return "notify"
+		}
+		return "zone_relay"
+	case fwKind:
+		return "fw"
+	case "get":
+		if strings.Contains(a.Reason, "d/fw/state") {
+			return "fw_state"
+		}
+		return "get"
+	case "setpoint", "dhw", "childlock", "boost", "mode", "openwindow", "calibrate", "reboot", "dbg2", "extui":
+		return "command"
+	case "rewrite", "identify", "config", "auth", "pair":
+		return a.Job
+	}
+	return "other"
 }
 
 // NodeState is the coordinator's per-device record.
@@ -263,6 +339,10 @@ type EmuConfig struct {
 	CSLPhase uint16
 	// Now is the wall clock the served "time" resource reads. nil => time.Now.
 	Now func() time.Time
+	// LiveRadio marks frames that come from our own receiver. Only then does an
+	// Enhanced ACK from our EUI or a wake-up train to one of our devices count as
+	// the commercial bridge: a capture of a second receiver holds our own frames.
+	LiveRadio bool
 	// FragTagSeed supplies a testable initial 6LoWPAN datagram tag.
 	FragTagSeed func() uint16
 	// Zones declares the cloud's zone map: zone number -> members, each a
@@ -369,6 +449,7 @@ type queuedDownlink struct {
 	fragTag       uint16 // RFC 4944 tag of the current fragmented attempt
 	requireCoAP   bool   // Enhanced ACK proves reception, not completion
 	responseRetry bool   // captured NON 2.xx relay or auth answer: retry as one MAC transmission
+	origin        Origin
 	tries         int
 	seq           byte // MAC seq of the last attempt
 	inFlight      bool
@@ -787,8 +868,9 @@ func (e *EmuState) TakeAcceptedInboundIPv6() []byte {
 	return src
 }
 
-// BridgeSeen reports whether the real bridge has been heard on air (a Data frame
-// carrying our own source prefix). It stays true for the rest of the run: two
+// BridgeSeen reports whether the real bridge has been heard on air: a Data frame
+// or a broadcast carrying our own source prefix and, on a live radio, an Enhanced
+// ACK from our EUI or a wake-up train to a device of the installation. It stays true for the rest of the run: two
 // coordinators on one PAN is a state the emulator must not transmit into.
 func (e *EmuState) BridgeSeen() bool { return e.bridgeFrames > 0 }
 
@@ -933,7 +1015,7 @@ func (e *EmuState) onData(class FrameClass, raw []byte) []Action {
 		e.cacheBody(ns, srcEUI, m, nil, class, srcLbl, dstLbl, f.Hex())
 	}
 
-	if dup, ok := e.answerDuplicate(srcEUI, msg, srcLbl); ok {
+	if dup, ok := e.answerDuplicate(srcEUI, msg, srcLbl, false); ok {
 		e.acceptedInboundIPv6 = append(e.acceptedInboundIPv6[:0], srcEUI...)
 		actions = append(actions, dup...)
 		if a, ok := e.nextDownlink(srcEUI, srcLbl); ok {
@@ -1137,6 +1219,9 @@ func (e *EmuState) handleCoAP(f *Frame, m *CoAPMessage, class FrameClass, srcLbl
 	if err != nil {
 		e.log.Log(class.String(), srcLbl, dstLbl, rsnBuildFail+" "+err.Error(), f.Hex())
 		return nil, false
+	}
+	if len(actions) > 0 {
+		actions[0].AnswerCounts, actions[0].AnswerMID = true, m.MID
 	}
 	if d := e.timeAnswerDelay(m); d > 0 {
 		for i := range actions {
@@ -2745,7 +2830,12 @@ func (e *EmuState) onEnhAck(raw []byte) {
 		return
 	}
 	if bytes.Equal(a.SrcEUI, e.selfEUI) {
-		return // our own ACK looped back
+		// A half-duplex radio never hears its own frame: this ACK comes from the
+		// commercial bridge. A capture of a second receiver holds our own ACKs.
+		if e.cfg.LiveRadio {
+			e.bridgeFrames++
+		}
+		return
 	}
 	// The FCS is no authentication: anyone can build a valid Enhanced ACK. Node
 	// state comes from the installation or from an authenticated Data frame.
@@ -2788,8 +2878,13 @@ func (e *EmuState) onWakeUp(raw []byte) {
 	if !e.known(w.DstShort) {
 		e.log.Log("WakeUp", "", w.DstShort, rsnUnknownWakeTarget+" short="+w.DstShort, hex.EncodeToString(raw))
 	}
-	// A wake-up aimed at us means a device wants the channel; informational only,
-	// the frame carries no source address to attribute it to.
+	// Only a coordinator sends a wake-up train and a radio never hears its own.
+	// A train to a device of this installation comes from the commercial bridge.
+	// The frame carries no source address, so a neighbour network on this PAN is
+	// told apart by the destination only.
+	if e.cfg.LiveRadio && e.known(w.DstShort) {
+		e.bridgeFrames++
+	}
 }
 
 // --- broadcast ---
@@ -2894,8 +2989,12 @@ func (e *EmuState) enqueue(target, kind, desc string, coap, key []byte, mid uint
 		return fmt.Errorf("tado: %s downlink is %d bytes, exceeds PHY limit 127", kind, frameLen)
 	}
 	q := hexEUI(wire)
+	origin := OriginRefresh
+	if userKinds[kind] {
+		origin = OriginUser
+	}
 	e.queue[q] = append(e.queue[q], &queuedDownlink{
-		kind: kind, desc: desc, coap: coap, key: key, mid: mid, fragmented: fragmented,
+		kind: kind, desc: desc, coap: coap, key: key, mid: mid, fragmented: fragmented, origin: origin,
 	})
 	return nil
 }
@@ -3095,6 +3194,10 @@ func (e *EmuState) enqueueZoneRewrite(target string, id int, fromZone, switched 
 		return err
 	}
 	q := e.queue[hexEUI(wire)]
+	if switched {
+		// A home or away switch comes from the user, unlike a schedule block change that uses the same kind.
+		q[len(q)-1].origin = OriginUser
+	}
 	switch {
 	case hotWater:
 		q[len(q)-1].dhw = dhw
@@ -4326,14 +4429,14 @@ func initialNodeTable(in *Install, dev *Device) []NodeTableRec {
 // A write to the wall thermostat goes into the document it is served, and only
 // a re-read trigger goes on the queue (serveConfig).
 func (e *EmuState) EnqueueConfig(target string, id int, w ConfigWrite) error {
-	_, err := e.enqueueConfig(target, id, w)
+	_, err := e.enqueueConfig(target, id, w, OriginUser)
 	return err
 }
 
 // enqueueConfig is EnqueueConfig and reports whether it queued a write. The
 // length of the queue does not tell: the write replaces the d/config writes
 // queued ahead of it (coalesceConfigWrites).
-func (e *EmuState) enqueueConfig(target string, id int, w ConfigWrite) (bool, error) {
+func (e *EmuState) enqueueConfig(target string, id int, w ConfigWrite, origin Origin) (bool, error) {
 	wire, _, err := e.resolve(target)
 	if err != nil {
 		return false, err
@@ -4374,6 +4477,7 @@ func (e *EmuState) enqueueConfig(target string, id int, w ConfigWrite) (bool, er
 		return false, err
 	}
 	q := e.queue[key]
+	q[len(q)-1].origin = origin
 	q[len(q)-1].requireCoAP = true
 	q[len(q)-1].responseToken = append([]byte{}, token...)
 	q[len(q)-1].responseCode = "2.04"
@@ -4435,7 +4539,7 @@ func (e *EmuState) ClearOfflineSchedule(target string, id int) (bool, error) {
 	}
 	w := ConfigWrite{OfflineScheduleEnabled: e.offlineSchedule(key, nil)}
 	if !e.refusesConfigWrite(wire) {
-		queued, err := e.enqueueConfig(key, id, w)
+		queued, err := e.enqueueConfig(key, id, w, OriginUser)
 		// EnqueueConfig records an explicit value as the device's own.
 		delete(e.offlineSched, key)
 		if err != nil {
@@ -5139,6 +5243,7 @@ func (e *EmuState) nextDownlink(dstEUI []byte, label string) ([]Action, bool) {
 		d.seq = seq
 		d.inFlight = true
 		d.deferred = false
+		origin := e.queueOrigin(key)
 		if d.kind == "get" {
 			d.retryAt = e.cfg.Now().Add(activeGetRetryBackoff)
 		}
@@ -5149,11 +5254,22 @@ func (e *EmuState) nextDownlink(dstEUI []byte, label string) ([]Action, bool) {
 			if len(frames) > 1 {
 				reason += fmt.Sprintf(" fragment=%d/%d", i+1, len(frames))
 			}
-			actions = append(actions, Action{Kind: ActData, Bytes: frame, Reason: reason, Node: label, CSLTx: true, HasCSLBatch: d.fragmented, CSLBatchTag: d.fragTag, QueueAttempt: true, WaitResponse: d.kind == "get" || d.requireCoAP || d.fragmented, QueueTry: d.tries, QueueMID: d.mid, CoAPTransaction: d.requireCoAP || d.fragmented, ResponseRetry: d.responseRetry, IdentifyCSLBootstrapRetry: d.kind == "identify", CSLBootstrapAlways: d.kind == "auth" || d.kind == "pair", ZoneRelay: d.kind == "zone"})
+			actions = append(actions, Action{Kind: ActData, Bytes: frame, Reason: reason, Node: label, CSLTx: true, HasCSLBatch: d.fragmented, CSLBatchTag: d.fragTag, QueueAttempt: true, Job: d.kind, WaitResponse: d.kind == "get" || d.requireCoAP || d.fragmented, QueueTry: d.tries, QueueMID: d.mid, CoAPTransaction: d.requireCoAP || d.fragmented, ResponseRetry: d.responseRetry, IdentifyCSLBootstrapRetry: d.kind == "identify", CSLBootstrapAlways: d.kind == "auth" || d.kind == "pair", ZoneRelay: d.kind == "zone", Origin: origin})
 		}
 		return actions, true
 	}
 	return nil, false
+}
+
+// queueOrigin is OriginUser when any downlink queued to the device carries a
+// user command. The train that opens the link serves them all.
+func (e *EmuState) queueOrigin(key string) Origin {
+	for _, d := range e.queue[key] {
+		if d.origin == OriginUser {
+			return OriginUser
+		}
+	}
+	return OriginRefresh
 }
 
 // buildFrames frames one CoAP datagram for one more attempt. A fragmented

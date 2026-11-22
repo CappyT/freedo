@@ -427,7 +427,7 @@ func (e *EmuState) refreshConfigDocuments() map[string]bool {
 			continue
 		}
 		if id, ok := e.deviceID(wire, e.nodes[key]); ok && !e.refusesConfigWrite(wire) {
-			queued, err := e.enqueueConfig(key, id, w)
+			queued, err := e.enqueueConfig(key, id, w, OriginRefresh)
 			if err != nil {
 				e.log.Log("Config", dev.Ref(), "", rsnBuildFail+" d/config "+err.Error(), "")
 			}

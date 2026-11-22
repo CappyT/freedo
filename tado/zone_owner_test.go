@@ -357,6 +357,10 @@ func TestZoneMeasureObserve(t *testing.T) {
 		t.Fatalf("pending = %d, want the newer notification alone", p)
 	}
 	check("notification", sent(), "NON", []byte{0xa1, 0xb2}, 3, ZoneMeasureBody(19, 70, 500))
+	e.SetZoneMeasure(4, ZoneMeasureBody(19, 70, 520))
+	if n := e.NotifyZoneObservers(4); len(n) != 0 {
+		t.Errorf("a humidity step alone notified %+v", n)
+	}
 	now = now.Add(zoneNotifyEvery - time.Second)
 	if n := e.NotifyZoneObservers(4); len(n) != 0 {
 		t.Errorf("an unchanged measure within %s notified %+v", zoneNotifyEvery, n)
@@ -365,7 +369,7 @@ func TestZoneMeasureObserve(t *testing.T) {
 	if n := e.NotifyZoneObservers(4); len(n) != 1 || n[0].Seq != 4 {
 		t.Errorf("after %s notified = %+v, want the thermostat at 4", zoneNotifyEvery, n)
 	}
-	check("new registration answer", get(0x7602, []byte{0xc3}, register), "ACK", []byte{0xc3}, 5, ZoneMeasureBody(19, 70, 500))
+	check("new registration answer", get(0x7602, []byte{0xc3}, register), "ACK", []byte{0xc3}, 5, ZoneMeasureBody(19, 70, 520))
 	if obs := e.ZoneObservers(4); len(obs) != 1 || obs[0].Token != "c3" || obs[0].Seq != 5 {
 		t.Errorf("observers = %+v, want one under c3 at 5", obs)
 	}
