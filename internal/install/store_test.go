@@ -7,7 +7,9 @@ import (
 	"errors"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"testing"
+	"time"
 
 	"freedo/tado"
 )
@@ -87,6 +89,54 @@ func TestStateStoreFSCTRL0RoundTrip(t *testing.T) {
 	got, ok, err := newTestStore(t, path).FSCTRL0(ctx)
 	if err != nil || !ok || got != 0x41 {
 		t.Fatalf("FSCTRL0=%#02x,%t,%v want 0x41,true,nil", got, ok, err)
+	}
+}
+
+// The airtime buckets and their time survive a restart of the daemon.
+func TestStateStoreAirtimeRoundTrip(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.db")
+	ctx := context.Background()
+	store := newTestStore(t, path)
+	if _, _, ok, err := store.Airtime(ctx); err != nil || ok {
+		t.Fatalf("a fresh database holds airtime: ok=%t err=%v", ok, err)
+	}
+	buckets := make([]uint16, 61)
+	buckets[0], buckets[59], buckets[60] = 60000, 12, 946
+	at := time.Unix(1_700_000_123, 0)
+	if err := store.SetAirtime(ctx, buckets, at); err != nil {
+		t.Fatal(err)
+	}
+	buckets[60] = 1000
+	if err := store.SetAirtime(ctx, buckets, at.Add(10*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	got, gotAt, ok, err := newTestStore(t, path).Airtime(ctx)
+	if err != nil || !ok || !gotAt.Equal(at.Add(10*time.Second)) || !slices.Equal(got, buckets) {
+		t.Fatalf("Airtime = %v at %v ok=%t err=%v, want the second write", got, gotAt, ok, err)
+	}
+	if _, err := store.DB().Exec(`UPDATE meta SET value = 'garbage' WHERE key = 'airtime'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := store.Airtime(ctx); err == nil {
+		t.Fatal("a damaged airtime value was read")
+	}
+}
+
+// The bench tools read the stored tune by path, without the daemon store.
+func TestLoadFSCTRL0ReadsTheStoredTune(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.db")
+	store := newTestStore(t, path)
+	if _, ok, err := LoadFSCTRL0(path); err != nil || ok {
+		t.Fatalf("a fresh database holds a tune: ok=%t err=%v", ok, err)
+	}
+	if err := store.SetFSCTRL0(context.Background(), 0x2f); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok, err := LoadFSCTRL0(path); err != nil || !ok || got != 0x2f {
+		t.Fatalf("LoadFSCTRL0=%#02x,%t,%v want 0x2f,true,nil", got, ok, err)
+	}
+	if _, _, err := LoadFSCTRL0(filepath.Join(t.TempDir(), "missing.db")); err == nil {
+		t.Fatal("a missing database was read")
 	}
 }
 

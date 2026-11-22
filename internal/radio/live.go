@@ -44,6 +44,27 @@ type configuredBridge interface {
 	Configured() (bool, error)
 }
 
+// jobConfiguredBridge reads the same register after a CSL job that expired,
+// with the longer reply wait of a command that can queue behind a transaction.
+type jobConfiguredBridge interface {
+	ConfiguredBehindJob() (bool, error)
+}
+
+// airtimeBridge reads the time on air of the last hour, and the hourly budget.
+type airtimeBridge interface {
+	Airtime() (cc1101.AirtimeReading, error)
+}
+
+// synthBridge runs the synthesizer calibration and checks that it locks.
+type synthBridge interface {
+	CalibrateSynth() error
+}
+
+// pinger is the one request a bridge with no CSL queue can send as a keepalive.
+type pinger interface {
+	Ping() (string, error)
+}
+
 // TunableBridge is the frequency-offset register of the radio. The daemon seeds
 // it at start, and the live radio moves it while it measures a calibration.
 type TunableBridge interface {
@@ -91,6 +112,7 @@ type Live struct {
 	pollOKAt        time.Time     // the last CSL queue poll that worked; the loop goroutine only
 	rxOKAt          time.Time     // the last receive window that worked; the loop goroutine only
 	txBlocked       atomic.Bool
+	unconfigured    atomic.Bool // a request met ST_UNCONFIGURED: the loop ends
 	bridgeClosed    atomic.Bool
 	ownerEnding     atomic.Bool
 	stop            chan struct{}
@@ -102,12 +124,49 @@ type Live struct {
 	lifecycleMu     sync.RWMutex
 	lifecycleErr    atomic.Value
 	closeErr        error
+	kindCounters
+	// airtimeLimit is the airtime limit option: it never changes after the start.
+	airtimeLimit bool
+	// airtime is the last reading of the firmware budget. The loop goroutine
+	// writes it, health reads it.
+	airtimeMu sync.Mutex
+	airtime   Airtime
+	airtimeAt time.Time // the loop goroutine only
+	// budgetWarned: the log said that the bridge has a budget with the limit off.
+	budgetWarned bool      // the loop goroutine only
+	synthAt      time.Time // the last synthesizer calibration; the loop goroutine only
+	synthFailed  atomic.Bool
+	synthTries   int                  // failed retries since the lock was lost; the loop goroutine only
+	deferLogAt   map[string]time.Time // the loop goroutine only
+	awaitErr     error                // why awaitImmediate gave up, nil for a stop; the loop goroutine only
+	// pace holds the train starts of the last minute and the jobs that wait for a
+	// slot. The loop goroutine writes it, health reads it.
+	pace bootstrapPace
+	// cslBusy counts the jobs and bursts that found the channel busy.
+	cslBusy atomic.Uint64
 }
+
+// Option changes how a Live radio starts.
+type Option func(*Live)
+
+// WithAirtimeLimit turns the airtime limit on: the radio defers long
+// transmissions near the budget that the bridge was given, and paces the CSL
+// bootstrap trains. The caller gives the budget to the bridge in Configure.
+func WithAirtimeLimit() Option { return func(r *Live) { r.airtimeLimit = true } }
+
+// WithTXBlocked starts the radio with its transmitter latched off, as in a
+// dry-run: no caller can arm it later.
+func WithTXBlocked() Option { return func(r *Live) { r.txBlocked.Store(true) } }
 
 type liveCSLPending struct {
 	action    tado.Action
 	bootstrap bool
-	group     uint16
+	// slot says that this job booked a slot of the bootstrap pace for its batch.
+	// Only the first job of a batch holds it.
+	slot bool
+	// lead says that this is the first job of its batch, or a job that has no batch.
+	lead  bool
+	group uint16
 }
 
 type liveCSLGroup struct {
@@ -141,6 +200,9 @@ type ImmediateResult struct {
 	Acks      [][]byte
 	Submitted []tado.Action
 	Accepted  []tado.Action
+	// Delivered lists the actions that the radio sent at once, with no queue, and
+	// that the device acknowledged with an Enhanced ACK.
+	Delivered []tado.Action
 	CSLQueue  bool
 }
 
@@ -166,7 +228,11 @@ const liveTrainChunk = 48
 const liveTrainPayloadMax = 1024
 const liveCSLTxAckTimeout = 50 * time.Millisecond
 const liveCSLTxTimeout = time.Second
-const liveCloseGrace = 250 * time.Millisecond
+
+// liveCloseGrace is how long Close waits for the loop to stop before it closes
+// the bridge under it: one receive window and the round trips around it, so that
+// a stop inside a window still reads the airtime a last time.
+const liveCloseGrace = 2 * liveReceiveWindow
 const liveCSLPollTimeout = 2 * time.Second
 
 // liveLinkDeadAfter is how long a kind of serial exchange, the queue poll or
@@ -177,6 +243,30 @@ const liveLinkDeadAfter = 30 * time.Second
 const liveCSLBootstrapGlobalCooldown = 2 * time.Second
 const liveCSLBootstrapRetryCooldown = 30 * time.Second
 const liveCSLBootstrapTargetCooldown = 10 * time.Minute
+
+// liveKeepalive bounds the silence of the loop towards the bridge. The firmware
+// drops its coordinator, pair window and queue after 5000 ms with no request.
+const liveKeepalive = time.Second
+
+// Airtime polling and the deferral it drives. The firmware counts the time on
+// air of the last hour. With the airtime limit on, the loop defers the Router
+// Advertisement bursts and the CSL bootstrap trains, the two long ones, from
+// airtimeHold of the budget until the share falls under airtimeRelease.
+const (
+	liveAirtimePoll = 10 * time.Second
+	airtimeHold     = 0.9
+	airtimeRelease  = 0.8
+)
+
+// The synthesizer calibration runs once per hour from the idle step, and one
+// minute after a calibration that did not lock. While it is not locked the radio
+// transmits nothing. After liveSynthRetries failed retries in a row the loop
+// ends, and the daemon restarts to open and configure the bridge again.
+const (
+	liveSynthEvery   = time.Hour
+	liveSynthRetry   = time.Minute
+	liveSynthRetries = 3
+)
 
 // liveConfigCheckWindows is the run of receive windows with no CRC-OK frame,
 // about 10 s, after which the owner reads the register set back.
@@ -195,15 +285,17 @@ type SeededBridge interface {
 // StartSeeded starts the receive loop on the frequency-offset register the
 // bridge holds now: the caller seeds it first. stored says the register holds a
 // stored calibration; without one the loop measures it from the frames it hears.
-func StartSeeded(br SeededBridge, coordinator []byte, phase uint16, autoAck, tuneDebug, stored bool) (*Live, error) {
-	r, err := buildLiveRadio(br, coordinator, phase, autoAck)
+func StartSeeded(br SeededBridge, coordinator []byte, phase uint16, autoAck, tuneDebug, stored bool, opts ...Option) (*Live, error) {
+	r, err := buildLiveRadio(br, coordinator, phase, autoAck, opts...)
 	if err != nil {
 		return nil, err
 	}
 	r.tuneDebug, r.tuner = tuneDebug, br
 	r.fsctrl0.Store(uint32(br.FSCTRL0()))
+	r.cal.quietSince = r.now()
 	if stored {
 		r.cal.state = CalibrationStored
+		r.cal.stored, r.cal.hasStored = br.FSCTRL0(), true
 	} else {
 		r.startMeasureLocked()
 	}
@@ -211,8 +303,8 @@ func StartSeeded(br SeededBridge, coordinator []byte, phase uint16, autoAck, tun
 	return r, nil
 }
 
-func StartLive(br LiveBridge, coordinator []byte, phase uint16, autoAck bool) (*Live, error) {
-	r, err := buildLiveRadio(br, coordinator, phase, autoAck)
+func StartLive(br LiveBridge, coordinator []byte, phase uint16, autoAck bool, opts ...Option) (*Live, error) {
+	r, err := buildLiveRadio(br, coordinator, phase, autoAck, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -220,9 +312,12 @@ func StartLive(br LiveBridge, coordinator []byte, phase uint16, autoAck bool) (*
 	return r, nil
 }
 
-func buildLiveRadio(br LiveBridge, coordinator []byte, phase uint16, autoAck bool) (*Live, error) {
+func buildLiveRadio(br LiveBridge, coordinator []byte, phase uint16, autoAck bool, opts ...Option) (*Live, error) {
 	if queue, ok := br.(queuedCSLBridge); ok {
 		if err := queue.FlushCSLQueue(); err != nil {
+			if errors.Is(err, cc1101.ErrUnconfigured) {
+				err = fmt.Errorf("%w: %w", errBridgeUnconfigured, err)
+			}
 			return nil, err
 		}
 	}
@@ -246,6 +341,9 @@ func buildLiveRadio(br LiveBridge, coordinator []byte, phase uint16, autoAck boo
 		gone:                 make(chan struct{}),
 		ended:                make(chan struct{}),
 	}
+	for _, opt := range opts {
+		opt(r)
+	}
 	return r, nil
 }
 
@@ -254,17 +352,26 @@ func (r *Live) loop() {
 	var loopErr error
 	defer r.finishLoop(&loopErr)
 	errs, quiet := 0, 0
-	r.pollOKAt, r.rxOKAt = r.now(), r.now()
+	r.pollOKAt, r.rxOKAt, r.synthAt = r.now(), r.now(), r.now()
 	for {
 		select {
 		case <-r.stop:
 			return
 		default:
 		}
+		if r.unconfigured.Load() {
+			loopErr = errBridgeUnconfigured
+			return
+		}
 		if r.txBlocked.Load() {
 			r.autoAck = false
 			r.dropAsync(ErrTXBlocked)
 			r.dropCSL(ErrTXBlocked)
+		}
+		if r.synthFailed.Load() {
+			// Jobs queued before the lock went must not start on a chip that
+			// cannot hold the carrier.
+			r.dropCSL(errSynthHeld)
 		}
 		r.drainFrames()
 		r.drainCSLCompletions()
@@ -282,7 +389,7 @@ func (r *Live) loop() {
 		if len(r.cslPending) != 0 {
 			if r.expireCSL() {
 				// A lost completion is the first sign of a bridge that rebooted.
-				if loopErr = r.checkConfigured(&errs); loopErr != nil {
+				if loopErr = r.checkConfigured(&errs, true); loopErr != nil {
 					return
 				}
 				continue
@@ -295,11 +402,13 @@ func (r *Live) loop() {
 			continue
 		}
 		r.drainAsync()
-		if r.tuner != nil {
-			r.tuneStep()
+		if err := r.idleStep(); err != nil {
+			loopErr = err
+			return
 		}
 		var frame *cc1101.RxFrame
-		if r.autoAck {
+		// The Enhanced ACK is a transmission: without a lock the radio only listens.
+		if r.autoAck && !r.synthFailed.Load() {
 			result, err := r.br.RecvAutoAck(liveReceiveWindow, r.coordinator, r.phase)
 			if err != nil {
 				if !r.rxError("autoack", err, &errs) {
@@ -335,7 +444,7 @@ func (r *Live) loop() {
 		if frame == nil || !frame.CRCOK {
 			if quiet++; quiet >= liveConfigCheckWindows {
 				quiet = 0
-				if loopErr = r.checkConfigured(&errs); loopErr != nil {
+				if loopErr = r.checkConfigured(&errs, false); loopErr != nil {
 					return
 				}
 			}
@@ -344,6 +453,7 @@ func (r *Live) loop() {
 		quiet = 0
 		r.publishAcks([][]byte{frame.Payload})
 		if r.batch && !r.awaitImmediate() {
+			loopErr = r.awaitErr
 			return
 		}
 	}
@@ -352,6 +462,9 @@ func (r *Live) loop() {
 func (r *Live) finishLoop(loopErr *error) {
 	err := ErrStopped
 	if *loopErr != nil {
+		if errors.Is(*loopErr, cc1101.ErrUnconfigured) && !errors.Is(*loopErr, errBridgeUnconfigured) {
+			*loopErr = fmt.Errorf("%w: %w", errBridgeUnconfigured, *loopErr)
+		}
 		err = fmt.Errorf("%w: %w", errLiveEnded, *loopErr)
 	}
 	r.lifecycleErr.Store(err)
@@ -445,6 +558,10 @@ func (r *Live) RadioError() error {
 }
 
 func (r *Live) rxError(mode string, err error, errs *int) bool {
+	if errors.Is(err, cc1101.ErrUnconfigured) {
+		log.Printf("rx %s: %v", mode, err)
+		return false
+	}
 	if isLinkFault(err) {
 		return r.survivesLinkFault("rx "+mode, &r.rxOKAt, err)
 	}
@@ -469,13 +586,18 @@ func (r *Live) rxError(mode string, err error, errs *int) bool {
 // bridge that rebooted with the USB link up answers every request, with empty
 // polls and empty receive windows, so only the register read back shows it.
 // The error ends the owner, and the daemon restarts and configures the chip.
-// A serial error of the read back counts as a receive error.
-func (r *Live) checkConfigured(errs *int) error {
+// A serial error of the read back counts as a receive error. afterJob is true
+// for the read after a CSL job that expired, which waits for a transaction.
+func (r *Live) checkConfigured(errs *int, afterJob bool) error {
 	br, ok := r.br.(configuredBridge)
 	if !ok {
 		return nil
 	}
-	configured, err := br.Configured()
+	read := br.Configured
+	if jb, ok := r.br.(jobConfiguredBridge); ok && afterJob {
+		read = jb.ConfiguredBehindJob
+	}
+	configured, err := read()
 	if err != nil {
 		if r.rxError("register check", err, errs) {
 			return nil
@@ -549,6 +671,7 @@ func (r *Live) finishAsync(batch liveAsyncBatch) {
 	acks, err := r.sendFrames(batch.frames)
 	if err != nil {
 		log.Printf("async tx: %v", err)
+		r.noteBridgeErr(err)
 	}
 	r.completeAsync(batch, err)
 	r.publishAcks(acks)
@@ -579,9 +702,19 @@ func (r *Live) completeAsync(batch liveAsyncBatch, err error) {
 	}
 }
 
+// awaitImmediate waits for the engine to answer a received frame. It sends a
+// keepalive request while it waits: the engine can take long, and the firmware
+// drops its coordinator after 5000 ms of silence.
 func (r *Live) awaitImmediate() bool {
+	tick := time.NewTicker(liveKeepalive)
+	defer tick.Stop()
 	for {
 		select {
+		case <-tick.C:
+			if err := r.keepalive(); err != nil {
+				r.awaitErr = err
+				return false
+			}
 		case batch := <-r.immediate:
 			r.finishImmediate(batch)
 			return true
@@ -600,6 +733,27 @@ func (r *Live) awaitImmediate() bool {
 	}
 }
 
+// keepalive sends one request that changes nothing: a queue poll, or a PING for
+// a bridge with no queue.
+func (r *Live) keepalive() error {
+	if _, ok := r.br.(queuedCSLBridge); ok {
+		if _, err := r.drainCSL(); err != nil {
+			return fmt.Errorf("CSL queue poll: %w", err)
+		}
+		return nil
+	}
+	if br, ok := r.br.(pinger); ok {
+		if _, err := br.Ping(); err != nil {
+			if isLinkFault(err) && r.survivesLinkFault("keepalive", &r.pollOKAt, err) {
+				return nil
+			}
+			return fmt.Errorf("keepalive: %w", err)
+		}
+		r.pollOKAt = r.now()
+	}
+	return nil
+}
+
 func (r *Live) takePairWindow() bool {
 	select {
 	case req := <-r.pairCtl:
@@ -611,12 +765,34 @@ func (r *Live) takePairWindow() bool {
 }
 
 func (r *Live) finishPairWindow(req livePairWindow) {
+	// A dry-run radio never opens the window. Closing one stays allowed.
+	if r.txBlocked.Load() && req.window.Duration != 0 {
+		req.done <- livePairResult{err: ErrTXBlocked}
+		return
+	}
+	if r.synthFailed.Load() && req.window.Duration != 0 {
+		req.done <- livePairResult{err: errSynthHeld}
+		return
+	}
+	r.pairWindowChanged(req.window.Duration)
+	if req.window.Duration != 0 && len(r.cslPending) == 0 && r.tuner != nil {
+		// The beacons answer on the register the chip holds: send it home before
+		// the window opens. With a job out the restore waits for the idle step.
+		r.restoreIfDue()
+		// The SCAL of the restore write can lose the lock. synthLost closed the
+		// window then, and a PAIRWIN now would open it again.
+		if r.synthFailed.Load() {
+			req.done <- livePairResult{err: errSynthHeld}
+			return
+		}
+	}
 	br, ok := r.br.(pairWindowBridge)
 	if !ok {
 		req.done <- livePairResult{err: cc1101.ErrPairWindowUnsupported}
 		return
 	}
 	sent, err := br.SetPairWindow(req.window)
+	r.noteBridgeErr(err)
 	req.done <- livePairResult{sent: sent, err: err}
 }
 
@@ -675,6 +851,7 @@ func (r *Live) finishImmediate(batch liveBatch) {
 	r.autoAck = true
 	at := r.now()
 	result, err := r.sendActions(batch.actions)
+	r.noteBridgeErr(err)
 	r.holdCSLDeadline(at)
 	if batch.done != nil {
 		batch.done <- liveBatchResult{result: result, err: err}
@@ -740,6 +917,7 @@ func (r *Live) drainCSL() (bool, error) {
 		// after its own TX, before the FOC loop converges, so their FREQEST is
 		// not a measurement.
 		r.tuneDebugFrame(event.Inbound, "csl")
+		r.noteHeard(event.Inbound)
 		r.publishAcks([][]byte{event.Inbound.Payload})
 		return true, nil
 	}
@@ -754,7 +932,16 @@ func (r *Live) drainCSL() (bool, error) {
 		return true, nil
 	}
 	delete(r.cslPending, completion.ID)
+	if errors.Is(completion.Err, cc1101.ErrAirtimeBudget) {
+		r.noteAirtimeRefusal("CSL job")
+	}
 	r.confirmCSLBootstrap(pending.action.Bytes, pending.bootstrap, completion.Result, completion.Err)
+	if pending.slot {
+		r.settleBootstrapSlot(cslShort(pending.action.Bytes), completion.Result)
+	} else if pending.bootstrap && pending.lead {
+		r.noteUnbookedTrain(pending.action.Bytes, completion.Result)
+	}
+	r.countJob(pending.action, completion.Result)
 	logCSLTx(pending.action, pending.bootstrap, completion.Result, completion.Err)
 	if pending.group != 0 {
 		group := r.cslGroups[pending.group]
@@ -886,14 +1073,13 @@ func (r *Live) drainCSLCompletions() {
 	}
 }
 
+// dropCSL fails every pending job and flushes the bridge queue. The jobs fail
+// once. A flush that the link lost is sent again at the next call: the bridge
+// keeps its jobs until a flush works, and it starts one between two receive
+// windows.
 func (r *Live) dropCSL(err error) {
-	if r.cslFlushed {
-		return
-	}
-	if br, ok := r.br.(queuedCSLBridge); ok && !r.bridgeClosed.Load() {
-		if err := br.FlushCSLQueue(); err != nil {
-			log.Printf("CSL queue flush: %v", err)
-		}
+	if !r.cslFlushed {
+		r.cslFlushed = r.flushCSL()
 	}
 	for _, group := range r.cslGroups {
 		if group.err == nil {
@@ -905,10 +1091,29 @@ func (r *Live) dropCSL(err error) {
 		if pending.group == 0 {
 			r.publishCSLCompletion(CSLCompletion{Action: pending.action, Err: err})
 		}
+		// A job that the queue lost has no result: its slot of the pace returns.
+		if pending.slot {
+			r.settleBootstrapSlot(cslShort(pending.action.Bytes), nil)
+		}
 	}
 	r.cslPending = make(map[uint16]liveCSLPending)
 	r.cslGroups = make(map[uint16]*liveCSLGroup)
-	r.cslFlushed = true
+}
+
+// flushCSL empties the bridge queue and reports whether nothing is left to
+// flush: a bridge with no queue, a closed port and a bridge that reset need no
+// flush.
+func (r *Live) flushCSL() bool {
+	br, ok := r.br.(queuedCSLBridge)
+	if !ok || r.bridgeClosed.Load() {
+		return true
+	}
+	err := br.FlushCSLQueue()
+	if err != nil {
+		log.Printf("CSL queue flush: %v", err)
+		r.noteBridgeErr(err)
+	}
+	return err == nil || errors.Is(err, cc1101.ErrUnconfigured)
 }
 
 func (r *Live) sendTrain(frames [][]byte) error {
@@ -918,6 +1123,11 @@ func (r *Live) sendTrain(frames [][]byte) error {
 
 func (r *Live) sendActions(actions []tado.Action) (ImmediateResult, error) {
 	var result ImmediateResult
+	if len(actions) != 0 {
+		if err := r.synthHold("transmission"); err != nil {
+			return result, err
+		}
+	}
 	generic := make([][]byte, 0, len(actions))
 	flush := func() error {
 		if len(generic) == 0 {
@@ -928,6 +1138,10 @@ func (r *Live) sendActions(actions []tado.Action) (ImmediateResult, error) {
 		generic = generic[:0]
 		return err
 	}
+	// prev and batchNoTrain follow the frames of a batch that the radio sends one by
+	// one (a bridge with no queue): only the first frame books a slot and counts.
+	var prev *tado.Action
+	batchNoTrain := false
 	for i := 0; i < len(actions); i++ {
 		action := actions[i]
 		if action.CSLTx {
@@ -937,25 +1151,92 @@ func (r *Live) sendActions(actions []tado.Action) (ImmediateResult, error) {
 			if len(action.Bytes) < 5 {
 				return result, fmt.Errorf("CSL Data frame is too short")
 			}
-			bootstrap := action.HasCSLBatch || r.cslBootstrap(action)
+			bootstrap := action.HasCSLBatch && !action.NoBootstrap
+			held := r.longTXHold()
+			stamp := false
+			var cooldown time.Duration
+			switch {
+			case held != nil && (bootstrap || action.CSLBootstrapAlways):
+				r.logDeferral("CSL bootstrap train", held)
+				return result, held
+			case held != nil:
+				// The job runs on the anchor it has, and no train starts.
+			case !bootstrap && !action.NoBootstrap:
+				bootstrap, cooldown = r.cslBootstrapWanted(action)
+				stamp = bootstrap
+			}
+			if cooldown > 0 && action.QueueAttempt {
+				// The job wants a train but the last one just started. It waits in the
+				// pace, not on a retry with no train, so that the pace orders it.
+				paced := r.paceCooldown(cslShort(action.Bytes), action.Origin == tado.OriginUser, cooldown)
+				r.logDeferral("CSL bootstrap train", paced)
+				return result, paced
+			}
+			slot := false
+			// noTrain says that the pace refused the train of a response: every frame
+			// of its datagram goes on the anchor, none asks for a train.
+			noTrain := false
+			lead := prev == nil || !sameCSLBatch(*prev, action)
+			first := action
+			prev = &first
+			if !lead {
+				// A later frame of a batch: the first frame booked the slot and decided.
+				noTrain = batchNoTrain
+				bootstrap = bootstrap && !noTrain
+				stamp = false
+			} else if bootstrap && r.anchorKnown(action.Bytes) {
+				// A train confirmed this device: it has an anchor, and the job needs no
+				// train. The pace does not hold it and books no slot. The firmware still
+				// decides on the air, and sends a train when the anchor missed: the
+				// completion then counts that train (noteUnbookedTrain).
+				stamp = false
+				r.releaseBootstrapWait(cslShort(action.Bytes))
+			} else if bootstrap {
+				// A queued job and the link-maintenance echo ask again when they wait.
+				// A response has no retry of its own.
+				again := action.QueueAttempt || action.CSLBootstrapAlways
+				paced := r.paceBootstrap(cslShort(action.Bytes), action.Origin == tado.OriginUser, again)
+				switch {
+				case paced == nil:
+					slot = true
+				case again:
+					r.logDeferral("CSL bootstrap train", paced)
+					return result, paced
+				default:
+					// A response goes out on the anchor it has, and the requester asks again.
+					bootstrap, stamp, noTrain = false, false, true
+				}
+			}
+			if lead {
+				batchNoTrain = noTrain
+			}
+			if stamp {
+				r.noteBootstrapAttempt(action.Bytes)
+			}
+			if !bootstrap {
+				r.releaseBootstrapWait(cslShort(action.Bytes))
+			}
 			if br, ok := r.br.(queuedCSLBridge); ok {
 				result.CSLQueue = true
 				if r.cslPending == nil {
 					r.cslPending = make(map[uint16]liveCSLPending)
 				}
 				jobs := []cc1101.CSLQueueRequest{{ID: r.nextCSLID(), Frame: action.Bytes, DstShort: []byte{action.Bytes[4], action.Bytes[3]}, AckTimeout: liveCSLTxAckTimeout, Bootstrap: bootstrap, WaitResponse: action.WaitResponse, CSLPhase: r.phase}}
-				pending := []liveCSLPending{{action: action, bootstrap: bootstrap}}
+				pending := []liveCSLPending{{action: action, bootstrap: bootstrap, slot: slot, lead: true}}
 				for i+1 < len(actions) && sameCSLBatch(action, actions[i+1]) {
 					i++
 					next := actions[i]
 					// A fragmented datagram needs every frame to have the same cold-start path.
 					// The first frame can finish without creating an anchor for the next one.
-					nextBootstrap := next.HasCSLBatch || bootstrap
+					nextBootstrap := !noTrain && ((next.HasCSLBatch && !next.NoBootstrap) || bootstrap)
 					jobs = append(jobs, cc1101.CSLQueueRequest{ID: r.nextCSLID(), Frame: next.Bytes, DstShort: []byte{next.Bytes[4], next.Bytes[3]}, AckTimeout: liveCSLTxAckTimeout, Bootstrap: nextBootstrap, WaitResponse: next.WaitResponse, CSLPhase: r.phase})
 					pending = append(pending, liveCSLPending{action: next, bootstrap: nextBootstrap})
 				}
 				r.markTX()
 				if err := br.EnqueueCSLBatch(jobs); err != nil {
+					if slot {
+						r.settleBootstrapSlot(cslShort(action.Bytes), nil)
+					}
 					return result, err
 				}
 				r.armCSLDeadline(jobs)
@@ -981,12 +1262,19 @@ func (r *Live) sendActions(actions []tado.Action) (ImmediateResult, error) {
 				result.Submitted = append(result.Submitted, action)
 			}
 			r.confirmCSLBootstrap(action.Bytes, bootstrap, cslResult, err)
+			if slot {
+				r.settleBootstrapSlot(cslShort(action.Bytes), cslResult)
+			} else if bootstrap && lead {
+				r.noteUnbookedTrain(action.Bytes, cslResult)
+			}
+			r.countJob(action, cslResult)
 			logCSLTx(action, bootstrap, cslResult, err)
 			if err != nil {
 				return result, err
 			}
 			if cslResult.Ack != nil {
 				result.Acks = append(result.Acks, append([]byte(nil), cslResult.Ack.Payload...))
+				result.Delivered = append(result.Delivered, action)
 			}
 			for _, follow := range cslResult.Follow {
 				if !follow.CRCOK {
@@ -1046,57 +1334,101 @@ func formatCSLTx(action tado.Action, bootstrap bool, result *cc1101.CSLTxResult,
 		action.Node, cslShort(action.Bytes), action.QueueAttempt, bootstrap, sent, ack, follow, dropped, action.Reason)
 }
 
-// cslBootstrap applies the bootstrap cooldowns to one CSL action. An action
-// that always bootstraps skips them but still counts as an attempt, so the
-// global cooldown keeps other targets off the air after its train.
-func (r *Live) cslBootstrap(action tado.Action) bool {
-	if !action.CSLBootstrapAlways || len(action.Bytes) < 5 {
-		return r.allowCSLBootstrap(action.Bytes, action.IdentifyCSLBootstrapRetry)
+// cslBootstrapWanted applies the bootstrap cooldowns to one CSL action. An
+// action that always bootstraps skips them. The caller records the attempt with
+// noteBootstrapAttempt once the pace lets the train start. When only the global
+// cooldown of the last train denies the train, wait is what is left of it.
+func (r *Live) cslBootstrapWanted(action tado.Action) (wanted bool, wait time.Duration) {
+	if len(action.Bytes) < 5 {
+		return false, 0
 	}
+	if action.CSLBootstrapAlways {
+		return true, 0
+	}
+	return r.bootstrapCooldown(action.Bytes, action.IdentifyCSLBootstrapRetry)
+}
+
+// anchorKnown says that a train confirmed the device, with its Enhanced ACK, less
+// than liveCSLBootstrapTargetCooldown ago: the bridge holds an anchor for it.
+func (r *Live) anchorKnown(frame []byte) bool {
+	last := r.bootstrapConfirmedAt[cslShort(frame)]
+	return !last.IsZero() && r.now().Sub(last) < liveCSLBootstrapTargetCooldown
+}
+
+// noteUnbookedTrain counts a train that a job sent without a slot: a job on a
+// known anchor that the firmware had to send with a train, after the anchor
+// missed. It acts only with the airtime limit on. The train takes its place in
+// the window of the pace and starts the global cooldown, so that the pace holds
+// the next train for it. It does not start the retry cooldown of the device. A
+// job that ran on the anchor sent a few frames and counts for nothing, and the
+// later frames of a batch are not counted: the first frame decides.
+func (r *Live) noteUnbookedTrain(frame []byte, result *cc1101.CSLTxResult) {
+	if !r.airtimeLimit || result == nil || result.Sent < liveBootstrapTrainFrames {
+		return
+	}
+	p := &r.pace
+	p.mu.Lock()
 	now := r.now()
+	p.prune(now)
+	p.starts = append(p.starts, paceStart{at: now, short: cslShort(frame), settled: true})
+	p.mu.Unlock()
+	r.lastBootstrapAttempt = now
+}
+
+// noteBootstrapAttempt counts a train that starts, so the global cooldown keeps
+// other targets off the air after it.
+func (r *Live) noteBootstrapAttempt(frame []byte) {
 	if r.bootstrapAttemptAt == nil {
 		r.bootstrapAttemptAt = make(map[string]time.Time)
 	}
-	r.bootstrapAttemptAt[cslShort(action.Bytes)] = now
+	now := r.now()
+	r.bootstrapAttemptAt[cslShort(frame)] = now
 	r.lastBootstrapAttempt = now
-	return true
 }
 
 func (r *Live) allowCSLBootstrap(frame []byte, identifyRetry bool) bool {
-	if len(frame) < 5 {
+	if !r.bootstrapCooldownOK(frame, identifyRetry) {
 		return false
+	}
+	r.noteBootstrapAttempt(frame)
+	return true
+}
+
+func (r *Live) bootstrapCooldownOK(frame []byte, identifyRetry bool) bool {
+	ok, _ := r.bootstrapCooldown(frame, identifyRetry)
+	return ok
+}
+
+// bootstrapCooldown says whether a train may start for the frame. A denial with
+// wait set comes only from the global cooldown of the last train, and it ends
+// after wait. The cooldown of a confirmed target and the retry cooldown of a
+// target end later and have no wait: the job goes on the anchor it has.
+func (r *Live) bootstrapCooldown(frame []byte, identifyRetry bool) (ok bool, wait time.Duration) {
+	if len(frame) < 5 {
+		return false, 0
 	}
 	now := r.now()
 	key := cslShort(frame)
-	if r.bootstrapAttemptAt == nil {
-		r.bootstrapAttemptAt = make(map[string]time.Time)
-	}
-	if r.bootstrapConfirmedAt == nil {
-		r.bootstrapConfirmedAt = make(map[string]time.Time)
-	}
 	if last := r.bootstrapConfirmedAt[key]; !last.IsZero() && now.Sub(last) < liveCSLBootstrapTargetCooldown {
-		return false
+		return false, 0
 	}
 	if identifyRetry {
-		r.bootstrapAttemptAt[key] = now
-		r.lastBootstrapAttempt = now
-		return true
+		return true, 0
 	}
 	if last := r.bootstrapAttemptAt[key]; !last.IsZero() && now.Sub(last) < liveCSLBootstrapRetryCooldown {
-		return false
+		return false, 0
 	}
-	if !r.lastBootstrapAttempt.IsZero() && now.Sub(r.lastBootstrapAttempt) < liveCSLBootstrapGlobalCooldown {
-		return false
+	if last := r.lastBootstrapAttempt; !last.IsZero() && now.Sub(last) < liveCSLBootstrapGlobalCooldown {
+		return false, liveCSLBootstrapGlobalCooldown - now.Sub(last)
 	}
-	r.bootstrapAttemptAt[key] = now
-	r.lastBootstrapAttempt = now
-	return true
+	return true, 0
 }
 
 func (r *Live) confirmCSLBootstrap(frame []byte, bootstrap bool, result *cc1101.CSLTxResult, err error) {
 	if len(frame) < 5 {
 		return
 	}
+	r.noteCSLBusy(err)
 	if errors.Is(err, cc1101.ErrCSLTxNoAnchor) {
 		delete(r.bootstrapConfirmedAt, cslShort(frame))
 		return
@@ -1107,7 +1439,15 @@ func (r *Live) confirmCSLBootstrap(frame []byte, bootstrap bool, result *cc1101.
 		delete(r.bootstrapAttemptAt, cslShort(frame))
 		return
 	}
-	if !bootstrap || err != nil || result == nil || result.Ack == nil {
+	// With the airtime limit on, a train of one period that the device did not
+	// answer says that the anchor is gone: the device is not known any more, and
+	// the pace holds its next job. With the limit off the next job uses the anchor.
+	if r.airtimeLimit && result != nil && result.Sent >= liveBootstrapTrainFrames && result.Ack == nil {
+		delete(r.bootstrapConfirmedAt, cslShort(frame))
+	}
+	// Any job that the device answers with an Enhanced ACK, with the bootstrap flag
+	// or not, shows that the bridge holds its anchor, and renews the window.
+	if err != nil || result == nil || result.Ack == nil {
 		return
 	}
 	if r.bootstrapConfirmedAt == nil {
@@ -1131,17 +1471,28 @@ func cslShort(frame []byte) string {
 }
 
 func (r *Live) sendFrames(frames [][]byte) ([][]byte, error) {
+	if len(frames) != 0 {
+		if err := r.synthHold("transmission"); err != nil {
+			return nil, err
+		}
+	}
 	if ras, ok := routerAdvertBursts(frames); ok {
+		if held := r.longTXHold(); held != nil {
+			r.logDeferral("router advertisement burst", held)
+			return nil, held
+		}
 		if br, ok := r.br.(routerAdvertBurstBridge); ok {
 			for _, ra := range ras {
 				r.markTX()
 				sent, err := br.SendRouterAdvertBurst(ra, time.Second)
 				if err != nil {
+					r.noteCSLBusy(err)
 					return nil, err
 				}
 				if sent < 3 || sent > tado.RouterAdvertWakeUpCount+1 {
 					return nil, fmt.Errorf("router advertisement burst returned invalid frame count %d", sent)
 				}
+				r.countKind("ra", jobAirtimeMS(len(ra), sent))
 				log.Printf("router advertisement burst: sent %d frames", sent)
 			}
 			return nil, nil
@@ -1165,10 +1516,14 @@ func (r *Live) sendFrames(frames [][]byte) ([][]byte, error) {
 		r.markTX()
 		sent, err := r.br.SendTrain(chunk, time.Second)
 		if err != nil {
+			r.noteCSLBusy(err)
 			return acks, err
 		}
 		if sent != len(chunk) {
 			return acks, fmt.Errorf("sent %d of %d frames", sent, len(chunk))
+		}
+		for _, f := range chunk {
+			r.countKind("other", airFrameMS(len(f)))
 		}
 		start = end
 	}
@@ -1340,6 +1695,7 @@ func (r *Live) Close() error {
 		select {
 		case <-r.ownerGone():
 			<-r.ended
+			r.pollAirtimeFinal()
 		case <-time.After(liveCloseGrace):
 			r.closeBridge()
 			<-r.ended

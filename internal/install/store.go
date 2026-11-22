@@ -8,6 +8,8 @@ package install
 import (
 	"context"
 	"database/sql"
+	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,6 +20,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"freedo/tado"
 
@@ -527,6 +530,61 @@ func (s *Store) SetFSCTRL0(ctx context.Context, value byte) error {
 func (s *Store) ClearFSCTRL0(ctx context.Context) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM meta WHERE key = 'fsctrl0'`)
 	return err
+}
+
+// Airtime returns the last per-minute airtime buckets of the bridge and the
+// instant they were read, and whether the database holds them. The value is the
+// Unix time in seconds, a colon, and the buckets as big endian uint16 in hex.
+func (s *Store) Airtime(ctx context.Context) (buckets []uint16, at time.Time, ok bool, err error) {
+	var raw string
+	switch err := s.db.QueryRowContext(ctx, `SELECT value FROM meta WHERE key = 'airtime'`).Scan(&raw); {
+	case errors.Is(err, sql.ErrNoRows):
+		return nil, time.Time{}, false, nil
+	case err != nil:
+		return nil, time.Time{}, false, err
+	}
+	stamp, body, found := strings.Cut(raw, ":")
+	unix, perr := strconv.ParseInt(stamp, 10, 64)
+	data, herr := hex.DecodeString(body)
+	if !found || perr != nil || herr != nil || len(data)%2 != 0 {
+		return nil, time.Time{}, false, fmt.Errorf("meta airtime %q is not a time and a bucket list", raw)
+	}
+	buckets = make([]uint16, len(data)/2)
+	for i := range buckets {
+		buckets[i] = binary.BigEndian.Uint16(data[2*i:])
+	}
+	return buckets, time.Unix(unix, 0), true, nil
+}
+
+// SetAirtime stores the per-minute airtime buckets and the instant they were
+// read, so that a restart of the bridge starts from the time on air it counted.
+func (s *Store) SetAirtime(ctx context.Context, buckets []uint16, at time.Time) error {
+	data := make([]byte, 2*len(buckets))
+	for i, v := range buckets {
+		binary.BigEndian.PutUint16(data[2*i:], v)
+	}
+	_, err := s.db.ExecContext(ctx,
+		`INSERT OR REPLACE INTO meta (key, value) VALUES ('airtime', ?)`,
+		strconv.FormatInt(at.Unix(), 10)+":"+hex.EncodeToString(data))
+	return err
+}
+
+// LoadFSCTRL0 reads the passive receiver calibration from the database at path,
+// and reports whether it holds one. A path that holds no database is an error.
+func LoadFSCTRL0(path string) (byte, bool, error) {
+	if _, err := os.Stat(path); err != nil {
+		return 0, false, fmt.Errorf("state database %s: %w", path, err)
+	}
+	store, err := Open(path)
+	if err != nil {
+		return 0, false, err
+	}
+	defer store.Close()
+	value, ok, err := store.FSCTRL0(context.Background())
+	if err != nil {
+		return 0, false, fmt.Errorf("state database %s: %w", path, err)
+	}
+	return value, ok, nil
 }
 
 // StoreFSCTRL0 writes the passive receiver calibration into the database at

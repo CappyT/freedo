@@ -3,6 +3,7 @@ package radio
 import (
 	"bytes"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -127,21 +128,69 @@ func TestLiveRadioCalibrationInsideTheBandWritesNothing(t *testing.T) {
 	}
 }
 
-// A carrier that never answers the correction stops after TuneRounds writes, on
-// the register as it stands.
-func TestLiveRadioCalibrationStopsAfterTheRounds(t *testing.T) {
+// awaitState waits for the calibration to reach a state.
+func awaitState(t *testing.T, r *Live, want CalibrationState) Calibration {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if c := r.Calibration(); c.State == want {
+			return c
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("calibration state %+v, want %s", r.Calibration(), want)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+// noResult fails when a calibration result arrives within a short wait.
+func noResult(t *testing.T, r *Live) {
+	t.Helper()
+	select {
+	case res := <-r.CalibrationResults():
+		t.Fatalf("result %+v: a register no round confirmed must not be stored", res)
+	case <-time.After(50 * time.Millisecond):
+	}
+}
+
+// A carrier that never answers the correction stops after TuneRounds writes. The
+// round after the last write only checks: it finds the register outside the band,
+// so the state is unsettled and nothing is stored.
+func TestLiveRadioCalibrationStoresNoUnconfirmedRegister(t *testing.T) {
 	fixed := 10
 	br := newCarrierBridge(0x00, 0)
 	br.fixed = &fixed
 	r := startCarrier(t, br, false)
-	res := awaitCalibration(t, r)
+	awaitState(t, r, CalibrationUnsettled)
 	writes, _ := br.snapshot()
 	if !bytes.Equal(writes, []byte{0x0a, 0x14, 0x1e}) {
 		t.Fatalf("FSCTRL0 writes=%x, want 0a 14 1e", writes)
 	}
-	if res.FSCTRL0 != 0x1e {
-		t.Errorf("result=%+v, want FSCTRL0 0x1e", res)
+	noResult(t, r)
+	var c Calibration
+	for deadline := time.Now().Add(time.Second); !c.HasResidual && time.Now().Before(deadline); time.Sleep(time.Millisecond) {
+		c = r.Calibration()
 	}
+	if !c.HasResidual || c.Residual != 10 {
+		t.Errorf("calibration=%+v, want a residual of 10", c)
+	}
+	if w := r.Warnings(); len(w) != 2 || !strings.Contains(w[0], "no register was confirmed") || !strings.Contains(w[1], "read +10 units off") {
+		t.Errorf("warnings=%q", w)
+	}
+}
+
+// Three clipped rounds write 48 5c 70, and the last write was never checked.
+// A register that clips every round is not a calibration.
+func TestLiveRadioCalibrationStoresNoRegisterAfterClippedRounds(t *testing.T) {
+	fixed := 20
+	br := newCarrierBridge(cc1101.TuneDefault, 0)
+	br.fixed = &fixed
+	r := startCarrier(t, br, false)
+	awaitState(t, r, CalibrationUnsettled)
+	if writes, _ := br.snapshot(); !bytes.Equal(writes, []byte{0x48, 0x5c, 0x70}) {
+		t.Fatalf("FSCTRL0 writes=%x, want 48 5c 70", writes)
+	}
+	noResult(t, r)
 }
 
 // CSL inbound frames follow the own transmission of the chip, so they never
@@ -210,8 +259,8 @@ func TestLiveRadioCalibrationSamplesStayBounded(t *testing.T) {
 	}
 }
 
-// FSCTRL0 is a signed byte: a correction saturates at 0x7f and 0x80, and a
-// register at its limit is the result.
+// FSCTRL0 is a signed byte: a correction saturates at 0x7f and 0x80. A register
+// at its limit that still reads outside the band is no result.
 func TestLiveRadioCalibrationSaturatesTheRegister(t *testing.T) {
 	for _, tc := range []struct {
 		reg   byte
@@ -225,16 +274,17 @@ func TestLiveRadioCalibrationSaturatesTheRegister(t *testing.T) {
 		br := newCarrierBridge(tc.reg, 0)
 		br.fixed = &fixed
 		r := startCarrier(t, br, false)
-		res := awaitCalibration(t, r)
+		awaitState(t, r, CalibrationUnsettled)
 		if writes, _ := br.snapshot(); !bytes.Equal(writes, []byte{tc.want}) {
 			t.Errorf("from %#02x: FSCTRL0 writes=%x, want %x", tc.reg, writes, tc.want)
 		}
-		if res.FSCTRL0 != tc.want {
-			t.Errorf("from %#02x: result=%+v, want %#02x", tc.reg, res, tc.want)
+		noResult(t, r)
+		if got := r.FSCTRL0(); got != tc.want {
+			t.Errorf("from %#02x: register %#02x, want %#02x", tc.reg, got, tc.want)
 		}
 	}
-	if got := tuneTarget(0x10, -0x20); got != 0xf0 {
-		t.Errorf("tuneTarget(0x10, -32)=%#02x, want 0xf0", got)
+	if got := cc1101.TuneTarget(0x10, -0x20); got != 0xf0 {
+		t.Errorf("cc1101.TuneTarget(0x10, -32)=%#02x, want 0xf0", got)
 	}
 }
 
@@ -316,5 +366,71 @@ func TestLiveRadioRecalibrateRestartsTheSampling(t *testing.T) {
 	partial.collectTune(tuneDataFrame("abcde", -13))
 	if got := partial.Calibration().Readings; got != 1 {
 		t.Errorf("readings=%d after the reset write, want 1", got)
+	}
+}
+
+// scanLive is a measurement on a clock the test moves, with no loop behind it.
+func scanLive(br *carrierBridge) (*Live, *stepClock) {
+	clock := newStepClock()
+	r := &Live{tuner: br, calResults: make(chan CalibrationResult, 1), clock: clock.read}
+	r.fsctrl0.Store(uint32(br.FSCTRL0()))
+	r.startMeasureLocked()
+	return r, clock
+}
+
+func TestScanRegistersAlternateAcrossTheInt8Range(t *testing.T) {
+	for _, tc := range []struct {
+		base byte
+		want []int8
+	}{
+		{0x34, []int8{82, 22, 112, -8, -38, -68, -98, -128}},
+		{0x80, []int8{-98, -68, -38, -8, 22, 52, 82, 112}},
+		{0x00, []int8{30, -30, 60, -60, 90, -90, 120, -120}},
+	} {
+		var got []int8
+		for _, v := range scanRegisters(tc.base) {
+			got = append(got, int8(v))
+		}
+		if !slices.Equal(got, tc.want) {
+			t.Errorf("scanRegisters(%#02x) = %v, want %v", tc.base, got, tc.want)
+		}
+	}
+}
+
+// After the measurement, the frames still read an offset to the register. A
+// residual over the accept band is a warning: the module drifted.
+func TestCalibrationResidualWarnsAboveTheBand(t *testing.T) {
+	r := &Live{tuner: newCarrierBridge(0x34, 0), calResults: make(chan CalibrationResult, 1)}
+	r.cal.state = CalibrationStored
+	for i := range 12 {
+		r.collectTune(tuneDataFrame([]string{"src00", "src01", "src02"}[i%3], 3))
+	}
+	if c := r.Calibration(); !c.HasResidual || c.Residual != 3 {
+		t.Fatalf("calibration %+v, want a residual of 3", c)
+	}
+	if w := r.Warnings(); len(w) != 0 {
+		t.Fatalf("warnings %q inside the band", w)
+	}
+	for i := range 60 {
+		r.collectTune(tuneDataFrame([]string{"src00", "src01", "src02"}[i%3], 12))
+	}
+	c := r.Calibration()
+	if c.Residual != 12 {
+		t.Fatalf("calibration %+v, want a residual of 12", c)
+	}
+	if w := r.Warnings(); len(w) != 1 || !strings.Contains(w[0], "+12 units off") {
+		t.Fatalf("warnings %q", w)
+	}
+	// A new register makes the old readings meaningless.
+	if err := r.setRegister(0x40); err != nil {
+		t.Fatal(err)
+	}
+	if c := r.Calibration(); c.HasResidual {
+		t.Fatalf("calibration %+v after a register write, want no residual", c)
+	}
+	// Too few readings give no residual.
+	r.collectTune(tuneDataFrame("src00", 12))
+	if c := r.Calibration(); c.HasResidual {
+		t.Fatalf("calibration %+v on one reading", c)
 	}
 }

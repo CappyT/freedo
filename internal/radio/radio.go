@@ -5,11 +5,13 @@ package radio
 import (
 	"bufio"
 	"errors"
+	"fmt"
 	"log"
 	"os"
 	"strings"
 	"sync"
 
+	"freedo/cc1101"
 	"freedo/internal/cli"
 )
 
@@ -23,7 +25,32 @@ var (
 	errCSLCompletionLost = errors.New("CSL queue completion lost")
 	// errBridgeUnconfigured ends the owner of a chip on reset defaults.
 	errBridgeUnconfigured = errors.New("CC1101 lost its register set: the bridge or the chip reset")
+	// errAirtimeDeferred refuses a long transmission while the airtime limit is on
+	// and the airtime of the last hour is near the budget. It wraps
+	// cc1101.ErrAirtimeBudget, so the caller treats it as a deferral like a refusal
+	// of the firmware.
+	errAirtimeDeferred = fmt.Errorf("%w: deferred while the share is high", cc1101.ErrAirtimeBudget)
+	// errScanDeferred refuses a long transmission while a scan step or a
+	// candidate holds a register other than the home one. Like errAirtimeDeferred
+	// it counts as cc1101.ErrAirtimeBudget: nothing went out, and the caller tries
+	// later. Its text names its own cause.
+	errScanDeferred error = deferral("deferred while the FSCTRL0 scan holds another register")
+	// errSynthHeld refuses every transmission while the synthesizer is not
+	// locked: the chip cannot hold the carrier. It counts as
+	// cc1101.ErrAirtimeBudget as the other deferrals do, with a text of its own.
+	errSynthHeld error = deferral("held while the synthesizer is not locked")
+	// errSynthLost ends the loop of a radio whose synthesizer stays out of lock.
+	// The daemon restarts, which reopens and configures the bridge.
+	errSynthLost = fmt.Errorf("%w: %d retries of the calibration failed", cc1101.ErrNoSynthLock, liveSynthRetries)
 )
+
+// deferral is a refusal that callers handle like cc1101.ErrAirtimeBudget, because
+// nothing went out and they try later, but whose text names its own cause.
+type deferral string
+
+func (e deferral) Error() string { return string(e) }
+
+func (e deferral) Is(target error) bool { return target == cc1101.ErrAirtimeBudget }
 
 // Radio is the frame source and sink the engine drives.
 type Radio interface {

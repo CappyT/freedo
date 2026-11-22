@@ -34,6 +34,7 @@ type orderedLiveBridge struct {
 	burstSet     bool
 	burstSent    int
 	burstErr     error
+	trainErr     error
 	closed       bool
 	entered      chan struct{}
 	release      <-chan struct{}
@@ -268,7 +269,11 @@ func (b *orderedLiveBridge) SendTrain(frames [][]byte, _ time.Duration) (int, er
 	b.mu.Lock()
 	b.events = append(b.events, "train")
 	b.trains = append(b.trains, copy)
+	err := b.trainErr
 	b.mu.Unlock()
+	if err != nil {
+		return 0, err
+	}
 	return len(frames), nil
 }
 
@@ -713,6 +718,8 @@ func TestLiveRadioQueuesAnchorsAndReinjectsCSLCompletion(t *testing.T) {
 	follow := &cc1101.RxFrame{Payload: append([]byte(nil), second...), CRCOK: true}
 	bridge := &queuedLiveBridge{orderedLiveBridge: &orderedLiveBridge{}}
 	radio := &Live{br: bridge, cslPending: make(map[uint16]liveCSLPending), cslGroups: make(map[uint16]*liveCSLGroup), cslDone: make(chan CSLCompletion, 1)}
+	// The second device holds an anchor, so the global cooldown of the first train does not hold it.
+	radio.bootstrapConfirmedAt = map[string]time.Time{cslShort(second): time.Now()}
 	actions := []tado.Action{
 		{Node: "office", Bytes: first, CSLTx: true, QueueAttempt: true},
 		{Node: "hall", Bytes: second, CSLTx: true, QueueAttempt: true, WaitResponse: true},
