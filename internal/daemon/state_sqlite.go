@@ -509,30 +509,39 @@ func (s *stateStore) SetActivePreset(ctx context.Context, id int64) error {
 
 // RoomOrder returns the stored dashboard order, or an empty order when none is saved.
 func (s *stateStore) RoomOrder(ctx context.Context) ([]int, error) {
+	order, _, err := roomOrderFrom(ctx, s.db)
+	return order, err
+}
+
+func roomOrderFrom(ctx context.Context, q querier) ([]int, bool, error) {
 	var raw string
-	if err := s.db.QueryRowContext(ctx, `SELECT value FROM meta WHERE key = 'dashboard_room_order'`).Scan(&raw); err != nil {
+	if err := q.QueryRowContext(ctx, `SELECT value FROM meta WHERE key = 'dashboard_room_order'`).Scan(&raw); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return []int{}, nil
+			return []int{}, false, nil
 		}
-		return nil, err
+		return nil, false, err
 	}
 	var order []int
 	if err := json.Unmarshal([]byte(raw), &order); err != nil {
-		return nil, fmt.Errorf("dashboard room order: %w", err)
+		return nil, true, fmt.Errorf("dashboard room order: %w", err)
 	}
 	if order == nil {
-		return []int{}, nil
+		return []int{}, true, nil
 	}
-	return order, nil
+	return order, true, nil
 }
 
 // SaveRoomOrder stores the dashboard order without touching installation or desired state.
 func (s *stateStore) SaveRoomOrder(ctx context.Context, order []int) error {
+	return saveRoomOrder(ctx, s.db, order)
+}
+
+func saveRoomOrder(ctx context.Context, q querier, order []int) error {
 	body, err := json.Marshal(order)
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx,
+	_, err = q.ExecContext(ctx,
 		`INSERT OR REPLACE INTO meta (key, value) VALUES ('dashboard_room_order', ?)`, string(body))
 	return err
 }

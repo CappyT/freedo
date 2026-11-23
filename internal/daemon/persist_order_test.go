@@ -61,6 +61,9 @@ func TestConcurrentHomePatchStoresEngineState(t *testing.T) {
 func TestDeleteZoneForgetsLearnedState(t *testing.T) {
 	a := newInstallAPIOn(t, defaultInstall)
 	ctx := context.Background()
+	if err := a.store.SaveRoomOrder(ctx, []int{3, 5, 8}); err != nil {
+		t.Fatal(err)
+	}
 	model := &thermalModel{Episodes: []thermalEpisode{{Rate: 1}}}
 	for _, zone := range []int{3, 5} {
 		if err := a.store.SetThermalModel(ctx, zone, model); err != nil {
@@ -80,6 +83,14 @@ func TestDeleteZoneForgetsLearnedState(t *testing.T) {
 	}
 
 	a.mutate(http.MethodDelete, "/api/install/zones/3", nil)
+
+	order, err := a.store.RoomOrder(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(order, []int{5, 8}) {
+		t.Errorf("room order after deleting zone 3 = %v, want [5 8]", order)
+	}
 
 	v, err := d.do(func(*tado.EmuState) (any, error) {
 		_, thermal := d.thermal[3]

@@ -3,6 +3,8 @@ package daemon
 import (
 	"net/http"
 	"strconv"
+
+	"freedo/tado"
 )
 
 type roomOrderBody struct {
@@ -42,6 +44,21 @@ func (d *daemon) putRoomOrder(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		seen[room] = struct{}{}
+	}
+	in, _, ok := d.installNow(w, r)
+	if !ok {
+		return
+	}
+	for i, room := range *body.Rooms {
+		zone, err := in.ZoneByNumber(room)
+		if err != nil {
+			writeErr(w, http.StatusNotFound, err.Error())
+			return
+		}
+		if zone.Kind != tado.ZoneHeating {
+			writeErr(w, http.StatusBadRequest, "room number at index "+strconv.Itoa(i)+" must be a heating zone")
+			return
+		}
 	}
 	if d.state == nil {
 		writeErr(w, http.StatusServiceUnavailable, "state database is unavailable")

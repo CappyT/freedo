@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
-	import { actMany, act } from '#lib/actions.ts';
+	import { actMany, act, errorText } from '#lib/actions.ts';
 	import { boilerFaults, burnerState } from '#lib/boiler.ts';
 	import { data } from '#lib/data.svelte.ts';
 	import { alertKeys } from '#lib/describe.ts';
@@ -12,6 +12,7 @@
 	import { orderRooms } from '#lib/room-order.ts';
 	import { api } from '#lib/session.ts';
 	import Tile, { type TileChip, type TileFill } from '#lib/Tile.svelte';
+	import { toasts } from '#lib/toast.svelte.ts';
 	import { stateIcons } from '#lib/today.svelte.ts';
 	import { deviceAlerts, zoneName, type StateKey, type ZoneModel } from '#lib/zones.ts';
 
@@ -184,7 +185,7 @@
 
 	async function boostAll() {
 		confirmBoost = false;
-		await actMany(data.heating.map((m) => () => api.boost(m.zone.number, true)));
+		await actMany(rooms.map((m) => () => api.boost(m.zone.number, true)));
 	}
 
 	async function moveRoom(index: number, direction: -1 | 1) {
@@ -197,8 +198,14 @@
 		next[index] = targetRoom;
 		next[target] = currentRoom;
 		savingOrder = true;
-		await act(() => api.setRoomOrder(next.map((room) => room.zone.number)));
-		savingOrder = false;
+		try {
+			await api.setRoomOrder(next.map((room) => room.zone.number));
+			await data.refresh();
+		} catch (error) {
+			toasts.push('error', errorText(error));
+		} finally {
+			savingOrder = false;
+		}
 	}
 
 	const resumeAll = () => actMany(zones.map((m) => () => api.auto(m.zone.number)));
@@ -206,7 +213,21 @@
 
 <section class="page home" aria-labelledby="title">
 	<header class="head">
-		<h1 id="title">{t('home.title')}</h1>
+		<div class="home-title">
+			<h1 id="title">{t('home.title')}</h1>
+			{#if rooms.length > 0}
+				<button
+					class="room-order-toggle"
+					class:editing={editingOrder}
+					type="button"
+					aria-label={editingOrder ? t('home.rooms.done') : t('home.rooms.edit')}
+					disabled={savingOrder}
+					onclick={() => (editingOrder = !editingOrder)}
+				>
+					<Icon name={editingOrder ? 'check' : 'layout-dashboard'} size={18} />
+				</button>
+			{/if}
+		</div>
 		<RadioChip />
 	</header>
 
@@ -262,16 +283,17 @@
 		{/if}
 
 		{#if rooms.length > 0}
+			{#if editingOrder}<p class="room-order-hint">{t('home.rooms.orderHint')}</p>{/if}
 			<ul class="tiles" aria-label={t('home.rooms')}>
 				{#each rooms as m, i (m.zone.number)}
 					<li>
 						<Tile {...roomTile(m)} />
 						{#if editingOrder}
 							<div class="move-controls">
-								<button class="move-room" type="button" aria-label={t('home.rooms.moveUp', { room: m.zone.name })} title={t('home.rooms.moveUp', { room: m.zone.name })} disabled={savingOrder || i === 0} onclick={() => moveRoom(i, -1)}>
+								<button class="move-room" type="button" aria-label={t('home.rooms.moveUp', { room: m.zone.name })} title={t('home.rooms.moveUp', { room: m.zone.name })} disabled={i === 0} onclick={() => moveRoom(i, -1)}>
 									<span class="move-up"><Icon name="chevron" size={18} /></span>
 								</button>
-								<button class="move-room" type="button" aria-label={t('home.rooms.moveDown', { room: m.zone.name })} title={t('home.rooms.moveDown', { room: m.zone.name })} disabled={savingOrder || i === rooms.length - 1} onclick={() => moveRoom(i, 1)}>
+								<button class="move-room" type="button" aria-label={t('home.rooms.moveDown', { room: m.zone.name })} title={t('home.rooms.moveDown', { room: m.zone.name })} disabled={i === rooms.length - 1} onclick={() => moveRoom(i, 1)}>
 									<span class="move-down"><Icon name="chevron" size={18} /></span>
 								</button>
 							</div>
@@ -344,14 +366,6 @@
 				</li>
 			{/if}
 		</ul>
-		{#if rooms.length > 0}
-			<div class="room-order-toolbar">
-				{#if editingOrder}<p class="room-order-hint">{t('home.rooms.orderHint')}</p>{/if}
-				<button class="room-order-toggle" type="button" aria-pressed={editingOrder} disabled={savingOrder} onclick={() => (editingOrder = !editingOrder)}>
-					{editingOrder ? t('home.rooms.done') : t('home.rooms.edit')}
-				</button>
-			</div>
-		{/if}
 	{/if}
 </section>
 
@@ -365,6 +379,12 @@
 		justify-content: space-between;
 		gap: 0.75rem;
 		padding-top: 0.25rem;
+	}
+
+	.home-title {
+		display: flex;
+		align-items: center;
+		gap: 0.65rem;
 	}
 
 	.actions {
@@ -480,23 +500,20 @@
 		display: grid;
 	}
 
-	.room-order-toolbar {
-		display: grid;
-		justify-items: center;
-		gap: 0.35rem;
-		margin: 0.75rem 0 0.5rem;
-	}
-
 	.room-order-hint {
-		margin: 0;
+		margin: 0 0 0.75rem;
 		color: var(--text-muted);
 		font-size: var(--text-small-size);
 		text-align: center;
 	}
 
 	.room-order-toggle {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
 		min-height: 2.25rem;
-		padding: 0 1rem;
+		width: 2.25rem;
+		padding: 0;
 		border: 1px solid var(--border-strong);
 		border-radius: var(--radius-md);
 		background: var(--surface);
@@ -509,6 +526,12 @@
 	.room-order-toggle:hover:not(:disabled),
 	.move-room:hover:not(:disabled) {
 		border-color: var(--accent);
+	}
+
+	.room-order-toggle.editing {
+		border-color: var(--action);
+		background: var(--action);
+		color: var(--action-text);
 	}
 
 	.room-order-toggle:disabled,
