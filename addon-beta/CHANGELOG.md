@@ -366,3 +366,30 @@ pre-release has its notes here.
 - Daemon: a restart within 10 minutes, such as the stop of a Home Assistant backup, keeps the
   controller of each zone the coordinator owns and the last boiler values. The boiler values no
   longer stay unknown until they change, and the demand no longer drops after the backup.
+
+## 0.12.0-beta.11
+
+- **Flash the bridge first.** This release needs bridge firmware v2.11 (`CC1101BRIDGE v2.11`).
+  Flash the firmware image of this release before you update the add-on: see
+  [Flash a released image](https://github.com/CappyT/freedo/blob/main/firmware/cc1101_bridge/README.md#flash-a-released-image).
+  With an older firmware the daemon runs without a radio and reports `radioError` in the health.
+- Bridge firmware v2.11: each request carries a CRC, and the bridge counts the airtime of the last
+  hour. The daemon loads that count again after a restart.
+- Radio: after a restart the bootstrap trains of the devices go out at once, and a user command goes
+  before the refreshes. A retransmitted request of a device gets at most one more answer, and never a
+  1 s train. The zone notify to the wall thermostat skips a change of the humidity alone.
+- Radio: a lost synthesizer lock holds the transmissions and the daemon tries again each minute. The
+  receiver calibration runs only on a quiet plant and keeps a new value only when the devices settle
+  on it.
+- Radio: the health shows the airtime of the last hour and the downlinks per kind.
+- Radio: option `airtime_limit`, alpha and off by default. It keeps the hourly airtime under the ETSI
+  budget of 36 s. See [#42](https://github.com/CappyT/freedo/issues/42).
+- Daemon: a zone keeps an overlay set on a device while another member has not taken it yet, and
+  answers a zone state read with it. `/api/nodes` shows the program setpoint of a device in auto
+  ([#38](https://github.com/CappyT/freedo/issues/38)).
+- Daemon: a plant can run without a boiler connection
+  ([#34](https://github.com/CappyT/freedo/issues/34)).
+- Daemon: setpoint writes and identify accept the `2.05` answer of VA01 firmware 54.20
+  ([#35](https://github.com/CappyT/freedo/pull/35), thanks @GrayTheZebra).
+- Dashboard: a schedule block stays in place while its time is typed
+  ([#36](https://github.com/CappyT/freedo/pull/36), thanks @aavdiere).
