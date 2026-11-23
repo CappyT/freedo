@@ -49,7 +49,7 @@ jobs:
             --build-property "compiler.cpp.extra_flags=-DFIRMWARE_BUILD=${VERSION}" \
             firmware/cc1101_bridge
       - name: The banner carries the version
-        run: strings -a out/cc1101_bridge.ino.bin | grep -Fx "CC1101BRIDGE v2.10 (${VERSION})"
+        run: strings -a out/cc1101_bridge.ino.bin | grep -Fx "CC1101BRIDGE v2.11 (${VERSION})"
       - name: Name the files
         run: |
           mkdir dist
