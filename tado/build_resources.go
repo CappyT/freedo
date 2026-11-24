@@ -225,17 +225,32 @@ func thermostatConfigDocDefaults() []TLV {
 	}
 }
 
+// sensorConfigDocDefaults are the always-present tags of the wireless
+// temperature sensor's document. It carries no 021a, 0149 or 015d, and keeps
+// 0158 = 0200 (PROTOCOL.md, Wireless temperature sensor).
+func sensorConfigDocDefaults() []TLV {
+	return []TLV{
+		{Tag: "0143", Val: []byte{0x00}},
+		{Tag: "02b3", Val: []byte{0x00}},
+		{Tag: changeNotifyTag, Val: []byte{0x02, 0x00}},
+	}
+}
+
 // configDocument renders the merged store TLVs as the whole document the bridge
 // puts on the wire: every always-present tag filled from the captured defaults,
 // every tag in the captured order. A tag the order does not name keeps its
 // position after the named ones. The 015a ETag is the caller's to append.
-// thermostat selects the wall thermostat's document, which drops a 021a, 0149
-// or 0158 that merged holds.
-func configDocument(merged []TLV, thermostat bool) []TLV {
+// kind selects the device's document shape: the wall thermostat drops 021a,
+// 0149 and 0158, and the wireless sensor drops 021a, 0149 and 015d.
+func configDocument(merged []TLV, kind DeviceKind) []TLV {
 	defaults := configDocDefaults()
-	if thermostat {
+	switch kind {
+	case KindThermostat:
 		defaults = thermostatConfigDocDefaults()
 		merged = withoutTag(withoutTag(withoutTag(merged, configConst021a.Tag), orientationTag), changeNotifyTag)
+	case KindSensor:
+		defaults = sensorConfigDocDefaults()
+		merged = withoutTag(withoutTag(withoutTag(merged, configConst021a.Tag), orientationTag), interfaceModuleTag)
 	}
 	byTag := map[string][]TLV{}
 	var extra []string

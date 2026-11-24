@@ -28,6 +28,9 @@ func (e *EmuState) installConfigWrite(dev *Device) (ConfigWrite, bool) {
 			return ConfigWrite{}, false
 		}
 		w.InterfaceModuleID = &module
+	case KindSensor:
+		// The wireless sensor takes d/config without tag 015d; the interface
+		// module id for a sensor is unknown and a wrong value is harmful.
 	}
 	return w, true
 }
@@ -41,7 +44,7 @@ func (e *EmuState) installConfigBase(dev *Device) ConfigWrite {
 	}
 	// A valve that already holds a document takes a new offset from
 	// PushUTCOffset, one valve at a time: each write homes its motor.
-	if _, held := e.cfgDoc[hexEUI(dev.WireEUI())]; !held || dev.Kind == KindThermostat {
+	if _, held := e.cfgDoc[hexEUI(dev.WireEUI())]; !held || dev.Kind == KindThermostat || dev.Kind == KindSensor {
 		w.UTCOffsetMin = e.UTCOffset()
 	}
 	return w

@@ -376,10 +376,10 @@ func clearInstallValue(ctx context.Context, q querier, key string) error {
 
 func checkDeviceKind(kind string) error {
 	switch tado.DeviceKind(kind) {
-	case tado.KindValve, tado.KindThermostat, tado.KindBridge:
+	case tado.KindValve, tado.KindThermostat, tado.KindSensor, tado.KindBridge:
 		return nil
 	}
-	return badf("unknown device kind %q: one of valve, thermostat, bridge", kind)
+	return badf("unknown device kind %q: one of valve, thermostat, sensor, bridge", kind)
 }
 
 func checkZoneKind(kind string) error {

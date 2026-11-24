@@ -241,7 +241,7 @@ func TestThermostatLearnsModuleFromCachedDocument(t *testing.T) {
 	cached := func(module uint16) DesiredState {
 		_, snap, err := mergeConfigDocument(cfgSnapshot{}, ConfigWrite{
 			HomeID: &in.HomeID, InterfaceModuleID: &module, OfflineScheduleEnabled: cfgPtr(false),
-		}, nil, true)
+		}, nil, KindThermostat)
 		if err != nil {
 			t.Fatal(err)
 		}

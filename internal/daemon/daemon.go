@@ -2674,8 +2674,8 @@ func (d *daemon) logFallbackEvents(e *tado.EmuState) {
 		if ev.Zone >= 0 {
 			what = fmt.Sprintf("zone %d (reported by %s)", ev.Zone, ev.Device)
 		} else if inst != nil {
-			if dev, err := inst.Resolve(ev.Device); err == nil && dev.Kind == tado.KindValve {
-				log.Printf("valve %s reports zone control mode %d (0 present, 1 absent)", ev.Device, ev.To)
+			if dev, err := inst.Resolve(ev.Device); err == nil && (dev.Kind == tado.KindValve || dev.Kind == tado.KindSensor) {
+				log.Printf("%s %s reports zone control mode %d (0 present, 1 absent)", dev.Kind, ev.Device, ev.To)
 				continue
 			}
 		}
@@ -4091,7 +4091,7 @@ func (d *daemon) postConfig(w http.ResponseWriter, r *http.Request) {
 	// value in the body wins. The wall thermostat's served document already
 	// follows the offset in force (SyncUTCOffset).
 	inst := d.inst.Load()
-	if cw.UTCOffsetMin == nil && inst != nil && n.Kind != tado.KindThermostat {
+	if cw.UTCOffsetMin == nil && inst != nil && n.Kind != tado.KindThermostat && n.Kind != tado.KindSensor {
 		off := inst.Options.UTCOffsetAt(d.retryNow())
 		cw.UTCOffsetMin = &off
 	}
@@ -4105,10 +4105,9 @@ func (d *daemon) postConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d.configWrite(w, r, target, nil, func(e *tado.EmuState) error {
-		// The wall thermostat takes no write, so the id of its two zones
-		// matters to nobody.
+		// Read-served devices take no write, so the id matters to nobody.
 		id, err := resolveID(e, inst, n.Short(), b.ID)
-		if err != nil && n.Kind != tado.KindThermostat {
+		if err != nil && n.Kind != tado.KindThermostat && n.Kind != tado.KindSensor {
 			return err
 		}
 		return e.EnqueueConfig(target, id, cw)
@@ -4158,7 +4157,7 @@ func (d *daemon) deleteOfflineSchedule(w http.ResponseWriter, r *http.Request) {
 		// The wall thermostat takes no write, so the id of its two zones matters
 		// to nobody.
 		id, err := resolveID(e, inst, n.Short(), nil)
-		if err != nil && n.Kind != tado.KindThermostat {
+		if err != nil && n.Kind != tado.KindThermostat && n.Kind != tado.KindSensor {
 			return nil, err
 		}
 		written, err := e.ClearOfflineSchedule(target, id)

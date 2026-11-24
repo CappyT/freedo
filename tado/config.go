@@ -34,6 +34,7 @@ type DeviceKind string
 const (
 	KindValve      DeviceKind = "valve"      // thermostatic valve, serial VA...
 	KindThermostat DeviceKind = "thermostat" // wall thermostat, boiler side, serial RU...
+	KindSensor     DeviceKind = "sensor"     // wireless temperature sensor, serial SU...
 	KindBridge     DeviceKind = "bridge"     // internet bridge, serial IB...
 )
 
@@ -300,8 +301,8 @@ const DefaultLowBatteryCellMV = 1100
 const DefaultOfflineAfterSec = 60 * 60
 
 // batteryCells is the cell count of each battery-powered kind: two AA in a
-// valve, three AAA in the wall thermostat.
-var batteryCells = map[DeviceKind]int{KindValve: 2, KindThermostat: 3}
+// valve, three AAA in the wall thermostat and wireless temperature sensor.
+var batteryCells = map[DeviceKind]int{KindValve: 2, KindThermostat: 3, KindSensor: 3}
 
 // LowBatteryMV returns the low battery threshold of a device kind, 0 for a kind
 // that runs on no battery.
@@ -544,11 +545,11 @@ func (in *Install) checkDevices(c *issues, allowEmpty bool) {
 		d := &in.Devices[i]
 		p := fmt.Sprintf("devices[%d]", i)
 		switch d.Kind {
-		case KindValve, KindThermostat, KindBridge:
+		case KindValve, KindThermostat, KindSensor, KindBridge:
 		case "":
-			c.errf(p+".kind", "missing: one of valve, thermostat, bridge")
+			c.errf(p+".kind", "missing: one of valve, thermostat, sensor, bridge")
 		default:
-			c.errf(p+".kind", "unknown kind %q: one of valve, thermostat, bridge", d.Kind)
+			c.errf(p+".kind", "unknown kind %q: one of valve, thermostat, sensor, bridge", d.Kind)
 		}
 		b, err := ParseEUI(d.EUI)
 		if err != nil {
