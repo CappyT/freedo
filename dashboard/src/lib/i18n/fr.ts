@@ -443,6 +443,7 @@ export const fr: Record<Key, string> = {
 	'devices.note': 'Identifier fait émettre un signal à une vanne ou au thermostat mural. La sécurité enfant existe seulement sur les vannes. Pour renommer, déplacer, redémarrer ou retirer un appareil, ouvre les réglages de sa pièce.',
 	'kind.valve': 'Vanne de radiateur',
 	'kind.thermostat': 'Thermostat mural',
+	'kind.sensor': 'Sonde de température sans fil',
 	'kind.bridge': 'Passerelle',
 
 	'settings.title': 'Réglages',

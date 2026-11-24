@@ -54,7 +54,7 @@ export function buildDevices(nodes: NodeView[], health: Health | null, models: Z
 			faults,
 			warnings: [...(h.deviceWarnings ?? []), ...(h.commsWarnings ?? [])],
 			childLock: node?.ChildLock ?? null,
-			canIdentify: (h.kind === 'valve' || h.kind === 'thermostat') && zones.length > 0
+			canIdentify: (h.kind === 'valve' || h.kind === 'thermostat' || h.kind === 'sensor') && zones.length > 0
 		};
 	});
 }

@@ -37,7 +37,7 @@
 
 	let { devices, room, compact = false, settings }: Props = $props();
 
-	const kindIcon = (kind: string): IconName => (kind === 'thermostat' ? 'thermostat' : kind === 'valve' ? 'valve' : 'devices');
+	const kindIcon = (kind: string): IconName => (kind === 'thermostat' || kind === 'sensor' ? 'thermostat' : kind === 'valve' ? 'valve' : 'devices');
 
 	type Tone = 'idle' | 'offline' | 'warning' | 'fault';
 

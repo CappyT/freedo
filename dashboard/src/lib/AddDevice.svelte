@@ -37,7 +37,7 @@
 	let pairWindow = $state<PairWindow | null>(null);
 	let problem = $state<string | null>(null);
 	let eui = $state('');
-	let kind = $state<'valve' | 'thermostat'>('valve');
+	let kind = $state<'valve' | 'thermostat' | 'sensor'>('valve');
 	let label = $state('');
 	let room = $state('');
 	let busy = $state(false);
@@ -266,6 +266,7 @@
 							<select class="input" bind:value={kind}>
 								<option value="valve">{t('kind.valve')}</option>
 								<option value="thermostat">{t('kind.thermostat')}</option>
+								<option value="sensor">{t('kind.sensor')}</option>
 							</select>
 						</label>
 						<label class="field grow">

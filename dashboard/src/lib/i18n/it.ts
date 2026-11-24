@@ -443,6 +443,7 @@ export const it: Record<Key, string> = {
 	'devices.note': 'Identifica fa emettere un segnale a una valvola o al termostato a parete. Il blocco bambini vale solo per le valvole. Per rinominare, spostare, riavviare o rimuovere un dispositivo, apri le impostazioni della sua stanza.',
 	'kind.valve': 'Valvola per radiatore',
 	'kind.thermostat': 'Termostato a parete',
+	'kind.sensor': 'Sensore di temperatura wireless',
 	'kind.bridge': 'Bridge',
 
 	'settings.title': 'Impostazioni',
