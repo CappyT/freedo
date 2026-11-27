@@ -194,6 +194,10 @@ func (e *EmuState) learnModuleID(dev *Device, v uint16, source string) bool {
 		delete(e.moduleIssue, key)
 	}
 	if known && old == v {
+		// A report of the held id leaves its source; the operator takes it over.
+		if source == sourceOperator {
+			e.moduleSource[key] = source
+		}
 		return true
 	}
 	e.moduleSource[key] = source

@@ -203,3 +203,18 @@ func TestInterfaceModulePUTResolvesTheRefOnTheEngine(t *testing.T) {
 		t.Errorf("state kept for the deleted thermostat = %v (%v), want none", v, err)
 	}
 }
+
+// A PUT of the held id takes the id over: the answer and the next GET name the
+// operator as its source.
+func TestInterfaceModulePUTOfTheHeldIDTakesItOver(t *testing.T) {
+	a := newInstallAPI(t)
+	a.declareDevices()
+	a.reportThermostatModule(71)
+	code, res := a.modulePUT(`{"module": 71, "current": 71}`)
+	if code != http.StatusOK || res["source"] != "operator" {
+		t.Fatalf("PUT of the held id = %d %v, want 200 from operator", code, res)
+	}
+	if _, source := a.heldModule(); source != "operator" {
+		t.Errorf("source after the PUT = %v, want operator", source)
+	}
+}
