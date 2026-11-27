@@ -187,7 +187,7 @@ does not change the installation or device state.
 | `POST /api/nodes/{id}/boost` | Low-level boost. |
 | `POST /api/nodes/{id}/childlock` | Lock or unlock the controls of a valve. |
 | `GET`, `PUT /api/nodes/{id}/display` | Read or write the display settings of a valve. |
-| `POST /api/nodes/{id}/identify`, `.../beep` | Make a valve or the wall thermostat signal itself (`beep` is an alias). |
+| `POST /api/nodes/{id}/identify`, `.../beep` | Make a valve, wall thermostat or wireless temperature sensor signal itself (`beep` is an alias). |
 | `POST /api/nodes/{id}/calibrate` | Start the motor calibration of a valve. |
 | `POST /api/nodes/{id}/reboot` | Restart a device. The body is `{}` or `{"id": N}`. The device keeps its key and joins again. |
 | `POST /api/nodes/{id}/extui` | Write the external interface endpoints. |
@@ -272,7 +272,7 @@ caller sends and stream live traffic. Leave them off in normal use.
 A device is a physical node. A zone is a room or the hot water service. A circuit joins
 one or more zones to a heat source. The three have separate identifiers.
 
-- A heating zone holds valves. It can hold a wall thermostat as the measuring device.
+- A heating zone holds valves. It can hold a wall thermostat or a wireless temperature sensor (`kind: "sensor"`, serial prefix `SU`) as the measuring device (or a wireless sensor alone).
 - The hot water zone holds the wall thermostat.
 - `measuring_device` selects the measurement the zone uses. `reporter` selects the member
   that publishes the aggregated demand. The loader rejects a missing or ambiguous reference.
@@ -828,7 +828,7 @@ at least one alarm. `/api/nodes` shows the same data as `LowBattery`, `Fault`, `
   neighbour) and `noConfigAnswer` (`0x80`, no answer to the `d/config` GET for 90 minutes, or
   since start). They do not set `fault` and do not appear in `alerts`.
 - `low_battery_cell_mv` is the threshold per cell: 2200 mV for a valve (two cells) and
-  3300 mV for the wall thermostat (three cells). The level is the highest `0162` reading of
+  3300 mV for the wall thermostat or wireless temperature sensor (three cells). The level is the highest `0162` reading of
   the last three hours. `lowBattery` turns on below the threshold and off above the threshold
   plus 50 mV per cell. `BatteryPct` is linear per cell, 0 % at the threshold and 100 % at
   1500 mV.
