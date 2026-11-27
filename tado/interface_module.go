@@ -181,7 +181,7 @@ func (e *EmuState) learnModuleID(dev *Device, v uint16, source string) bool {
 	if known && old != v && source != sourceOperator {
 		e.flagModule(dev, v, false, "the thermostat reported "+strconv.Itoa(int(v))+", freedo holds "+
 			strconv.Itoa(int(old))+" ("+e.moduleSource[key]+") and serves it again")
-		e.rereadThermostat(dev)
+		e.rereadThermostat(dev, false)
 		return false
 	}
 	switch issue, flagged := e.moduleIssue[key]; {
@@ -208,18 +208,31 @@ func (e *EmuState) learnModuleID(dev *Device, v uint16, source string) bool {
 	return true
 }
 
+// moduleRereadEvery is the shortest time between two forced re-read triggers
+// of one thermostat. A thermostat whose store already matches the served ETag
+// answers every trigger with 2.03, so a report of another id would repeat the
+// exchange at every report.
+const moduleRereadEvery = 10 * time.Minute
+
 // rereadThermostat rebuilds the document served to a wall thermostat and makes
 // sure one re-read trigger waits in its queue, also when the document did not
-// change: the thermostat reported an id other than the one in it.
-func (e *EmuState) rereadThermostat(dev *Device) {
+// change: the thermostat reported an id other than the one in it. Without force
+// it queues at most one trigger in moduleRereadEvery.
+func (e *EmuState) rereadThermostat(dev *Device, force bool) {
 	e.refreshThermostatDocument(dev)
 	key := hexEUI(dev.WireEUI())
 	if _, held := e.cfgDoc[key]; !held || e.ConfigRereadQueued(key) {
 		return
 	}
+	now := e.cfg.Now()
+	if last, ok := e.rereadAt[key]; ok && !force && now.Sub(last) < moduleRereadEvery {
+		return
+	}
 	if err := e.queueConfigReread(key); err != nil {
 		e.log.Log("Config", dev.Ref(), "", rsnBuildFail+" d/config reread "+err.Error(), "")
+		return
 	}
+	e.rereadAt[key] = now
 }
 
 // InterfaceModuleHeldError says that a thermostat holds an id other than the

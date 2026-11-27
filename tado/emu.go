@@ -632,11 +632,12 @@ type EmuState struct {
 	// moduleID holds, per wall thermostat (wire EUI hex), the interface module
 	// id (tag 015d) it reported itself, and moduleLearned a value the owner has
 	// not persisted yet. moduleSource holds where each id came from, for the run
-	// only. moduleIssue holds the last refused or suspicious id.
+	// only, and rereadAt when a differing report last queued the re-read trigger. moduleIssue holds the last refused or suspicious id.
 	// withheldLogged marks the devices whose d/config GET was already logged as
 	// answered without a document.
 	moduleID       map[string]uint16
 	moduleSource   map[string]string
+	rereadAt       map[string]time.Time
 	moduleIssue    map[string]InterfaceModuleIssue
 	moduleLearned  bool
 	withheldLogged map[string]bool
@@ -816,6 +817,7 @@ func NewEmu(cfg EmuConfig, log *UnhandledLogger) *EmuState {
 		cfgDoc:         map[string]cfgSnapshot{},
 		moduleID:       map[string]uint16{},
 		moduleSource:   map[string]string{},
+		rereadAt:       map[string]time.Time{},
 		moduleIssue:    map[string]InterfaceModuleIssue{},
 		sessions:       map[string]issuedSession{},
 		withheldLogged: map[string]bool{},

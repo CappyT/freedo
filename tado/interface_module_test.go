@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"strings"
 	"testing"
+	"time"
 )
 
 // servedModules returns every tag 015d value of the document held for dev.
@@ -351,5 +352,37 @@ func TestThermostatWithoutModuleKeepsItsStoreOnAnETagGET(t *testing.T) {
 	got = configGETWith(t, in, e, ru, 0x7c05, 0, stale)
 	if v, ok := tlvU16(parseTLVList(got.Payload), interfaceModuleTag); got.Code != "2.05" || !ok || v != 71 {
 		t.Errorf("GET with the stale ETag after the id is learned = %s, 015d=%d (present=%t), want 2.05 with 71", got.Code, v, ok)
+	}
+}
+
+// TestThermostatRereadAfterAReportIsRateLimited: a thermostat whose store
+// matches the served ETag answers each trigger with 2.03, so a stream of reports
+// of another id must not queue a trigger each: one in 10 minutes at most.
+func TestThermostatRereadAfterAReportIsRateLimited(t *testing.T) {
+	in := synthInstall(t)
+	ru, _ := synthDevices(t, in)
+	now := time.Date(2026, 1, 5, 5, 0, 0, 0, time.UTC)
+	cfg := in.EmuConfig()
+	cfg.Now = func() time.Time { return now }
+	e := NewEmu(cfg, nil)
+	e.OnFrame(moduleReport(t, in, ru, 71, 0x7d01))
+	drainQueue(t, e, ru)
+
+	triggers := func(mid uint16) int {
+		e.DropQueue(hexEUI(ru))
+		e.OnFrame(moduleReport(t, in, ru, 80, mid))
+		total, _ := rereadQueue(e, ru)
+		return total
+	}
+	if n := triggers(0x7d02); n != 1 {
+		t.Fatalf("first differing report queued %d downlinks, want the trigger", n)
+	}
+	now = now.Add(9 * time.Minute)
+	if n := triggers(0x7d03); n != 0 {
+		t.Errorf("a differing report after 9 minutes queued %d downlinks, want none", n)
+	}
+	now = now.Add(time.Minute)
+	if n := triggers(0x7d04); n != 1 {
+		t.Errorf("a differing report after 10 minutes queued %d downlinks, want the trigger", n)
 	}
 }
