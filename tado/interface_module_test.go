@@ -302,3 +302,54 @@ func TestThermostatKeepsItsModuleAgainstAReport(t *testing.T) {
 		t.Error("the held id moved")
 	}
 }
+
+// configGETWith sends a d/config GET of block num with etag in option 4, none
+// when etag is nil.
+func configGETWith(t *testing.T, in *Install, e *EmuState, dev []byte, mid uint16, num int, etag []byte) *CoAPMessage {
+	t.Helper()
+	options := []CoAPOption{{Num: 23, Val: []byte{byte(num<<4 | 3)}}}
+	if etag != nil {
+		options = append(options, CoAPOption{Num: 4, Val: etag})
+	}
+	raw := synthDeviceUplink(t, in, dev, CoAPReq{
+		Type: "CON", Code: "0.01", MID: mid, Token: []byte{0x21},
+		Path: []string{"d", "RU0000000001", "config"}, Options: options,
+	})
+	return synthAnswer(t, in, e.OnFrame(raw), mid)
+}
+
+// TestThermostatWithoutModuleKeepsItsStoreOnAnETagGET: every 2.05 of d/config
+// wipes the thermostat's config store (the attribute 016c write at 0x1e532)
+// and then writes the tags of the body, so a 2.05 without 015d erases the id the
+// thermostat holds. A GET with an ETag therefore gets 2.03 with that ETag and no
+// body while freedo does not know the id: the store stays and the uplink gate
+// opens. A GET with no ETag has nothing to keep and gets the document without
+// 015d. A later block of a transfer is not answered 2.03.
+func TestThermostatWithoutModuleKeepsItsStoreOnAnETagGET(t *testing.T) {
+	in := synthInstall(t)
+	ru, _ := synthDevices(t, in)
+	e := NewEmu(in.EmuConfig(), nil)
+	stale := []byte{0xde, 0xad, 0xbe, 0xef}
+
+	got := configGETWith(t, in, e, ru, 0x7c01, 0, stale)
+	if et, ok := got.Option(4); got.Code != "2.03" || len(got.Payload) != 0 || !ok || !bytes.Equal(et.Val, stale) {
+		t.Fatalf("GET with an ETag = %s with %d bytes and ETag %x, want 2.03, no body, the ETag echoed", got.Code, len(got.Payload), et.Val)
+	}
+	if _, ok := e.cfgDoc[hexEUI(ru)]; ok {
+		t.Error("the 2.03 left a held document")
+	}
+	if got := configGETWith(t, in, e, ru, 0x7c02, 0, nil); got.Code != "2.05" {
+		t.Errorf("GET with no ETag = %s, want 2.05", got.Code)
+	} else if _, ok := tlvU16(parseTLVList(got.Payload), interfaceModuleTag); ok {
+		t.Error("the document of a GET with no ETag carries 015d")
+	}
+	if got := configGETWith(t, in, e, ru, 0x7c03, 1, stale); got.Code == "2.03" {
+		t.Error("a later block with an ETag was answered 2.03")
+	}
+
+	e.OnFrame(moduleReport(t, in, ru, 71, 0x7c04))
+	got = configGETWith(t, in, e, ru, 0x7c05, 0, stale)
+	if v, ok := tlvU16(parseTLVList(got.Payload), interfaceModuleTag); got.Code != "2.05" || !ok || v != 71 {
+		t.Errorf("GET with the stale ETag after the id is learned = %s, 015d=%d (present=%t), want 2.05 with 71", got.Code, v, ok)
+	}
+}

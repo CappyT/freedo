@@ -47,21 +47,33 @@ func (e *EmuState) installConfigBase(dev *Device) ConfigWrite {
 	return w
 }
 
-// withheldModuleDocument is the d/config document served to a declared wall
-// thermostat whose interface module id is not known: the installation's
-// document without tag 015d. Every uplink after d/config waits for a 2.05 or
-// 2.03 of it (thermostat 0x1e6dc, response handler 0x1e4b4), and hvac/codes,
-// which carries 015d, is one of them: an error answer would leave the id
-// unknown for good. The tag handler (0x1e2e8) writes only the tags a body
-// carries, so the thermostat keeps its own 015d. The document is not held:
-// once the id is known, the held one replaces it and its ETag differs.
-func (e *EmuState) withheldModuleDocument(dst []byte) (cfgSnapshot, bool) {
+// withholdsModule reports whether dst is a declared wall thermostat. When it
+// has no document, its interface module id is not known.
+func (e *EmuState) withholdsModule(dst []byte) bool {
 	if e.inst == nil {
+		return false
+	}
+	dev, err := e.inst.Resolve(hexEUI(dst))
+	return err == nil && dev.Kind == KindThermostat
+}
+
+// withheldModuleDocument is the d/config document served to a declared wall
+// thermostat whose interface module id is not known and whose GET carries no
+// ETag: the installation's document without tag 015d. Every uplink after
+// d/config waits for a 2.05 or 2.03 of it (thermostat 0x1e6dc, response handler
+// 0x1e4b4), and hvac/codes, which carries 015d, is one of them: an error answer
+// would leave the id unknown for good. A thermostat with no ETag has no store
+// worth keeping. A GET with an ETag gets 2.03 instead (servedConfigGet): the
+// 2.05 wipes the config store and writes only the tags of its body. The
+// document is not held: once the id is known, the held one replaces it and its
+// ETag differs.
+func (e *EmuState) withheldModuleDocument(dst []byte) (cfgSnapshot, bool) {
+	if !e.withholdsModule(dst) {
 		return cfgSnapshot{}, false
 	}
 	key := hexEUI(dst)
 	dev, err := e.inst.Resolve(key)
-	if err != nil || dev.Kind != KindThermostat {
+	if err != nil {
 		return cfgSnapshot{}, false
 	}
 	_, snap, err := e.mergeDeviceConfigOn(cfgSnapshot{}, key, e.installConfigBase(dev))

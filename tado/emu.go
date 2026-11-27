@@ -1511,16 +1511,26 @@ func (e *EmuState) zoneIDMatches(dev []byte, id int, srcLbl string) bool {
 // overwritten, or, during one of its uploads, invalidate the ETag
 // (config_doc_tlv_cb@0x1fac0).
 //
-// A wall thermostat whose interface module id is not known gets the document
-// without 015d (withheldModuleDocument): on the thermostat 015d selects the
-// STM32 image it reflashes, and an error answer keeps its uplinks gated. Any
-// other device we hold no document for gets 5.03 with no body.
+// A wall thermostat whose interface module id is not known gets 2.03 when its
+// GET carries an ETag: every 2.05 wipes the thermostat's config store before it
+// writes the body tags, so a body without 015d would erase the id the
+// thermostat holds, and 2.03 keeps the store and opens the gate of its uplinks.
+// A GET with no ETag, or a later block of a transfer, gets the document without
+// 015d (withheldModuleDocument). Any other device we hold no document for gets
+// 5.03 with no body.
 func (e *EmuState) servedConfigGet(m *CoAPMessage, dst []byte, srcLbl string) ([]byte, string, bool, error) {
 	if m.Code != "0.01" || normalizeResource(m.Path) != "d/config" {
 		return nil, "", false, nil
 	}
 	snap, ok := e.cfgDoc[hexEUI(dst)]
 	if !ok {
+		if et, has := m.Option(4); has && len(et.Val) > 0 && e.withholdsModule(dst) {
+			if offset, _, _, err := requestedBlock2(m); err == nil && offset == 0 {
+				e.noteConfigWithheld(dst, srcLbl, "valid-no-015d")
+				pkt, err := e.validAnswer(m, dst, et.Val)
+				return pkt, "2.03", true, err
+			}
+		}
 		snap, ok = e.withheldModuleDocument(dst)
 		withheld := configUnavailable
 		if ok {
