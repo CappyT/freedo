@@ -131,7 +131,7 @@ banner.
 |---|---|
 | `GET /api/health` | State of the daemon, the radio and the devices, with alerts. |
 | `GET /api/nodes`, `GET /api/nodes/{id}` | Devices with telemetry, battery, faults and settings. |
-| `GET /api/zones` | Zones with members, demand, target, window state and external temperature. |
+| `GET /api/zones` | Zones with members, demand, target, window state and external temperature. The device temperature and demand come from the zone owner: the demand reporter, else the measuring device. A member value counts only while the owner has sent none for `offline_after_sec`. |
 | `GET /api/circuits` | Heating circuits as the engine sees them. |
 | `GET /api/boiler` | Boiler values, flow limit state, energy and gas estimate. |
 | `GET /api/home` | Home and away state, the scheduled setpoint of each zone and the active preset. |

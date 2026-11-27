@@ -2,6 +2,7 @@ package tado
 
 import (
 	"encoding/hex"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -26,6 +27,11 @@ var (
 	circuitDemandTags = map[string]bool{"4080": true, "2090": true}
 )
 
+// ownerFedTags are the zone tags only the zone owner feeds: its temperature
+// and the demand its controller computes. A member repeats the owner's copy,
+// or sends its own value while it is in fallback.
+var ownerFedTags = map[string]bool{"4060": true, "40a0": true}
+
 // demandReport is the last known value of one zone or one circuit. Every report
 // resource sends only the attributes that changed, so a frame merges into this
 // and never replaces it.
@@ -33,6 +39,7 @@ type demandReport struct {
 	raw     map[string][]byte
 	source  string // short address of the device that last published into it
 	updated time.Time
+	ownerAt map[string]time.Time // per owner-fed tag, when the zone owner last sent it
 }
 
 func (r *demandReport) merge(tlvs []TLV, want map[string]bool) bool {
@@ -63,7 +70,7 @@ func (e *EmuState) observeReports(m *CoAPMessage, ns *NodeState) {
 		e.mergeDemand(e.circuitRep, id, tlvs, circuitDemandTags, ns.Short)
 	}
 	if id, ok := e.demandZone(m, ns); ok {
-		e.mergeDemand(e.zoneRep, id, tlvs, zoneDemandTags, ns.Short)
+		e.mergeZoneDemand(id, tlvs, ns.Short)
 	}
 	e.ingestNodeRoles(tlvs, ns)
 	e.observeFallback(m, tlvs, ns)
@@ -79,6 +86,68 @@ func (e *EmuState) mergeDemand(store map[int]*demandReport, id int, tlvs []TLV, 
 	}
 	rep.source, rep.updated = source, e.cfg.Now()
 	store[id] = rep
+}
+
+// mergeZoneDemand files a zone report. The owner of the zone feeds 4060 and
+// 40a0. The same tags from another member fill in only while the owner has no
+// fresh value (none, or older than the offline limit of a device), because a
+// member repeats the owner's copy with a lag. A zone with no resolvable owner
+// takes every sender.
+func (e *EmuState) mergeZoneDemand(id int, tlvs []TLV, source string) {
+	feeds := func(t TLV) bool { return ownerFedTags[t.Tag] && len(t.Val) > 0 }
+	if !slices.ContainsFunc(tlvs, feeds) {
+		e.mergeDemand(e.zoneRep, id, tlvs, zoneDemandTags, source)
+		return
+	}
+	owner := e.ZoneOwner(id)
+	if owner == "" {
+		e.mergeDemand(e.zoneRep, id, tlvs, zoneDemandTags, source)
+		return
+	}
+	now := e.cfg.Now()
+	fromOwner := owner == source
+	kept := tlvs
+	if rep := e.zoneRep[id]; rep != nil && !fromOwner {
+		maxAge := Options{}.OfflineAfter()
+		if e.inst != nil {
+			maxAge = e.inst.Options.OfflineAfter()
+		}
+		kept = make([]TLV, 0, len(tlvs))
+		for _, t := range tlvs {
+			if at, ok := rep.ownerAt[t.Tag]; ok && ownerFedTags[t.Tag] && now.Sub(at) <= maxAge {
+				continue
+			}
+			kept = append(kept, t)
+		}
+	}
+	e.mergeDemand(e.zoneRep, id, kept, zoneDemandTags, source)
+	rep := e.zoneRep[id]
+	if !fromOwner || rep == nil {
+		return
+	}
+	if rep.ownerAt == nil {
+		rep.ownerAt = map[string]time.Time{}
+	}
+	for _, t := range tlvs {
+		if feeds(t) {
+			rep.ownerAt[t.Tag] = now
+		}
+	}
+}
+
+// ZoneOwner returns the short address of the device that feeds the zone
+// measure: the elected reporter, else the measuring device. It is empty when
+// the zone has neither.
+func (e *EmuState) ZoneOwner(zone int) string {
+	if short, ok := e.zoneReporters()[zone]; ok {
+		return short
+	}
+	if e.inst != nil {
+		if d, err := e.inst.MeasuringDevice(zone); err == nil {
+			return d.Short()
+		}
+	}
+	return ""
 }
 
 // ZoneReport returns the zone temperature (tag 4060) and demand (tag 40a0)

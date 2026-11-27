@@ -58,6 +58,9 @@ type FallbackEvent struct {
 	Zone     int    // -1 for the device-level mode (0182)
 	Device   string // short address of the reporter
 	From, To int
+	// MemberOf lists the zones whose owner is another device, on a device-level
+	// event with To = 1: the device feeds its own measure to them.
+	MemberOf []int
 }
 
 // observeFallback records a fallback report. Only a write carries one: a GET
@@ -101,7 +104,30 @@ func (e *EmuState) setFallback(st *fallbackState, zone, mode int, source string)
 	if prev == mode || (!FallbackActive(prev) && !FallbackActive(mode)) {
 		return
 	}
-	e.fallbackEvents = append(e.fallbackEvents, FallbackEvent{Zone: zone, Device: source, From: prev, To: mode})
+	ev := FallbackEvent{Zone: zone, Device: source, From: prev, To: mode}
+	if zone < 0 && mode == FallbackHold {
+		ev.MemberOf = e.zonesOwnedByOthers(source)
+	}
+	e.fallbackEvents = append(e.fallbackEvents, ev)
+}
+
+// zonesOwnedByOthers returns the zones the device is a member of whose owner is
+// another device.
+func (e *EmuState) zonesOwnedByOthers(short string) []int {
+	if e.inst == nil {
+		return nil
+	}
+	d, err := e.inst.Resolve(short)
+	if err != nil {
+		return nil
+	}
+	var out []int
+	for _, zone := range e.inst.zonesOf(d) {
+		if owner := e.ZoneOwner(zone); owner != "" && owner != short {
+			out = append(out, zone)
+		}
+	}
+	return out
 }
 
 func fallbackMode(tlvs []TLV, tag string) (int, bool) {

@@ -2667,6 +2667,10 @@ func (d *daemon) logFallbackEvents(e *tado.EmuState) {
 	inst := d.inst.Load()
 	for _, ev := range e.TakeFallbackEvents() {
 		what := "device " + ev.Device
+		if len(ev.MemberOf) > 0 {
+			log.Printf("warning: device %s is a member, not the owner, of zone(s) %v and reports fallback %d: it feeds its own temperature to the zone",
+				ev.Device, ev.MemberOf, ev.To)
+		}
 		if ev.Zone >= 0 {
 			what = fmt.Sprintf("zone %d (reported by %s)", ev.Zone, ev.Device)
 		} else if inst != nil {
