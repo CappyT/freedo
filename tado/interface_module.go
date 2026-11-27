@@ -195,19 +195,51 @@ func joinReason(reason, extra string) string {
 	return reason + "; " + extra
 }
 
+// InterfaceModuleHeldError says that a thermostat holds an id other than the
+// one the caller expected, so the write changed nothing.
+type InterfaceModuleHeldError struct {
+	Module *uint16
+	Source string
+}
+
+func (e *InterfaceModuleHeldError) Error() string {
+	if e.Module == nil {
+		return "tado: the thermostat holds no interface module id: send no current"
+	}
+	return "tado: the thermostat holds interface module id " + strconv.Itoa(int(*e.Module)) +
+		" (source " + e.Source + "): send it as current to replace it"
+}
+
 // SetInterfaceModule stores the interface module id an operator gives a
-// declared wall thermostat and rebuilds the document served to it. The id is
-// held in place of one the thermostat reported, until it reports another.
-func (e *EmuState) SetInterfaceModule(dev *Device, v uint16) error {
+// declared wall thermostat and rebuilds the document served to it. A
+// thermostat that holds an id takes the new one only when current names the
+// held id: the id may be one the thermostat reported itself. The stub image is
+// refused: it drives no boiler bus, and this call exists to restore one. A
+// report of another id replaces the operator id.
+func (e *EmuState) SetInterfaceModule(dev *Device, v uint16, current *uint16) error {
 	if dev.Kind != KindThermostat {
 		return errors.New("tado: only a wall thermostat has an interface module id")
 	}
 	if err := validThermostatModule(v); err != nil {
 		return err
 	}
+	if v == stubModule {
+		return errors.New("tado: interface module id 202 selects the stub image, which drives no boiler bus")
+	}
+	held := e.InterfaceModuleState(dev)
+	if (held.Module == nil) != (current == nil) || (held.Module != nil && *held.Module != *current) {
+		return &InterfaceModuleHeldError{Module: held.Module, Source: deref(held.Source)}
+	}
 	e.learnModuleID(dev, v, sourceOperator)
 	e.refreshThermostatDocument(dev)
 	return nil
+}
+
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 // InterfaceModuleState is the interface module id held for a wall thermostat.

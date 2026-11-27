@@ -91,6 +91,8 @@ func TestInterfaceModuleRouteRefusals(t *testing.T) {
 		{"the teardown value", apiThermostatEUI, `{"module": 32767}`, http.StatusBadRequest, "tears"},
 		{"an id no image answers", apiThermostatEUI, `{"module": 999}`, http.StatusBadRequest, "no known wall thermostat image"},
 		{"a value above 16 bits", apiThermostatEUI, `{"module": 70000}`, http.StatusBadRequest, "0 to 65535"},
+		{"the stub image", apiThermostatEUI, `{"module": 202}`, http.StatusBadRequest, "stub image"},
+		{"a current above 16 bits", apiThermostatEUI, `{"module": 80, "current": 70000}`, http.StatusBadRequest, "current"},
 		{"a negative value", apiThermostatEUI, `{"module": -1}`, http.StatusBadRequest, "0 to 65535"},
 		{"no module", apiThermostatEUI, `{}`, http.StatusBadRequest, "module is required"},
 		{"an unknown field", apiThermostatEUI, `{"module": 80, "force": true}`, http.StatusBadRequest, "force"},
@@ -118,6 +120,7 @@ func TestInterfaceModuleRouteGETListsTheAcceptedIDs(t *testing.T) {
 	}
 	known, _ := res["known"].([]any)
 	ids := make([]int, 0, len(known))
+	var held any
 	for _, item := range known {
 		entry := item.(map[string]any)
 		id := int(entry["module"].(float64))
@@ -126,9 +129,10 @@ func TestInterfaceModuleRouteGETListsTheAcceptedIDs(t *testing.T) {
 			t.Errorf("known %d has family %v", id, entry["family"])
 		}
 		// Every listed id must pass the PUT.
-		if code, body := a.call(http.MethodPut, moduleRoute(apiThermostatEUI), map[string]any{"module": id}); code != http.StatusOK {
+		if code, body := a.call(http.MethodPut, moduleRoute(apiThermostatEUI), map[string]any{"module": id, "current": held}); code != http.StatusOK {
 			t.Errorf("PUT of the listed id %d = %d %v", id, code, body)
 		}
+		held = id
 	}
 	if !sort.IntsAreSorted(ids) || len(ids) < 10 {
 		t.Errorf("known ids = %v, want a sorted list of the table", ids)
@@ -139,7 +143,7 @@ func TestInterfaceModuleRouteGETListsTheAcceptedIDs(t *testing.T) {
 		}
 	}
 
-	if code, _ := a.call(http.MethodPut, moduleRoute(apiThermostatEUI), map[string]any{"module": 71}); code != http.StatusOK {
+	if code, _ := a.call(http.MethodPut, moduleRoute(apiThermostatEUI), map[string]any{"module": 71, "current": held}); code != http.StatusOK {
 		t.Fatalf("PUT = %d", code)
 	}
 	_, res = a.call(http.MethodGet, moduleRoute(apiThermostatEUI), nil)

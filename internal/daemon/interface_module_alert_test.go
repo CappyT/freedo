@@ -50,7 +50,7 @@ func TestHealthAlertsAThermostatWithNoModuleAfterTenMinutes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := d.do(func(e *tado.EmuState) (any, error) { return nil, e.SetInterfaceModule(dev, 71) }); err != nil {
+	if _, err := d.do(func(e *tado.EmuState) (any, error) { return nil, e.SetInterfaceModule(dev, 71, nil) }); err != nil {
 		t.Fatal(err)
 	}
 	if h := alertHealthOf(t, url); raised(h, moduleThermostat, alertSetInterfaceModule) {
@@ -80,7 +80,7 @@ func TestHealthRaisesNoModuleAlertWhenTheIDIsKnown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := d.do(func(e *tado.EmuState) (any, error) { return nil, e.SetInterfaceModule(dev, 71) }); err != nil {
+	if _, err := d.do(func(e *tado.EmuState) (any, error) { return nil, e.SetInterfaceModule(dev, 71, nil) }); err != nil {
 		t.Fatal(err)
 	}
 	alertHealthOf(t, url)
