@@ -13,7 +13,8 @@ export type AlertKey =
 	| 'deviceOffline'
 	| 'deviceFault'
 	| 'deviceWarning'
-	| 'windowUndelivered';
+	| 'windowUndelivered'
+	| 'setInterfaceModule';
 
 export interface ZoneState {
 	state: StateKey;

@@ -43,7 +43,8 @@ export const alertKeys: Record<AlertKey, Key> = {
 	deviceOffline: 'alert.deviceOffline',
 	deviceFault: 'alert.deviceFault',
 	deviceWarning: 'alert.deviceWarning',
-	windowUndelivered: 'alert.windowUndelivered'
+	windowUndelivered: 'alert.windowUndelivered',
+	setInterfaceModule: 'alert.setInterfaceModule'
 };
 
 /** The text of a fault or a warning the daemon names. A name with no text shows as it is. */

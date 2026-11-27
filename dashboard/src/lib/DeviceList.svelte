@@ -20,6 +20,7 @@
 	import { alertKeys, conditionText } from './describe.ts';
 	import type { DeviceRow } from './devices.ts';
 	import { fmt, t } from './i18n.svelte.ts';
+	import InterfaceModule from './InterfaceModule.svelte';
 	import Icon, { type IconName } from './Icon.svelte';
 	import { api } from './session.ts';
 	import { zoneName } from './zones.ts';
@@ -174,6 +175,8 @@
 
 						{#if device.kind === 'valve'}
 							<DebugStats short={device.short} />
+						{:else if device.kind === 'thermostat'}
+							<InterfaceModule short={device.short} />
 						{/if}
 
 						{#if device.childLock !== null}

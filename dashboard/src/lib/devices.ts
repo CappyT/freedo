@@ -35,6 +35,10 @@ export function buildDevices(nodes: NodeView[], health: Health | null, models: Z
 		// The names say more than the general text, which stays for a fault with no name.
 		if (h.fault && faults.length === 0) alerts.push('deviceFault');
 		if (h.offline) alerts.push('deviceOffline');
+		// The daemon raises it for a wall thermostat that has no interface module id and sent no boiler report.
+		if (health?.alerts?.some((a) => a.short === h.short && a.alerts.includes('setInterfaceModule'))) {
+			alerts.push('setInterfaceModule');
+		}
 		return {
 			short: h.short,
 			label: h.label || h.device,
