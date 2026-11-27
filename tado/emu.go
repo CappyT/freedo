@@ -4612,10 +4612,11 @@ func (e *EmuState) ClearOfflineSchedule(target string, id int) (bool, error) {
 }
 
 // refusesConfigWrite reports whether the device drops the document a d/config
-// write carries. The wall thermostat does: its PUT handler (0x1e230) ignores
-// the payload and only makes it GET d/config again. The coordinator serves its
-// configuration on the read path only (serveConfig). A device the installation
-// does not declare has no known kind, and no capture refuses a write to one.
+// write carries. The wall thermostat and wireless sensor do: their PUT handler
+// ignores the payload and only makes them GET d/config again. The coordinator
+// serves their configuration on the read path only (serveConfig). A device the
+// installation does not declare has no known kind, and no capture refuses a
+// write to one.
 func (e *EmuState) refusesConfigWrite(wire []byte) bool {
 	k := e.deviceKind(hexEUI(wire))
 	return k == KindThermostat || k == KindSensor
@@ -4636,14 +4637,16 @@ func (e *EmuState) ServesConfigOnRead(target string) bool {
 // cfg_set_and_report. The other tags stay with the installation.
 var servedConfigTags = map[string]bool{"0140": true}
 
-var errThermostatConfig = errors.New("tado: the wall thermostat ignores a d/config write payload; " +
+var errThermostatConfig = errors.New("tado: this device ignores a d/config write payload; " +
 	"its served d/config document takes only calibOffset (tag 0140)")
 
-// serveConfig merges a write to the wall thermostat into the document it is
-// served, under a new ETag. The device takes the document on its next d/config
-// GET, answered 2.05, which the re-read trigger brings at once
-// (setConfigDocument). A write that moves a tag outside servedConfigTags is
-// refused whole.
+// serveConfig merges a write to a read-served device (wall thermostat or
+// wireless sensor) into the document it is served, under a new ETag. The device
+// takes the document on its next d/config GET, answered 2.05, which the re-read
+// trigger brings at once (setConfigDocument). A write that moves a tag outside
+// servedConfigTags is refused whole; a write that sets only tags stripped for
+// that device kind (such as 0149 on a thermostat or sensor) leaves the served
+// document unchanged and reports success.
 func (e *EmuState) serveConfig(wire []byte, w ConfigWrite) error {
 	key := hexEUI(wire)
 	base, ok := e.cfgDoc[key]

@@ -440,7 +440,7 @@ export const fr: Record<Key, string> = {
 	'devices.name': 'Nom de l’appareil',
 	'devices.save': 'Enregistrer',
 	'devices.renamed': 'Appareil renommé.',
-	'devices.note': 'Identifier fait émettre un signal à une vanne ou au thermostat mural. La sécurité enfant existe seulement sur les vannes. Pour renommer, déplacer, redémarrer ou retirer un appareil, ouvre les réglages de sa pièce.',
+	'devices.note': 'Identifier fait émettre un signal à une vanne, au thermostat mural ou à une sonde de température sans fil. La sécurité enfant existe seulement sur les vannes. Pour renommer, déplacer, redémarrer ou retirer un appareil, ouvre les réglages de sa pièce.',
 	'kind.valve': 'Vanne de radiateur',
 	'kind.thermostat': 'Thermostat mural',
 	'kind.sensor': 'Sonde de température sans fil',

@@ -272,7 +272,7 @@ caller sends and stream live traffic. Leave them off in normal use.
 A device is a physical node. A zone is a room or the hot water service. A circuit joins
 one or more zones to a heat source. The three have separate identifiers.
 
-- A heating zone holds valves. It can hold a wall thermostat or a wireless temperature sensor (`kind: "sensor"`, serial prefix `SU`) as the measuring device (or a wireless sensor alone).
+- A heating zone holds valves. It can hold a wall thermostat as the measuring device, or a wireless temperature sensor (`kind: "sensor"`, serial prefix `SU`) as the demand reporter (zone owner).
 - The hot water zone holds the wall thermostat.
 - `measuring_device` selects the measurement the zone uses. `reporter` selects the member
   that publishes the aggregated demand. The loader rejects a missing or ambiguous reference.
@@ -946,7 +946,7 @@ receives, while the daemon runs. See [Radio calibration](OPERATION.md#radio-cali
 - `POST /api/nodes/{id}/childlock` is for valves only. Another device kind gets `400`,
   because the wall thermostat has no `d/lock`. `ChildLock` in `/api/nodes` is `false` until
   the valve confirms a write, and `null` on a device that is not a valve.
-- `POST /api/nodes/{id}/identify` makes a valve or the wall thermostat signal itself. The
+- `POST /api/nodes/{id}/identify` makes a valve, the wall thermostat or a wireless temperature sensor signal itself. The
   thermostat shows "Hi!" on its display. It needs a device that belongs to a zone.
 - `POST /api/nodes/{id}/calibrate` starts the motor calibration of a valve. The daemon sends
   `PUT d/calibrate` and waits for the `2.xx` answer. A `2.xx` does not guarantee the stroke,

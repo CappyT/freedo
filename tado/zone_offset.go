@@ -127,7 +127,7 @@ func (e *EmuState) enqueueDbg2(target, desc string, tlvs []TLV) error {
 		return err
 	}
 	if e.refusesConfigWrite(wire) {
-		return errors.New("tado: d/dbg2/tlvs to the wall thermostat is refused: no evidence that it applies the records")
+		return errors.New("tado: d/dbg2/tlvs to a read-served device is refused: no evidence that it applies the records")
 	}
 	mid, token, err := downlinkIDs()
 	if err != nil {

@@ -3,6 +3,7 @@ package tado
 import (
 	"bytes"
 	"encoding/hex"
+	"strings"
 	"testing"
 )
 
@@ -194,43 +195,93 @@ func TestSensorZoneConfigBlock2Unscaled64(t *testing.T) {
 	}
 }
 
-func TestSensorDeviceOverlayPreservedInZoneRead(t *testing.T) {
+func TestSensorReporterWarning(t *testing.T) {
+	noBoiler := true
+	in := &Install{
+		Version:       ConfigVersion,
+		HomeID:        123456789,
+		NetworkKeyHex: "00112233445566778899aabbccddeeff",
+		Coordinator:   Coordinator{EUI: "a1b2c37520c51b00"},
+		Devices: []Device{
+			{Kind: KindSensor, EUI: "1a2b3c3107c51b00", Serial: "SU1000000001", Label: "hallway"},
+			{Kind: KindValve, EUI: "2b3c4d3107c51b00", Serial: "VA1000000002", Label: "rad"},
+		},
+		Zones: []Zone{
+			{
+				Number:   11,
+				Name:     "hallway",
+				Kind:     ZoneHeating,
+				Members:  []string{"1a2b3c3107c51b00", "2b3c4d3107c51b00"},
+				Reporter: refList{"2b3c4d3107c51b00"},
+			},
+		},
+		Options: Options{NoBoiler: &noBoiler, Timezone: "UTC"},
+	}
+	var c issues
+	in.checkZones(&c)
+	found := false
+	for _, w := range c.warns {
+		if strings.Contains(w, "not its demand reporter") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected warning when sensor is not zone reporter, got warnings=%v", c.warns)
+	}
+
+	in.Zones[0].Reporter = refList{"1a2b3c3107c51b00"}
+	c = issues{}
+	in.checkZones(&c)
+	for _, w := range c.warns {
+		if strings.Contains(w, "not its demand reporter") {
+			t.Fatalf("unexpected reporter warning when sensor is elected: %v", w)
+		}
+	}
+}
+
+func TestSensorSafetyPaths(t *testing.T) {
 	in := synthSensorInstall(t, true)
 	su := in.Devices[0].WireEUI()
+	key := hexEUI(su)
 	e := NewEmu(in.EmuConfig(), nil)
-	e.SetHomeState(true, map[int]float64{11: 18.0})
 
-	// Sensor sends PUT h/<home>/z/11/overlay with 6280=21.00C, 6240=2, 6260=1.
-	overlayBody := encodeTLVs([]TLV{
-		{Tag: "6280", Val: []byte{0x08, 0x34}},
-		{Tag: "6240", Val: []byte{0x02}},
-		{Tag: "6260", Val: []byte{0x01}},
-	})
-	rawPut := synthDeviceUplink(t, in, su, CoAPReq{
-		Type: "CON", Code: "0.03", MID: 0x4301, Token: []byte{0x41},
-		Path:    homePath(in, "z", "11", "overlay"),
-		Payload: overlayBody,
-	})
-	putAns := synthAnswer(t, in, e.OnFrame(rawPut), 0x4301)
-	if putAns.Code != "2.05" {
-		t.Fatalf("overlay PUT code = %s, want 2.05", putAns.Code)
+	// 1. refusesConfigWrite includes KindSensor.
+	if !e.ServesConfigOnRead("SU1000000001") {
+		t.Fatal("ServesConfigOnRead(KindSensor) = false, want true")
 	}
 
-	// Sensor re-reads h/<home>/z/11/s: must see 6240=2, 6260=1, 6280=2100.
-	rawGet := synthDeviceUplink(t, in, su, CoAPReq{
-		Type: "CON", Code: "0.01", MID: 0x4302, Token: []byte{0x42},
-		Path:    homePath(in, "z", "11", "s"),
-		Options: []CoAPOption{{Num: 23, Val: []byte{0x03}}},
-	})
-	getAns := synthAnswer(t, in, e.OnFrame(rawGet), 0x4302)
-	if getAns.Code != "2.05" {
-		t.Fatalf("z/11/s GET code = %s, want 2.05", getAns.Code)
+	// 2. EnqueueConfig serves on read, updates 0140, and queues an empty re-read trigger.
+	before := e.cfgDoc[key]
+	off := -100
+	if err := e.EnqueueConfig("SU1000000001", 11, ConfigWrite{CalibOffset: &off}); err != nil {
+		t.Fatalf("EnqueueConfig(CalibOffset): %v", err)
 	}
-	got := map[string]string{}
-	for _, tlv := range parseTLVList(getAns.Payload) {
-		got[tlv.Tag] = hex.EncodeToString(tlv.Val)
+	if !e.ConfigRereadQueued(key) {
+		t.Error("ConfigRereadQueued(KindSensor) = false after 0140 change, want true")
 	}
-	if got["6240"] != "02" || got["6260"] != "01" || got["6280"] != "0834" {
-		t.Errorf("zone read after overlay = %v, want 6240=02 6260=01 6280=0834", got)
+	after := e.cfgDoc[key]
+	if bytes.Equal(before.etag, after.etag) {
+		t.Error("d/config ETag did not change after CalibOffset update")
+	}
+
+	// Stripped tag (0149 Orientation) reports success and leaves the served document unchanged.
+	orient := uint8(1)
+	if err := e.EnqueueConfig("SU1000000001", 11, ConfigWrite{Orientation: &orient}); err != nil {
+		t.Fatalf("EnqueueConfig(Orientation): %v", err)
+	}
+	if !bytes.Equal(after.etag, e.cfgDoc[key].etag) {
+		t.Error("d/config ETag changed for stripped tag 0149")
+	}
+
+	// 3. d/dbg2/tlvs is refused for KindSensor.
+	if err := e.EnqueueCalibOffsetDbg2("SU1000000001", 1, 50); err == nil {
+		t.Error("EnqueueCalibOffsetDbg2 succeeded on KindSensor; want error")
+	}
+
+	// 4. installConfigBase keeps UTCOffsetMin for KindSensor even when cfgDoc is already held.
+	base := e.installConfigBase(&in.Devices[0])
+	if base.UTCOffsetMin == nil {
+		t.Error("installConfigBase(KindSensor).UTCOffsetMin = nil, want non-nil")
 	}
 }

@@ -31,7 +31,7 @@ This is heavily AI-assisted work. The code and the documentation were written la
 
 ## What it is
 
-freedo replaces the tado internet bridge for the radiator valves and wall thermostats that it
+freedo replaces the tado internet bridge for the radiator valves, wall thermostats and wireless temperature sensors that it
 coordinates. The coordinator is a Go daemon. It talks over a serial link to an ESP32 with a CC1101
 radio, and it serves a local HTTP API. A Home Assistant integration uses that API. The daemon
 keeps the plant under local control, with no cloud.
@@ -137,8 +137,8 @@ No record covers a long run or a long outage of the coordinator.
   network only when you hold its button.
 - A setup import from the tado cloud is planned: rooms, schedules and settings. The devices still pair from
   scratch. It is not available.
-- Supported hardware: the valves and the wall thermostats of the V3+ line. Other device types
-  (wireless receiver, extension kit, wireless sensor) are not supported, because no capture of
+- Supported hardware: the valves, wall thermostats and wireless temperature sensors (`SU`) of the V3+ line. Other device types
+  (wireless receiver, extension kit) are not supported yet, because no complete capture of
   them exists. See [Supported devices](#supported-devices) for the other tado lines.
 - A circuit needs a wall thermostat as its heat source. A heating zone with no circuit gets a zone
   configuration without the circuit tag and without the heat source among the members. No device has
@@ -160,7 +160,7 @@ models come from the tado article
 | V1 | 2012-2014 | Box BX02, temperature sensor TS02 | Gateway GW01 | Not supported: a different system. |
 | V2 | 2014-2016 | Smart Thermostat RU01, extension kit BU01 | Bridge GW02 | Not tested. Probably the same radio protocol, see [#25](https://github.com/CappyT/freedo/issues/25). |
 | V3 | 2016-2018 | Smart Thermostat RU01, Smart Radiator Thermostat VA01 | Internet Bridge IB01 | VA01 tested with firmware 54.20: pairing and setpoints, including `2.05` responses. Other V3 devices not tested. |
-| V3+ | since 2018 | Wired Smart Thermostat RU02, Smart Radiator Thermostat VA02, Wireless Receiver BR02/BP02, Wireless Temperature Sensor SU02 | Internet Bridge IB01 | Valves and wired thermostat supported. Wireless receiver and sensor not supported. |
+| V3+ | since 2018 | Wired Smart Thermostat RU02, Smart Radiator Thermostat VA02, Wireless Receiver BR02/BP02, Wireless Temperature Sensor SU02 | Internet Bridge IB01 | Valves, wired thermostat and wireless sensor (SU02) supported. Wireless receiver not supported. |
 | tado X | since 2024 | RU04, RU05, VA04, SU04, SU05 and others | Bridge X IB02 | Not supported: Thread and Matter use a different radio. |
 
 V2 is probable because tado documents a swap from the GW02 to the IB01 in which the installed
@@ -449,7 +449,7 @@ what is not verified on air. The routes are in [`docs/API.md`](docs/API.md). The
 | Open window detection | equal | The valves detect the window. The detection and its time are room options. A reset from the dashboard or from Home Assistant ends a window of any source. A contact sensor that closes ends only its own hold. On one plant the wall thermostat detected a window and a reset ended it. No detection by a valve was observed. |
 | Hot water: on, temperature, program | equal | The daemon keeps the program and writes the thermostat at each block change. |
 | Child lock | equal | Valves only. The wall thermostat firmware has no child lock. In use on one plant. |
-| Identify a device | equal | Valves and the wall thermostat in a zone. The thermostat shows "Hi!" on its display. |
+| Identify a device | equal | Valves, wall thermostats and wireless sensors in a zone. The thermostat and sensor show "Hi!" on their display. |
 | Display orientation and change notice | equal | A full `d/config` write homes the valve motor, as with the commercial bridge. |
 | Valve calibration | equal | The command comes from firmware and ran on one valve. A `2.xx` answer does not guarantee the stroke. |
 | Temperature correction | equal | Two modes. `config` homes the motor. `dbg2` ran on one valve and is in no capture. A Home Assistant automation or Better Thermostat can write the correction from a sensor through the Offset number entity. |

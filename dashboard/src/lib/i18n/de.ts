@@ -440,7 +440,7 @@ export const de: Record<Key, string> = {
 	'devices.name': 'Gerätename',
 	'devices.save': 'Speichern',
 	'devices.renamed': 'Gerät umbenannt.',
-	'devices.note': 'Identifizieren lässt ein Ventil oder den Wandthermostat ein Signal geben. Die Kindersicherung gibt es nur bei Ventilen. Um ein Gerät umzubenennen, zu verschieben, neu zu starten oder zu entfernen, öffne die Einstellungen seines Raums.',
+	'devices.note': 'Identifizieren lässt ein Ventil, den Wandthermostat oder einen Funk-Temperatursensor ein Signal geben. Die Kindersicherung gibt es nur bei Ventilen. Um ein Gerät umzubenennen, zu verschieben, neu zu starten oder zu entfernen, öffne die Einstellungen seines Raums.',
 	'kind.valve': 'Heizkörperventil',
 	'kind.thermostat': 'Wandthermostat',
 	'kind.sensor': 'Funk-Temperatursensor',

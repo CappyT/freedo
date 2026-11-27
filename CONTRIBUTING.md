@@ -176,7 +176,7 @@ A restart keeps the counters and the correlations that are still valid.
 
 ## Contributing a capture for an unsupported device
 
-freedo supports the valves and wall thermostats of the V3+ line. For another device, a capture
+freedo supports the valves, wall thermostats and wireless temperature sensors of the V3+ line. For another device, a capture
 is the only way to add support. A raw capture is not safe to share: the MAC header is in clear
 text and holds the EUI of every device, and a capture of a pairing can leak the network key.
 

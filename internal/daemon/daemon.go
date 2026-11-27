@@ -4116,9 +4116,9 @@ func (d *daemon) postConfig(w http.ResponseWriter, r *http.Request) {
 
 // configWrite runs a d/config write on the engine and answers how it reaches
 // the device: queued, or served on the device's own next read when the device
-// drops the written document (the wall thermostat). reread tells whether a
-// trigger that makes that read come at once waits in the queue. extra merges
-// endpoint fields.
+// drops the written document (wall thermostat or wireless sensor). reread tells
+// whether a trigger that makes that read come at once waits in the queue. extra
+// merges endpoint fields.
 func (d *daemon) configWrite(w http.ResponseWriter, r *http.Request, target string, extra map[string]any,
 	write func(*tado.EmuState) error) {
 	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
