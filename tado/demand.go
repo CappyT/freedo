@@ -136,9 +136,16 @@ func (e *EmuState) mergeZoneDemand(id int, tlvs []TLV, source string) {
 }
 
 // ZoneOwner returns the short address of the device that feeds the zone
-// measure: the elected reporter, else the measuring device. It is empty when
-// the zone has neither.
+// measure: the reporter the installation elects, else the one a device
+// published in its 015e record, else the measuring device. It is empty when
+// the zone has none. A published record never overrides the election: a
+// device keeps the record of an older election until it publishes again.
 func (e *EmuState) ZoneOwner(zone int) string {
+	if e.inst != nil {
+		if d, err := e.inst.DemandReporter(zone); err == nil {
+			return d.Short()
+		}
+	}
 	if short, ok := e.zoneReporters()[zone]; ok {
 		return short
 	}

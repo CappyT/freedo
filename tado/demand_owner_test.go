@@ -154,3 +154,46 @@ func TestFallbackEventNamesZonesOfOtherOwners(t *testing.T) {
 		t.Errorf("owner events = %v, want %v", ev, want)
 	}
 }
+
+// TestFallbackEventNamesCoordinatorOwnedZone: in a zone the coordinator owns,
+// the measuring device is a member like the others, so its 0182 = 1 names the
+// zone.
+func TestFallbackEventNamesCoordinatorOwnedZone(t *testing.T) {
+	now := time.Date(2026, 1, 5, 6, 0, 0, 0, time.UTC)
+	y := strings.Replace(fixtureInstallYAML, "  utc_offset_min: 60\n", "  utc_offset_min: 60\n  zone_owner: {5: coordinator}\n", 1)
+	e := ownerEmu(t, y, &now)
+
+	e.OnFrame(deviceFallbackFrame(t, mustHex(capKitchenOwner), "VA1000000006", FallbackHold))
+	want := []FallbackEvent{{Zone: -1, Device: "0a01", From: FallbackNone, To: FallbackHold, MemberOf: []int{5}}}
+	if ev := e.TakeFallbackEvents(); !reflect.DeepEqual(ev, want) {
+		t.Errorf("events = %v, want %v", ev, want)
+	}
+}
+
+// TestZoneOwnerFollowsElectionNotObservedRole: after a re-election the demoted
+// device may still publish its old 015e record. The owner stays the reporter
+// the installation elects, and the zone takes its measure.
+func TestZoneOwnerFollowsElectionNotObservedRole(t *testing.T) {
+	now := time.Date(2026, 1, 5, 6, 0, 0, 0, time.UTC)
+	y := strings.Replace(fixtureInstallYAML,
+		"members: [VA1000000001, VA1000000006], reporter: VA1000000006}",
+		"members: [VA1000000001, VA1000000006], reporter: VA1000000001}", 1)
+	e := ownerEmu(t, y, &now)
+
+	// The demoted valve 0a01 publishes the elected role it held before.
+	e.OnFrame(uplinkFrame(t, mustHex(capKitchenOwner), "0.03",
+		[]string{"d", "VA1000000006", "config"}, nil,
+		concat(
+			TLV{Tag: "015c", Val: []byte{0x00, 0x74, 0xcb, 0xb1}}.Encode(),
+			TLV{Tag: "015e", Val: []byte{0x0d, 0x05}}.Encode(),
+		)))
+	if got := e.ZoneOwner(5); got != "0a06" {
+		t.Fatalf("zone 5 owner = %q, want the elected 0a06", got)
+	}
+
+	zonePush(t, e, capKitchenMember, 2000, 40)
+	zonePush(t, e, capKitchenOwner, 1900, 10)
+	if got := zoneOf(t, e, 5); got.TempC != 20.0 || got.DemandPct != 40 || got.Source != "0a06" {
+		t.Errorf("zone 5 = %+v, want the elected reporter's values", got)
+	}
+}

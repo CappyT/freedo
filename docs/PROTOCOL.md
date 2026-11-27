@@ -1251,13 +1251,14 @@ lag of up to one deadband step. Two different temperatures for one zone mean two
 that feed `4060|zone`: the owner and a member in fallback, two members in fallback, or two
 devices with role bit 3 (inferred).
 
-freedo takes `4060` and `40a0` of a zone from its owner only: the elected reporter, else the
-measuring device. It reads them from `PUT z/p?lid=N`, `PUT h/<home>/z/N/act` and the relayed
+freedo takes `4060` and `40a0` of a zone from its owner only: the reporter that the
+installation elects (a `015e` record that a device published never overrides it), else the
+reporter of a published `015e` record, else the measuring device. It reads them from `PUT z/p?lid=N`, `PUT h/<home>/z/N/act` and the relayed
 `2.05`. A tag of another member fills in only while the owner has sent none for the offline
 limit of a device (`offline_after_sec`, 1 hour by default). A zone with no resolvable owner
 takes every sender. `4160` and `0135` keep their sources. freedo logs a warning when a member
 that does not own its zone reports `0182` = 1, because that member then feeds its own
-temperature to the zone.
+temperature to the zone. In a zone that the coordinator owns, every device is a member.
 
 Zone state pushes:
 

@@ -112,7 +112,7 @@ func (e *EmuState) setFallback(st *fallbackState, zone, mode int, source string)
 }
 
 // zonesOwnedByOthers returns the zones the device is a member of whose owner is
-// another device.
+// another device. In a zone the coordinator owns, every device is a member.
 func (e *EmuState) zonesOwnedByOthers(short string) []int {
 	if e.inst == nil {
 		return nil
@@ -123,7 +123,9 @@ func (e *EmuState) zonesOwnedByOthers(short string) []int {
 	}
 	var out []int
 	for _, zone := range e.inst.zonesOf(d) {
-		if owner := e.ZoneOwner(zone); owner != "" && owner != short {
+		if e.inst.Options.CoordinatorOwns(zone) {
+			out = append(out, zone)
+		} else if owner := e.ZoneOwner(zone); owner != "" && owner != short {
 			out = append(out, zone)
 		}
 	}
