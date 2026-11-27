@@ -995,7 +995,7 @@ freedo never invents it. The daemon learns the id from the `hvac/codes` report o
 thermostat or from a `d/config` document of the thermostat, and stores it.
 
 - The daemon refuses 0, 112, `0x7fff` and every id that no known firmware family has. It
-  learns the stub id 202 from a first report with a warning. The families are `opentherm`,
+  learns the ids 202 (stub) and 200 from a first report with a warning: they start no boiler bus. The families are `opentherm`,
   `ebus_a`, `ebus_b`, `ebus_c`, `km`, `ht_bus`, `ems`, `bsb`, `scom` and `analog`, and
   [PROTOCOL.md](PROTOCOL.md#dconfig-write) lists the ids of each. The ids 1, 5, 6, 7 and 9 are
   `relay`: they start the relay module and no bus driver. The ids 0 and 200 are `none`: they
@@ -1003,6 +1003,8 @@ thermostat or from a `d/config` document of the thermostat, and stores it.
 - A report teaches the daemon an id only while it holds none. A report of another id leaves the
   held id as it is, logs `interface-module-warning`, lists it in `interfaceModuleIssues` and
   queues the `d/config` re-read trigger again: the thermostat has not applied the document yet.
+  It queues the trigger at most once in 10 minutes for each thermostat. A restore that changes
+  the served id logs the same warning with both ids and queues the trigger at once.
 - At start the daemon drops a refused id from the database and continues. The thermostat has
   no id until it reports again.
 - `/api/health` lists refused and dropped ids and warnings in `interfaceModuleIssues`, and
@@ -1024,7 +1026,7 @@ thermostat or from a `d/config` document of the thermostat, and stores it.
 while the thermostat has no id, and `family` is then `unknown`. `source` names where the id came
 from: `operator`, `hvac/codes`, `d/config`, `cached d/config`, a `response` code, or `stored`
 for an id restored from the database. `known` lists, by id, the `{"module", "family"}` pairs that
-the PUT accepts, with the families above. It leaves out 0 and the stub image 202. A valve, a bridge or an unknown `ref`
+the PUT accepts, with the families above. It leaves out 0, 200 and the stub image 202. A valve, a bridge or an unknown `ref`
 gets `400` or `404`.
 
 `PUT /api/install/devices/{ref}/interface_module` with `{"module": 80}` sets the id of a wall
@@ -1034,12 +1036,13 @@ Without `current`, or with another value, the answer is `409` with the held id a
 nothing changes. A thermostat with no id takes no `current`, or `null`: any number gets `409`. A wrong id stops the boiler
 interface, so the route needs the API token, or, under the Home Assistant add-on, an
 administrator (see [SECURITY.md](../SECURITY.md#interface-module-id-home-assistant-administrators-only)).
-It answers `{"module", "family", "source"}` with `source` `operator`.
+It answers `{"module", "family", "source"}` with `source` `operator`, also when the body
+names the held id.
 
 - The route accepts an id that passes the same check as a learned id. It answers `400` with the
   reason for 0, 112, `0x7fff`, an id that no thermostat image answers, a value outside 0 to 65535,
-  a missing field and any other field. It refuses 202, the stub image, because it drives no
-  boiler bus. A report of 202 is still learned, with a warning. `current` outside 0 to 65535 is
+  a missing field and any other field. It refuses 202 (the stub image) and 200, because
+  they start no boiler bus. A report of either is still learned, with a warning. `current` outside 0 to 65535 is
   `400`.
 - The daemon stores the id like a learned one, so it survives a restart, and serves the thermostat
   a `d/config` document with the id under a new ETag. After a restart the id has the source

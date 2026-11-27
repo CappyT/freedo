@@ -579,7 +579,7 @@ The ids and what they select:
 | 31, 32 | `scom` | SCOM drivers |
 | 3, 10, 11, 12, 30, 40, 42, 60, 61 | `analog` | Vaillant analog PWM drivers |
 | 1, 5, 6, 7, 9 | `relay` | the nRF52 relay module (0x5bd78), no STM32 bus driver |
-| 0, 200 | `none` | no module: the eBUS A image with null functions (200 pulses the relay off five times, 0x5bd9c) |
+| 0, 200 | `none` | no module: the eBUS A image with null functions (200 pulses the relay off five times, 0x5bd9c). freedo refuses 0 and 200 in the PUT |
 | 202 | `stub` | two functions that return 1, no bus |
 
 freedo holds the same table in `tado/interface_module.go`. It refuses 0, 112,
@@ -593,7 +593,9 @@ refused id in the stored state is dropped at restore, logged as
 A report of an id other than the held one means that the thermostat has not
 applied the document yet, or that another coordinator wrote the id. freedo keeps
 its id, logs `interface-module-warning`, lists it in `interfaceModuleIssues` and
-queues the re-read trigger again. An operator sets or changes the id with
+queues the re-read trigger again, at most once in 10 minutes for each thermostat: a
+thermostat whose store already matches the served ETag answers each trigger with 2.03.
+An operator sets or changes the id with
 `PUT /api/install/devices/{ref}/interface_module` (see
 [API.md](API.md#interface-module-id)): that call is the only way to change a held
 id. The new document carries the id under a new ETag, with the re-read trigger.
