@@ -995,13 +995,22 @@ freedo never invents it. The daemon learns the id from the `hvac/codes` report o
 thermostat or from a `d/config` document of the thermostat, and stores it.
 
 - The daemon refuses 0, 112, `0x7fff` and every id that no known firmware family has. It
-  learns the ids 202 and 1, 5, 6, 7, 9 with a warning, when another family reported before.
+  learns the stub id 202 from a first report with a warning. The families are `opentherm`,
+  `ebus_a`, `ebus_b`, `ebus_c`, `km`, `ht_bus`, `ems`, `bsb`, `scom` and `analog`, and
+  [PROTOCOL.md](PROTOCOL.md#dconfig-write) lists the ids of each. The ids 1, 5, 6, 7 and 9 are
+  `relay`: they start the relay module and no bus driver. The ids 0 and 200 are `none`: they
+  start no module.
+- A report teaches the daemon an id only while it holds none. A report of another id leaves the
+  held id as it is, logs `interface-module-warning`, lists it in `interfaceModuleIssues` and
+  queues the `d/config` re-read trigger again: the thermostat has not applied the document yet.
 - At start the daemon drops a refused id from the database and continues. The thermostat has
   no id until it reports again.
 - `/api/health` lists refused and dropped ids and warnings in `interfaceModuleIssues`, and
   the thermostats without an id in `interfaceModuleUnknown`.
-- Until the id is known, the `d/config` GET of the thermostat gets `2.05` with the
-  installation document without `015d`, and the daemon does not keep that document.
+- Until the id is known, the daemon holds no document for the thermostat. Its `d/config` GET
+  gets `2.03` with the ETag it sent and no body, because a `2.05` without `015d` would erase
+  the id that the thermostat holds. A GET with no ETag gets `2.05` with the installation
+  document without `015d`.
 - `GET /api/boiler` reports the bus family in `BusType` and the id in `InterfaceModule`.
 - A wall thermostat that stays in `interfaceModuleUnknown` and sends no `hvac/mon` boiler report
   for 10 minutes since the daemon first saw it raises the alert `setInterfaceModule` in the
@@ -1015,7 +1024,7 @@ thermostat or from a `d/config` document of the thermostat, and stores it.
 while the thermostat has no id, and `family` is then `unknown`. `source` names where the id came
 from: `operator`, `hvac/codes`, `d/config`, `cached d/config`, a `response` code, or `stored`
 for an id restored from the database. `known` lists, by id, the `{"module", "family"}` pairs that
-the PUT accepts. It leaves out 0 and the stub image 202. A valve, a bridge or an unknown `ref`
+the PUT accepts, with the families above. It leaves out 0 and the stub image 202. A valve, a bridge or an unknown `ref`
 gets `400` or `404`.
 
 `PUT /api/install/devices/{ref}/interface_module` with `{"module": 80}` sets the id of a wall
@@ -1035,10 +1044,12 @@ It answers `{"module", "family", "source"}` with `source` `operator`.
 - The daemon stores the id like a learned one, so it survives a restart, and serves the thermostat
   a `d/config` document with the id under a new ETag. After a restart the id has the source
   `stored`.
-- An `hvac/codes` or `d/config` report of another id wins. The daemon then logs the warning
-  `interface-module-warning` and lists it in `interfaceModuleIssues`. The warning applies to an
-  operator id set since the start of the daemon: the source of an id is not stored. The route
-  resolves the `ref` when the engine runs it, so a device deleted in between gets `404`.
+- A report of another id never replaces the held id, an operator id included. The PUT with
+  `current` is the only way to change it. The thermostat reads the new document, reflashes
+  its interface module and needs no reboot. A change of family stops the boiler interface
+  until the reflash ends.
+- The route resolves the `ref` when the engine runs it, so a device deleted in between gets
+  `404`.
 
 Known ids by boiler, as reported to the project. Check the id against your own boiler first:
 

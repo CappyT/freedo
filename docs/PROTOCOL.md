@@ -532,21 +532,73 @@ it again. The thermostat has no motor, so the read homes nothing.
 Tag `015d` is the id of the interface module of the device. It has no default.
 Every valve document carries 112 (0 reads as 112). Any other value leaves the
 valve without its controller after the next restart, and `7fff` tears it down.
-On the wall thermostat, the id selects the STM32 firmware overlay that the nRF52
-reflashes. The installed id is 71. The id 112 matches no image and stops the
-boiler interface. The commercial bridge serves 71 to the thermostat and 112 to the
-valves. The thermostat reports its own id in `h/<home>/hvac/codes`.
+The id 112 matches no thermostat image and stops the boiler interface.
 
-freedo learns the id from that report, or from a `d/config` document held for the
-thermostat. It refuses 0, 112, `7fff` and every id outside the family table of
-`tado/interface_module.go`. It stores the id (table `interface_module`). It learns
-202 (stub, no bus) and the relay ids 1, 5, 6, 7, 9 after another family, with a
-warning in `/api/health` `interfaceModuleIssues`. A refused id in the stored state
-is dropped at restore, logged as `interface-module-dropped` and listed there as
-refused. The boot goes on. Until the id is known, freedo holds no document for the
-thermostat, and `/api/health` names it in `interfaceModuleUnknown`. Its
-`d/config` GET gets `2.05` with the installation document without `015d`
-(`withheldModuleDocument`), which freedo does not hold.
+On the wall thermostat the id selects the STM32 firmware image. The only source
+is the nRF52 record `015d` (flash pages 0xf2 and 0xf3). Three writers exist: the
+tag callback of the `d/config` document (0x1e33e), the factory reset (0x313fc,
+value 0) and the default builder (0xad28, value 0 when the record is absent). The
+thermostat does not detect the module. The registry of ids is the nRF52 table at
+0x59fb4. Each image is the base image plus one overlay for the id, and the
+`hvac/codes` report echoes the record: it holds no fact of its own.
+
+- A `d/config` 2.05 with Block2 number 0 first writes attribute `016c` (0x1e532).
+  That write erases the config store (pages 0xf2 to 0xfb) and loads the factory
+  defaults. The callback then stores only the tags of the body. A body without
+  `015d` therefore deletes the id. A 2.03 changes nothing (0x1e4f0). The wipe also
+  deletes the ETags of `c/N/config`, so that GET is unconditional after each
+  `d/config` 2.05.
+- The id takes effect at event `016d`, which the thermostat raises when a
+  `c/N/config` 2.05 completes (0x1cf50). The supervisor (0x1b7d4) then stops the
+  STM32 link and starts the flasher (0x30cd4). The flasher puts the STM32 in its ROM
+  bootloader, reads 512 pages of 128 bytes and rewrites each page that differs
+  from the image of the id. Both interface managers restart with the id. No reboot
+  is needed. The nRF52 boot applies the id too (0x1b8b4).
+- A wrong id costs the STM32 application until a valid id is served. An id in no
+  table makes the flasher erase and write pages from a buffer it did not fill. The
+  ROM bootloader stays, so a valid id repairs it. An id that the flashed overlay
+  does not know starts no module. No code changes `015d` after a bus error.
+- An absent record makes the flasher use 200, and the nRF52 manager reads `7fff`
+  and starts no module. A stored 0 is the hardware default on the nRF52 (200 for
+  hardware type 0x0d, else 1) and 200 on the STM32.
+- The commercial bridge has no code that reads or writes `015d`. The cloud builds
+  the document: every captured thermostat document carries 71.
+
+The ids and what they select:
+
+| Ids | Family | What starts |
+|---|---|---|
+| 71 | `opentherm` | OpenTherm driver |
+| 80, 83 | `ebus_a` | eBUS A driver (variant 1 for 80, 2 for 83), own eBUS address 0x10 for 80 |
+| 121 | `ebus_b` | eBUS B driver |
+| 4, 122 | `ebus_c` | two eBUS C drivers |
+| 20, 22, 23, 24, 50 | `km` | KM-Bus and Bosch drivers |
+| 41, 43, 44 | `ht_bus` | HT-Bus driver |
+| 120 | `ems` | UBA (EMS) driver |
+| 100, 110, 111, 123 | `bsb` | BSB drivers |
+| 31, 32 | `scom` | SCOM drivers |
+| 3, 10, 11, 12, 30, 40, 42, 60, 61 | `analog` | Vaillant analog PWM drivers |
+| 1, 5, 6, 7, 9 | `relay` | the nRF52 relay module (0x5bd78), no STM32 bus driver |
+| 0, 200 | `none` | no module: the eBUS A image with null functions (200 pulses the relay off five times, 0x5bd9c) |
+| 202 | `stub` | two functions that return 1, no bus |
+
+freedo holds the same table in `tado/interface_module.go`. It refuses 0, 112,
+`7fff` and every id outside the table. It stores the id (table
+`interface_module`) and learns it from the `hvac/codes` report only while it holds
+none. It also learns it from a `d/config` document held for the thermostat. The
+stub id is learned with a warning in `/api/health` `interfaceModuleIssues`. A
+refused id in the stored state is dropped at restore, logged as
+`interface-module-dropped` and listed there as refused. The boot goes on.
+
+A report of an id other than the held one means that the thermostat has not
+applied the document yet, or that another coordinator wrote the id. freedo keeps
+its id, logs `interface-module-warning`, lists it in `interfaceModuleIssues` and
+queues the re-read trigger again. An operator sets or changes the id with
+`PUT /api/install/devices/{ref}/interface_module` (see
+[API.md](API.md#interface-module-id)): that call is the only way to change a held
+id. The new document carries the id under a new ETag, with the re-read trigger.
+The thermostat reads it, raises `016d` and reflashes. It needs no reboot.
+`TestThermostatKeepsItsModuleAgainstAReport` covers the report.
 
 The thermostat gates every uplink after `d/config` on a `2.05` or `2.03` of it.
 The report pump (0xe6dc) skips the rest of the cycle while 0x1e6dc reports the
@@ -554,12 +606,22 @@ gate closed. The response handler (0x1e4b4) opens the gate only on `2.03` or a
 complete `2.05`. A 4.xx or 5.xx leaves it closed. The requests before the gate are
 `device_auth_post`, `factory_reset_put`, `fw_state_put` and `time_get`. None of
 them carries `015d`, so an error answer would keep `hvac/codes` from ever
-reporting the id. The tag handler of the document (0x1e2e8) writes only the tags
-that a body carries, so a body without `015d` keeps the id that the thermostat
-holds. Once the id is known, the served document carries it under a new ETag
-(`TestThermostatWithoutModuleServedWithout015d`), with the re-read trigger. An operator can
-set the id after a factory reset with `PUT /api/install/devices/{ref}/interface_module`
-(see [API.md](API.md#interface-module-id)). A later report of another id replaces it.
+reporting the id.
+
+Until freedo knows the id, it holds no document for the thermostat, and
+`/api/health` names it in `interfaceModuleUnknown`. The answer to its `d/config`
+GET depends on the ETag, because of the wipe above:
+
+- A GET with an ETag gets `2.03` with the same ETag and no body. The store and
+  the id stay, and the gate opens. A later block of a transfer is not answered
+  this way.
+- A GET with no ETag gets `2.05` with the installation document without `015d`
+  (`withheldModuleDocument`), which freedo does not hold. The thermostat has no
+  store worth keeping then, and the answer opens the gate.
+
+`TestThermostatWithoutModuleKeepsItsStoreOnAnETagGET` and
+`TestThermostatWithoutModuleServedWithout015d` cover both. No capture holds a
+thermostat `d/config` GET with an ETag, so both tests use synthetic frames.
 
 Tag `02b3` is the offline schedule enable. freedo sets it in every document that
 it serves or writes. The value is the one that a per-device write through
