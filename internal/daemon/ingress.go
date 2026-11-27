@@ -19,9 +19,10 @@ package daemon
 //     as X-Forwarded-For or X-Ingress-Path is under the control of the caller.
 //
 // A third class sits between the two: the pairs in ingress_admin_routes.json, the export
-// and the import of the state and the receiver calibration. The export holds the network key,
-// the import replaces the identity of the network, and the calibration moves the radio
-// register, so a request from the gateway passes without the token only when Home Assistant
+// and the import of the state, the receiver calibration and the interface module id of a wall
+// thermostat. The export holds the network key, the import replaces the identity of the
+// network, the calibration moves the radio register, and a wrong module id stops the boiler
+// interface, so a request from the gateway passes without the token only when Home Assistant
 // says that the user is an administrator. The Supervisor names the user of
 // the ingress session in X-Remote-User-Id and removes a copy that the browser sent. The
 // header counts only on a connection from the gateway address.

@@ -18,6 +18,11 @@ const (
 	// stubModule selects the STM32 image that drives no boiler bus.
 	stubModule    uint16 = 202
 	familyUnknown        = "unknown"
+	// sourceOperator marks an id that the operator set through the API. A report
+	// of another id replaces it with a warning.
+	sourceOperator = "operator"
+	// sourceStored marks an id restored from the database: its origin is not kept.
+	sourceStored = "stored"
 )
 
 // moduleFamily maps the interface module ids a wall thermostat STM32 overlay
@@ -45,6 +50,26 @@ func InterfaceModuleFamily(v uint16) string {
 		return f
 	}
 	return familyUnknown
+}
+
+// KnownInterfaceModule is an interface module id an operator may set, with the
+// boiler bus family it drives.
+type KnownInterfaceModule struct {
+	Module uint16 `json:"module"`
+	Family string `json:"family"`
+}
+
+// KnownInterfaceModules lists, by id, the ids that SetInterfaceModule accepts.
+// The stub image is left out: it drives no boiler bus.
+func KnownInterfaceModules() []KnownInterfaceModule {
+	out := make([]KnownInterfaceModule, 0, len(moduleFamily))
+	for v, family := range moduleFamily {
+		if v != stubModule && validThermostatModule(v) == nil {
+			out = append(out, KnownInterfaceModule{Module: v, Family: family})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Module < out[j].Module })
+	return out
 }
 
 // relayModule reports the eBus A ids that also drive the nRF relay.
@@ -137,15 +162,22 @@ func (e *EmuState) learnModuleID(dev *Device, v uint16, source string) bool {
 		return false
 	}
 	old, known := e.moduleID[key]
+	override := ""
+	if known && old != v && e.moduleSource[key] == sourceOperator && source != sourceOperator {
+		override = "the thermostat reported it and replaces the operator id " + strconv.Itoa(int(old))
+	}
 	switch issue, flagged := e.moduleIssue[key]; {
 	case v == stubModule:
-		e.flagModule(dev, v, false, "the stub image drives no boiler bus")
+		e.flagModule(dev, v, false, joinReason("the stub image drives no boiler bus", override))
 	case relayModule(v) && known && InterfaceModuleFamily(old) != InterfaceModuleFamily(v):
-		e.flagModule(dev, v, false, "the id drives the relay, the thermostat reported "+
-			InterfaceModuleFamily(old)+" ("+strconv.Itoa(int(old))+") before")
+		e.flagModule(dev, v, false, joinReason("the id drives the relay, the thermostat reported "+
+			InterfaceModuleFamily(old)+" ("+strconv.Itoa(int(old))+") before", override))
+	case override != "":
+		e.flagModule(dev, v, false, override)
 	case flagged && (issue.Refused || issue.Module != v):
 		delete(e.moduleIssue, key)
 	}
+	e.moduleSource[key] = source
 	if known && old == v {
 		return true
 	}
@@ -154,6 +186,48 @@ func (e *EmuState) learnModuleID(dev *Device, v uint16, source string) bool {
 	delete(e.withheldLogged, key)
 	e.log.Log("Config", dev.Ref(), "", rsnModuleLearned+"="+strconv.Itoa(int(v))+" from "+source, "")
 	return true
+}
+
+func joinReason(reason, extra string) string {
+	if extra == "" {
+		return reason
+	}
+	return reason + "; " + extra
+}
+
+// SetInterfaceModule stores the interface module id an operator gives a
+// declared wall thermostat and rebuilds the document served to it. The id is
+// held in place of one the thermostat reported, until it reports another.
+func (e *EmuState) SetInterfaceModule(dev *Device, v uint16) error {
+	if dev.Kind != KindThermostat {
+		return errors.New("tado: only a wall thermostat has an interface module id")
+	}
+	if err := validThermostatModule(v); err != nil {
+		return err
+	}
+	e.learnModuleID(dev, v, sourceOperator)
+	e.refreshThermostatDocument(dev)
+	return nil
+}
+
+// InterfaceModuleState is the interface module id held for a wall thermostat.
+// Module and Source are nil while the thermostat has none.
+type InterfaceModuleState struct {
+	Module *uint16 `json:"module"`
+	Family string  `json:"family"`
+	Source *string `json:"source"`
+}
+
+// InterfaceModuleState returns the id held for a wall thermostat, its boiler
+// bus family and where the id came from.
+func (e *EmuState) InterfaceModuleState(dev *Device) InterfaceModuleState {
+	key := hexEUI(dev.WireEUI())
+	v, ok := e.moduleID[key]
+	if !ok {
+		return InterfaceModuleState{Family: familyUnknown}
+	}
+	source := e.moduleSource[key]
+	return InterfaceModuleState{Module: &v, Family: InterfaceModuleFamily(v), Source: &source}
 }
 
 // flagModule records a refused or suspicious interface module id and logs the

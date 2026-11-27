@@ -4,6 +4,15 @@ export type EndRule = 'manual' | 'timer' | 'until_next' | 'until_auto_change';
 export type ZoneKind = 'heating' | 'hotwater';
 export type DeviceKind = 'valve' | 'thermostat' | 'bridge';
 
+/** The interface module id of a wall thermostat. Module and source are null while it has none. */
+export interface InterfaceModule {
+	module: number | null;
+	family: string;
+	source: string | null;
+	/** The ids the daemon accepts, by id. */
+	known: { module: number; family: string }[];
+}
+
 export interface TimeZoneInfo {
 	name: string;
 	offsetMin: number;

@@ -53,6 +53,7 @@ const calls: Record<string, Call> = {
 	installDevices: (c) => c.installDevices(),
 	createDevice: (c) => c.createDevice({ eui: '0102030405060708', kind: 'valve', label: 'bath' }),
 	claimZone: (c) => c.claimZone('0201', null),
+	interfaceModule: (c) => c.interfaceModule('0201'),
 	removal: (c) => c.removal('0201'),
 	deleteDevice: (c) => c.deleteDevice('0201', true),
 	installZones: (c) => c.installZones(),
@@ -126,6 +127,7 @@ const ALLOWED = [
 	'GET /api/install/devices',
 	'POST /api/install/devices',
 	'PUT /api/install/devices/{ref}/zone',
+	'GET /api/install/devices/{ref}/interface_module',
 	'GET /api/install/devices/{ref}/removal',
 	'DELETE /api/install/devices/{ref}',
 	'GET /api/install/zones',
@@ -149,9 +151,10 @@ const ALLOWED = [
 
 // What stays behind the token under ingress, whatever the client does: the identity of the network,
 // the network key, a pairing with a key of the caller, calibration, firmware, the debug routes that
-// read raw memory or raw answers, the export and the import of the state, and the receiver
-// calibration. The daemon serves those last three to a Home Assistant administrator through ingress
-// (internal/daemon/ingress_admin_routes.json), and never as plain ingress pairs.
+// read raw memory or raw answers, the export and the import of the state, the receiver
+// calibration, and the interface module id of a wall thermostat. The daemon serves those last four
+// to a Home Assistant administrator through ingress (internal/daemon/ingress_admin_routes.json), and
+// never as plain ingress pairs.
 const TOKEN_ONLY = [
 	'PATCH /api/install',
 	'PUT /api/install/network_key',
@@ -166,7 +169,8 @@ const TOKEN_ONLY = [
 	'GET /api/debug/rx',
 	'POST /api/debug/decrypt',
 	'GET /api/state/export',
-	'POST /api/state/import'
+	'POST /api/state/import',
+	'PUT /api/install/devices/0201/interface_module'
 ];
 
 /** The daemon matches a segment in braces against one non-empty segment. */

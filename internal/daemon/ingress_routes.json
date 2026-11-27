@@ -44,6 +44,7 @@
 	"GET /api/install/devices",
 	"POST /api/install/devices",
 	"PUT /api/install/devices/{ref}/zone",
+	"GET /api/install/devices/{ref}/interface_module",
 	"GET /api/install/devices/{ref}/removal",
 	"DELETE /api/install/devices/{ref}",
 	"GET /api/install/zones",

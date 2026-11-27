@@ -197,6 +197,10 @@ func (e *EmuState) RestoreDesiredState(in DesiredState) error {
 		e.boostTimers[zoned] = e.restoredTimer(value)
 	}
 	e.moduleID = moduleID
+	e.moduleSource = make(map[string]string, len(moduleID))
+	for key := range moduleID {
+		e.moduleSource[key] = sourceStored
+	}
 	for key, issue := range dropped {
 		e.moduleIssue[key] = issue
 		e.log.Log("Config", key, "", rsnModuleDropped+"="+strconv.Itoa(int(issue.Module)), "")

@@ -1,5 +1,6 @@
 [
 	"GET /api/state/export",
 	"POST /api/state/import",
-	"POST /api/radio/calibrate"
+	"POST /api/radio/calibrate",
+	"PUT /api/install/devices/{ref}/interface_module"
 ]

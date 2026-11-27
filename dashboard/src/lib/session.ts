@@ -1,4 +1,4 @@
-import { createClient, recalibrate } from './api.ts';
+import { createClient, recalibrate, setInterfaceModule } from './api.ts';
 import { auth } from './auth.svelte.ts';
 
 /** The client of this page. It sends the stored token and reports a refusal to the auth store. */
@@ -12,3 +12,6 @@ export const api = createClient({
  * it never reaches the auth store, so the token gate does not replace the page.
  */
 export const calibrateAgain = () => recalibrate({ token: () => auth.token });
+
+/** Sets the interface module id of a wall thermostat. A refusal stays with the caller, like calibrateAgain. */
+export const setModule = (ref: string, module: number) => setInterfaceModule(ref, module, { token: () => auth.token });

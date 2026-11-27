@@ -17,6 +17,7 @@ import type {
 	InstallDevice,
 	InstallInfo,
 	InstallZone,
+	InterfaceModule,
 	NodeView,
 	PidSuggestion,
 	PairWindow,
@@ -232,6 +233,8 @@ export function createClient(options: ClientOptions = {}) {
 		/** The one zone number a device answers to. Null removes the claim. */
 		claimZone: (ref: string, zoneNumber: number | null) =>
 			request<{ device: InstallDevice }>('PUT', device(ref) + '/zone', { zone: zoneNumber }),
+		/** The interface module id of a wall thermostat, its boiler bus family, and the ids the daemon accepts. */
+		interfaceModule: (ref: string) => request<InterfaceModule>('GET', device(ref) + '/interface_module'),
 		/** What a delete of the device changes. */
 		removal: (ref: string) => request<Removal>('GET', device(ref) + '/removal'),
 		/** force releases the zone memberships of the device. It never releases a heat source. */
@@ -278,6 +281,19 @@ export type Client = ReturnType<typeof createClient>;
  */
 export function recalibrate(options: ClientOptions = {}): Promise<Calibration> {
 	return transport(options).request<Calibration>('POST', 'radio/calibrate');
+}
+
+/**
+ * Sets the interface module id of a wall thermostat that lost it. It is not a method of the client: a
+ * wrong id stops the boiler interface, so under Home Assistant ingress the daemon serves it to an
+ * administrator only, and elsewhere it needs the token.
+ */
+export function setInterfaceModule(ref: string, module: number, options: ClientOptions = {}): Promise<InterfaceModule> {
+	return transport(options).request<InterfaceModule>(
+		'PUT',
+		'install/devices/' + encodeURIComponent(ref) + '/interface_module',
+		{ module }
+	);
 }
 
 /** timer carries durationSec; the other rules carry none. */

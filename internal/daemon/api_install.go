@@ -1088,6 +1088,8 @@ func (d *daemon) installRoutes(m *http.ServeMux) {
 	m.HandleFunc("PATCH /api/install/devices/{ref}", d.patchInstallDevice)
 	m.HandleFunc("PUT /api/install/devices/{ref}/label", d.putInstallDeviceLabel)
 	m.HandleFunc("PUT /api/install/devices/{ref}/zone", d.putInstallDeviceZone)
+	m.HandleFunc("GET /api/install/devices/{ref}/interface_module", d.getInstallDeviceInterfaceModule)
+	m.HandleFunc("PUT /api/install/devices/{ref}/interface_module", d.putInstallDeviceInterfaceModule)
 	m.HandleFunc("GET /api/install/devices/{ref}/removal", d.getInstallDeviceRemoval)
 	m.HandleFunc("DELETE /api/install/devices/{ref}", d.deleteInstallDevice)
 	m.HandleFunc("GET /api/install/zones", d.getInstallZones)
