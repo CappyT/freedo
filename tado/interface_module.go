@@ -17,7 +17,10 @@ const (
 	// controller down.
 	interfaceModuleTeardown uint16 = 0x7fff
 	// stubModule selects the STM32 image that drives no boiler bus.
-	stubModule    uint16 = 202
+	stubModule uint16 = 202
+	// noModule starts no module on either chip: the eBUS A image with null
+	// functions, and the relay pulsed off.
+	noModule      uint16 = 200
 	familyUnknown        = "unknown"
 	// sourceOperator marks an id that the operator set through the API.
 	sourceOperator = "operator"
@@ -63,16 +66,23 @@ type KnownInterfaceModule struct {
 }
 
 // KnownInterfaceModules lists, by id, the ids that SetInterfaceModule accepts.
-// The stub image is left out: it drives no boiler bus.
+// The ids that start no boiler bus are left out.
 func KnownInterfaceModules() []KnownInterfaceModule {
 	out := make([]KnownInterfaceModule, 0, len(moduleFamily))
 	for v, family := range moduleFamily {
-		if v != stubModule && validThermostatModule(v) == nil {
+		if !drivesNoBus(v) && validThermostatModule(v) == nil {
 			out = append(out, KnownInterfaceModule{Module: v, Family: family})
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Module < out[j].Module })
 	return out
+}
+
+// drivesNoBus reports the ids that start no boiler bus driver. The operator
+// cannot set them: the call exists to restore a bus. A report of one is learned
+// with a warning.
+func drivesNoBus(v uint16) bool {
+	return v == stubModule || v == noModule
 }
 
 // relayModule reports the eBus A ids that also drive the nRF relay.
@@ -175,8 +185,8 @@ func (e *EmuState) learnModuleID(dev *Device, v uint16, source string) bool {
 		return false
 	}
 	switch issue, flagged := e.moduleIssue[key]; {
-	case v == stubModule:
-		e.flagModule(dev, v, false, "the stub image drives no boiler bus")
+	case drivesNoBus(v):
+		e.flagModule(dev, v, false, "the id "+strconv.Itoa(int(v))+" ("+InterfaceModuleFamily(v)+") drives no boiler bus")
 	case relayModule(v) && known && InterfaceModuleFamily(old) != InterfaceModuleFamily(v):
 		e.flagModule(dev, v, false, "the id drives the relay, the thermostat held "+
 			InterfaceModuleFamily(old)+" ("+strconv.Itoa(int(old))+") before")
@@ -226,8 +236,9 @@ func (e *InterfaceModuleHeldError) Error() string {
 // SetInterfaceModule stores the interface module id an operator gives a
 // declared wall thermostat and rebuilds the document served to it. A
 // thermostat that holds an id takes the new one only when current names the
-// held id: the id may be one the thermostat reported itself. The stub image is
-// refused: it drives no boiler bus, and this call exists to restore one. This
+// held id: the id may be one the thermostat reported itself. The ids 202 (stub)
+// and 200 drive no boiler bus, and this call exists to restore one: it refuses
+// them. This
 // call is the only way to change a held id: a report never does.
 func (e *EmuState) SetInterfaceModule(dev *Device, v uint16, current *uint16) error {
 	if dev.Kind != KindThermostat {
@@ -236,8 +247,8 @@ func (e *EmuState) SetInterfaceModule(dev *Device, v uint16, current *uint16) er
 	if err := validThermostatModule(v); err != nil {
 		return err
 	}
-	if v == stubModule {
-		return errors.New("tado: interface module id 202 selects the stub image, which drives no boiler bus")
+	if drivesNoBus(v) {
+		return errors.New("tado: interface module id " + strconv.Itoa(int(v)) + " starts no boiler bus")
 	}
 	held := e.InterfaceModuleState(dev)
 	if (held.Module == nil) != (current == nil) || (held.Module != nil && *held.Module != *current) {

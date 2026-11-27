@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"net/http"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -110,22 +111,25 @@ func TestInterfaceModulePUTRefreshesTheLiveDocument(t *testing.T) {
 	}
 }
 
-func TestInterfaceModulePUTRefusesTheStubImage(t *testing.T) {
-	a := newInstallAPI(t)
-	a.declareDevices()
-	if code, res := a.modulePUT(`{"module": 202}`); code != http.StatusBadRequest {
-		t.Fatalf("PUT 202 = %d %v, want 400", code, res)
-	}
-	if module, _ := a.heldModule(); module != nil {
-		t.Errorf("held after the refusal = %v, want none", module)
-	}
-	// A report of the stub is still learned, with a warning.
-	a.reportThermostatModule(202)
-	if module, _ := a.heldModule(); module != float64(202) {
-		t.Errorf("held after a report of 202 = %v, want 202", module)
-	}
-	if issues := a.moduleIssues(); len(issues) != 1 || issues[0].Refused {
-		t.Errorf("issues = %+v, want one warning for the stub", issues)
+// The ids that start no boiler bus are refused by the PUT, which exists to
+// restore one, and a report of one is learned with a warning.
+func TestInterfaceModulePUTRefusesTheIDsWithNoBus(t *testing.T) {
+	for _, id := range []int{202, 200} {
+		a := newInstallAPI(t)
+		a.declareDevices()
+		if code, res := a.modulePUT(`{"module": ` + strconv.Itoa(id) + `}`); code != http.StatusBadRequest {
+			t.Fatalf("PUT %d = %d %v, want 400", id, code, res)
+		}
+		if module, _ := a.heldModule(); module != nil {
+			t.Errorf("held after the refusal of %d = %v, want none", id, module)
+		}
+		a.reportThermostatModule(uint16(id))
+		if module, _ := a.heldModule(); module != float64(id) {
+			t.Errorf("held after a report of %d = %v, want %d", id, module, id)
+		}
+		if issues := a.moduleIssues(); len(issues) != 1 || issues[0].Refused {
+			t.Errorf("issues after a report of %d = %+v, want one warning", id, issues)
+		}
 	}
 }
 

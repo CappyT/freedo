@@ -91,7 +91,8 @@ func TestInterfaceModuleRouteRefusals(t *testing.T) {
 		{"the teardown value", apiThermostatEUI, `{"module": 32767}`, http.StatusBadRequest, "tears"},
 		{"an id no image answers", apiThermostatEUI, `{"module": 999}`, http.StatusBadRequest, "no known wall thermostat image"},
 		{"a value above 16 bits", apiThermostatEUI, `{"module": 70000}`, http.StatusBadRequest, "0 to 65535"},
-		{"the stub image", apiThermostatEUI, `{"module": 202}`, http.StatusBadRequest, "stub image"},
+		{"the stub image", apiThermostatEUI, `{"module": 202}`, http.StatusBadRequest, "no boiler bus"},
+		{"the no module id", apiThermostatEUI, `{"module": 200}`, http.StatusBadRequest, "no boiler bus"},
 		{"a current above 16 bits", apiThermostatEUI, `{"module": 80, "current": 70000}`, http.StatusBadRequest, "current"},
 		{"a negative value", apiThermostatEUI, `{"module": -1}`, http.StatusBadRequest, "0 to 65535"},
 		{"no module", apiThermostatEUI, `{}`, http.StatusBadRequest, "module is required"},
@@ -138,7 +139,7 @@ func TestInterfaceModuleRouteGETListsTheAcceptedIDs(t *testing.T) {
 		t.Errorf("known ids = %v, want a sorted list of the table", ids)
 	}
 	for _, id := range ids {
-		if id == 202 || id == 0 {
+		if id == 202 || id == 200 || id == 0 {
 			t.Errorf("known ids hold %d, which the route does not offer", id)
 		}
 	}
