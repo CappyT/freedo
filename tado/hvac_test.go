@@ -201,7 +201,9 @@ func TestHVACBusDetectIsNotBusType(t *testing.T) {
 func TestInterfaceModuleFamily(t *testing.T) {
 	families := map[string][]uint16{
 		"opentherm": {71},
-		"ebus_a":    {0, 1, 5, 6, 7, 9, 80, 83, 200},
+		"ebus_a":    {80, 83},
+		"relay":     {1, 5, 6, 7, 9},
+		"none":      {0, 200},
 		"ebus_b":    {121},
 		"ebus_c":    {4, 122},
 		"km":        {20, 22, 23, 24, 50},

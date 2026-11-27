@@ -26,12 +26,15 @@ const (
 	sourceStored = "stored"
 )
 
-// moduleFamily maps the interface module ids a wall thermostat STM32 overlay
-// answers to the boiler bus family it drives (catalogue 0x08007f28).
+// moduleFamily maps the interface module ids of the nRF52 registry (0x59fb4)
+// to the boiler bus family each one drives. "relay" ids start the nRF52 relay
+// module and no STM32 bus driver. "none" ids start no module at all: the STM32
+// image holds a record with null functions.
 var moduleFamily = map[uint16]string{
 	71: "opentherm",
-	0:  "ebus_a", 1: "ebus_a", 5: "ebus_a", 6: "ebus_a", 7: "ebus_a", 9: "ebus_a",
-	80: "ebus_a", 83: "ebus_a", 200: "ebus_a",
+	0:  "none", 200: "none",
+	1: "relay", 5: "relay", 6: "relay", 7: "relay", 9: "relay",
+	80: "ebus_a", 83: "ebus_a",
 	121: "ebus_b",
 	4:   "ebus_c", 122: "ebus_c",
 	20: "km", 22: "km", 23: "km", 24: "km", 50: "km",

@@ -11,14 +11,14 @@ describe('the ids of the interface module select', () => {
 		expect(
 			groupByFamily([
 				{ module: 71, family: 'opentherm' },
-				{ module: 5, family: 'ebus_a' },
+				{ module: 5, family: 'relay' },
 				{ module: 121, family: 'ebus_b' },
-				{ module: 1, family: 'ebus_a' }
+				{ module: 1, family: 'relay' }
 			])
 		).toEqual([
-			{ family: 'ebus_a', ids: [1, 5] },
 			{ family: 'ebus_b', ids: [121] },
-			{ family: 'opentherm', ids: [71] }
+			{ family: 'opentherm', ids: [71] },
+			{ family: 'relay', ids: [1, 5] }
 		]);
 		expect(groupByFamily([])).toEqual([]);
 	});
