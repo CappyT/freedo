@@ -1307,10 +1307,13 @@ Zone state pushes:
 Stale reports:
 
 - freedo keeps per zone member M the block `held(M)`: the body of the last `PUT z/s` that M
-  answered with `2.04` (a coordinator `id=` write, or a `lid=` push that freedo relayed to M),
-  or the body of the last `z/s` report of M, whichever is later. The zone keeps the last
-  delivered write that changed the heating block (`6240`, `6260`, `6280`) and the blocks that
-  write and the earlier ones replaced less than 8 minutes ago.
+  answered (a coordinator `id=` write, or a `lid=` push that freedo relayed to M), or the body
+  of the last `z/s` report of M, whichever is later. A relayed push or a relayed answer to a
+  `GET z/s` counts when the Enhanced ACK of M closes the hop, or when its CoAP `2.04` arrives:
+  the Enhanced ACK leaves a few milliseconds after the frame, before any CoAP answer. The zone
+  keeps the last change of the heating block (`6240`, `6260`, `6280`) and the blocks that
+  change and the earlier ones replaced less than 8 minutes ago. A delivered write, a device
+  overlay and an overlay end are changes of this kind.
 - A `PUT z/s?lid=N` report of a block that a write replaced inside 8 minutes is stale when
   its sender is the zone owner, or when the sender is a member that does not hold the newest
   written block. The window is longer than the 465 s of the longest path above.
@@ -1324,7 +1327,12 @@ Stale reports:
   restates the overlay.
 - A stale report of the zone owner is not cached, but it is relayed and freedo queues no
   rewrite: the owner pass can send an old body after the owner took the new block, and the
-  owner wheel has its overlay PUT. A zone with no resolvable owner follows the same rule.
+  owner wheel has its overlay PUT. A zone with no resolvable owner follows the same rule. In a
+  zone that the coordinator owns, every device is a member: the measuring device sends no
+  overlay PUT.
+- After a device overlay, a member that took an older block and pushes it, for example a
+  rewrite that it took just before, is stale until it confirms the overlay block. The push does
+  not reach the owner, which would take it as a local change over its overlay.
 - A retransmission (same source and MID) keeps the verdict of its first copy for 5 minutes.
 - After a restart the records are empty, so freedo relays and takes every report as before.
 - The `2.04` for a stale report that names a peer comes from the coordinator and not from the
