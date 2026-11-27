@@ -1005,8 +1005,10 @@ thermostat or from a `d/config` document of the thermostat, and stores it.
 - `GET /api/boiler` reports the bus family in `BusType` and the id in `InterfaceModule`.
 - A wall thermostat that stays in `interfaceModuleUnknown` and sends no `hvac/mon` boiler report
   for 10 minutes since the daemon first saw it raises the alert `setInterfaceModule` in the
-  `alerts` of `/api/health`. The key names the route that clears it. A thermostat that sent an
-  `hvac/mon` report once never raises it.
+  `alerts` of `/api/health`. The key names the route that clears it. The thermostat must have
+  sent a frame within `offline_after_sec`: a silent thermostat raises `offline` alone, and the
+  10 minutes start again when it is heard again. A thermostat that sent an `hvac/mon` report
+  once never raises the alert.
 
 `GET /api/install/devices/{ref}/interface_module` answers
 `{"module", "family", "source", "known"}` for a wall thermostat. `module` and `source` are `null`
@@ -1017,21 +1019,26 @@ the PUT accepts. It leaves out 0 and the stub image 202. A valve, a bridge or an
 gets `400` or `404`.
 
 `PUT /api/install/devices/{ref}/interface_module` with `{"module": 80}` sets the id of a wall
-thermostat that lost it, for example after a factory reset. A wrong id stops the boiler
+thermostat that lost it, for example after a factory reset. A thermostat that holds an id, from
+any source, takes a new one only when the body names the held id: `{"module": 71, "current": 80}`.
+Without `current`, or with another value, the answer is `409` with the held id and its source, and
+nothing changes. A thermostat with no id takes no `current`, or `null`: any number gets `409`. A wrong id stops the boiler
 interface, so the route needs the API token, or, under the Home Assistant add-on, an
 administrator (see [SECURITY.md](../SECURITY.md#interface-module-id-home-assistant-administrators-only)).
 It answers `{"module", "family", "source"}` with `source` `operator`.
 
 - The route accepts an id that passes the same check as a learned id. It answers `400` with the
   reason for 0, 112, `0x7fff`, an id that no thermostat image answers, a value outside 0 to 65535,
-  a missing field and any other field. It accepts 202, the stub image, and the daemon then
-  warns, as for a learned one.
+  a missing field and any other field. It refuses 202, the stub image, because it drives no
+  boiler bus. A report of 202 is still learned, with a warning. `current` outside 0 to 65535 is
+  `400`.
 - The daemon stores the id like a learned one, so it survives a restart, and serves the thermostat
   a `d/config` document with the id under a new ETag. After a restart the id has the source
   `stored`.
 - An `hvac/codes` or `d/config` report of another id wins. The daemon then logs the warning
   `interface-module-warning` and lists it in `interfaceModuleIssues`. The warning applies to an
-  operator id set since the start of the daemon: the source of an id is not stored.
+  operator id set since the start of the daemon: the source of an id is not stored. The route
+  resolves the `ref` when the engine runs it, so a device deleted in between gets `404`.
 
 Known ids by boiler, as reported to the project. Check the id against your own boiler first:
 

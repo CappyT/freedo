@@ -356,9 +356,9 @@ connections from that address only and to treat the user as authenticated. The d
 - Every other source still needs the token: other apps, the host, the LAN, and the published port 18080.
 - The daemon compares the method and the exact path, and reads the address of the TCP connection. A
   header such as `X-Forwarded-For` or `X-Ingress-Path` has no effect. `X-Remote-User-Id` counts for the
-  2 backup pairs only, and only on a connection from the gateway address.
+  4 administrator pairs only, and only on a connection from the gateway address.
 
-For the 59 pairs the daemon does not tell the Home Assistant users apart. Every user who can
+For the 65 pairs the daemon does not tell the Home Assistant users apart. Every user who can
 open the panel can use those calls, and the project accepts this. Home Assistant lets every user open an ingress session, so the
 add-on option `panel_admin` (default `true`) hides only the sidebar entry. The Supervisor adds the
 headers `X-Remote-User-Id`, `X-Remote-User-Name` and `X-Remote-User-Display-Name`, and none of them
