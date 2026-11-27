@@ -1139,6 +1139,100 @@ No captured answer to a direct GET carries Content-Format: `d/config`,
 zone-plane answers (`z/s?lid=N`, `z/p?lid=N`) keep Content-Format 42, as
 captured.
 
+### Zone owner, measure and state pushes
+
+These facts come from static analysis of the valve image (V) and the wall thermostat nRF52
+image (T). No capture of a zone with several members confirms them yet. All zone-plane
+requests come from one protothread (V 0x28824, T 0x27c7c, same structure and constants).
+
+The owner of a zone is the device whose `d/config` `015e` record for that zone has role bit
+3. The device stores the role as attribute `6340|slot` and the zone id as `6300|slot`
+(`config_doc_tlv_cb`, V 0x1f9a4). A plain member has role `0x05` (bits 0 and 2). The zone
+documents name no separate measuring device: role bit 3 selects the device that measures and
+controls, and `6040` only names where the others read the measure.
+
+Zone measure:
+
+- Only the owner feeds its own temperature `012d` to `4060|zone` (`zone_child_config_scan`
+  V 0x2920c, T 0x28664; translator V 0x29284, T 0x286dc) and runs the zone controller that
+  writes `40a0|zone` (`zone_membership_scan` V 0x2b52c, `zone_heat_demand_report` V 0x2b69c).
+- Only the owner uses the home plane for the zone: `PUT h/<home>/z/N/act` (V 0x28580,
+  T 0x279e0), `GET h/<home>/z/N/s` every 1200 s (V 0x118e4), `PUT` and `DELETE
+  .../overlay` (V 0x11d1c) and `.../ow` (V 0x11bb8).
+- Every device, owner or member, sends `CON PUT z/p?lid=N` with `4060`, `40a0` and `0135`
+  and a Max-Age of 1800 s (encoder V 0x2ecc8) to each `8400` URI and to config URI 0x1d7.
+  This path has no role test. It sends after a change of its cached zone value of more than
+  0.10 C on `4060` or more than 10 points on `40a0` (0 and 100 always pass), or of more than
+  5.0 % on its own `0135` (V 0x2ed40). A member sends the copies of `4060` and `40a0` that it
+  took from the owner, with its own `0135`.
+- The receiver of `PUT z/p?lid=N` writes `4060|zone` and `40a0|zone` and ignores `0135`
+  (V 0x2eabc with callback 0x2e78c, T 0x2d3ec). It answers `2.05` with `62a0`.
+- A non-owner sends `GET z/s?lid=N` to `63a0` and `GET z/p?lid=N` to `6040` after a config
+  load and every 10 minutes until it gets an answer. A device with role bit 1 and no bit 3
+  observes `6040` (V 0x29d28, T 0x28df4).
+- A member with role bit 2 and no bit 3 runs a 1800 s watchdog (V 0x2ea74). Each `PUT z/p`
+  it receives and each answer to its `GET z/s` restarts it. At expiry `6400|zone` = 0: the
+  member reports `0182` = 1 on `d/<serial>/fallback`, feeds its own `012d` to the zone and
+  runs its own controller (V 0x30ad8, T 0x31d0c). Its `z/p` then carries its own values.
+- The wall thermostat runs the same code: as owner it uses its own `012d`, as member the
+  `4060` of the last `z/p` it took, and its own `012d` in fallback.
+
+So the zone temperature and demand come from the owner. A member `z/p` repeats them with a
+lag of up to one deadband step. Two different temperatures for one zone mean two devices
+that feed `4060|zone`: the owner and a member in fallback, two members in fallback, or two
+devices with role bit 3 (inferred).
+
+Zone state pushes:
+
+- A device applies every `PUT z/s` body from any peer, tag by tag, with no version and no
+  source test, and answers `2.04` (`zone_state_put_handler` V 0x1150c, callback 0x121c0).
+  The end of the body writes attribute 0x19f with the peer address and commits
+  (`app_node_apply_write` V 0x11fc0).
+- A commit sets a pending mask (V 0x28500). The owner has one bit per `8000` URI (16 slots)
+  and bit 16 for config URI 0x1d6. A member has bit 0 for the owner URI `63a0` and bit 16.
+  The bit of the peer that sent the block is cleared (V 0x28470): a block from the
+  coordinator goes to every endpoint, and a block from the owner makes a member send nothing
+  back.
+- 5 s after the commit the device starts a pass. It encodes the body once per pass, then sends
+  `CON PUT z/s?lid=N` to each pending endpoint in turn. Each request blocks the protothread
+  until its answer or the CoAP give-up (V 0x28824, `coap_obs_client_fsm_ext` V 0x22dd8).
+- CoAP retransmission (V 0x239f4, T 0x2224c): the first timeout is 1281 + rand % 640 ticks,
+  doubled each time, 4 retransmissions with the same MID and bytes. With a tick of 1/128 s
+  (inferred from the other timers of the image) the first timeout is 10 to 15 s, the last copy
+  leaves 150 to 225 s after the first, and the give-up comes 310 to 465 s after it.
+- Only a `2.xx` or a `4.04` clears the bit of an endpoint (V 0x11c7c). While a bit stays set,
+  the device sends again to the pending endpoints every 8 minutes, with the block it holds then.
+  A new commit resets that count.
+- So a report of an older block can arrive after a newer write in three ways: a retransmission
+  of an old MID (up to 225 s late), a new MID with the old body when an earlier endpoint
+  blocked the pass (up to 465 s), and a device that never took the newer block and sends its
+  old block again every 8 minutes. A device that receives the older block applies it.
+- A wheel change commits when the display session ends (attribute 0x3ed = 0). Only the owner
+  then sends `PUT h/<home>/z/N/overlay`, and its `z/s` push follows 5 s later. A non-owner
+  never sends the overlay PUT: its change travels only as `PUT z/s?lid=N` to `63a0`, and the
+  owner applies it as a remote write with no overlay PUT.
+- A member gets a new block only from the owner push, or from the answer to its `GET z/s`.
+
+Sync icon:
+
+- The protothread writes attribute 0x17c: 0 when a push pass starts, 1 when no pending bit is
+  left, 2 when a pending `z/s` push stays undelivered for 10 minutes (V 0x28824, T 0x27c7c).
+  The value 0 changes no display flag, so only a pass with every endpoint answered clears it.
+- Wall thermostat: 0x17c = 2 sets bit 4 of the status byte 0x200061a4 and 1 clears it
+  (`coap_hvac_attr_write` T 0x25808). At the next display wake that gives status code 9
+  (T 0x25068, 0x23c98), and `hvac_ui_state_machine` (T 0x2493c) draws the bitmap at 0x5b862:
+  a circle of two arrows.
+- Valve: 0x17c = 2 sets display flag +0x6d and 1 clears it (`ui_gva_attr_write_handler`
+  V 0x25e70). Display state 6 (V 0x26b9a) runs a one-LED animation while the flag is set. That
+  this animation is what the manual calls the sync icon is inferred. Display state 4
+  (V 0x26e02) is another waiting animation, shown while the valve holds no valid zone state.
+- The icon of a member therefore means that the owner URI `63a0` did not answer its `z/s`
+  push with `2.xx` or `4.04` for 10 minutes. On an owner, one `8000` URI is enough. When the
+  coordinator owns the zone, `63a0` names the coordinator.
+
+Open: the CoAP tick unit, config URIs 0x1d6 and 0x1d7, the meaning of `62a0` in the `z/p`
+answer, and whether the owner sends its push to its own `8000` entry over the air.
+
 ### Delta reports
 
 Every report resource (`hvac/mon`, `d/*/sen`, `d/*/act`) sends only the
@@ -1226,9 +1320,9 @@ Member order changes the bytes, so the installation store must keep it.
 | 63e0 | `zone_cfg_state` | uint8 | the document always carries 1 |
 | 63a0 | `zone_owner_uri_s` | string | owner endpoint, the elected demand reporter |
 | 8000 | `zone_member_uri_s` | string | one entry per zone member |
-| 8400 | `zone_report_uri_p` | string | where a member reports its zone state |
+| 8400 | `zone_report_uri_p` | string | where each device sends `PUT z/p?lid=N`, the zone measure |
 | 8200 | `zone_cpe_uri` | string | where a valve takes the heat percent `4160` |
-| 6040 | `zone_measure_uri_p` | string | the measuring endpoint of the zone |
+| 6040 | `zone_measure_uri_p` | string | where a device reads the zone measure (`GET` or observe of `z/p`) |
 | 6060 | `zone_circuit` | uint8 | zone to circuit binding, `01` in the capture. Absent for a heating zone with no circuit |
 | 6080 | `zone_cfg_6080` | uint16 | controller gain Kp, 1000 by default |
 | 60a0 | `zone_cfg_60a0` | uint16 | controller gain Ki, 500 by default |
