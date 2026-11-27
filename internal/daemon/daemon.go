@@ -273,6 +273,9 @@ type daemon struct {
 	historyDay  string
 	historyPrev historyCounters
 	started     time.Time
+	// moduleUnknownSince holds, per wall thermostat ref, when the daemon first
+	// saw it with no interface module id. It belongs to the engine goroutine.
+	moduleUnknownSince map[string]time.Time
 	// calMu orders the store write of a measured calibration against a
 	// re-calibration request, so a stale result never lands after the clear.
 	calMu sync.Mutex
@@ -357,45 +360,46 @@ const (
 func newDaemon(in *tado.Install, emu *tado.EmuState, radio radio.Radio, dryRun bool, mode string) *daemon {
 	d := &daemon{
 		emu: emu, radio: radio, dryRun: dryRun, mode: mode,
-		cmds:             make(chan func()),
-		dispatch:         make(chan struct{}, 1),
-		done:             make(chan struct{}),
-		radioLost:        make(chan error, 1),
-		restart:          make(chan struct{}, 1),
-		radioReady:       make(chan struct{}, 1),
-		retryAfter:       time.After,
-		retryNow:         time.Now,
-		retryRand:        randomRetryUint16,
-		retryDue:         make(map[string]uint64),
-		retryAt:          make(map[string]time.Time),
-		retryMID:         make(map[string]uint16),
-		coapRetryBase:    make(map[string]coapRetryState),
-		dispatchDue:      make(map[string]bool),
-		cslAdmissionWait: make(map[string]cslAdmissionWait),
-		linkMaint:        make(map[string]linkMaintEntry),
-		zoneSched:        make(map[int]scheduledBlock),
-		schedPushed:      make(map[int]scheduledBlock),
-		awayTarget:       make(map[int]float64),
-		awayPushed:       make(map[int]float64),
-		programOwed:      make(map[programWrite]uint64),
-		windows:          make(map[int]zoneWindow),
-		windowOwed:       make(map[windowWrite]*windowOwed),
-		roomTemps:        make(map[int]*roomTemp),
-		roomRefused:      make(map[int]roomRefusal),
-		zoneOwners:       make(map[int]*zoneOwner),
-		flowChanged:      make(map[int]time.Time),
-		flowAdapt:        make(map[int]*flowAdapt),
-		flowTrimmed:      make(map[int]bool),
-		thermal:          make(map[int]*thermalModel),
-		heating:          make(map[int]*heatEpisode),
-		thermalTarget:    make(map[int]float64),
-		early:            make(map[int]earlyStart),
-		plant:            make(map[int]*plantRun),
-		fw:               make(map[string]*fwTransfer),
-		fwTiming:         defaultFwTiming,
-		started:          time.Now(),
-		taps:             make(map[*rxTap]struct{}),
-		tapStop:          make(chan struct{}),
+		cmds:               make(chan func()),
+		dispatch:           make(chan struct{}, 1),
+		done:               make(chan struct{}),
+		radioLost:          make(chan error, 1),
+		restart:            make(chan struct{}, 1),
+		radioReady:         make(chan struct{}, 1),
+		retryAfter:         time.After,
+		retryNow:           time.Now,
+		retryRand:          randomRetryUint16,
+		retryDue:           make(map[string]uint64),
+		retryAt:            make(map[string]time.Time),
+		retryMID:           make(map[string]uint16),
+		coapRetryBase:      make(map[string]coapRetryState),
+		dispatchDue:        make(map[string]bool),
+		cslAdmissionWait:   make(map[string]cslAdmissionWait),
+		linkMaint:          make(map[string]linkMaintEntry),
+		zoneSched:          make(map[int]scheduledBlock),
+		schedPushed:        make(map[int]scheduledBlock),
+		awayTarget:         make(map[int]float64),
+		awayPushed:         make(map[int]float64),
+		programOwed:        make(map[programWrite]uint64),
+		windows:            make(map[int]zoneWindow),
+		windowOwed:         make(map[windowWrite]*windowOwed),
+		roomTemps:          make(map[int]*roomTemp),
+		roomRefused:        make(map[int]roomRefusal),
+		zoneOwners:         make(map[int]*zoneOwner),
+		flowChanged:        make(map[int]time.Time),
+		flowAdapt:          make(map[int]*flowAdapt),
+		flowTrimmed:        make(map[int]bool),
+		thermal:            make(map[int]*thermalModel),
+		heating:            make(map[int]*heatEpisode),
+		thermalTarget:      make(map[int]float64),
+		early:              make(map[int]earlyStart),
+		plant:              make(map[int]*plantRun),
+		fw:                 make(map[string]*fwTransfer),
+		fwTiming:           defaultFwTiming,
+		started:            time.Now(),
+		moduleUnknownSince: make(map[string]time.Time),
+		taps:               make(map[*rxTap]struct{}),
+		tapStop:            make(chan struct{}),
 	}
 	d.inst.Store(in)
 	if emu != nil {
@@ -538,6 +542,7 @@ func (d *daemon) run(ctx context.Context) {
 				d.tx(a)
 			}
 			d.tickCounters(d.emu)
+			d.noteUnknownModules(d.emu)
 			d.tickHomeState(d.emu)
 			d.tickZoneOwners(d.emu)
 			d.tickWarmState(d.emu)
@@ -2564,6 +2569,7 @@ func (d *daemon) deviceHealth(e *tado.EmuState) ([]map[string]any, []map[string]
 		learned[vv.Short] = vv
 	}
 	now := d.retryNow()
+	stalled := d.noteUnknownModules(e)
 	devices := make([]map[string]any, 0, len(inst.Devices))
 	alerts := []map[string]any{}
 	for i := range inst.Devices {
@@ -2592,6 +2598,9 @@ func (d *daemon) deviceHealth(e *tado.EmuState) ([]map[string]any, []map[string]
 		}
 		if vv.Offline {
 			raised = append(raised, "offline")
+		}
+		if stalled[dev.Ref()] {
+			raised = append(raised, alertSetInterfaceModule)
 		}
 		if len(raised) > 0 {
 			alerts = append(alerts, map[string]any{

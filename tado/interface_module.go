@@ -338,6 +338,13 @@ func (e *EmuState) TakeInterfaceModuleLearned() bool {
 	return learned
 }
 
+// BoilerReported reports whether a wall thermostat ever sent an hvac/mon boiler
+// report. A thermostat with no module id drives no boiler bus, so it sends none.
+func (e *EmuState) BoilerReported(dev *Device) bool {
+	ns := e.nodes[hexEUI(dev.WireEUI())]
+	return ns != nil && !ns.hvacMonAt.IsZero()
+}
+
 // UnknownInterfaceModules names the declared wall thermostats whose interface
 // module id is not known yet. Each of them is served the d/config document
 // without tag 015d.
