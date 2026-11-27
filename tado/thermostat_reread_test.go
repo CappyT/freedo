@@ -162,8 +162,12 @@ func TestThermostatRereadOnEveryETagChange(t *testing.T) {
 			return e.RestoreDesiredState(e.ExportDesiredState())
 		}},
 		{name: "interface module id changed", moves: true, change: func(t *testing.T, e *EmuState, key string) error {
-			e.OnFrame(moduleReport(t, e.inst, mustHex(key), 120, 0x7a11))
-			return nil
+			dev, err := e.inst.Resolve(key)
+			if err != nil {
+				return err
+			}
+			held := uint16(71)
+			return e.SetInterfaceModule(dev, 120, &held)
 		}},
 		{name: "interface module id repeated", change: func(t *testing.T, e *EmuState, key string) error {
 			e.OnFrame(moduleReport(t, e.inst, mustHex(key), 71, 0x7a12))

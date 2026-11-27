@@ -232,8 +232,8 @@ func TestInterfaceModuleFamily(t *testing.T) {
 }
 
 // TestThermostatModuleAllowlist: an id outside the table is refused and
-// flagged, the stub id is learned with a warning, and a relay id after another
-// family is learned with a warning that a later report of it keeps.
+// flagged, a report of another id never replaces the held one, the operator may
+// move to a relay id with a warning, and the stub id is learned with a warning.
 func TestThermostatModuleAllowlist(t *testing.T) {
 	in := synthInstall(t)
 	ru, _ := synthDevices(t, in)
@@ -259,25 +259,43 @@ func TestThermostatModuleAllowlist(t *testing.T) {
 		t.Errorf("issues=%v learned=%d after 71, want none and 71", e.InterfaceModuleIssues(), learned())
 	}
 
+	// A report of another id never replaces the id freedo holds.
+	e.TakeInterfaceModuleLearned()
 	e.OnFrame(moduleReport(t, in, ru, 5, 0x7503))
-	if got, ok := issue(); !ok || got.Refused || got.Module != 5 || !strings.Contains(got.Reason, "opentherm") {
-		t.Errorf("issue after 5 = %+v, want a relay warning naming opentherm", got)
+	if got, ok := issue(); !ok || got.Refused || got.Module != 5 || !strings.Contains(got.Reason, "holds 71") {
+		t.Errorf("issue after 5 = %+v, want a warning that freedo holds 71", got)
 	}
-	if learned() != 5 {
-		t.Errorf("learned = %d, want 5", learned())
+	if learned() != 71 || e.TakeInterfaceModuleLearned() {
+		t.Errorf("learned = %d after a report of 5, want 71 kept", learned())
 	}
 	e.OnFrame(moduleReport(t, in, ru, 5, 0x7504))
 	if _, ok := issue(); !ok {
-		t.Error("a repeated relay report cleared the warning")
-	}
-
-	e.OnFrame(moduleReport(t, in, ru, stubModule, 0x7505))
-	if got, ok := issue(); !ok || got.Refused || got.Family != "stub" || learned() != stubModule {
-		t.Errorf("issue after 202 = %+v learned=%d, want a stub warning and 202", got, learned())
+		t.Error("a repeated report cleared the warning")
 	}
 	e.OnFrame(moduleReport(t, in, ru, 71, 0x7506))
 	if _, ok := issue(); ok {
-		t.Errorf("issues after 71 = %v, want none", e.InterfaceModuleIssues())
+		t.Errorf("issues after the report of 71 = %v, want none", e.InterfaceModuleIssues())
+	}
+
+	// The operator may move to a relay id, with a warning.
+	dev, err := in.Resolve("RU0000000001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	held := uint16(71)
+	if err := e.SetInterfaceModule(dev, 5, &held); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := issue(); !ok || got.Refused || got.Module != 5 || !strings.Contains(got.Reason, "opentherm") || learned() != 5 {
+		t.Errorf("issue after the operator set 5 = %+v learned=%d, want a relay warning naming opentherm and 5", got, learned())
+	}
+
+	// The stub image is learned from a first report, with a warning.
+	stub := NewEmu(in.EmuConfig(), nil)
+	stub.OnFrame(moduleReport(t, in, ru, stubModule, 0x7505))
+	if got := stub.InterfaceModuleIssues(); len(got) != 1 || got[0].Refused || got[0].Family != "stub" ||
+		stub.ExportDesiredState().InterfaceModule[hexEUI(ru)] != stubModule {
+		t.Errorf("issues after 202 = %+v, want a stub warning and 202 held", got)
 	}
 
 	first := NewEmu(in.EmuConfig(), nil)

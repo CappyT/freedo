@@ -1,6 +1,7 @@
 package tado
 
 import (
+	"bytes"
 	"encoding/hex"
 	"strings"
 	"testing"
@@ -268,5 +269,36 @@ func TestThermostatLearnsModuleFromCachedDocument(t *testing.T) {
 	}
 	if got := stale.UnknownInterfaceModules(); len(got) != 1 {
 		t.Errorf("unknown modules = %v, want the thermostat", got)
+	}
+}
+
+// TestThermostatKeepsItsModuleAgainstAReport: a report of another id is a
+// thermostat that has not applied the id freedo serves, so freedo keeps the id,
+// warns, and queues the re-read again. A report of the held id queues nothing.
+func TestThermostatKeepsItsModuleAgainstAReport(t *testing.T) {
+	in := synthInstall(t)
+	ru, _ := synthDevices(t, in)
+	e := NewEmu(in.EmuConfig(), nil)
+	e.OnFrame(moduleReport(t, in, ru, 71, 0x7a01))
+	drainQueue(t, e, ru)
+	etag := append([]byte(nil), e.cfgDoc[hexEUI(ru)].etag...)
+
+	e.OnFrame(moduleReport(t, in, ru, 71, 0x7a02))
+	if total, _ := rereadQueue(e, ru); total != 0 || len(e.InterfaceModuleIssues()) != 0 {
+		t.Errorf("a report of the held id queued %d downlinks, issues %v, want none", total, e.InterfaceModuleIssues())
+	}
+
+	e.OnFrame(moduleReport(t, in, ru, 80, 0x7a03))
+	if got := servedModules(e, ru); len(got) != 1 || got[0] != "0047" || !bytes.Equal(e.cfgDoc[hexEUI(ru)].etag, etag) {
+		t.Errorf("served 015d = %v after a report of 80, want 0047 under the same ETag", got)
+	}
+	if total, rereads := rereadQueue(e, ru); total != 1 || rereads != 1 {
+		t.Errorf("queue = %d downlinks, %d re-read triggers, want the one trigger", total, rereads)
+	}
+	if issues := e.InterfaceModuleIssues(); len(issues) != 1 || issues[0].Module != 80 || issues[0].Refused {
+		t.Errorf("issues = %+v, want one warning for 80", issues)
+	}
+	if e.ExportDesiredState().InterfaceModule[hexEUI(ru)] != 71 {
+		t.Error("the held id moved")
 	}
 }

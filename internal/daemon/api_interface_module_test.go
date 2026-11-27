@@ -152,7 +152,7 @@ func TestInterfaceModuleRouteGETListsTheAcceptedIDs(t *testing.T) {
 	}
 }
 
-func TestOperatorModuleLosesToAReportWithAWarning(t *testing.T) {
+func TestOperatorModuleOutranksAReportAndQueuesTheRereadAgain(t *testing.T) {
 	a := newInstallAPI(t)
 	a.declareDevices()
 	if code, _ := a.call(http.MethodPut, moduleRoute(apiThermostatEUI), map[string]any{"module": 71}); code != http.StatusOK {
@@ -162,24 +162,45 @@ func TestOperatorModuleLosesToAReportWithAWarning(t *testing.T) {
 		t.Fatalf("issues after the PUT = %+v, want none", issues)
 	}
 
+	// The thermostat took the document and its re-read trigger left the queue.
+	key := a.thermostatKey()
+	if _, err := a.d.do(func(e *tado.EmuState) (any, error) { e.DropQueue(key); return nil, nil }); err != nil {
+		t.Fatal(err)
+	}
+
 	a.reportThermostatModule(80)
 	_, res := a.call(http.MethodGet, moduleRoute(apiThermostatEUI), nil)
-	if res["module"] != float64(80) || res["source"] != "hvac/codes" {
-		t.Errorf("GET after the report = %v, want 80 from hvac/codes", res)
+	if res["module"] != float64(71) || res["source"] != "operator" {
+		t.Errorf("GET after the report = %v, want 71 from operator", res)
 	}
 	issues := a.moduleIssues()
-	if len(issues) != 1 || issues[0].Module != 80 || issues[0].Refused || !strings.Contains(issues[0].Reason, "operator id 71") {
-		t.Errorf("issues = %+v, want one warning that the report replaces the operator id 71", issues)
+	if len(issues) != 1 || issues[0].Module != 80 || issues[0].Refused || !strings.Contains(issues[0].Reason, "holds 71 (operator)") {
+		t.Errorf("issues = %+v, want one warning that freedo holds the operator id 71", issues)
+	}
+	// The daemon may already have sent the trigger: it is in the queue until the thermostat answers.
+	v, err := a.d.do(func(e *tado.EmuState) (any, error) { return e.Pending(key), nil })
+	if err != nil || v != 1 {
+		t.Errorf("downlinks queued after the report = %v (%v), want the one re-read trigger", v, err)
+	}
+	stored, err := a.store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := stored.InterfaceModule[key]; got != 71 {
+		t.Errorf("stored id = %d after the report, want 71", got)
 	}
 }
 
-func TestReportedModuleReplacedByAReportRaisesNoWarning(t *testing.T) {
+func TestReportedModuleStaysAgainstAnotherReport(t *testing.T) {
 	a := newInstallAPI(t)
 	a.declareDevices()
 	a.reportThermostatModule(71)
 	a.reportThermostatModule(80)
-	if issues := a.moduleIssues(); len(issues) != 0 {
-		t.Errorf("issues = %+v, want none: only an operator id is guarded", issues)
+	if _, res := a.call(http.MethodGet, moduleRoute(apiThermostatEUI), nil); res["module"] != float64(71) {
+		t.Errorf("held after a report of another id = %v, want 71: a report teaches only while no id is held", res["module"])
+	}
+	if issues := a.moduleIssues(); len(issues) != 1 || issues[0].Module != 80 {
+		t.Errorf("issues = %+v, want one warning for 80", issues)
 	}
 }
 
@@ -194,7 +215,7 @@ func TestOperatorModuleSameAsTheReportRaisesNoWarning(t *testing.T) {
 		t.Errorf("issues = %+v, want none for a report that agrees", issues)
 	}
 	_, res := a.call(http.MethodGet, moduleRoute(apiThermostatEUI), nil)
-	if res["source"] != "hvac/codes" {
-		t.Errorf("source = %v, want the report that confirmed the id", res["source"])
+	if res["source"] != "operator" {
+		t.Errorf("source = %v, want operator: the report confirms the id", res["source"])
 	}
 }

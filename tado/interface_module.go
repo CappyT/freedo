@@ -19,8 +19,7 @@ const (
 	// stubModule selects the STM32 image that drives no boiler bus.
 	stubModule    uint16 = 202
 	familyUnknown        = "unknown"
-	// sourceOperator marks an id that the operator set through the API. A report
-	// of another id replaces it with a warning.
+	// sourceOperator marks an id that the operator set through the API.
 	sourceOperator = "operator"
 	// sourceStored marks an id restored from the database: its origin is not kept.
 	sourceStored = "stored"
@@ -154,9 +153,12 @@ func (e *EmuState) noteConfigWithheld(dst []byte, srcLbl, what string) {
 	e.log.Log("Data", srcLbl, "self", rsnConfigWithheld+"="+what, "")
 }
 
-// learnModuleID records the interface module id a wall thermostat reported. It
+// learnModuleID records the interface module id of a wall thermostat. It
 // reports whether the value is held: one no thermostat may carry is refused.
-// The stub image, and a relay id after a report of another family, are held
+// A report teaches freedo an id only while it holds none. A report of another
+// id means the thermostat has not applied the id freedo serves yet, or the id
+// was set by another coordinator: freedo keeps its id, warns, and queues the
+// re-read again. The stub image, and a relay id after another family, are held
 // with a warning.
 func (e *EmuState) learnModuleID(dev *Device, v uint16, source string) bool {
 	key := hexEUI(dev.WireEUI())
@@ -166,25 +168,25 @@ func (e *EmuState) learnModuleID(dev *Device, v uint16, source string) bool {
 		return false
 	}
 	old, known := e.moduleID[key]
-	override := ""
-	if known && old != v && e.moduleSource[key] == sourceOperator && source != sourceOperator {
-		override = "the thermostat reported it and replaces the operator id " + strconv.Itoa(int(old))
+	if known && old != v && source != sourceOperator {
+		e.flagModule(dev, v, false, "the thermostat reported "+strconv.Itoa(int(v))+", freedo holds "+
+			strconv.Itoa(int(old))+" ("+e.moduleSource[key]+") and serves it again")
+		e.rereadThermostat(dev)
+		return false
 	}
 	switch issue, flagged := e.moduleIssue[key]; {
 	case v == stubModule:
-		e.flagModule(dev, v, false, joinReason("the stub image drives no boiler bus", override))
+		e.flagModule(dev, v, false, "the stub image drives no boiler bus")
 	case relayModule(v) && known && InterfaceModuleFamily(old) != InterfaceModuleFamily(v):
-		e.flagModule(dev, v, false, joinReason("the id drives the relay, the thermostat reported "+
-			InterfaceModuleFamily(old)+" ("+strconv.Itoa(int(old))+") before", override))
-	case override != "":
-		e.flagModule(dev, v, false, override)
+		e.flagModule(dev, v, false, "the id drives the relay, the thermostat held "+
+			InterfaceModuleFamily(old)+" ("+strconv.Itoa(int(old))+") before")
 	case flagged && (issue.Refused || issue.Module != v):
 		delete(e.moduleIssue, key)
 	}
-	e.moduleSource[key] = source
 	if known && old == v {
 		return true
 	}
+	e.moduleSource[key] = source
 	e.moduleID[key] = v
 	e.moduleLearned = true
 	delete(e.withheldLogged, key)
@@ -192,11 +194,18 @@ func (e *EmuState) learnModuleID(dev *Device, v uint16, source string) bool {
 	return true
 }
 
-func joinReason(reason, extra string) string {
-	if extra == "" {
-		return reason
+// rereadThermostat rebuilds the document served to a wall thermostat and makes
+// sure one re-read trigger waits in its queue, also when the document did not
+// change: the thermostat reported an id other than the one in it.
+func (e *EmuState) rereadThermostat(dev *Device) {
+	e.refreshThermostatDocument(dev)
+	key := hexEUI(dev.WireEUI())
+	if _, held := e.cfgDoc[key]; !held || e.ConfigRereadQueued(key) {
+		return
 	}
-	return reason + "; " + extra
+	if err := e.queueConfigReread(key); err != nil {
+		e.log.Log("Config", dev.Ref(), "", rsnBuildFail+" d/config reread "+err.Error(), "")
+	}
 }
 
 // InterfaceModuleHeldError says that a thermostat holds an id other than the
@@ -218,8 +227,8 @@ func (e *InterfaceModuleHeldError) Error() string {
 // declared wall thermostat and rebuilds the document served to it. A
 // thermostat that holds an id takes the new one only when current names the
 // held id: the id may be one the thermostat reported itself. The stub image is
-// refused: it drives no boiler bus, and this call exists to restore one. A
-// report of another id replaces the operator id.
+// refused: it drives no boiler bus, and this call exists to restore one. This
+// call is the only way to change a held id: a report never does.
 func (e *EmuState) SetInterfaceModule(dev *Device, v uint16, current *uint16) error {
 	if dev.Kind != KindThermostat {
 		return errors.New("tado: only a wall thermostat has an interface module id")
