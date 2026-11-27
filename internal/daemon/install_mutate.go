@@ -1101,6 +1101,23 @@ func (s *stateStore) DeleteZone(ctx context.Context, number int, expect *uint64)
 		if _, err := tx.ExecContext(ctx, `DELETE FROM zone_program WHERE zone = ?`, number); err != nil {
 			return err
 		}
+		order, stored, err := roomOrderFrom(ctx, tx)
+		if err != nil {
+			return err
+		}
+		if stored {
+			remaining := make([]int, 0, len(order))
+			for _, room := range order {
+				if room != number {
+					remaining = append(remaining, room)
+				}
+			}
+			if len(remaining) != len(order) {
+				if err := saveRoomOrder(ctx, tx, remaining); err != nil {
+					return err
+				}
+			}
+		}
 		_, err = tx.ExecContext(ctx, `DELETE FROM zone WHERE number = ?`, number)
 		return err
 	})

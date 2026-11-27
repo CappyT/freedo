@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
-	import { actMany, act } from '#lib/actions.ts';
+	import { actMany, act, errorText } from '#lib/actions.ts';
 	import { boilerFaults, burnerState } from '#lib/boiler.ts';
 	import { data } from '#lib/data.svelte.ts';
 	import { alertKeys } from '#lib/describe.ts';
@@ -9,12 +9,16 @@
 	import Icon, { type IconName } from '#lib/Icon.svelte';
 	import { install } from '#lib/install.svelte.ts';
 	import RadioChip from '#lib/RadioChip.svelte';
+	import { orderRooms } from '#lib/room-order.ts';
 	import { api } from '#lib/session.ts';
 	import Tile, { type TileChip, type TileFill } from '#lib/Tile.svelte';
+	import { toasts } from '#lib/toast.svelte.ts';
 	import { stateIcons } from '#lib/today.svelte.ts';
 	import { deviceAlerts, zoneName, type StateKey, type ZoneModel } from '#lib/zones.ts';
 
 	let busy = $state(false);
+	let editingOrder = $state(false);
+	let savingOrder = $state(false);
 	let confirmBoost = $state(false);
 	let menuOpen = $state(false);
 	let menuRoot: HTMLDivElement | undefined = $state();
@@ -30,7 +34,7 @@
 	});
 
 	const zones = $derived(data.models);
-	const rooms = $derived(data.heating);
+	const rooms = $derived(orderRooms(data.heating, data.roomOrder));
 	const presets = $derived(data.presets);
 	const activePreset = $derived(presets.find((preset) => preset.active));
 
@@ -184,12 +188,46 @@
 		await actMany(rooms.map((m) => () => api.boost(m.zone.number, true)));
 	}
 
+	async function moveRoom(index: number, direction: -1 | 1) {
+		const target = index + direction;
+		if (savingOrder || target < 0 || target >= rooms.length) return;
+		const next = [...rooms];
+		const currentRoom = next[index];
+		const targetRoom = next[target];
+		if (!currentRoom || !targetRoom) return;
+		next[index] = targetRoom;
+		next[target] = currentRoom;
+		savingOrder = true;
+		try {
+			await api.setRoomOrder(next.map((room) => room.zone.number));
+			await data.refresh();
+		} catch (error) {
+			toasts.push('error', errorText(error));
+		} finally {
+			savingOrder = false;
+		}
+	}
+
 	const resumeAll = () => actMany(zones.map((m) => () => api.auto(m.zone.number)));
 </script>
 
 <section class="page home" aria-labelledby="title">
 	<header class="head">
-		<h1 id="title">{t('home.title')}</h1>
+		<div class="home-title">
+			<h1 id="title">{t('home.title')}</h1>
+			{#if rooms.length > 0}
+				<button
+					class="room-order-toggle"
+					class:editing={editingOrder}
+					type="button"
+					aria-label={editingOrder ? t('home.rooms.done') : t('home.rooms.edit')}
+					disabled={savingOrder}
+					onclick={() => (editingOrder = !editingOrder)}
+				>
+					<Icon name={editingOrder ? 'check' : 'layout-dashboard'} size={18} />
+				</button>
+			{/if}
+		</div>
 		<RadioChip />
 	</header>
 
@@ -245,9 +283,22 @@
 		{/if}
 
 		{#if rooms.length > 0}
+			{#if editingOrder}<p class="room-order-hint">{t('home.rooms.orderHint')}</p>{/if}
 			<ul class="tiles" aria-label={t('home.rooms')}>
-				{#each rooms as m (m.zone.number)}
-					<li><Tile {...roomTile(m)} /></li>
+				{#each rooms as m, i (m.zone.number)}
+					<li>
+						<Tile {...roomTile(m)} />
+						{#if editingOrder}
+							<div class="move-controls">
+								<button class="move-room" type="button" aria-label={t('home.rooms.moveUp', { room: m.zone.name })} title={t('home.rooms.moveUp', { room: m.zone.name })} disabled={i === 0} onclick={() => moveRoom(i, -1)}>
+									<span class="move-up"><Icon name="chevron" size={18} /></span>
+								</button>
+								<button class="move-room" type="button" aria-label={t('home.rooms.moveDown', { room: m.zone.name })} title={t('home.rooms.moveDown', { room: m.zone.name })} disabled={i === rooms.length - 1} onclick={() => moveRoom(i, 1)}>
+									<span class="move-down"><Icon name="chevron" size={18} /></span>
+								</button>
+							</div>
+						{/if}
+					</li>
 				{/each}
 			</ul>
 		{/if}
@@ -328,6 +379,12 @@
 		justify-content: space-between;
 		gap: 0.75rem;
 		padding-top: 0.25rem;
+	}
+
+	.home-title {
+		display: flex;
+		align-items: center;
+		gap: 0.65rem;
 	}
 
 	.actions {
@@ -441,6 +498,79 @@
 
 	.tiles > li {
 		display: grid;
+	}
+
+	.room-order-hint {
+		margin: 0 0 0.75rem;
+		color: var(--text-muted);
+		font-size: var(--text-small-size);
+		text-align: center;
+	}
+
+	.room-order-toggle {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-height: 2.25rem;
+		width: 2.25rem;
+		padding: 0;
+		border: 1px solid var(--border-strong);
+		border-radius: var(--radius-md);
+		background: var(--surface);
+		color: var(--text);
+		font: inherit;
+		font-weight: var(--weight-semibold);
+		cursor: pointer;
+	}
+
+	.room-order-toggle:hover:not(:disabled),
+	.move-room:hover:not(:disabled) {
+		border-color: var(--accent);
+	}
+
+	.room-order-toggle.editing {
+		border-color: var(--action);
+		background: var(--action);
+		color: var(--action-text);
+	}
+
+	.room-order-toggle:disabled,
+	.move-room:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.move-controls {
+		display: flex;
+		justify-content: center;
+		gap: 0.5rem;
+		padding-top: 0.5rem;
+	}
+
+	.move-room {
+		display: grid;
+		place-items: center;
+		width: 2.25rem;
+		height: 2.25rem;
+		padding: 0;
+		border: 1px solid var(--border-strong);
+		border-radius: var(--radius-md);
+		background: var(--surface);
+		color: var(--text);
+		cursor: pointer;
+	}
+
+	.move-up,
+	.move-down {
+		display: grid;
+	}
+
+	.move-up {
+		transform: rotate(-90deg);
+	}
+
+	.move-down {
+		transform: rotate(90deg);
 	}
 
 	/* Four tiles of the home and the plant fit one row on a wide screen. */

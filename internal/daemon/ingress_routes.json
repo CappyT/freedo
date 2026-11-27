@@ -1,6 +1,8 @@
 [
 	"GET /api/health",
 	"GET /api/zones",
+	"GET /api/room-order",
+	"PUT /api/room-order",
 	"GET /api/nodes",
 	"GET /api/home",
 	"GET /api/boiler",

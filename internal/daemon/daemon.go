@@ -2255,6 +2255,8 @@ func (d *daemon) mux() *http.ServeMux {
 	m.HandleFunc("GET /api/stats", d.getStats)
 	m.HandleFunc("GET /api/home", d.getHome)
 	m.HandleFunc("PATCH /api/home", d.patchHome)
+	m.HandleFunc("GET /api/room-order", d.getRoomOrder)
+	m.HandleFunc("PUT /api/room-order", d.putRoomOrder)
 	m.HandleFunc("GET /api/zones", d.getZones)
 	m.HandleFunc("POST /api/zones/{number}/offset", d.postZoneOffset)
 	m.HandleFunc("GET /api/zones/{number}/schedule", d.getZoneSchedule)

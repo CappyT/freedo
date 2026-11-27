@@ -46,6 +46,19 @@ describe('API URLs are relative to the document', () => {
 	});
 });
 
+describe('room order', () => {
+	it('reads and saves the shared order', async () => {
+		const { calls, fetch } = stub(200, { rooms: [8, 3] });
+		const client = createClient({ base: 'http://h/', fetch });
+		expect(await client.roomOrder()).toEqual({ rooms: [8, 3] });
+		expect(await client.setRoomOrder([8, 3])).toEqual({ rooms: [8, 3] });
+		expect(calls.map((call) => [call.method, new URL(call.url).pathname, call.body])).toEqual([
+			['GET', '/api/room-order', undefined],
+			['PUT', '/api/room-order', { rooms: [8, 3] }]
+		]);
+	});
+});
+
 describe('the bearer token', () => {
 	it('is sent when the page has one', async () => {
 		const { calls, fetch } = stub(200, []);
