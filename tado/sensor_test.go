@@ -217,26 +217,44 @@ func TestSensorReporterWarning(t *testing.T) {
 		},
 		Options: Options{NoBoiler: &noBoiler, Timezone: "UTC"},
 	}
+	// Case 1: sensor with a valve as reporter warns.
 	var c issues
 	in.checkZones(&c)
-	found := false
-	for _, w := range c.warns {
-		if strings.Contains(w, "not its demand reporter") {
-			found = true
-			break
+	hasReporterWarn := func(warns []string) bool {
+		for _, w := range warns {
+			if strings.Contains(w, "not its demand reporter") {
+				return true
+			}
 		}
+		return false
 	}
-	if !found {
+	if !hasReporterWarn(c.warns) {
 		t.Fatalf("expected warning when sensor is not zone reporter, got warnings=%v", c.warns)
 	}
 
+	// Case 2: sensor in a zone with no reporter warns.
+	in.Zones[0].Reporter = nil
+	c = issues{}
+	in.checkZones(&c)
+	if !hasReporterWarn(c.warns) {
+		t.Fatalf("expected warning when sensor is in zone with no reporter, got warnings=%v", c.warns)
+	}
+
+	// Case 3: coordinator-owned zone with no reporter does not warn.
+	in.Options.ZoneOwners = map[int]string{11: ZoneOwnerCoordinator}
+	c = issues{}
+	in.checkZones(&c)
+	if hasReporterWarn(c.warns) {
+		t.Fatalf("unexpected reporter warning in coordinator-owned zone: %v", c.warns)
+	}
+
+	// Case 4: sensor elected as reporter does not warn.
+	in.Options.ZoneOwners = nil
 	in.Zones[0].Reporter = refList{"1a2b3c3107c51b00"}
 	c = issues{}
 	in.checkZones(&c)
-	for _, w := range c.warns {
-		if strings.Contains(w, "not its demand reporter") {
-			t.Fatalf("unexpected reporter warning when sensor is elected: %v", w)
-		}
+	if hasReporterWarn(c.warns) {
+		t.Fatalf("unexpected reporter warning when sensor is elected: %v", c.warns)
 	}
 }
 

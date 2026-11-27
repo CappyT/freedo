@@ -2116,15 +2116,16 @@ Overlay. A setpoint set on the sensor is a device overlay, as for the wheel of a
 
 On-air checks on `SU02` against freedo (beyond the trace above):
 
-- The firmware resets the config store before it writes the tags of each `d/config` `2.05`
-  body, so omitting `0149`, `015d` and `021a` returns those tags to their default on the
-  device. freedo's document also carries `02b2` (UTC offset), which the trace document did not.
+- Omitting `0149`, `015d` and `021a` returns those tags to their default on the device (in the
+  valve and thermostat firmware, each `d/config` `2.05` resets the config store before writing
+  the tags of its body). freedo's document also carries `02b2` (UTC offset), which the trace
+  document did not.
 - An empty `PUT d/config` re-read trigger is answered with `2.04`, and about 1 s later the sensor
   fetches `GET d/<serial>/config` and `GET h/<home>/z/N/config` and applies an updated `0140`
   calibration offset.
 - Offline weekly schedules work on the sensor: it fetches `GET h/<home>/z/N/sched` (`2.03` when
-  empty), accepts `POST d/<serial>/sched` (`2.05`, the shared stack answers `PUT` with `4.05`),
-  and fetches the full `h/<home>/z/N/sched` (`2.05`) once configured.
+  empty), accepts `POST d/<serial>/sched` (`2.05`; in the shared valve and thermostat firmware,
+  `PUT` answers `4.05`), and fetches the full `h/<home>/z/N/sched` (`2.05`) once configured.
 - `PUT h/<home>/z/N/overlay` is answered `2.05`, and `PUT z/s?id=N` (`2.04`) applies half-degree
   setpoints (e.g. `11.5 °C`; the LED matrix rounds `.5` up on display while holding `11.5 °C`).
 

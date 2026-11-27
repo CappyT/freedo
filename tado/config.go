@@ -709,9 +709,11 @@ func (in *Install) checkReporter(c *issues, p string, z *Zone, members []*Device
 		if !in.Options.NoBoilerSet() {
 			c.warnf(p+".reporter", "heating zone %d elects no demand reporter: its d/config 015e records carry role 0x05 for every member, so the coordinator writes no primary bit", z.Number)
 		}
-		for _, m := range members {
-			if m.Kind == KindSensor {
-				c.warnf(p+".reporter", "heating zone %d holds wireless sensor %s, which is not its demand reporter: in the firmware only the zone owner (role 0x0d) feeds its temperature to the zone", z.Number, m.Ref())
+		if !in.Options.CoordinatorOwns(z.Number) {
+			for _, m := range members {
+				if m.Kind == KindSensor {
+					c.warnf(p+".reporter", "heating zone %d holds wireless sensor %s, which is not its demand reporter: in the firmware only the zone owner (role 0x0d) feeds its temperature to the zone", z.Number, m.Ref())
+				}
 			}
 		}
 		return
@@ -728,9 +730,11 @@ func (in *Install) checkReporter(c *issues, p string, z *Zone, members []*Device
 	if !containsDevice(members, d) {
 		c.errf(p+".reporter", "%s is not a member of zone %d", d.Ref(), z.Number)
 	}
-	for _, m := range members {
-		if m.Kind == KindSensor && m != d {
-			c.warnf(p+".reporter", "heating zone %d holds wireless sensor %s, which is not its demand reporter: in the firmware only the zone owner (role 0x0d) feeds its temperature to the zone", z.Number, m.Ref())
+	if !in.Options.CoordinatorOwns(z.Number) {
+		for _, m := range members {
+			if m.Kind == KindSensor && m != d {
+				c.warnf(p+".reporter", "heating zone %d holds wireless sensor %s, which is not its demand reporter: in the firmware only the zone owner (role 0x0d) feeds its temperature to the zone", z.Number, m.Ref())
+			}
 		}
 	}
 }

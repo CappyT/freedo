@@ -4154,8 +4154,7 @@ func (d *daemon) deleteOfflineSchedule(w http.ResponseWriter, r *http.Request) {
 	}
 	inst := d.inst.Load()
 	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
-		// The wall thermostat takes no write, so the id of its two zones matters
-		// to nobody.
+		// Read-served devices take no write, so the zone id matters to nobody.
 		id, err := resolveID(e, inst, n.Short(), nil)
 		if err != nil && n.Kind != tado.KindThermostat && n.Kind != tado.KindSensor {
 			return nil, err

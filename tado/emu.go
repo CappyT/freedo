@@ -4710,7 +4710,8 @@ func (e *EmuState) queueConfigReread(key string) error {
 	return nil
 }
 
-// configRereadKind names the wall thermostat's re-read trigger in the queue.
+// configRereadKind names the re-read trigger of a read-served device (wall
+// thermostat or wireless sensor) in the queue.
 const configRereadKind = "reread"
 
 // ConfigRereadQueued reports whether a re-read trigger waits in the queue of
