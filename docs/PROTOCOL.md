@@ -1268,9 +1268,13 @@ Zone state pushes:
   (`app_node_apply_write` V 0x11fc0).
 - A commit sets a pending mask (V 0x28500). The owner has one bit per `8000` URI (16 slots)
   and bit 16 for config URI 0x1d6. A member has bit 0 for the owner URI `63a0` and bit 16.
-  The bit of the peer that sent the block is cleared (V 0x28470): a block from the
-  coordinator goes to every endpoint, and a block from the owner makes a member send nothing
-  back.
+  The bit of the peer that sent the block is cleared (V 0x28470). The handler stores the peer
+  address in attribute 0x19f, and 16 zero bytes when the UDP source port is 4005. A block from
+  the owner makes a member send nothing back. A coordinator `PUT z/s?id=N` comes from port
+  4005, so it clears no bit: the member then pushes the new block to `63a0` and after it to
+  config URI 0x1d6, the `z/extui` tag `01d4` string (V 0x2e610, used only when longer than
+  `coap://`). With a device owner, the push goes to the owner and freedo sees it as a relay.
+  When the coordinator owns the zone, each member pushes back to it after each write.
 - 5 s after the commit the device starts a pass. It encodes the body once per pass, then sends
   `CON PUT z/s?lid=N` to each pending endpoint in turn. Each request blocks the protothread
   until its answer or the CoAP give-up (V 0x28824, `coap_obs_client_fsm_ext` V 0x22dd8).
@@ -1286,10 +1290,57 @@ Zone state pushes:
   blocked the pass (up to 465 s), and a device that never took the newer block and sends its
   old block again every 8 minutes. A device that receives the older block applies it.
 - A wheel change commits when the display session ends (attribute 0x3ed = 0). Only the owner
-  then sends `PUT h/<home>/z/N/overlay`, and its `z/s` push follows 5 s later. A non-owner
-  never sends the overlay PUT: its change travels only as `PUT z/s?lid=N` to `63a0`, and the
-  owner applies it as a remote write with no overlay PUT.
+  sends `PUT h/<home>/z/N/overlay` for it (`DELETE` when `6240` returns to 0), and its `z/s`
+  push follows 5 s later. A non-owner never sends the overlay PUT: its change travels as
+  `PUT z/s?lid=N` to `63a0`. The same body and CoAP shape leave a wheel commit and a remote
+  commit. The device tells them apart only by the query key: `id=` applies each tag at once,
+  `lid=` queues the writes and applies them as a local change (V 0x28580, T 0x279e0). So the
+  owner treats a `lid=` push that changes `6240`, `6260` or `6280` as a local change and sends
+  the overlay PUT or DELETE for it. That includes a stale push: it reverts the owner and
+  freedo sees a device overlay or an overlay end.
 - A member gets a new block only from the owner push, or from the answer to its `GET z/s`.
+- A new MID can carry an old body. An owner pass encodes the body once, so each endpoint after
+  a blocked one gets the old body. A member sends to `63a0` first, so its push to `63a0` holds
+  its record of that moment: an old body there means the member did not take the newer block
+  yet. Its pass toward config URI 0x1d6 can still send an old body.
+
+Stale reports:
+
+- freedo keeps per zone member M the block `held(M)`: the body of the last `PUT z/s` that M
+  answered with `2.04` (a coordinator `id=` write, or a `lid=` push that freedo relayed to M),
+  or the body of the last `z/s` report of M, whichever is later. The zone keeps the last
+  delivered write that changed the heating block (`6240`, `6260`, `6280`) and the blocks that
+  write and the earlier ones replaced less than 8 minutes ago.
+- A `PUT z/s?lid=N` report of a block that a write replaced inside 8 minutes is stale when
+  its sender is the zone owner, or when the sender is a member that does not hold the newest
+  written block. The window is longer than the 465 s of the longest path above.
+- A member that holds the newest block and then reports a replaced block changed the zone
+  itself. freedo relays the report and takes it as it takes any other change.
+- A stale report of a member is not cached, not relayed and not fanned out. freedo answers
+  `2.04` and queues the newest block to the member as a normal coordinator `z/s` write, so
+  the device that holds the old block takes the new one. A write of the zone block that
+  already waits for the member replaces that rewrite, and `NoAutoQueue` queues none. A device
+  overlay or an overlay end of the zone drops a queued or sent rewrite of this kind and
+  restates the overlay.
+- A stale report of the zone owner is not cached, but it is relayed and freedo queues no
+  rewrite: the owner pass can send an old body after the owner took the new block, and the
+  owner wheel has its overlay PUT. A zone with no resolvable owner follows the same rule.
+- A retransmission (same source and MID) keeps the verdict of its first copy for 5 minutes.
+- After a restart the records are empty, so freedo relays and takes every report as before.
+- The `2.04` for a stale report that names a peer comes from the coordinator and not from the
+  peer. That answer is not confirmed on air.
+
+Known gaps of the rule:
+
+- The `2.04` of a member is lost: until a later copy of the write is answered, a wheel change
+  back to the old block counts as stale.
+- Every earlier copy of an old MID is lost and a late copy arrives after the member confirmed
+  the newest block: freedo takes the old block as a change.
+- For a `lid=` push the record changes a short time after the `2.04` (inferred). A report of
+  the old block inside that window comes from a member that freedo holds at the newest block:
+  freedo takes it as a change.
+- A change that the device makes alone (the `62a0` default block, a timer) counts as a local
+  change.
 
 Sync icon:
 
