@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sort"
 	"strconv"
+	"time"
 )
 
 const (
@@ -375,6 +376,14 @@ func (e *EmuState) TakeInterfaceModuleLearned() bool {
 func (e *EmuState) BoilerReported(dev *Device) bool {
 	ns := e.nodes[hexEUI(dev.WireEUI())]
 	return ns != nil && !ns.hvacMonAt.IsZero()
+}
+
+// LastSeen is when a frame of the device last arrived, zero before the first.
+func (e *EmuState) LastSeen(dev *Device) time.Time {
+	if ns := e.nodes[hexEUI(dev.WireEUI())]; ns != nil {
+		return ns.LastSeen
+	}
+	return time.Time{}
 }
 
 // UnknownInterfaceModules names the declared wall thermostats whose interface

@@ -17,9 +17,11 @@ const (
 )
 
 // noteUnknownModules tracks the wall thermostats that have no interface module
-// id and no boiler report. It returns, by ref, those that have been in that
-// state for interfaceModuleAlertAfter since the daemon first saw them. It runs
-// on the engine goroutine.
+// id and no boiler report, and sent a frame within the offline limit. A
+// thermostat that is silent needs a battery or a radio link, not an id. It
+// returns, by ref, those that have been in that state for
+// interfaceModuleAlertAfter since the daemon first saw them. It runs on the
+// engine goroutine.
 func (d *daemon) noteUnknownModules(e *tado.EmuState) map[string]bool {
 	inst := d.inst.Load()
 	if inst == nil {
@@ -31,6 +33,9 @@ func (d *daemon) noteUnknownModules(e *tado.EmuState) map[string]bool {
 	for i := range inst.Devices {
 		dev := &inst.Devices[i]
 		if dev.Kind != tado.KindThermostat || e.InterfaceModuleState(dev).Module != nil || e.BoilerReported(dev) {
+			continue
+		}
+		if seen := e.LastSeen(dev); seen.IsZero() || now.Sub(seen) > inst.Options.OfflineAfter() {
 			continue
 		}
 		ref := dev.Ref()
