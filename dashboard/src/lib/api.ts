@@ -18,6 +18,7 @@ import type {
 	InstallInfo,
 	InstallZone,
 	InterfaceModule,
+	InterfaceModuleState,
 	NodeView,
 	PidSuggestion,
 	PairWindow,
@@ -286,13 +287,19 @@ export function recalibrate(options: ClientOptions = {}): Promise<Calibration> {
 /**
  * Sets the interface module id of a wall thermostat that lost it. It is not a method of the client: a
  * wrong id stops the boiler interface, so under Home Assistant ingress the daemon serves it to an
- * administrator only, and elsewhere it needs the token.
+ * administrator only, and elsewhere it needs the token. A thermostat that holds an id takes a new one
+ * only when current names the held id. The answer has no list of known ids: read the GET for that.
  */
-export function setInterfaceModule(ref: string, module: number, options: ClientOptions = {}): Promise<InterfaceModule> {
-	return transport(options).request<InterfaceModule>(
+export function setInterfaceModule(
+	ref: string,
+	module: number,
+	options: ClientOptions = {},
+	current?: number
+): Promise<InterfaceModuleState> {
+	return transport(options).request<InterfaceModuleState>(
 		'PUT',
 		'install/devices/' + encodeURIComponent(ref) + '/interface_module',
-		{ module }
+		current === undefined ? { module } : { module, current }
 	);
 }
 

@@ -4,12 +4,15 @@ export type EndRule = 'manual' | 'timer' | 'until_next' | 'until_auto_change';
 export type ZoneKind = 'heating' | 'hotwater';
 export type DeviceKind = 'valve' | 'thermostat' | 'bridge';
 
-/** The interface module id of a wall thermostat. Module and source are null while it has none. */
-export interface InterfaceModule {
+/** The interface module id of a wall thermostat. Module and source are null while it has none. The PUT answers with this alone. */
+export interface InterfaceModuleState {
 	module: number | null;
 	family: string;
 	source: string | null;
-	/** The ids the daemon accepts, by id. */
+}
+
+/** The GET adds the ids the daemon accepts, by id. */
+export interface InterfaceModule extends InterfaceModuleState {
 	known: { module: number; family: string }[];
 }
 

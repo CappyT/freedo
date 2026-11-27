@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { ApiError, createClient, setInterfaceModule } from '../src/lib/api.ts';
 import { refusal } from '../src/lib/backup.ts';
 import { buildDevices } from '../src/lib/devices.ts';
-import { groupByFamily } from '../src/lib/interfacemodule.ts';
-import type { Health } from '../src/lib/types.ts';
+import { groupByFamily, setAndRead } from '../src/lib/interfacemodule.ts';
+import type { Health, InterfaceModule } from '../src/lib/types.ts';
 import { device } from './fixtures.ts';
 
 describe('the ids of the interface module select', () => {
@@ -40,10 +40,26 @@ describe('the interface module calls', () => {
 		const seen: { method?: string; body?: unknown; authorization: string | null }[] = [];
 		const fetchStub = (async (_url: string | URL | Request, init?: RequestInit) => {
 			seen.push({ method: init?.method, body: init?.body, authorization: new Headers(init?.headers).get('Authorization') });
-			return Response.json({ module: 80, family: 'ebus_a', source: 'operator', known: [] });
+			// The daemon answers the PUT with the id alone.
+			return Response.json({ module: 80, family: 'ebus_a', source: 'operator' });
 		}) as unknown as typeof fetch;
-		await setInterfaceModule('0201', 80, { base: 'http://daemon/', fetch: fetchStub, token: () => 'secret' });
-		expect(seen).toEqual([{ method: 'PUT', body: '{"module":80}', authorization: 'Bearer secret' }]);
+		const options = { base: 'http://daemon/', fetch: fetchStub, token: () => 'secret' };
+		await setInterfaceModule('0201', 80, options);
+		await setInterfaceModule('0201', 71, options, 80);
+		expect(seen).toEqual([
+			{ method: 'PUT', body: '{"module":80}', authorization: 'Bearer secret' },
+			{ method: 'PUT', body: '{"module":71,"current":80}', authorization: 'Bearer secret' }
+		]);
+	});
+
+	it('keep the list of known ids after a write, which the PUT answer does not carry', async () => {
+		const known = [{ module: 71, family: 'opentherm' }];
+		const view = await setAndRead('0201', 71, undefined, {
+			put: async () => ({ module: 71, family: 'opentherm', source: 'operator' }),
+			get: async (): Promise<InterfaceModule> => ({ module: 71, family: 'opentherm', source: 'operator', known })
+		});
+		expect(view.known).toEqual(known);
+		expect(groupByFamily(view.known)).toEqual([{ family: 'opentherm', ids: [71] }]);
 	});
 
 	it('tell a user who is not an administrator from a rejected id', async () => {

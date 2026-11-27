@@ -5,7 +5,7 @@
 	import ConfirmDialog from './ConfirmDialog.svelte';
 	import { data } from './data.svelte.ts';
 	import { t } from './i18n.svelte.ts';
-	import { groupByFamily } from './interfacemodule.ts';
+	import { groupByFamily, setAndRead } from './interfacemodule.ts';
 	import { api, setModule } from './session.ts';
 	import { toasts } from './toast.svelte.ts';
 	import type { InterfaceModule } from './types.ts';
@@ -39,7 +39,7 @@
 		if (!chosen) return;
 		busy = true;
 		try {
-			view = await setModule(short, chosen.module);
+			view = await setAndRead(short, chosen.module, view?.module ?? undefined, { put: setModule, get: api.interfaceModule });
 			problem = null;
 			choice = '';
 			toasts.push('ok', t('devices.module.saved'));
@@ -47,6 +47,8 @@
 		} catch (error) {
 			// A 403 is a Home Assistant user who is not an administrator.
 			toasts.push('error', refusal(error) === 'admin' ? t('devices.module.adminOnly') : errorText(error));
+			// A report may have set the id since the page read it.
+			await load();
 		}
 		busy = false;
 	}

@@ -14,4 +14,5 @@ export const api = createClient({
 export const calibrateAgain = () => recalibrate({ token: () => auth.token });
 
 /** Sets the interface module id of a wall thermostat. A refusal stays with the caller, like calibrateAgain. */
-export const setModule = (ref: string, module: number) => setInterfaceModule(ref, module, { token: () => auth.token });
+export const setModule = (ref: string, module: number, current?: number) =>
+	setInterfaceModule(ref, module, { token: () => auth.token }, current);
