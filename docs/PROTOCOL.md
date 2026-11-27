@@ -1782,6 +1782,17 @@ The bootloader activates a pending image only with a version equal to or above t
 one. The device confirms the new image at the first `2.xx` answer to its
 `PUT d/<serial>/fw/state`. Nothing on the device checks that an image is for its hardware.
 
+A device can also ask for an image. The valve registers the receiver `d/fw/rq`. A payload that
+starts with tag `01db`, one length byte and a version as text (`215.1`) arms a request. The
+device keeps 9 characters. A payload of less than 4 bytes or a length above 10 gets `4.00`.
+Another first tag arms nothing. With the request armed, the device sends a confirmable
+`POST d/<serial>/fw/request?version=<text>` (`coap_fw_rq_build_msg`@0x20ec0, receiver handler
+@0x20e18, valve 215.1). The commercial bridge sends the order as `PUT d/fw/rq` to the device on
+port 5683, with the version as `major.minor` (bridge image, @0x424a4). The Block1 handler of
+`d/fw` does not read the armed request, so a transfer needs no order before it. freedo sends no
+order: it starts the transfer itself. The order and the request come from the firmware read
+only. No capture holds them.
+
 No transfer has run on air. The tests use synthetic data only.
 
 ### Wireless temperature sensor
