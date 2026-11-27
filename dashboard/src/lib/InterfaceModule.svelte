@@ -39,10 +39,20 @@
 		if (!chosen) return;
 		busy = true;
 		try {
-			view = await setAndRead(short, chosen.module, view?.module ?? undefined, { put: setModule, get: api.interfaceModule });
-			problem = null;
+			const done = await setAndRead(short, chosen.module, view?.module ?? undefined, {
+				put: setModule,
+				get: api.interfaceModule
+			});
 			choice = '';
 			toasts.push('ok', t('devices.module.saved'));
+			if (done.view) {
+				view = done.view;
+				problem = null;
+			} else if (view) {
+				// The id is stored. Only the list of known ids is old.
+				view = { ...view, ...done.written };
+				problem = t('devices.module.reloadFailed');
+			}
 			await data.refresh();
 		} catch (error) {
 			// A 403 is a Home Assistant user who is not an administrator.

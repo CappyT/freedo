@@ -536,6 +536,7 @@ export const fr: Record<Key, string> = {
 	'devices.module.confirm.body': 'Un ID erroné arrête l’interface chaudière du thermostat. La chaudière ne reçoit alors plus de demande de chaleur. Vérifiez d’abord l’ID sur votre chaudière.',
 	'devices.module.saved': 'ID du module d’interface défini.',
 	'devices.module.adminOnly': 'Seul un administrateur de Home Assistant peut définir l’ID du module d’interface.',
+	'devices.module.reloadFailed': 'L’ID est défini. La page n’a pas pu relire la liste des ID.',
 	'circuits.summary': 'Source de chaleur : {source} · pièces : {n}',
 	'settings.install.count': 'Pièces : {rooms} · appareils : {devices}',
 	'settings.setup.done': 'Toutes les étapes sont faites',

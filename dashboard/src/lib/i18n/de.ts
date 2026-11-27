@@ -536,6 +536,7 @@ export const de: Record<Key, string> = {
 	'devices.module.confirm.body': 'Eine falsche ID stoppt die Kesselschnittstelle des Thermostats. Der Kessel erhält dann keine Wärmeanforderung. Prüfe die ID zuerst an deinem Kessel.',
 	'devices.module.saved': 'Schnittstellenmodul-ID gesetzt.',
 	'devices.module.adminOnly': 'Nur ein Home-Assistant-Administrator kann die Schnittstellenmodul-ID setzen.',
+	'devices.module.reloadFailed': 'Die ID ist gesetzt. Die Seite konnte die Liste der IDs nicht erneut lesen.',
 	'circuits.summary': 'Wärmequelle: {source} · Räume: {n}',
 	'settings.install.count': 'Räume: {rooms} · Geräte: {devices}',
 	'settings.setup.done': 'Alle Schritte erledigt',

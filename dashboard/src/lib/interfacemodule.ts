@@ -19,11 +19,23 @@ export interface ModuleCalls {
 	get: (ref: string) => Promise<InterfaceModule>;
 }
 
+export interface Written {
+	/** What the PUT answered: the id is stored. */
+	written: InterfaceModuleState;
+	/** The view the GET read after it, null when that read failed. */
+	view: InterfaceModule | null;
+}
+
 /**
  * Writes the id and reads the view again. The PUT answers with the id alone: the list of known ids comes
- * from the GET, and the select needs it.
+ * from the GET, and the select needs it. A failed PUT throws. A failed GET does not: the id is stored, and
+ * the caller shows it.
  */
-export async function setAndRead(ref: string, module: number, current: number | undefined, calls: ModuleCalls): Promise<InterfaceModule> {
-	await calls.put(ref, module, current);
-	return calls.get(ref);
+export async function setAndRead(ref: string, module: number, current: number | undefined, calls: ModuleCalls): Promise<Written> {
+	const written = await calls.put(ref, module, current);
+	try {
+		return { written, view: await calls.get(ref) };
+	} catch {
+		return { written, view: null };
+	}
 }

@@ -536,6 +536,7 @@ export const en = {
 	'devices.module.confirm.body': 'A wrong id stops the boiler interface of the thermostat. The boiler then gets no heat demand. Check the id against your boiler first.',
 	'devices.module.saved': 'Interface module id set.',
 	'devices.module.adminOnly': 'Only a Home Assistant administrator can set the interface module id.',
+	'devices.module.reloadFailed': 'The id is set. The page could not read the list of ids again.',
 	'circuits.summary': 'Heat source: {source} · rooms: {n}',
 	'settings.install.count': 'Rooms: {rooms} · devices: {devices}',
 	'settings.setup.done': 'Every step is done',

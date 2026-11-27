@@ -536,6 +536,7 @@ export const it: Record<Key, string> = {
 	'devices.module.confirm.body': 'Un ID sbagliato ferma l’interfaccia caldaia del termostato. La caldaia non riceve più richieste di calore. Controlla prima l’ID sulla tua caldaia.',
 	'devices.module.saved': 'ID del modulo di interfaccia impostato.',
 	'devices.module.adminOnly': 'Solo un amministratore di Home Assistant può impostare l’ID del modulo di interfaccia.',
+	'devices.module.reloadFailed': 'L’ID è impostato. La pagina non è riuscita a rileggere l’elenco degli ID.',
 	'circuits.summary': 'Fonte di calore: {source} · stanze: {n}',
 	'settings.install.count': 'Stanze: {rooms} · dispositivi: {devices}',
 	'settings.setup.done': 'Tutti i passi completati',

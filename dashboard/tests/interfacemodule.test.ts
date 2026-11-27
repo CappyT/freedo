@@ -54,12 +54,38 @@ describe('the interface module calls', () => {
 
 	it('keep the list of known ids after a write, which the PUT answer does not carry', async () => {
 		const known = [{ module: 71, family: 'opentherm' }];
-		const view = await setAndRead('0201', 71, undefined, {
+		const done = await setAndRead('0201', 71, undefined, {
 			put: async () => ({ module: 71, family: 'opentherm', source: 'operator' }),
 			get: async (): Promise<InterfaceModule> => ({ module: 71, family: 'opentherm', source: 'operator', known })
 		});
-		expect(view.known).toEqual(known);
-		expect(groupByFamily(view.known)).toEqual([{ family: 'opentherm', ids: [71] }]);
+		expect(done.view?.known).toEqual(known);
+		expect(groupByFamily(done.view?.known ?? [])).toEqual([{ family: 'opentherm', ids: [71] }]);
+	});
+
+	it('report a stored id when the read after the write fails', async () => {
+		const written = { module: 71, family: 'opentherm', source: 'operator' };
+		const done = await setAndRead('0201', 71, undefined, {
+			put: async () => written,
+			get: async () => {
+				throw new ApiError(0, 'network error');
+			}
+		});
+		expect(done).toEqual({ written, view: null });
+	});
+
+	it('throw when the write fails, and read nothing', async () => {
+		let reads = 0;
+		const error = await setAndRead('0201', 71, undefined, {
+			put: async () => {
+				throw new ApiError(409, 'the thermostat holds interface module id 80');
+			},
+			get: async () => {
+				reads++;
+				throw new Error('not reached');
+			}
+		}).catch((e: unknown) => e);
+		expect(error).toMatchObject({ status: 409 });
+		expect(reads).toBe(0);
 	});
 
 	it('tell a user who is not an administrator from a rejected id', async () => {
