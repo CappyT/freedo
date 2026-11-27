@@ -386,3 +386,48 @@ func TestThermostatRereadAfterAReportIsRateLimited(t *testing.T) {
 		t.Errorf("a differing report after 10 minutes queued %d downlinks, want the trigger", n)
 	}
 }
+
+// TestRestoreThatChangesTheModuleWarnsAndQueuesTheReread: a restore that serves
+// another id than the live one rebuilds the document under the ETag of the
+// restored one, which moves nothing. The restore warns with both ids and queues
+// the re-read trigger at once.
+func TestRestoreThatChangesTheModuleWarnsAndQueuesTheReread(t *testing.T) {
+	in := synthInstall(t)
+	ru, _ := synthDevices(t, in)
+	backup := NewEmu(in.EmuConfig(), nil)
+	backup.OnFrame(moduleReport(t, in, ru, 80, 0x7e01))
+
+	live := NewEmu(in.EmuConfig(), nil)
+	dev, err := in.Resolve("RU0000000001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := live.SetInterfaceModule(dev, 71, nil); err != nil {
+		t.Fatal(err)
+	}
+	drainQueue(t, live, ru)
+	if err := live.RestoreDesiredState(backup.ExportDesiredState()); err != nil {
+		t.Fatal(err)
+	}
+	if got := servedModules(live, ru); len(got) != 1 || got[0] != "0050" {
+		t.Fatalf("served 015d after the restore = %v, want 0050", got)
+	}
+	issues := live.InterfaceModuleIssues()
+	if len(issues) != 1 || issues[0].Refused || !strings.Contains(issues[0].Reason, "from 71 to 80") {
+		t.Errorf("issues = %+v, want a warning naming 71 and 80", issues)
+	}
+	if total, rereads := rereadQueue(live, ru); total != 1 || rereads != 1 {
+		t.Errorf("queue = %d downlinks, %d re-read triggers, want the one trigger", total, rereads)
+	}
+
+	// A restore of the same id warns about nothing and queues nothing.
+	same := NewEmu(in.EmuConfig(), nil)
+	same.OnFrame(moduleReport(t, in, ru, 80, 0x7e02))
+	drainQueue(t, same, ru)
+	if err := same.RestoreDesiredState(backup.ExportDesiredState()); err != nil {
+		t.Fatal(err)
+	}
+	if total, _ := rereadQueue(same, ru); total != 0 || len(same.InterfaceModuleIssues()) != 0 {
+		t.Errorf("a restore of the same id queued %d downlinks, issues %v, want none", total, same.InterfaceModuleIssues())
+	}
+}

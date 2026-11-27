@@ -5,7 +5,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -196,6 +198,7 @@ func (e *EmuState) RestoreDesiredState(in DesiredState) error {
 		}
 		e.boostTimers[zoned] = e.restoredTimer(value)
 	}
+	live := e.moduleID
 	e.moduleID = moduleID
 	e.moduleSource = make(map[string]string, len(moduleID))
 	for key := range moduleID {
@@ -214,7 +217,32 @@ func (e *EmuState) RestoreDesiredState(in DesiredState) error {
 	e.restoreFwState(in.FwState)
 	e.withheldLogged = map[string]bool{}
 	e.refreshThermostatDocuments()
+	e.rereadRestoredModules(live)
 	return nil
+}
+
+// rereadRestoredModules warns about each wall thermostat whose restored interface
+// module id differs from the one served before the restore, and queues its
+// re-read trigger at once: the rebuilt document can carry the ETag of the
+// restored one, which moves nothing, and the thermostat would reflash to the
+// restored id at its next hourly GET.
+func (e *EmuState) rereadRestoredModules(live map[string]uint16) {
+	if e.inst == nil {
+		return
+	}
+	for _, key := range slices.Sorted(maps.Keys(live)) {
+		restored, ok := e.moduleID[key]
+		if !ok || restored == live[key] {
+			continue
+		}
+		dev, err := e.inst.Resolve(key)
+		if err != nil {
+			continue
+		}
+		e.flagModule(dev, restored, false, "the restore changed the served id from "+
+			strconv.Itoa(int(live[key]))+" to "+strconv.Itoa(int(restored)))
+		e.rereadThermostat(dev, true)
+	}
 }
 
 func validateDesiredState(in DesiredState) error {

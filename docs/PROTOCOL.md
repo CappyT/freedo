@@ -684,7 +684,11 @@ one empty `PUT d/config` without Block1 as the re-read trigger
 (`setConfigDocument`, the one writer of `cfgDoc`). These changes do it: a `0140`
 write, a flow limit (the ETag hashes the served `2040` values), an installation
 reload (`015e`, election, zones, `02b3`, `02b2`), a DST transition, a cleared
-per-device `02b3`, a restore and a learned `015d`. A change that keeps the ETag
+per-device `02b3`, a restore and a learned `015d`. A restore queues the trigger
+when the rebuilt document has another ETag than the one held before. A restore
+that changes the interface module id queues it in any case and logs a warning with
+both ids (`TestRestoreThatChangesTheModuleWarnsAndQueuesTheReread`): the restored
+document can carry the ETag of the restored backup. A change that keeps the ETag
 queues nothing. A trigger that waits in the queue, not on the air yet, covers
 later changes (`TestThermostatRereadOnEveryETagChange`). The GET after it earns a
 2.05, and after a 2.05 the thermostat GETs `c/<N>/config`.
