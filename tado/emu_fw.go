@@ -222,7 +222,7 @@ func (e *EmuState) ReadFirmwareState(now time.Time) string {
 	}
 	for i := range e.inst.Devices {
 		dev := &e.inst.Devices[i]
-		if dev.Kind != KindValve && dev.Kind != KindThermostat {
+		if dev.Kind != KindValve && dev.Kind != KindThermostat && dev.Kind != KindSensor {
 			continue
 		}
 		wire := dev.WireEUI()

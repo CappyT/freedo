@@ -2676,8 +2676,8 @@ func (d *daemon) logFallbackEvents(e *tado.EmuState) {
 		if ev.Zone >= 0 {
 			what = fmt.Sprintf("zone %d (reported by %s)", ev.Zone, ev.Device)
 		} else if inst != nil {
-			if dev, err := inst.Resolve(ev.Device); err == nil && dev.Kind == tado.KindValve {
-				log.Printf("valve %s reports zone control mode %d (0 present, 1 absent)", ev.Device, ev.To)
+			if dev, err := inst.Resolve(ev.Device); err == nil && (dev.Kind == tado.KindValve || dev.Kind == tado.KindSensor) {
+				log.Printf("%s %s reports zone control mode %d (0 present, 1 absent)", dev.Kind, ev.Device, ev.To)
 				continue
 			}
 		}
@@ -4093,7 +4093,7 @@ func (d *daemon) postConfig(w http.ResponseWriter, r *http.Request) {
 	// value in the body wins. The wall thermostat's served document already
 	// follows the offset in force (SyncUTCOffset).
 	inst := d.inst.Load()
-	if cw.UTCOffsetMin == nil && inst != nil && n.Kind != tado.KindThermostat {
+	if cw.UTCOffsetMin == nil && inst != nil && n.Kind != tado.KindThermostat && n.Kind != tado.KindSensor {
 		off := inst.Options.UTCOffsetAt(d.retryNow())
 		cw.UTCOffsetMin = &off
 	}
@@ -4107,10 +4107,9 @@ func (d *daemon) postConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d.configWrite(w, r, target, nil, func(e *tado.EmuState) error {
-		// The wall thermostat takes no write, so the id of its two zones
-		// matters to nobody.
+		// Read-served devices take no write, so the id matters to nobody.
 		id, err := resolveID(e, inst, n.Short(), b.ID)
-		if err != nil && n.Kind != tado.KindThermostat {
+		if err != nil && n.Kind != tado.KindThermostat && n.Kind != tado.KindSensor {
 			return err
 		}
 		return e.EnqueueConfig(target, id, cw)
@@ -4119,9 +4118,9 @@ func (d *daemon) postConfig(w http.ResponseWriter, r *http.Request) {
 
 // configWrite runs a d/config write on the engine and answers how it reaches
 // the device: queued, or served on the device's own next read when the device
-// drops the written document (the wall thermostat). reread tells whether a
-// trigger that makes that read come at once waits in the queue. extra merges
-// endpoint fields.
+// drops the written document (wall thermostat or wireless sensor). reread tells
+// whether a trigger that makes that read come at once waits in the queue. extra
+// merges endpoint fields.
 func (d *daemon) configWrite(w http.ResponseWriter, r *http.Request, target string, extra map[string]any,
 	write func(*tado.EmuState) error) {
 	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
@@ -4157,10 +4156,9 @@ func (d *daemon) deleteOfflineSchedule(w http.ResponseWriter, r *http.Request) {
 	}
 	inst := d.inst.Load()
 	v, err := d.doReq(r, func(e *tado.EmuState) (any, error) {
-		// The wall thermostat takes no write, so the id of its two zones matters
-		// to nobody.
+		// Read-served devices take no write, so the zone id matters to nobody.
 		id, err := resolveID(e, inst, n.Short(), nil)
-		if err != nil && n.Kind != tado.KindThermostat {
+		if err != nil && n.Kind != tado.KindThermostat && n.Kind != tado.KindSensor {
 			return nil, err
 		}
 		written, err := e.ClearOfflineSchedule(target, id)

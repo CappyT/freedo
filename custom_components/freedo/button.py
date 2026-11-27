@@ -10,7 +10,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import FreedoConfigEntry
 from .entity import FreedoNodeEntity, call_api
-from .model import KIND_THERMOSTAT, KIND_VALVE, in_zone
+from .model import KIND_SENSOR, KIND_THERMOSTAT, KIND_VALVE, in_zone
 
 
 async def async_setup_entry(
@@ -22,7 +22,7 @@ async def async_setup_entry(
     entities: list[ButtonEntity] = []
     for short, dev in sorted(coordinator.data.devices.items()):
         kind = dev.get("kind")
-        if kind in (KIND_VALVE, KIND_THERMOSTAT) and in_zone(coordinator.data, short):
+        if kind in (KIND_VALVE, KIND_THERMOSTAT, KIND_SENSOR) and in_zone(coordinator.data, short):
             entities.append(IdentifyButton(coordinator, short))
         if kind == KIND_VALVE:
             entities.append(CalibrateButton(coordinator, short))

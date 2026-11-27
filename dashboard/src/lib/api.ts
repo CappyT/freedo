@@ -229,7 +229,7 @@ export function createClient(options: ClientOptions = {}) {
 		/** The boiler and flow limit options alone. The daemon checks them as PATCH /api/install does. */
 		setBoiler: (patch: BoilerPatch) => request<{ rev: number; install: InstallInfo }>('PUT', 'install/boiler', patch),
 		installDevices: async () => (await request<{ devices: InstallDevice[] }>('GET', 'install/devices')).devices,
-		createDevice: (body: { eui: string; kind: 'valve' | 'thermostat'; label: string }) =>
+		createDevice: (body: { eui: string; kind: 'valve' | 'thermostat' | 'sensor'; label: string }) =>
 			request<{ device: InstallDevice }>('POST', 'install/devices', body),
 		/** The one zone number a device answers to. Null removes the claim. */
 		claimZone: (ref: string, zoneNumber: number | null) =>

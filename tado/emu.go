@@ -1727,7 +1727,7 @@ func (e *EmuState) servedZoneConfig(m *CoAPMessage, dst []byte) ([]byte, string,
 // block 0 came from, see block2Document. A later block with no transfer behind
 // it gets an empty 5.03, so the device restarts at block 0.
 func (e *EmuState) buildBlock2Response(m *CoAPMessage, dst, body, etag []byte) ([]byte, string, error) {
-	offset, size, szx, err := requestedBlock2(m)
+	offset, size, szx, err := e.requestedBlock2For(m, dst)
 	if err != nil {
 		return nil, "", err
 	}
@@ -1770,7 +1770,7 @@ func (e *EmuState) buildBlock2Response(m *CoAPMessage, dst, body, etag []byte) (
 // block the device asks for goes out whole in one 2.05 and opens no Block2
 // transfer; a longer one goes through buildBlock2Response.
 func (e *EmuState) contentAnswer(m *CoAPMessage, dst, body, etag []byte) ([]byte, string, error) {
-	offset, size, szx, err := requestedBlock2(m)
+	offset, size, szx, err := e.requestedBlock2For(m, dst)
 	if err != nil {
 		return nil, "", err
 	}
@@ -1822,6 +1822,34 @@ func zoneResourcePath(path string, in *Install, resource string) (int, bool) {
 	}
 	zone, err := strconv.Atoi(segs[3])
 	return zone, err == nil
+}
+
+// requestedBlock2For resolves the Block2 slice for dst. The wireless
+// temperature sensor requests SZX 3 (128 bytes) on every block while counting
+// NUM in the 64-byte blocks served to it (PROTOCOL.md, Wireless temperature
+// sensor), so each block fits in one frame and NUM is taken unscaled at SZX 2.
+func (e *EmuState) requestedBlock2For(m *CoAPMessage, dst []byte) (offset, size int, szx byte, err error) {
+	if !e.isSensor(hexEUI(dst)) {
+		return requestedBlock2(m)
+	}
+	size, szx = 64, 2
+	o, ok := m.Option(23)
+	if !ok {
+		return 0, size, szx, nil
+	}
+	if len(o.Val) > 3 {
+		return 0, 0, 0, errors.New("tado: Block2 option is longer than 3 bytes")
+	}
+	v := decodeCoAPUint(o.Val)
+	reqSZX := byte(v & 7)
+	if reqSZX == 7 {
+		return 0, 0, 0, errors.New("tado: Block2 BERT is invalid over UDP")
+	}
+	if reqSize := 1 << (reqSZX + 4); reqSize < size {
+		size, szx = reqSize, reqSZX
+	}
+	offset = int(v>>4) * size
+	return offset, size, szx, nil
 }
 
 func requestedBlock2(m *CoAPMessage) (offset, size int, szx byte, err error) {
@@ -3552,8 +3580,8 @@ func (e *EmuState) EnqueueChildLock(target string, id int, on bool) error {
 	if err != nil {
 		return err
 	}
-	if e.isThermostat(hexEUI(wire)) {
-		return errors.New("tado: the wall thermostat has no d/lock resource, it has no child lock")
+	if e.isThermostat(hexEUI(wire)) || e.isSensor(hexEUI(wire)) {
+		return errors.New("tado: only a valve has a d/lock resource (child lock)")
 	}
 	mid, token, err := downlinkIDs()
 	if err != nil {
@@ -4263,7 +4291,7 @@ func configEtag(body []byte) []byte {
 // list: the bridge writes the whole document, never the changed tags alone.
 // etagInput joins the document in the ETag hash. thermostat selects the wall
 // thermostat's document shape (configDocument).
-func mergeConfigDocument(previous cfgSnapshot, w ConfigWrite, etagInput []byte, thermostat bool) ([]TLV, cfgSnapshot, error) {
+func mergeConfigDocument(previous cfgSnapshot, w ConfigWrite, etagInput []byte, kind DeviceKind) ([]TLV, cfgSnapshot, error) {
 	if err := w.Validate(); err != nil {
 		return nil, cfgSnapshot{}, err
 	}
@@ -4273,7 +4301,7 @@ func mergeConfigDocument(previous cfgSnapshot, w ConfigWrite, etagInput []byte, 
 	}
 
 	base := withoutConfigETag(parseTLVList(previous.body))
-	merged := configDocument(mergeConfigTLVs(base, updates), thermostat)
+	merged := configDocument(mergeConfigTLVs(base, updates), kind)
 	etag := append([]byte(nil), w.Etag...)
 	switch {
 	case len(etag) > 0:
@@ -4362,11 +4390,11 @@ func (e *EmuState) mergeDeviceConfigOn(base cfgSnapshot, key string, w ConfigWri
 		w.OfflineScheduleEnabled = e.offlineSchedule(key, w.OfflineScheduleEnabled)
 	}
 	var etagInput []byte
-	thermostat := e.isThermostat(key)
-	if thermostat {
+	kind := e.deviceKind(key)
+	if kind == KindThermostat {
 		etagInput = append(e.flowETagInput(), e.measureETagInput(key)...)
 	}
-	return mergeConfigDocument(base, w, etagInput, thermostat)
+	return mergeConfigDocument(base, w, etagInput, kind)
 }
 
 // measureETagInput is the measuring endpoint (tag 6040) of each heating zone
@@ -4407,12 +4435,23 @@ func (e *EmuState) measureETagInput(key string) []byte {
 	return out
 }
 
-func (e *EmuState) isThermostat(key string) bool {
+func (e *EmuState) deviceKind(key string) DeviceKind {
 	if e.inst == nil {
-		return false
+		return ""
 	}
 	dev, err := e.inst.Resolve(key)
-	return err == nil && dev.Kind == KindThermostat
+	if err != nil {
+		return ""
+	}
+	return dev.Kind
+}
+
+func (e *EmuState) isThermostat(key string) bool {
+	return e.deviceKind(key) == KindThermostat
+}
+
+func (e *EmuState) isSensor(key string) bool {
+	return e.deviceKind(key) == KindSensor
 }
 
 func (e *EmuState) initConfigDocuments() {
@@ -4615,16 +4654,14 @@ func (e *EmuState) ClearOfflineSchedule(target string, id int) (bool, error) {
 }
 
 // refusesConfigWrite reports whether the device drops the document a d/config
-// write carries. The wall thermostat does: its PUT handler (0x1e230) ignores
-// the payload and only makes it GET d/config again. The coordinator serves its
-// configuration on the read path only (serveConfig). A device the installation
-// does not declare has no known kind, and no capture refuses a write to one.
+// write carries. The wall thermostat and wireless sensor do: their PUT handler
+// ignores the payload and only makes them GET d/config again. The coordinator
+// serves their configuration on the read path only (serveConfig). A device the
+// installation does not declare has no known kind, and no capture refuses a
+// write to one.
 func (e *EmuState) refusesConfigWrite(wire []byte) bool {
-	if e.inst == nil {
-		return false
-	}
-	dev, err := e.inst.Resolve(hexEUI(wire))
-	return err == nil && dev.Kind == KindThermostat
+	k := e.deviceKind(hexEUI(wire))
+	return k == KindThermostat || k == KindSensor
 }
 
 // ServesConfigOnRead reports whether target takes its d/config only on its own
@@ -4642,14 +4679,16 @@ func (e *EmuState) ServesConfigOnRead(target string) bool {
 // cfg_set_and_report. The other tags stay with the installation.
 var servedConfigTags = map[string]bool{"0140": true}
 
-var errThermostatConfig = errors.New("tado: the wall thermostat ignores a d/config write payload; " +
+var errThermostatConfig = errors.New("tado: this device ignores a d/config write payload; " +
 	"its served d/config document takes only calibOffset (tag 0140)")
 
-// serveConfig merges a write to the wall thermostat into the document it is
-// served, under a new ETag. The device takes the document on its next d/config
-// GET, answered 2.05, which the re-read trigger brings at once
-// (setConfigDocument). A write that moves a tag outside servedConfigTags is
-// refused whole.
+// serveConfig merges a write to a read-served device (wall thermostat or
+// wireless sensor) into the document it is served, under a new ETag. The device
+// takes the document on its next d/config GET, answered 2.05, which the re-read
+// trigger brings at once (setConfigDocument). A write that moves a tag outside
+// servedConfigTags is refused whole; a write that sets only tags stripped for
+// that device kind (such as 0149 on a thermostat or sensor) leaves the served
+// document unchanged and reports success.
 func (e *EmuState) serveConfig(wire []byte, w ConfigWrite) error {
 	key := hexEUI(wire)
 	base, ok := e.cfgDoc[key]
@@ -4681,7 +4720,7 @@ func (e *EmuState) serveConfig(wire []byte, w ConfigWrite) error {
 func (e *EmuState) setConfigDocument(key string, snap cfgSnapshot) {
 	previous, held := e.cfgDoc[key]
 	e.cfgDoc[key] = snap
-	if held && bytes.Equal(previous.etag, snap.etag) || !e.isThermostat(key) || e.ConfigRereadQueued(key) {
+	if held && bytes.Equal(previous.etag, snap.etag) || (!e.isThermostat(key) && !e.isSensor(key)) || e.ConfigRereadQueued(key) {
 		return
 	}
 	if err := e.queueConfigReread(key); err != nil {
@@ -4713,7 +4752,8 @@ func (e *EmuState) queueConfigReread(key string) error {
 	return nil
 }
 
-// configRereadKind names the wall thermostat's re-read trigger in the queue.
+// configRereadKind names the re-read trigger of a read-served device (wall
+// thermostat or wireless sensor) in the queue.
 const configRereadKind = "reread"
 
 // ConfigRereadQueued reports whether a re-read trigger waits in the queue of

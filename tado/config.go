@@ -34,6 +34,7 @@ type DeviceKind string
 const (
 	KindValve      DeviceKind = "valve"      // thermostatic valve, serial VA...
 	KindThermostat DeviceKind = "thermostat" // wall thermostat, boiler side, serial RU...
+	KindSensor     DeviceKind = "sensor"     // wireless temperature sensor, serial SU...
 	KindBridge     DeviceKind = "bridge"     // internet bridge, serial IB...
 )
 
@@ -300,8 +301,8 @@ const DefaultLowBatteryCellMV = 1100
 const DefaultOfflineAfterSec = 60 * 60
 
 // batteryCells is the cell count of each battery-powered kind: two AA in a
-// valve, three AAA in the wall thermostat.
-var batteryCells = map[DeviceKind]int{KindValve: 2, KindThermostat: 3}
+// valve, three AAA in the wall thermostat and wireless temperature sensor.
+var batteryCells = map[DeviceKind]int{KindValve: 2, KindThermostat: 3, KindSensor: 3}
 
 // LowBatteryMV returns the low battery threshold of a device kind, 0 for a kind
 // that runs on no battery.
@@ -544,11 +545,11 @@ func (in *Install) checkDevices(c *issues, allowEmpty bool) {
 		d := &in.Devices[i]
 		p := fmt.Sprintf("devices[%d]", i)
 		switch d.Kind {
-		case KindValve, KindThermostat, KindBridge:
+		case KindValve, KindThermostat, KindSensor, KindBridge:
 		case "":
-			c.errf(p+".kind", "missing: one of valve, thermostat, bridge")
+			c.errf(p+".kind", "missing: one of valve, thermostat, sensor, bridge")
 		default:
-			c.errf(p+".kind", "unknown kind %q: one of valve, thermostat, bridge", d.Kind)
+			c.errf(p+".kind", "unknown kind %q: one of valve, thermostat, sensor, bridge", d.Kind)
 		}
 		b, err := ParseEUI(d.EUI)
 		if err != nil {
@@ -708,6 +709,13 @@ func (in *Install) checkReporter(c *issues, p string, z *Zone, members []*Device
 		if !in.Options.NoBoilerSet() {
 			c.warnf(p+".reporter", "heating zone %d elects no demand reporter: its d/config 015e records carry role 0x05 for every member, so the coordinator writes no primary bit", z.Number)
 		}
+		if !in.Options.CoordinatorOwns(z.Number) {
+			for _, m := range members {
+				if m.Kind == KindSensor {
+					c.warnf(p+".reporter", "heating zone %d holds wireless sensor %s, which is not its demand reporter: in the firmware only the zone owner (role 0x0d) feeds its temperature to the zone", z.Number, m.Ref())
+				}
+			}
+		}
 		return
 	default:
 		c.errf(p+".reporter", "heating zone %d elects %d demand reporters (%s): the 015e primary bit admits exactly one",
@@ -721,6 +729,13 @@ func (in *Install) checkReporter(c *issues, p string, z *Zone, members []*Device
 	}
 	if !containsDevice(members, d) {
 		c.errf(p+".reporter", "%s is not a member of zone %d", d.Ref(), z.Number)
+	}
+	if !in.Options.CoordinatorOwns(z.Number) {
+		for _, m := range members {
+			if m.Kind == KindSensor && m != d {
+				c.warnf(p+".reporter", "heating zone %d holds wireless sensor %s, which is not its demand reporter: in the firmware only the zone owner (role 0x0d) feeds its temperature to the zone", z.Number, m.Ref())
+			}
+		}
 	}
 }
 

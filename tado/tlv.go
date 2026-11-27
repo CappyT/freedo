@@ -57,7 +57,7 @@ type AppPayload struct {
 }
 
 var (
-	reSerial = regexp.MustCompile(`(VA|RU)[0-9A-Z]{9,11}`)
+	reSerial = regexp.MustCompile(`(VA|RU|SU)[0-9A-Z]{9,11}`)
 	reID     = regexp.MustCompile(`l?id=([0-9]+)`)
 )
 

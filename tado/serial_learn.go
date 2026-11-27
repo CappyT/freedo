@@ -36,6 +36,8 @@ func serialFitsKind(serial string, kind DeviceKind) bool {
 		return strings.HasPrefix(serial, "VA")
 	case KindThermostat:
 		return strings.HasPrefix(serial, "RU")
+	case KindSensor:
+		return strings.HasPrefix(serial, "SU")
 	}
 	return false
 }

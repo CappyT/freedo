@@ -66,7 +66,7 @@ So a Home Assistant user, without the token, can read the state of the plant, se
 write and remove the home and the away program of a zone, create, rename, delete and switch the program
 presets, switch zones off, switch the home between home and away, set the flow limit, set the temperature
 offset of a room, switch the statistics on or off and delete them, rename a device,
-lock or identify a valve, and restart a valve or the wall thermostat. A restarted device does not answer
+lock or identify a valve, and restart a valve, the wall thermostat or a wireless temperature sensor. A restarted device does not answer
 for about a minute and then joins again with its stored key. A preset holds the weekly programs of the zones, so managing the presets is
 managing the weekly schedules: it gives no control over the plant that a schedule write does not already
 give. Only a preset that is active reaches the devices.

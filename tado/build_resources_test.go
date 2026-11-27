@@ -723,7 +723,7 @@ func TestConfigDocumentMatchesCapture(t *testing.T) {
 		ChangeNotify:           cfgPtr(uint16(0x0200)),
 		Etag:                   mustHex(firstETag),
 	}
-	first, snap, err := mergeConfigDocument(cfgSnapshot{}, cached, nil, false)
+	first, snap, err := mergeConfigDocument(cfgSnapshot{}, cached, nil, KindValve)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -743,7 +743,7 @@ func TestConfigDocumentMatchesCapture(t *testing.T) {
 	// analysis prose reads ffb6, which is -74, and its own decoded line says -70.
 	second, _, err := mergeConfigDocument(snap, ConfigWrite{
 		CalibOffset: cfgPtr(-70), Etag: mustHex(nextETag),
-	}, nil, false)
+	}, nil, KindValve)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -757,7 +757,7 @@ func TestConfigDocumentMatchesCapture(t *testing.T) {
 	// no default: only the device kind decides it.
 	bare, _, err := mergeConfigDocument(cfgSnapshot{}, ConfigWrite{
 		CalibOffset: cfgPtr(-70), Etag: mustHex(nextETag),
-	}, nil, false)
+	}, nil, KindValve)
 	if err != nil {
 		t.Fatal(err)
 	}

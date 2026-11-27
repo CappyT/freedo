@@ -440,9 +440,10 @@ export const it: Record<Key, string> = {
 	'devices.name': 'Nome del dispositivo',
 	'devices.save': 'Salva',
 	'devices.renamed': 'Dispositivo rinominato.',
-	'devices.note': 'Identifica fa emettere un segnale a una valvola o al termostato a parete. Il blocco bambini vale solo per le valvole. Per rinominare, spostare, riavviare o rimuovere un dispositivo, apri le impostazioni della sua stanza.',
+	'devices.note': 'Identifica fa emettere un segnale a una valvola, al termostato a parete o a un sensore di temperatura wireless. Il blocco bambini vale solo per le valvole. Per rinominare, spostare, riavviare o rimuovere un dispositivo, apri le impostazioni della sua stanza.',
 	'kind.valve': 'Valvola per radiatore',
 	'kind.thermostat': 'Termostato a parete',
+	'kind.sensor': 'Sensore di temperatura wireless',
 	'kind.bridge': 'Bridge',
 
 	'settings.title': 'Impostazioni',

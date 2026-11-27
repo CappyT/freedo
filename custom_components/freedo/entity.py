@@ -38,7 +38,11 @@ FUEL_FLOW_UNITS = {
     FUEL_KG: "kg/h",
 }
 
-_MODELS = {"valve": "Smart Radiator Thermostat", "thermostat": "Wired Smart Thermostat"}
+_MODELS = {
+    "valve": "Smart Radiator Thermostat",
+    "thermostat": "Wired Smart Thermostat",
+    "sensor": "Wireless Temperature Sensor",
+}
 # The device model is not translatable in Home Assistant.
 _ZONE_MODELS = {KIND_HEATING: "Heating zone", KIND_HOT_WATER: "Hot water zone"}
 

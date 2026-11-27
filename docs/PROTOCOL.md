@@ -2028,10 +2028,9 @@ No transfer has run on air. The tests use synthetic data only.
 
 ### Wireless temperature sensor
 
-freedo does not support this device yet (issue #7). Its serial prefix is `SU`. The serial check
-in `tado/serial_learn.go` and `reSerial` in `tado/tlv.go` accept `VA` and `RU` only, and no
-device kind exists for it. This section records what the sensor does, so that a later change
-can serve it.
+Its serial prefix is `SU` (`KindSensor`, `"sensor"` in the API). `tado/serial_learn.go` and
+`reSerial` in `tado/tlv.go` accept `VA`, `RU` and `SU`. This section records what the sensor
+does on air.
 
 Sources. The sensor trace is a decoded and redacted recording of one sensor on a third-party
 coordinator (2026-11-17 and 18, attached to issue #7). Its identifiers are invented. The notes
@@ -2133,9 +2132,9 @@ Block2. A document with more than one block goes out in 64-byte blocks:
   `NUM` 0 every few seconds and never finished (2026-11-18, 09:27 to 09:29). Serving `NUM` as
   asked ended the loop.
 - The trace holds no 128-byte answer. SENSOR.md gives the reason for 64 bytes: each block then
-  fits one frame. Reported by SENSOR.md, not seen in the trace. freedo serves the size that the
-  request names (`requestedBlock2` in `tado/emu.go`), so a sensor read gets blocks of 128 bytes
-  over two frames. The effect on the sensor is untested.
+  fits one frame. Reported by SENSOR.md, not seen in the trace. freedo serves 64-byte blocks
+  (`SZX 2`, `NUM` counted in 64-byte blocks) to a sensor when it requests `SZX 3` (128), which
+  matches the 217-byte zone document on air (`0/1/64` to `3/0/64`).
 - The `2.03` of a conditional GET carries Block2 `0/0/64` in the trace. The sensor accepted it.
 
 Zone controller. The zone document names the sensor as owner and as measuring device. The sensor
@@ -2173,6 +2172,21 @@ Overlay. A setpoint set on the sensor is a device overlay, as for the wheel of a
   42. It carries `6160 6180 6020 61e0 6200 6240 62e0` with `6240`=0 and no `6440`. The sensor
   answered `2.04` after 1.1 s. The demand fell from 100 % to 36 % within 4 s and the echo came 6
   s after the write. This is the expiry write of [Setpoint write path](#setpoint-write-path).
+
+On-air checks on `SU02` against freedo (beyond the trace above):
+
+- Omitting `0149`, `015d` and `021a` returns those tags to their default on the device (in the
+  valve and thermostat firmware, each `d/config` `2.05` resets the config store before writing
+  the tags of its body). freedo's document also carries `02b2` (UTC offset), which the trace
+  document did not.
+- An empty `PUT d/config` re-read trigger is answered with `2.04`, and about 1 s later the sensor
+  fetches `GET d/<serial>/config` and `GET h/<home>/z/N/config` and applies an updated `0140`
+  calibration offset.
+- Offline weekly schedules work on the sensor: it fetches `GET h/<home>/z/N/sched` (`2.03` when
+  empty), accepts `POST d/<serial>/sched` (`2.05`; in the shared valve and thermostat firmware,
+  `PUT` answers `4.05`), and fetches the full `h/<home>/z/N/sched` (`2.05`) once configured.
+- `PUT h/<home>/z/N/overlay` is answered `2.05`, and `PUT z/s?id=N` (`2.04`) applies half-degree
+  setpoints (e.g. `11.5 °C`; the LED matrix rounds `.5` up on display while holding `11.5 °C`).
 
 ## Firmware bridge v2
 

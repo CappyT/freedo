@@ -2,7 +2,7 @@
 
 export type EndRule = 'manual' | 'timer' | 'until_next' | 'until_auto_change';
 export type ZoneKind = 'heating' | 'hotwater';
-export type DeviceKind = 'valve' | 'thermostat' | 'bridge';
+export type DeviceKind = 'valve' | 'thermostat' | 'sensor' | 'bridge';
 
 /** The interface module id of a wall thermostat. Module and source are null while it has none. The PUT answers with this alone. */
 export interface InterfaceModuleState {

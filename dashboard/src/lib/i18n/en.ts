@@ -440,9 +440,10 @@ export const en = {
 	'devices.name': 'Device name',
 	'devices.save': 'Save',
 	'devices.renamed': 'Device renamed.',
-	'devices.note': 'Identify makes a valve or the wall thermostat signal itself. The child lock is for valves only. To rename, move, restart or remove a device, open the settings of its room.',
+	'devices.note': 'Identify makes a valve, the wall thermostat or a wireless sensor signal itself. The child lock is for valves only. To rename, move, restart or remove a device, open the settings of its room.',
 	'kind.valve': 'Radiator valve',
 	'kind.thermostat': 'Wall thermostat',
+	'kind.sensor': 'Wireless temperature sensor',
 	'kind.bridge': 'Bridge',
 
 	'settings.title': 'Settings',

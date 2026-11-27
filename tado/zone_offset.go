@@ -127,7 +127,7 @@ func (e *EmuState) enqueueDbg2(target, desc string, tlvs []TLV) error {
 		return err
 	}
 	if e.refusesConfigWrite(wire) {
-		return errors.New("tado: d/dbg2/tlvs to the wall thermostat is refused: no evidence that it applies the records")
+		return errors.New("tado: d/dbg2/tlvs to a read-served device is refused: no evidence that it applies the records")
 	}
 	mid, token, err := downlinkIDs()
 	if err != nil {
@@ -156,7 +156,7 @@ func (e *EmuState) applyDbg2(key string, d *queuedDownlink) {
 	if !ok || slices.ContainsFunc(e.queue[key], func(q *queuedDownlink) bool { return q.kind == "config" }) {
 		return
 	}
-	e.setConfigDocument(key, patchConfigDocument(previous, d.dbg2))
+	e.setConfigDocument(key, patchConfigDocument(previous, d.dbg2, e.deviceKind(key)))
 	e.deliveredChanged = true
 }
 
@@ -167,15 +167,15 @@ func (e *EmuState) configBase(key string) cfgSnapshot {
 	base := e.cfgDoc[key]
 	for _, d := range e.queue[key] {
 		if d.dbg2 != nil && base.body != nil {
-			base = patchConfigDocument(base, d.dbg2)
+			base = patchConfigDocument(base, d.dbg2, e.deviceKind(key))
 		}
 	}
 	return base
 }
 
 // patchConfigDocument merges updates into the document and keeps its ETag.
-func patchConfigDocument(previous cfgSnapshot, updates []TLV) cfgSnapshot {
-	merged := configDocument(mergeConfigTLVs(withoutConfigETag(parseTLVList(previous.body)), updates), false)
+func patchConfigDocument(previous cfgSnapshot, updates []TLV, kind DeviceKind) cfgSnapshot {
+	merged := configDocument(mergeConfigTLVs(withoutConfigETag(parseTLVList(previous.body)), updates), kind)
 	etag := append([]byte(nil), previous.etag...)
 	document := append(merged, TLV{Tag: configEtagTag, Val: etag})
 	return cfgSnapshot{body: encodeTLVs(document), etag: etag}

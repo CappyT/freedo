@@ -15,7 +15,7 @@ is secondary: installation, pairing, schedules and backup.
 
 ## Product Purpose
 
-freedo is a local coordinator for tado V3+ 868 MHz valves and wall thermostats. A Go daemon talks to
+freedo is a local coordinator for tado V3+ 868 MHz valves, wall thermostats and wireless temperature sensors. A Go daemon talks to
 the devices through an ESP32 with a CC1101 radio and serves a local HTTP API. The dashboard is the web
 interface of that daemon: it shows the rooms, the hot water, the boiler and the devices, and it
 controls them. Success: the owner reads the state of every room at a glance and changes it in a few

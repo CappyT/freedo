@@ -232,7 +232,7 @@ room form the last group, No room. The page and the settings of a room do these 
 - In the settings of a room, for each device of the room: rename it, move it to another room or to No
   room, restart it, and remove it from the installation. The settings of No room do the same for the
   devices in no room.
-- A restart asks first. It queues `POST /api/nodes/{id}/reboot` for a valve or the wall thermostat, and
+- A restart asks first. It queues `POST /api/nodes/{id}/reboot` for a valve, wall thermostat or wireless sensor, and
   the page shows the messages that wait for the device. The device restarts about 5 seconds after it
   receives the command, does not answer for about a minute, and joins again with its stored key. The
   daemon needs a zone id for the command: a device in no room that never named one gets `id required`.

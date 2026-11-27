@@ -327,7 +327,7 @@ hub, so both do not record the same reading.
   15 minutes. Only a valve has a child lock: the node view reports `ChildLock`
   as null on other devices, and they get no switch. A valve that belongs to no
   zone gets no switch either.
-- Button Identify makes the valve or the wall thermostat signal itself; the thermostat shows "Hi!". Button Calibrate motor starts
+- Button Identify makes the valve, wall thermostat or wireless sensor signal itself; the thermostat and sensor show "Hi!". Button Calibrate motor starts
   the motor calibration, a full stroke of the valve. A 2.xx answer of the valve
   does not guarantee the stroke: the valve drops the request in silence in some
   states.
