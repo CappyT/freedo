@@ -92,6 +92,33 @@ func TestStaleZoneEchoExpires(t *testing.T) {
 	wantZoneTarget(t, "after the window", url, 10, 24.6)
 }
 
+// TestStaleZoneEchoAcrossTwoQuickWrites: a second write inside the echo window
+// keeps the block the first write replaced as stale, so a late echo of it does
+// not undo the newer write. Each replaced block expires on its own clock.
+func TestStaleZoneEchoAcrossTwoQuickWrites(t *testing.T) {
+	in := windowInstall(t, nil)
+	clock := newTestClock(windowStart)
+	d, url := newWindowDaemon(t, in, clock, nil)
+	writer := wireOf(t, in, bedroom)
+	seedBlock(t, d, in, bedroom, 10, bedroomBlock(2460)...)
+	for _, c := range []float64{25, 22} {
+		if _, code := postZone(t, url, 10, "setpoint", map[string]any{"setpointC": c}); code != http.StatusOK {
+			t.Fatalf("setpoint %v: code=%d", c, code)
+		}
+		deliver(t, d, in, writer)
+		clock.advance(20 * time.Second)
+	}
+
+	echoZone(t, d, in, bedroom, 10, 0x9830, bedroomBlock(2460))
+	wantZoneTarget(t, "after the late echo of the first block", url, 10, 22)
+	echoZone(t, d, in, bedroom, 10, 0x9831, bedroomBlock(2500))
+	wantZoneTarget(t, "after the echo of the second block", url, 10, 22)
+
+	clock.advance(30 * time.Second)
+	echoZone(t, d, in, bedroom, 10, 0x9832, bedroomBlock(2460))
+	wantZoneTarget(t, "after the first window", url, 10, 24.6)
+}
+
 // TestZoneEchoWithoutProgramQueuesNoRewrite: a zone the daemon holds no
 // program for takes no rewrite when its member echoes the 6200 a delivered
 // write dropped from the zone cache: that is no block change.

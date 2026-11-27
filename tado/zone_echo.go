@@ -19,11 +19,17 @@ const staleEchoWindow = time.Minute
 var zoneHeatingTags = []string{"6240", "6260", "6280"}
 
 // deliveredWrite is the last delivered write that changed the heating block of
-// a zone, and the block it replaced.
+// a zone, and the blocks it and the writes before it replaced inside
+// staleEchoWindow.
 type deliveredWrite struct {
-	at       time.Time
 	written  map[string][]byte
-	replaced map[string][]byte
+	replaced []replacedBlock
+}
+
+// replacedBlock is a heating block a delivered write replaced, and when.
+type replacedBlock struct {
+	at    time.Time
+	block map[string][]byte
 }
 
 // heldOverlay is a device overlay the zone took from a PUT
@@ -64,37 +70,58 @@ func (e *EmuState) zoneHeating(zone int) map[string][]byte {
 
 // noteZoneWrite records a delivered write to zone when it changed the heating
 // block from before. A write that restates the block keeps the older record,
-// so the block that record replaced stays known as stale.
+// so the block that record replaced stays known as stale. The blocks earlier
+// writes replaced stay stale until their own window ends: a member can echo the
+// first of two quick writes after the second.
 func (e *EmuState) noteZoneWrite(zone int, before map[string][]byte) {
 	after := e.zoneHeating(zone)
 	if maps.EqualFunc(before, after, bytes.Equal) {
 		return
 	}
-	e.zoneWrites[zone] = deliveredWrite{at: e.cfg.Now(), written: after, replaced: before}
+	now := e.cfg.Now()
+	var kept []replacedBlock
+	for _, r := range e.zoneWrites[zone].replaced {
+		if now.Sub(r.at) <= staleEchoWindow && !maps.EqualFunc(r.block, after, bytes.Equal) {
+			kept = append(kept, r)
+		}
+	}
+	kept = append(kept, replacedBlock{at: now, block: before})
+	e.zoneWrites[zone] = deliveredWrite{written: after, replaced: kept}
 	delete(e.heldOverlays, zone)
 }
 
-// staleZoneEcho reports whether m is a member report of the heating block the
-// last delivered write to its zone replaced. The valve echoes each write it
-// takes, and the echo of an older write can arrive after a newer one: taking
-// it would undo the newer write. A wheel change sends its overlay PUT first,
-// which drops the record.
+// staleZoneEcho reports whether m is a member report of a heating block that
+// a delivered write to its zone replaced inside staleEchoWindow. The valve
+// echoes each write it takes, and the echo of an older write can arrive after a
+// newer one: taking it would undo the newer write. A wheel change sends its
+// overlay PUT first, which drops the record.
 func (e *EmuState) staleZoneEcho(m *CoAPMessage) bool {
 	zone, ok := zoneQuery(m.Query)
 	if !ok || m.Code != "0.03" || normalizeResource(m.Path) != "z/s" {
 		return false
 	}
 	w, ok := e.zoneWrites[zone]
-	if !ok || e.cfg.Now().Sub(w.at) > staleEchoWindow {
+	if !ok {
 		return false
 	}
+	now := e.cfg.Now()
 	report := heatingTagsOf(parseTLVList(m.Payload))
+	for _, r := range w.replaced {
+		if now.Sub(r.at) <= staleEchoWindow && echoOf(report, r.block, w.written) {
+			return true
+		}
+	}
+	return false
+}
+
+// echoOf reports whether report shows the replaced block and not the written one.
+func echoOf(report, replaced, written map[string][]byte) bool {
 	differs := false
 	for tag, v := range report {
-		if !bytes.Equal(v, w.replaced[tag]) {
+		if !bytes.Equal(v, replaced[tag]) {
 			return false
 		}
-		differs = differs || !bytes.Equal(v, w.written[tag])
+		differs = differs || !bytes.Equal(v, written[tag])
 	}
 	return differs
 }
