@@ -132,7 +132,7 @@ func (e *EmuState) staleZoneEcho(m *CoAPMessage, src []byte) staleVerdict {
 	}
 	v := staleVerdict{at: now, stale: e.replacedBlockReport(zone, m.Payload, now)}
 	if v.stale {
-		if owner := e.ZoneOwner(zone); owner != "" && owner != ShortFromWire(src) {
+		if !e.isZoneOwner(zone, src) {
 			v.member = !e.heldNewest(src, zone)
 			v.stale = v.member
 		}
@@ -144,6 +144,18 @@ func (e *EmuState) staleZoneEcho(m *CoAPMessage, src []byte) staleVerdict {
 	}
 	e.staleVerdicts[key] = v
 	return v
+}
+
+// isZoneOwner reports whether src owns zone for the stale rule: it sends the
+// overlay PUT for a local change. In a zone the coordinator owns every device is
+// a member, the measuring device too. A zone with no resolvable owner answers
+// true, which keeps the rule of the owner.
+func (e *EmuState) isZoneOwner(zone int, src []byte) bool {
+	if e.inst != nil && e.inst.Options.CoordinatorOwns(zone) {
+		return false
+	}
+	owner := e.ZoneOwner(zone)
+	return owner == "" || owner == ShortFromWire(src)
 }
 
 // replacedBlockReport reports whether payload shows a heating block that a

@@ -297,7 +297,7 @@ func TestDashboardWriteEndsTheHeldDeviceOverlay(t *testing.T) {
 	for pending(t, d, writer) > 0 {
 		deliverAck(t, d, in, writer)
 	}
-	clock.advance(2 * time.Minute)
+	clock.advance(9 * time.Minute)
 	echoZone(t, d, in, "VA1000000001", 5, 0x6322, programBlock)
 	if target := mustTarget(t, url, 5); target["source"] != "program" {
 		t.Errorf("target = %v, want the program the member reported", target)

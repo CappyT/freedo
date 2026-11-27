@@ -2386,8 +2386,10 @@ func (e *EmuState) queueZoneHop(dst []byte, m *CoAPMessage, pkt []byte, desc str
 		relayID: id, relayAck: m.Type == "ACK" || m.Type == "RST",
 		responseRetry: m.Type == "NON" && strings.HasPrefix(m.Code, "2."),
 	}
-	if zone, ok := zoneQuery(m.Query); ok && m.Code == "0.03" && normalizeResource(m.Path) == "z/s" {
-		hop.held, hop.heldZone = heatingTagsOf(parseTLVList(m.Payload)), zone
+	if zone, ok := e.hopZone(dst, m); ok {
+		if held := heatingTagsOf(parseTLVList(m.Payload)); len(held) > 0 {
+			hop.held, hop.heldZone = held, zone
+		}
 	}
 	at := len(kept)
 	if hop.relayAck {
@@ -2397,6 +2399,19 @@ func (e *EmuState) queueZoneHop(dst []byte, m *CoAPMessage, pkt []byte, desc str
 		}
 	}
 	e.queue[key] = e.trimZoneHops(key, slices.Insert(kept, at, hop))
+}
+
+// hopZone names the zone whose z/s block a relayed datagram carries: the query
+// of a PUT z/s, and for an answer, which carries neither path nor query, the
+// zone of the last request the target sent.
+func (e *EmuState) hopZone(dst []byte, m *CoAPMessage) (int, bool) {
+	if zone, ok := zoneQuery(m.Query); ok && m.Code == "0.03" && normalizeResource(m.Path) == "z/s" {
+		return zone, true
+	}
+	if ns, ok := e.nodes[hexEUI(dst)]; ok && isResponseCode(m.Code) && m.Path == "" && ns.LastID > 0 {
+		return ns.LastID, true
+	}
+	return 0, false
 }
 
 // zoneHopRoute names what a queued zone datagram carries, so a newer one on
@@ -5398,6 +5413,9 @@ func (e *EmuState) confirmBySeq(dstEUI []byte, seq byte) {
 		return
 	}
 	e.promoteHeatingBlock(dstEUI, q[0].heating)
+	if q[0].held != nil {
+		e.holdBlock(dstEUI, q[0].heldZone, q[0].held)
+	}
 	e.queue[key] = q[1:]
 	e.noteDelivered(key, q[0])
 	e.stats.DownlinksDelivered++
