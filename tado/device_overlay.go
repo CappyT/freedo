@@ -127,8 +127,9 @@ func (e *EmuState) endDeviceOverlay(zone int, dev []byte) {
 
 // restateDeviceOverlay rebuilds the zone writes queued before a device overlay
 // on a heating zone: each one restates the block the zone held before, so it
-// would undo the overlay on delivery. A write on the air stays, and so does
-// one that marks an event (6440 or a zone configuration tag). Each node that
+// would undo the overlay on delivery. A write on the air stays, except the
+// automatic rewrite of a stale report: it restates an older block. A write that
+// marks an event stays (6440 or a zone configuration tag). Each node that
 // lost a write takes one rewrite of the overlay, with the head and the 62e0 of
 // now.
 func (e *EmuState) restateDeviceOverlay(zone int) {
@@ -139,7 +140,7 @@ func (e *EmuState) restateDeviceOverlay(zone int) {
 		q := e.queue[key]
 		kept := make([]*queuedDownlink, 0, len(q))
 		for _, d := range q {
-			if d.zoneBlock && d.zone == zone && !d.inFlight && len(zoneWriteEvents(d.coap)) == 0 {
+			if d.zoneBlock && d.zone == zone && (!d.inFlight || d.staleRewrite) && len(zoneWriteEvents(d.coap)) == 0 {
 				e.recordDownlinkOutcome(key, d, "superseded", "device-overlay")
 				continue
 			}

@@ -87,8 +87,12 @@ func TestStaleZoneEchoExpires(t *testing.T) {
 	}
 	deliver(t, d, in, writer)
 
-	clock.advance(2 * time.Minute)
+	clock.advance(7 * time.Minute)
 	echoZone(t, d, in, bedroom, 10, 0x9812, bedroomBlock(2460))
+	wantZoneTarget(t, "inside the window", url, 10, 25)
+
+	clock.advance(2 * time.Minute)
+	echoZone(t, d, in, bedroom, 10, 0x9813, bedroomBlock(2460))
 	wantZoneTarget(t, "after the window", url, 10, 24.6)
 }
 
@@ -114,7 +118,7 @@ func TestStaleZoneEchoAcrossTwoQuickWrites(t *testing.T) {
 	echoZone(t, d, in, bedroom, 10, 0x9831, bedroomBlock(2500))
 	wantZoneTarget(t, "after the echo of the second block", url, 10, 22)
 
-	clock.advance(30 * time.Second)
+	clock.advance(450 * time.Second)
 	echoZone(t, d, in, bedroom, 10, 0x9832, bedroomBlock(2460))
 	wantZoneTarget(t, "after the first window", url, 10, 24.6)
 }

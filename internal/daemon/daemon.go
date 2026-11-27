@@ -2651,6 +2651,8 @@ func (d *daemon) logZoneStateReports(e *tado.EmuState) {
 	for _, r := range e.TakeZoneStateReports() {
 		note := ""
 		switch {
+		case r.Stale && r.Restated:
+			note = " (member holds a replaced block: not taken, not relayed, the newest block is queued to it)"
 		case r.Stale:
 			note = " (stale echo of a replaced write, not taken)"
 		case r.Behind:

@@ -329,6 +329,11 @@ func (e *EmuState) dropDevice(key string) {
 	delete(e.serialSeen, key)
 	delete(e.serialLearned, key)
 	prefix := key + "|"
+	for k := range e.heldBlocks {
+		if strings.HasPrefix(k, prefix) {
+			delete(e.heldBlocks, k)
+		}
+	}
 	for k := range e.boostTimers {
 		if strings.HasPrefix(k, prefix) {
 			delete(e.boostTimers, k)

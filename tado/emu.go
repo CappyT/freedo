@@ -463,8 +463,15 @@ type queuedDownlink struct {
 	zoneBlock bool
 	zone      int
 	mark      uint64 // zone block writes only: its place in the order they were queued
-	dbg2      []TLV  // d/dbg2/tlvs records, patched into the served d/config on delivery
-	childLock *bool  // the d/lock state the write sets, recorded on delivery
+	// staleRewrite marks the automatic rewrite that answers a stale report of a
+	// member. A device overlay drops it even when it is on the air.
+	staleRewrite bool
+	// held is the heating block of heldZone that a PUT z/s relayed to the target
+	// carries. The target holds it once its 2.04 arrives.
+	held      map[string][]byte
+	heldZone  int
+	dbg2      []TLV // d/dbg2/tlvs records, patched into the served d/config on delivery
+	childLock *bool // the d/lock state the write sets, recorded on delivery
 	// endsTimer and endsTimerGen name the overlay deadline the write ends when
 	// the node takes it. A write the node never takes leaves the overlay, and
 	// its deadline, running.
@@ -731,6 +738,11 @@ type EmuState struct {
 	zoneStateReports []ZoneStateReport
 	// heldOverlays holds the device overlay each zone took and has not ended.
 	heldOverlays map[int]heldOverlay
+	// heldBlocks holds, per member wire EUI and zone, the heating block the member
+	// last confirmed, and staleVerdicts the verdict of each z/s report by source
+	// and MID. See zone_echo.go.
+	heldBlocks    map[string]map[string][]byte
+	staleVerdicts map[string]staleVerdict
 	// home is the state of the whole home and schedC the setpoint the weekly
 	// program holds in each zone. The daemon owns both and pushes them here with
 	// SetHomeState; every z/s write the emulator builds stamps them. homeSet
@@ -826,6 +838,8 @@ func NewEmu(cfg EmuConfig, log *UnhandledLogger) *EmuState {
 		zoneState:      map[string][]byte{},
 		zoneWrites:     map[int]deliveredWrite{},
 		heldOverlays:   map[int]heldOverlay{},
+		heldBlocks:     map[string]map[string][]byte{},
+		staleVerdicts:  map[string]staleVerdict{},
 		zoneProxyPend:  map[midKey]*zoneProxyWait{},
 		zoneRep:        map[int]*demandReport{},
 		ownedMeasure:   map[int][]byte{},
@@ -1079,12 +1093,18 @@ func (e *EmuState) handleCoAP(f *Frame, m *CoAPMessage, class FrameClass, srcLbl
 	// A zone write teaches us the zone whether we answer it, forward it or only
 	// overhear it: the thermostat pushes z/cpe as a NON aimed at the member, and
 	// both paths below return before the answer handling.
+	stale := e.staleZoneEcho(m, f.SrcEUI()).member
 	e.cacheZoneState(m, f.SrcEUI())
+	if stale {
+		e.restateAfterStaleEcho(m, f.SrcEUI(), class, srcLbl, dstLbl, f.Hex())
+	}
 	// Zone traffic addressed to another device reaches us as an L2 hop only: the
 	// bridge forwards it, it does not answer it. Answering as ourselves would
 	// construct a relay reply for that device. This precedes the ACK handling because a
-	// relayed 2.05 is exactly how a zone GET gets answered.
-	if m.Contexted() && !e.addressedToSelf(m, f) {
+	// relayed 2.05 is exactly how a zone GET gets answered. A stale report of a
+	// member is the exception: the peer must not take the old block, so we answer
+	// the sender ourselves and forward nothing.
+	if m.Contexted() && !e.addressedToSelf(m, f) && !stale {
 		e.confirmRelayByMID(f.SrcEUI(), m) // the device answered a request we forwarded
 		// A member answering a GET we proxied on someone's behalf: its 2.05 goes
 		// to the requester through the relay below, so we must not also answer.
@@ -1116,7 +1136,7 @@ func (e *EmuState) handleCoAP(f *Frame, m *CoAPMessage, class FrameClass, srcLbl
 	}
 	// Anything else aimed at another node's address is not ours to answer, and
 	// the zone forwarder above cannot carry it: it only speaks context 0.
-	if !e.addressedToSelf(m, f) {
+	if !e.addressedToSelf(m, f) && !stale {
 		e.log.Log(class.String(), srcLbl, dstLbl, rsnRelayedPath+" uri="+m.URI(), f.Hex())
 		return nil, false
 	}
@@ -1202,8 +1222,10 @@ func (e *EmuState) handleCoAP(f *Frame, m *CoAPMessage, class FrameClass, srcLbl
 		// A zone write addressed to us updates the zone's cached state and is
 		// re-emitted to the zone's other members; a zone read is proxied to a
 		// member when that is enabled, else answered from that cache.
-		e.noteOwnerRequest(m, f.SrcEUI())
-		e.fanOutZone(f, m, class, srcLbl, dstLbl)
+		if !stale {
+			e.noteOwnerRequest(m, f.SrcEUI())
+			e.fanOutZone(f, m, class, srcLbl, dstLbl)
+		}
 		if e.proxyZoneGet(f, m, class, srcLbl, dstLbl) {
 			return nil, false
 		}
@@ -2048,7 +2070,7 @@ func isResponseCode(code string) bool {
 // single block can end in the middle of a TLV. fallback carries the TLV-suffix
 // heuristic of a plaintext that holds no CoAP packet.
 func (e *EmuState) cacheBody(ns *NodeState, srcEUI []byte, m *CoAPMessage, fallback []TLV, class FrameClass, srcLbl, dstLbl, hexFrame string) {
-	if m != nil && e.staleZoneEcho(m) {
+	if m != nil && e.staleZoneEcho(m, srcEUI).stale {
 		return
 	}
 	if m == nil {
@@ -2364,6 +2386,9 @@ func (e *EmuState) queueZoneHop(dst []byte, m *CoAPMessage, pkt []byte, desc str
 		relayID: id, relayAck: m.Type == "ACK" || m.Type == "RST",
 		responseRetry: m.Type == "NON" && strings.HasPrefix(m.Code, "2."),
 	}
+	if zone, ok := zoneQuery(m.Query); ok && m.Code == "0.03" && normalizeResource(m.Path) == "z/s" {
+		hop.held, hop.heldZone = heatingTagsOf(parseTLVList(m.Payload)), zone
+	}
 	at := len(kept)
 	if hop.relayAck {
 		at = 0
@@ -2513,9 +2538,11 @@ func (e *EmuState) cacheZoneState(m *CoAPMessage, src []byte) {
 		return
 	}
 	if res == "z/s" {
-		stale := e.staleZoneEcho(m)
+		verdict := e.staleZoneEcho(m, src)
+		stale := verdict.stale
 		behind := !stale && e.behindDeviceOverlay(zone, updates)
-		e.noteZoneStateReport(zone, src, m.Payload, stale, behind)
+		e.noteZoneStateReport(zone, src, m.Payload, verdict, behind)
+		e.holdBlock(src, zone, heatingTagsOf(updates))
 		switch {
 		case stale:
 			return
@@ -4943,6 +4970,7 @@ func (e *EmuState) promoteHeatingBlock(wire []byte, block *heatingBlock) {
 		return
 	}
 	defer e.noteZoneWrite(block.zone, e.zoneHeating(block.zone))
+	defer func() { e.holdBlock(wire, block.zone, e.zoneHeating(block.zone)) }()
 	if block.body != nil {
 		written := parseTLVList(block.body)
 		for _, tlv := range written {
@@ -5529,6 +5557,9 @@ func (e *EmuState) confirmRelayByMID(srcEUI []byte, m *CoAPMessage) {
 	e.queue[key] = q[1:]
 	e.stats.DownlinksDelivered++
 	e.recordDownlinkOutcome(key, q[0], "delivered", "coap-"+strings.ToLower(m.Type))
+	if q[0].held != nil && m.Type == "ACK" && m.Code == "2.04" {
+		e.holdBlock(srcEUI, q[0].heldZone, q[0].held)
+	}
 }
 
 // remintDownlink gives the write d a new MID and token for its retry after a
