@@ -557,8 +557,9 @@ them carries `015d`, so an error answer would keep `hvac/codes` from ever
 reporting the id. The tag handler of the document (0x1e2e8) writes only the tags
 that a body carries, so a body without `015d` keeps the id that the thermostat
 holds. Once the id is known, the served document carries it under a new ETag
-(`TestThermostatWithoutModuleServedWithout015d`), with the re-read trigger. No API
-writes the tag.
+(`TestThermostatWithoutModuleServedWithout015d`), with the re-read trigger. An operator can
+set the id after a factory reset with `PUT /api/install/devices/{ref}/interface_module`
+(see [API.md](API.md#interface-module-id)). A later report of another id replaces it.
 
 Tag `02b3` is the offline schedule enable. freedo sets it in every document that
 it serves or writes. The value is the one that a per-device write through

@@ -337,13 +337,14 @@ fixed address `172.30.32.2`. The developer documentation for apps tells an app t
 connections from that address only and to treat the user as authenticated. The daemon follows it:
 
 - The flag `--ingress` makes the daemon accept the calls of the dashboard from the connection address
-  `172.30.32.2` without a token. Only the 59 method and path pairs of
+  `172.30.32.2` without a token. Only the 65 method and path pairs of
   [`internal/daemon/ingress_routes.json`](../internal/daemon/ingress_routes.json) qualify. They include
   the installation and pairing calls of the pages Rooms and devices and First setup, so those pages need no token
   under the add-on. Every other request from that address needs the token. [SECURITY.md](../SECURITY.md#home-assistant-ingress) lists
   the pairs and what a user can do with them.
-- The export and the import of the state and `POST /api/radio/calibrate` are not among them. They
-  are the 3 pairs of
+- The export and the import of the state, `POST /api/radio/calibrate` and
+  `PUT /api/install/devices/{ref}/interface_module` are not among them. They
+  are the 4 pairs of
   [`internal/daemon/ingress_admin_routes.json`](../internal/daemon/ingress_admin_routes.json): from the
   gateway address the daemon serves them without a token only to a Home Assistant administrator. It
   reads the user from `X-Remote-User-Id`, which the Supervisor sets, and asks Home Assistant through

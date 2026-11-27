@@ -51,7 +51,7 @@ and `{ref}` stand for a zone number, a device and a device reference:
 - Device: `POST /api/nodes/{id}/childlock`, `/identify` and `/reboot`, and
   `PUT /api/install/devices/{ref}/label` (the label alone, no other field).
 - Installation, read: `GET /api/install`, `/api/install/devices`,
-  `/api/install/devices/{ref}/removal`, `/api/install/zones` and `/api/install/circuits`.
+  `/api/install/devices/{ref}/removal`, `/api/install/devices/{ref}/interface_module`, `/api/install/zones` and `/api/install/circuits`.
 - Installation, write: `PUT /api/install/timezone` (the time zone alone), `PUT /api/install/boiler` (the
   boiler and flow limit options alone), `POST /api/install/devices`,
   `PUT /api/install/devices/{ref}/zone` (the zone claim alone), `DELETE /api/install/devices/{ref}`,
@@ -125,6 +125,17 @@ uses none of that. The permission does not change the security rating that the S
 rating falls for a Supervisor role `manager` or `admin`, a disabled AppArmor profile, the host network,
 the host PID namespace, privileged capabilities, Docker access and full access, and this add-on asks for
 none of them.
+
+### Interface module id: Home Assistant administrators only
+
+`PUT /api/install/devices/{ref}/interface_module` sets the interface module id of a wall thermostat. The id
+selects the firmware image of the boiler interface, so a wrong id stops that interface and the boiler gets no
+heat demand. The daemon accepts only ids of known wall thermostat images. The route is in
+`internal/daemon/ingress_admin_routes.json`, the same class as the backup, and the same rules apply: from
+the gateway address it passes without the token only for an active Home Assistant administrator, a user who
+is not an administrator gets `403`, and every other source needs the token. The read,
+`GET /api/install/devices/{ref}/interface_module`, is one of the dashboard calls and needs no token from the
+gateway.
 
 The API uses plain HTTP. There is no TLS, so the token and all data cross the network in clear
 text. Run the daemon on a trusted network, or put a TLS proxy in front. Without a token the daemon

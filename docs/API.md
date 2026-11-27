@@ -21,10 +21,11 @@ the routes. For the radio facts behind a rule, see [PROTOCOL.md](PROTOCOL.md).
 - `--health-public` makes `GET /api/health` readable without a token, for a container
   health check. The default is off.
 - `--ingress` makes the daemon accept the calls of the dashboard from the connection address
-  `172.30.32.2`, the Home Assistant ingress gateway, without a token. It covers 64 method and path
+  `172.30.32.2`, the Home Assistant ingress gateway, without a token. It covers 65 method and path
   pairs only. Only the add-on start script sets it, and it has no effect unless `SUPERVISOR_TOKEN` is
   set. With the flag, the gateway also reaches the two routes of the
-  [state export and import](#state-export-and-import) for a Home Assistant administrator. Every other
+  [state export and import](#state-export-and-import) and the
+  [interface module route](#interface-module-id) for a Home Assistant administrator. Every other
   request needs the token. See [Access](OPERATION.md#access).
 - With no token, the daemon accepts a loopback address only and warns at start. An address
   that is not loopback stops the start. `--insecure-no-auth` removes this limit. With it,
@@ -236,6 +237,7 @@ See [Statistics](#statistics).
 | `PUT /api/install/devices/{ref}/label` | Rename a device: write the label alone. |
 | `PUT /api/install/devices/{ref}/zone` | Write the zone the device answers to, alone: `{"zone": 3}`, `null` to remove it. |
 | `GET /api/install/devices/{ref}/removal` | Show what a removal changes. |
+| `GET`, `PUT /api/install/devices/{ref}/interface_module` | Read or set the [interface module id](#interface-module-id) of a wall thermostat. |
 | `GET`, `POST /api/install/zones` | List or declare zones. |
 | `GET`, `PATCH`, `DELETE /api/install/zones/{number}` | Read, change or delete a zone. |
 | `PUT`, `POST /api/install/zones/{number}/members` | Replace the members, or add one. |
@@ -978,8 +980,8 @@ field stays as it is. The defaults are the captured values: horizontal, notice o
 
 `POST /api/nodes/{id}/config` writes chosen tags of `d/config`: `tempUnitF`, `calibOffset`,
 `traceEnable`, `lcdVariant`, `stateBits`, `etagHex`, `homeId`, `nodeTable`, `utcOffsetMin`
-and `offlineScheduleEnabled`. A body with `reportIvlSec` gets `400`: the daemon never writes
-tag `015d`.
+and `offlineScheduleEnabled`. A body with `reportIvlSec` gets `400`: this route never writes
+tag `015d`. The [interface module route](#interface-module-id) does.
 
 `offlineScheduleEnabled` sets the value for one valve. It outranks `offline_schedule`.
 `DELETE /api/nodes/{id}/config/offlineScheduleEnabled` removes it. The wall thermostat
@@ -1001,6 +1003,41 @@ thermostat or from a `d/config` document of the thermostat, and stores it.
 - Until the id is known, the `d/config` GET of the thermostat gets `2.05` with the
   installation document without `015d`, and the daemon does not keep that document.
 - `GET /api/boiler` reports the bus family in `BusType` and the id in `InterfaceModule`.
+- A wall thermostat that stays in `interfaceModuleUnknown` and sends no `hvac/mon` boiler report
+  for 10 minutes since the daemon first saw it raises the alert `setInterfaceModule` in the
+  `alerts` of `/api/health`. The key names the route that clears it. A thermostat that sent an
+  `hvac/mon` report once never raises it.
+
+`GET /api/install/devices/{ref}/interface_module` answers
+`{"module", "family", "source", "known"}` for a wall thermostat. `module` and `source` are `null`
+while the thermostat has no id, and `family` is then `unknown`. `source` names where the id came
+from: `operator`, `hvac/codes`, `d/config`, `cached d/config`, a `response` code, or `stored`
+for an id restored from the database. `known` lists, by id, the `{"module", "family"}` pairs that
+the PUT accepts. It leaves out 0 and the stub image 202. A valve, a bridge or an unknown `ref`
+gets `400` or `404`.
+
+`PUT /api/install/devices/{ref}/interface_module` with `{"module": 80}` sets the id of a wall
+thermostat that lost it, for example after a factory reset. A wrong id stops the boiler
+interface, so the route needs the API token, or, under the Home Assistant add-on, an
+administrator (see [SECURITY.md](../SECURITY.md#interface-module-id-home-assistant-administrators-only)).
+It answers `{"module", "family", "source"}` with `source` `operator`.
+
+- The route accepts an id that passes the same check as a learned id. It answers `400` with the
+  reason for 0, 112, `0x7fff`, an id that no thermostat image answers, a value outside 0 to 65535,
+  a missing field and any other field. It accepts 202, the stub image, and the daemon then
+  warns, as for a learned one.
+- The daemon stores the id like a learned one, so it survives a restart, and serves the thermostat
+  a `d/config` document with the id under a new ETag. After a restart the id has the source
+  `stored`.
+- An `hvac/codes` or `d/config` report of another id wins. The daemon then logs the warning
+  `interface-module-warning` and lists it in `interfaceModuleIssues`. The warning applies to an
+  operator id set since the start of the daemon: the source of an id is not stored.
+
+Known ids by boiler, as reported to the project. Check the id against your own boiler first:
+
+| Boiler | Id | Family |
+|---|---|---|
+| Vaillant ecoTEC plus on eBUS (previously calorMATIC 470) | 80 | `ebus_a` |
 
 ### Firmware state and transfer
 

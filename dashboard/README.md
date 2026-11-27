@@ -39,7 +39,9 @@ and every page request gets `404`. The API works as before.
   the hot water and the boiler open on a screen in the colour of their state, and the tile grows into
   that screen through a view transition (`onNavigate` in `+layout.svelte`, the name `hero` in `app.css`).
 - `devices` lists the devices room by room, with No room as the last group. A device line opens in place
-  on a tap. The page adds a room, pairs a device and manages the heating circuits. `rooms/[n]` holds the settings of one room: the name, the members
+  on a tap. The open line of a wall thermostat shows its interface module id and family
+  (`InterfaceModule.svelte`). While the id is unknown, it adds a select of the known ids, grouped by family
+  from `GET /api/install/devices/{ref}/interface_module`, and a confirm step before the write. The page adds a room, pairs a device and manages the heating circuits. `rooms/[n]` holds the settings of one room: the name, the members
   with rename, move and removal, the circuit, the demand reporter, the room temperature source (a device of the
   room or the Home Assistant thermometer, `roomtemp.ts`), the room options and the delete. `src/lib/roomoptions.ts` holds the ranges and builds the patch of the room options.
   `rooms/none` is the same page for the devices in no room. `setup` is the first
@@ -119,9 +121,10 @@ writes a field that ingress must not reach, the client calls a route that carrie
 The backup is a class of its own. `src/lib/backup.ts` calls `GET /api/state/export` and
 `POST /api/state/import`, which are not in that list and are not methods of the client in `api.ts`. They
 are in `../internal/daemon/ingress_admin_routes.json` with `POST /api/radio/calibrate` of
-`src/lib/api.ts` `recalibrate`: the backup holds the network key and the calibration moves the receiver,
-so under the add-on the daemon serves them to a Home Assistant administrator only, and elsewhere they
-need the token. `tests/backup.test.ts` pins the three pairs and checks that they are in no other list. The
+`src/lib/api.ts` `recalibrate` and `PUT /api/install/devices/{ref}/interface_module` of `setInterfaceModule`:
+the backup holds the network key, the calibration moves the receiver and a wrong interface module id stops
+the boiler interface, so under the add-on the daemon serves them to a Home Assistant administrator only, and
+elsewhere they need the token. `tests/backup.test.ts` pins the four pairs and checks that they are in no other list. The
 section Backup of Settings shows a `403` as "only a Home Assistant administrator" and a `401` as a
 missing token, and does not open the token form of the whole page.
 See [`docs/OPERATION.md`](../docs/OPERATION.md#dashboard).
